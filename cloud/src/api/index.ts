@@ -705,6 +705,8 @@ type StripeEvent = {
   type?: string;
   data?: {
     object?: {
+      /** the object's own id (e.g. the subscription id on a subscription event). */
+      id?: string;
       client_reference_id?: string;
       customer?: string;
       customer_email?: string;
@@ -777,6 +779,7 @@ async function billingWebhook(req: Request, env: Env, origin: string | null): Pr
           userId: u.id,
           ...(tier ? { tier } : {}),
           ...(obj.status ? { status: obj.status } : {}),
+          ...(obj.id ? { stripeSubscriptionId: obj.id } : {}),
           currentPeriodEnd: isoFromUnix(obj.current_period_end),
         });
       }
