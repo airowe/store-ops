@@ -1,4 +1,4 @@
-# Launch post — store-ops
+# Launch post — ShipASO
 
 Drafts for the announcement. The wedge is the same in all of them: every ASO
 tool tells you what to do and then abandons you at the App Store Connect form.
@@ -8,7 +8,7 @@ This one does the work and checks whether it paid off.
 
 ## Show HN (title + body)
 
-**Title:** Show HN: store-ops – an AI ASO loop that ships your metadata and checks the rank moved
+**Title:** Show HN: ShipASO – an AI ASO loop that ships your metadata and checks the rank moved
 
 **Body:**
 
@@ -21,7 +21,7 @@ Every ASO product I tried sells the same thing: data and a dashboard. Keyword
 volumes, difficulty scores, rank graphs. They stop at "here's what to do." The
 doing is still on you. And most of them gate that data behind a paid API.
 
-So I built the other half. store-ops is a set of agent skills that runs in Claude
+So I built the other half. ShipASO is a set of agent skills that runs in Claude
 Code (23 skills + a Python engine, 158 tests). It does the whole loop:
 
 - **audit** your live listing field by field — including a screenshot ASO score

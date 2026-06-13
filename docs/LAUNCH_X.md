@@ -1,4 +1,4 @@
-# X / Twitter launch thread — store-ops
+# X / Twitter launch thread — ShipASO
 
 A 6–10 tweet thread. Hook → the loop → the proof → the offer → CTA.
 Punchy, concrete, scannable. One clear CTA at the end.
