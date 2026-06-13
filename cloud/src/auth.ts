@@ -293,7 +293,10 @@ export class ResendEmailSender implements EmailSender {
   constructor(opts: { apiKey: string; from: string; fetchFn?: typeof fetch }) {
     this.apiKey = opts.apiKey;
     this.from = opts.from;
-    this.fetchFn = opts.fetchFn ?? fetch;
+    // Bind to globalThis: calling the global `fetch` as a method (this.fetchFn)
+    // strips its binding and throws "Illegal invocation" in Workers. An injected
+    // (test) fetchFn is used as-is.
+    this.fetchFn = opts.fetchFn ?? fetch.bind(globalThis);
   }
 
   async sendMagicLink(email: string, link: string): Promise<void> {
