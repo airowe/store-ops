@@ -216,10 +216,63 @@
     };
   }
 
+  // A tiny demo catalog so the offline/preview backend can show the search +
+  // picker flow without the live iTunes endpoints. The real /resolve queries
+  // Apple; this just makes the mock click-through honest.
+  var CATALOG = [
+    { bundle_id: "app.airowe.clarity", name: "Heathen - Secular Meditation", publisher: "airowe", genres: ["Health & Fitness"], icon_url: null },
+    { bundle_id: "com.calm.calmapp", name: "Calm", publisher: "Calm.com, Inc.", genres: ["Health & Fitness"], icon_url: null },
+    { bundle_id: "com.getsomeheadspace.headspace", name: "Headspace: Sleep & Meditation", publisher: "Headspace Inc.", genres: ["Health & Fitness"], icon_url: null },
+    { bundle_id: "com.hallow.app", name: "Hallow: Prayer & Meditation", publisher: "Hallow", genres: ["Lifestyle"], icon_url: null },
+  ];
+
+  // Mirror the server resolver's classify → resolved | candidates | not-found.
+  function resolveMock(q) {
+    var raw = q.trim();
+    var query;
+    var byExact = null;
+    if (/^https?:\/\//i.test(raw)) {
+      var pm = raw.match(/[?&]id=([^&]+)/);
+      if (/play\.google\.com/i.test(raw) && pm) { byExact = decodeURIComponent(pm[1]); query = { kind: "bundle-id", id: byExact }; }
+      else { query = { kind: "name", term: raw }; }
+    } else if (/^\d+$/.test(raw)) {
+      query = { kind: "appstore-id", id: raw };
+    } else if (/^[A-Za-z][\w-]*(\.[A-Za-z0-9][\w-]*)+$/.test(raw)) {
+      byExact = raw; query = { kind: "bundle-id", id: raw };
+    } else {
+      query = { kind: "name", term: raw };
+    }
+
+    var cands;
+    if (byExact) {
+      var hit = CATALOG.filter(function (c) { return c.bundle_id === byExact; });
+      // Unknown bundle id still connects in the demo (echo it back as one candidate).
+      cands = hit.length ? hit : [{ bundle_id: byExact, name: byExact, publisher: null, genres: [], icon_url: null }];
+    } else if (query.kind === "name") {
+      var needle = raw.toLowerCase();
+      cands = CATALOG.filter(function (c) {
+        return c.name.toLowerCase().indexOf(needle) >= 0 || (c.publisher || "").toLowerCase().indexOf(needle) >= 0;
+      });
+    } else {
+      cands = []; // numeric appstore-id has no demo catalog mapping
+    }
+
+    var kind = cands.length === 0 ? "not-found" : cands.length === 1 ? "resolved" : "candidates";
+    return { kind: kind, query: query, candidates: cands };
+  }
+
   function handle(method, path, body, email) {
     var ctx = dbFor(email);
     var db = ctx.db;
     var m;
+
+    // POST /resolve — name / link / id → connectable candidates (demo catalog)
+    if (method === "POST" && path === "/resolve") {
+      var q = (body.query || "").trim();
+      if (!q) return json(400, { error: "query is required" });
+      var resolved = resolveMock(q);
+      return json(200, resolved);
+    }
 
     // POST /apps  — connect an app
     if (method === "POST" && path === "/apps") {

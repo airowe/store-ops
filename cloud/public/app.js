@@ -132,29 +132,72 @@
   }
 
   function connectCard() {
-    var bundle, name;
+    var queryInput, results, submitBtn;
+
+    // Connect a chosen app by exact bundle id, then run the first audit.
+    function connect(bundleId, displayName) {
+      submitBtn.disabled = true;
+      submitBtn.innerHTML = '<span class="spin"></span> Connecting…';
+      api("POST", "/apps", { bundle_id: bundleId, name: displayName })
+        .then(function (r) {
+          toast("App connected — running first audit…");
+          return api("POST", "/apps/" + r.id + "/run").then(function () { go("#/"); viewDashboard(); });
+        })
+        .catch(function (e) {
+          submitBtn.disabled = false; submitBtn.textContent = "Search";
+          toast(e.message || "Failed");
+        });
+    }
+
+    // Render the resolver's candidate list as a clickable picker.
+    function renderCandidates(cands) {
+      clear(results);
+      if (!cands.length) { results.appendChild(el("div", { class: "faint", style: "font-size:12.5px" }, ["No apps found. Try a different name, an App Store / Play link, or a bundle id."])); return; }
+      var heading = cands.length === 1 ? "Found it — click to connect:" : "Pick your app:";
+      results.appendChild(el("div", { class: "faint", style: "font-size:12.5px;margin:2px 0 6px" }, [heading]));
+      cands.forEach(function (c) {
+        var meta = [c.publisher, (c.genres && c.genres.length ? c.genres[0] : null)].filter(Boolean).join(" · ");
+        var row = el("div", { class: "card appcard", style: "padding:10px 12px;margin-bottom:6px", onclick: function () { connect(c.bundle_id, c.name); } }, [
+          el("div", { class: "row1" }, [
+            c.icon_url ? el("img", { src: c.icon_url, width: "28", height: "28", style: "border-radius:6px;margin-right:8px;vertical-align:middle" }) : null,
+            el("span", { class: "name" }, [c.name || c.bundle_id]),
+          ]),
+          el("div", { class: "bundle" }, [c.bundle_id + (meta ? "  ·  " + meta : "")]),
+        ]);
+        results.appendChild(row);
+      });
+    }
+
     function submit(ev) {
       ev.preventDefault();
-      var b = bundle.value.trim(), nm = name.value.trim();
-      if (!b) { toast("Enter a bundle id"); bundle.focus(); return; }
-      var btn = ev.target.querySelector("button");
-      btn.disabled = true; btn.innerHTML = '<span class="spin"></span> Connecting…';
-      api("POST", "/apps", { bundle_id: b, name: nm })
-        .then(function (r) { toast("App connected — running first audit…"); return api("POST", "/apps/" + r.id + "/run").then(function () { go("#/"); viewDashboard(); }); })
-        .catch(function (e) { btn.disabled = false; btn.textContent = "Connect app"; toast(e.message || "Failed"); });
+      var q = queryInput.value.trim();
+      if (!q) { toast("Enter an app name, link, or bundle id"); queryInput.focus(); return; }
+      submitBtn.disabled = true; submitBtn.innerHTML = '<span class="spin"></span> Searching…';
+      clear(results);
+      api("POST", "/resolve", { query: q })
+        .then(function (r) {
+          submitBtn.disabled = false; submitBtn.textContent = "Search";
+          // Exact single hit (bundle id / link / unique name) → connect straight away.
+          if (r.kind === "resolved" && r.candidates.length === 1) { connect(r.candidates[0].bundle_id, r.candidates[0].name); return; }
+          renderCandidates(r.candidates || []);
+        })
+        .catch(function (e) {
+          submitBtn.disabled = false; submitBtn.textContent = "Search";
+          toast(e.message || "Search failed");
+        });
     }
-    bundle = el("input", { class: "txt mono", placeholder: "com.yourco.yourapp", autocomplete: "off" });
-    name = el("input", { class: "txt", placeholder: "Your App (optional)", autocomplete: "off" });
+
+    queryInput = el("input", { class: "txt", placeholder: "App name, App Store / Play link, or bundle id", autocomplete: "off" });
+    submitBtn = el("button", { class: "btn primary", type: "submit" }, ["Search"]);
+    results = el("div", { style: "margin-top:10px" });
     return el("div", { class: "card" }, [
       el("h3", {}, ["Connect an app"]),
       el("form", { onsubmit: submit }, [
-        el("div", { class: "split" }, [
-          el("label", { class: "fld" }, [el("span", { class: "lab" }, ["Bundle id"]), bundle]),
-          el("label", { class: "fld" }, [el("span", { class: "lab" }, ["Display name"]), name]),
-        ]),
-        el("div", { class: "btn-row" }, [el("button", { class: "btn primary", type: "submit" }, ["Connect app"])]),
+        el("label", { class: "fld" }, [el("span", { class: "lab" }, ["Search by name, link, or bundle id"]), queryInput]),
+        el("div", { class: "btn-row" }, [submitBtn]),
       ]),
-      el("div", { class: "faint", style: "font-size:12.5px;margin-top:4px" }, ["The agent immediately audits the live listing, checks organic ranks, and drafts copy. Nothing is pushed."]),
+      results,
+      el("div", { class: "faint", style: "font-size:12.5px;margin-top:4px" }, ["Paste a name like “Calm”, an App Store / Play link, or a bundle id. The agent then audits the live listing, checks organic ranks, and drafts copy. Nothing is pushed."]),
     ]);
   }
 

@@ -14,9 +14,14 @@
  * `Origin` echo). Preflight handled.
  *
  * ROUTES:
- *   POST /apps              connect an app {bundle_id, name?, country?} → resolves
- *                           the live listing, creates the app row, runs the agent
- *                           once, stores run+proposals+snapshots (awaiting_approval)
+ *   POST /resolve           {query} → connectable candidates (name / App Store or
+ *                           Play URL / numeric id / bundle id). No connect, no run.
+ *                           kind: "resolved" | "candidates" | "not-found".
+ *   POST /apps              connect an app {bundle_id | query, name?, country?} →
+ *                           resolves the live listing, creates the app row, runs the
+ *                           agent once, stores run+proposals+snapshots
+ *                           (awaiting_approval). An ambiguous `query` returns
+ *                           {needsChoice:true, candidates} instead of connecting.
  *   GET  /apps              list the user's apps + latest run status
  *   POST /apps/:id/run      trigger an agent run {keywords?, competitors?, baseCopy?}
  *                           → stores a new awaiting_approval run
@@ -29,8 +34,10 @@
  */
 import {
   type AgentResult,
+  type AppCandidate,
   type ProposedCopy,
   lookup,
+  resolveAppQuery,
   runAgent,
 } from "../engine/index.js";
 import type { ReasoningTrace } from "../d1.js";
@@ -48,7 +55,7 @@ import {
   upsertUser,
 } from "../d1.js";
 import { buildAppInput, type RunOverrides } from "./runConfig.js";
-import { workerFetch } from "../fetchAdapter.js";
+import { fetchForEnv } from "../fetchAdapter.js";
 import type { Env } from "../index.js";
 
 // ── HTTP helpers ──────────────────────────────────────────────────────────────
@@ -168,19 +175,75 @@ async function requireOwnedApp(env: Env, appId: string, userId: string) {
 
 // ── route handlers ─────────────────────────────────────────────────────────────
 
-type ConnectBody = { bundle_id?: string; name?: string; country?: string } & RunOverrides;
+type ConnectBody = {
+  bundle_id?: string;
+  /** Free-form: an app name, App Store / Play URL, numeric id, or bundle id. */
+  query?: string;
+  name?: string;
+  country?: string;
+} & RunOverrides;
+
+/** Shape a candidate for the dashboard picker. */
+function candidateView(c: AppCandidate) {
+  return {
+    bundle_id: c.bundleId,
+    name: c.name,
+    publisher: c.publisher,
+    genres: c.genres,
+    icon_url: c.iconUrl,
+  };
+}
+
+/**
+ * POST /resolve — turn whatever the user pasted (name / URL / id / bundle) into
+ * connectable candidates, WITHOUT connecting. The dashboard calls this to power
+ * the search box + picker, then POSTs the chosen bundle_id to /apps.
+ */
+async function resolveQuery(req: Request, env: Env): Promise<unknown> {
+  const body = await readJson<{ query?: string; country?: string }>(req);
+  const query = body.query?.trim();
+  if (!query) throw new HttpError(400, "query is required");
+  const country = body.country?.trim() || env.DEFAULT_COUNTRY || "US";
+  const res = await resolveAppQuery(fetchForEnv(env), query, { country });
+  return {
+    kind: res.kind, // "resolved" | "candidates" | "not-found"
+    query: res.query,
+    candidates: res.candidates.map(candidateView),
+  };
+}
 
 /** POST /apps — connect + initial run. */
 async function connectApp(req: Request, env: Env, userId: string): Promise<unknown> {
   const body = await readJson<ConnectBody>(req);
-  const bundleId = body.bundle_id?.trim();
-  if (!bundleId) throw new HttpError(400, "bundle_id is required");
   const country = body.country?.trim() || env.DEFAULT_COUNTRY || "US";
+
+  // Accept either an exact bundle_id (original contract) or a free-form `query`
+  // (name / store URL / numeric id / bundle). A query that maps to >1 app comes
+  // back as a 200 pick-list instead of connecting the wrong app.
+  let bundleId = body.bundle_id?.trim();
+  if (!bundleId) {
+    const query = body.query?.trim();
+    if (!query) throw new HttpError(400, "bundle_id or query is required");
+    const res = await resolveAppQuery(fetchForEnv(env), query, { country });
+    if (res.kind === "not-found") {
+      throw new HttpError(404, `no app found for "${query}"`);
+    }
+    if (res.kind === "candidates") {
+      // Ambiguous — hand back the choices; the client re-POSTs with a bundle_id.
+      return {
+        needsChoice: true,
+        query: res.query,
+        candidates: res.candidates.map(candidateView),
+      };
+    }
+    bundleId = res.candidates[0]?.bundleId;
+    if (!bundleId) throw new HttpError(404, `no connectable app for "${query}"`);
+  }
 
   // Look up the live listing up front so we store the RICH name (e.g. "Heathen -
   // Secular Meditation" + its genres) — this is what the keyword seeder reads, so
   // a bare connect still yields a real keyword set, not just the brand word.
-  const live = await lookup(workerFetch, bundleId, { by: "bundleId", country });
+  const live = await lookup(fetchForEnv(env), bundleId, { by: "bundleId", country });
   const richName =
     body.name?.trim() ||
     [live.name, live.genres].filter(Boolean).join(" ").trim() ||
@@ -201,7 +264,7 @@ async function connectApp(req: Request, env: Env, userId: string): Promise<unkno
   if (body.baseCopy) overrides.baseCopy = body.baseCopy;
 
   const input = buildAppInput(app, overrides, {});
-  const result: AgentResult = await runAgent(workerFetch, input);
+  const result: AgentResult = await runAgent(fetchForEnv(env), input);
   const runId = await persistRun(env.DB, {
     appId: app.id,
     status: "awaiting_approval",
@@ -270,7 +333,7 @@ async function runApp(
   if (body.baseCopy) overrides.baseCopy = body.baseCopy;
 
   const input = buildAppInput(app, overrides, previous);
-  const result = await runAgent(workerFetch, input);
+  const result = await runAgent(fetchForEnv(env), input);
   const runId = await persistRun(env.DB, {
     appId: app.id,
     status: "awaiting_approval",
@@ -441,10 +504,21 @@ export async function handleApi(req: Request, env: Env): Promise<Response> {
   try {
     const user = await requireUser(req, env);
 
+    // /resolve — query → candidates (no connect, no run)
+    if (seg[0] === "resolve" && seg.length === 1 && method === "POST") {
+      return json(await resolveQuery(req, env), 200, origin);
+    }
+
     // /apps ...
     if (seg[0] === "apps") {
       if (seg.length === 1) {
-        if (method === "POST") return json(await connectApp(req, env, user.id), 201, origin);
+        if (method === "POST") {
+          const result = await connectApp(req, env, user.id);
+          // A pick-list (ambiguous query) is a 200, not a 201-created.
+          const status =
+            result && typeof result === "object" && "needsChoice" in result ? 200 : 201;
+          return json(result, status, origin);
+        }
         if (method === "GET") return json(await listApps(env, user.id), 200, origin);
       }
       if (seg.length === 2 && seg[1]) {

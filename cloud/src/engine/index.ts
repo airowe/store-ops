@@ -59,3 +59,11 @@ export {
   buildPushCommands,
   competitorLookup,
 } from "./agent.js";
+export {
+  type Query,
+  type AppCandidate,
+  type ResolveResult,
+  MAX_CANDIDATES,
+  classifyQuery,
+  resolveAppQuery,
+} from "./resolveApp.js";
