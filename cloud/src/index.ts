@@ -30,6 +30,10 @@ export type Env = {
   // When set, iTunes calls route through TinyFish Fetch (clean egress) to dodge
   // Apple's 403 on Cloudflare datacenter IPs. Unset → direct fetch (local/dev).
   TINYFISH_API_KEY?: string;
+  // Resend (magic-link email delivery). With RESEND_API_KEY set, /auth/request
+  // emails the link via Resend; unset → ConsoleEmailSender (logs the link).
+  RESEND_API_KEY?: string;
+  RESEND_FROM?: string; // verified sender, e.g. "store-ops <login@mail.yourdomain>"
 };
 
 export default {

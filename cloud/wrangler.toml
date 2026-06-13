@@ -60,6 +60,12 @@ APP_ENV = "demo"
 #   TINYFISH_API_KEY      — routes iTunes calls through TinyFish Fetch (clean egress).
 #     REQUIRED in production: Apple 403s iTunes /search from Cloudflare egress IPs.
 #     Unset → engine uses direct fetch (fine locally, blocked when deployed).
+# Email (magic-link delivery):
+#   RESEND_API_KEY        — Resend API key. With it (+ RESEND_FROM) /auth/request
+#                           emails the magic link; unset → link is logged only.
+#   RESEND_FROM           — verified Resend sender, e.g.
+#                           "store-ops <login@mail.yourdomain.com>". Set as a [vars]
+#                           entry (not secret) or a secret — either works.
 #
 #   npx wrangler secret put SESSION_SECRET
 #   npx wrangler secret put STRIPE_TEST_KEY
@@ -68,6 +74,8 @@ APP_ENV = "demo"
 #   npx wrangler secret put STRIPE_PRICE_AUTOPILOT
 #   npx wrangler secret put STRIPE_PRICE_FLEET
 #   npx wrangler secret put TINYFISH_API_KEY
+#   npx wrangler secret put RESEND_API_KEY
+#   npx wrangler secret put RESEND_FROM   # (or add to [vars])
 # (The STRIPE_PRICE_* are not really secret — you may instead put them in [vars].)
 
 # ── Pages (dashboard frontend) — NOT configured by this file ─────────────────
