@@ -266,3 +266,64 @@ export class ConsoleEmailSender implements EmailSender {
     this.log(`[store-ops auth] magic link for ${email}: ${link}`);
   }
 }
+
+/** Minimal HTML escape for interpolating a URL into the email markup. */
+function escapeHtml(s: string): string {
+  return s
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
+/**
+ * Sends the magic link via Resend (https://resend.com) — a single POST to
+ * /emails with the API key as a Bearer token. `fetchFn` is injected so it's
+ * unit-testable without a network; production passes the global `fetch`.
+ *
+ * A non-2xx response throws, so POST /auth/request can decide how to surface a
+ * delivery failure (today it logs; it never leaks account existence to the user).
+ */
+export class ResendEmailSender implements EmailSender {
+  readonly channel = "resend";
+  private readonly apiKey: string;
+  private readonly from: string;
+  private readonly fetchFn: typeof fetch;
+
+  constructor(opts: { apiKey: string; from: string; fetchFn?: typeof fetch }) {
+    this.apiKey = opts.apiKey;
+    this.from = opts.from;
+    this.fetchFn = opts.fetchFn ?? fetch;
+  }
+
+  async sendMagicLink(email: string, link: string): Promise<void> {
+    const safe = escapeHtml(link);
+    const html =
+      `<p>Click to sign in to store-ops:</p>` +
+      `<p><a href="${safe}">Sign in</a></p>` +
+      `<p>This link expires in 15 minutes. If you didn't request it, ignore this email.</p>`;
+    const text =
+      `Sign in to store-ops:\n${link}\n\n` +
+      `This link expires in 15 minutes. If you didn't request it, ignore this email.`;
+
+    const resp = await this.fetchFn("https://api.resend.com/emails", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${this.apiKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        from: this.from,
+        to: [email],
+        subject: "Your store-ops sign-in link",
+        html,
+        text,
+      }),
+    });
+
+    if (!resp.ok) {
+      const detail = await resp.text().catch(() => "");
+      throw new Error(`resend send failed (${resp.status}): ${detail}`);
+    }
+  }
+}

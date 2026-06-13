@@ -11,6 +11,7 @@ import {
   mintMagicToken,
   mintSessionToken,
   parseCookie,
+  ResendEmailSender,
   resolveSessionSecret,
   serializeSessionCookie,
   serializeLogoutCookie,
@@ -173,5 +174,58 @@ describe("ConsoleEmailSender", () => {
     expect(sender.channel).toBe("console");
     expect(logs.join("\n")).toContain("a@b.com");
     expect(logs.join("\n")).toContain("token=xyz");
+  });
+});
+
+describe("ResendEmailSender", () => {
+  type Call = { url: string; init: RequestInit };
+  function mockFetch(status = 200, body: unknown = { id: "email_123" }) {
+    const calls: Call[] = [];
+    const fn = (async (url: string, init: RequestInit) => {
+      calls.push({ url, init });
+      return new Response(JSON.stringify(body), { status });
+    }) as unknown as typeof fetch;
+    return { fn, calls };
+  }
+
+  it("POSTs to the Resend API with bearer auth and the link in the body", async () => {
+    const { fn, calls } = mockFetch();
+    const sender = new ResendEmailSender({
+      apiKey: "re_test_key",
+      from: "store-ops <login@mail.airowe.online>",
+      fetchFn: fn,
+    });
+    await sender.sendMagicLink("user@example.com", "https://app/auth/callback?token=abc");
+
+    expect(sender.channel).toBe("resend");
+    expect(calls).toHaveLength(1);
+    expect(calls[0]!.url).toBe("https://api.resend.com/emails");
+    const headers = calls[0]!.init.headers as Record<string, string>;
+    expect(headers.Authorization).toBe("Bearer re_test_key");
+    expect(headers["Content-Type"]).toBe("application/json");
+    const payload = JSON.parse(calls[0]!.init.body as string);
+    expect(payload.from).toBe("store-ops <login@mail.airowe.online>");
+    expect(payload.to).toEqual(["user@example.com"]);
+    expect(typeof payload.subject).toBe("string");
+    // both the html and text parts must carry the magic link
+    expect(payload.html).toContain("https://app/auth/callback?token=abc");
+    expect(payload.text).toContain("https://app/auth/callback?token=abc");
+  });
+
+  it("throws when Resend returns a non-2xx (so /auth/request can surface failure)", async () => {
+    const { fn } = mockFetch(422, { message: "domain not verified" });
+    const sender = new ResendEmailSender({ apiKey: "k", from: "x@y.com", fetchFn: fn });
+    await expect(
+      sender.sendMagicLink("user@example.com", "https://app/cb?token=t"),
+    ).rejects.toThrow(/resend/i);
+  });
+
+  it("escapes HTML in the link so it can't break out of the anchor", async () => {
+    const { fn, calls } = mockFetch();
+    const sender = new ResendEmailSender({ apiKey: "k", from: "x@y.com", fetchFn: fn });
+    await sender.sendMagicLink("u@e.com", 'https://app/cb?token=a"><script>x</script>');
+    const payload = JSON.parse(calls[0]!.init.body as string);
+    expect(payload.html).not.toContain("<script>x</script>");
+    expect(payload.html).toContain("&lt;script&gt;");
   });
 });

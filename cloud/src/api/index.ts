@@ -80,6 +80,7 @@ import {
 import {
   ConsoleEmailSender,
   type EmailSender,
+  ResendEmailSender,
   mintMagicToken,
   mintSessionToken,
   parseCookie,
@@ -258,9 +259,15 @@ async function requireUser(req: Request, env: Env): Promise<{ id: string; email:
   throw new HttpError(401, "authentication required");
 }
 
-/** Pick the email sender for this env. Console sender by default (no vendor). */
-function emailSender(_env: Env): EmailSender {
-  // Resend/Postmark impls slot in here later, selected via env.
+/**
+ * Pick the email sender for this env. With RESEND_API_KEY (+ RESEND_FROM) set we
+ * deliver via Resend; otherwise fall back to the ConsoleEmailSender (logs the
+ * link), so auth always works even with no vendor configured.
+ */
+function emailSender(env: Env): EmailSender {
+  if (env.RESEND_API_KEY && env.RESEND_FROM) {
+    return new ResendEmailSender({ apiKey: env.RESEND_API_KEY, from: env.RESEND_FROM });
+  }
   return new ConsoleEmailSender();
 }
 
@@ -284,7 +291,13 @@ async function authRequest(req: Request, env: Env): Promise<unknown> {
     });
     const base = new URL(req.url).origin; // callback is served by THIS worker
     const link = `${base}/auth/callback?token=${encodeURIComponent(token)}`;
-    await emailSender(env).sendMagicLink(email, link);
+    // Delivery failure must NOT change the response (no account enumeration, no
+    // leaking vendor errors). Log server-side and still answer {sent:true}.
+    try {
+      await emailSender(env).sendMagicLink(email, link);
+    } catch (e) {
+      console.error(`[store-ops auth] magic-link send failed for ${email}: ${String(e)}`);
+    }
   }
   return { sent: true };
 }
