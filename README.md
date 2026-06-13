@@ -25,6 +25,15 @@ for you:
 The plugin is the **funnel** (discover the agent by running it); the hosted app
 is the product (it keeps working while you build). Same engine, two surfaces.
 
+**Run it yourself, or let it run itself:**
+
+- **Free, in your editor** — install the plugin and run the loop yourself in
+  Claude Code. Your credentials, your machine, no cost. Start here ↓ (Install).
+- **Hosted + autonomous** — connect an app by bundle id and an agent runs the
+  loop on a weekly schedule: re-checking ranks, watching competitors, drafting
+  the next optimization, surfacing each decision for you to approve. It's live:
+  **https://store-ops-dashboard.pages.dev**
+
 ## What it does
 
 ```
@@ -115,27 +124,41 @@ reviews, rollout, vitals — for both App Store Connect and Google Play Console.
 ## Open-core — what's free vs. hosted
 
 **The plugin is free and MIT-licensed, forever.** Everything above — the full
-audit → research → optimize → push → verify loop, both stores, all 17 skills —
+audit → research → optimize → push → verify loop, both stores, all 23 skills —
 runs locally with your own credentials at no cost. Use it, fork it, ship apps
 with it. That's the whole product for anyone who's comfortable in a terminal.
 
-The line for a future **hosted tier** is *convenience, never capability*. The
-free plugin is complete; the paid tier sells you out of the setup pain and the
-remembering:
+The line for the **hosted tier** is *convenience, never capability*. The free
+plugin is complete; the paid tier sells you out of the setup pain and the
+remembering. The hosted agent is **live now** at
+**https://store-ops-dashboard.pages.dev** — connect an app and watch the loop
+run on a schedule.
 
-| | Free (this plugin) | Hosted (planned) |
+| | Free (this plugin) | Hosted agent |
 |---|---|---|
-| The 17 skills + full loop | ✅ all of it | ✅ same skills |
-| Real volume data | BYO Apple/Google keys | **Guided setup** — turn the OAuth/approval gauntlet into a 10-min wizard |
+| The 23 skills + full loop | ✅ all of it | ✅ same engine |
+| Real volume data | BYO Apple/Google keys | guided setup |
 | Rank tracking | run `aso-rank-check` by hand | **scheduled** weekly + history + delta alerts |
 | Apps | unlimited (it's local) | unlimited |
-| Done-for-you ASO | — | optional managed monthly service |
+| Approval gate | you run the push | enforced in code — commands withheld until you approve |
+
+The tiers:
+
+| Tier | Price | What you get |
+|------|-------|------|
+| **Free** | $0 | Run the agent yourself in Claude Code. The whole loop, your machine. |
+| **Launch Optimization** | **$49 one-time** | The agent does a full optimization pass on one app, en-US. +$29/locale, +$39 for the Google Play variant. |
+| **Autopilot** | **$19/month** | It keeps working: weekly rank tracking, competitor watch, self-triggered re-optimization you approve. |
+| **Fleet Autopilot** | **$149/month** | Both stores, multiple locales, multiple apps, a portfolio dashboard. For agencies and multi-app devs. |
 
 We will **never** resell Apple/Google data through a shared account (that breaks
-their ToS) — the hosted tier is BYO-credentials too; what you pay for is the
-guided onboarding, the scheduler, and the history. The differentiator isn't the
-data — everyone has Apple's popularity numbers. It's that store-ops *ships the
-metadata and proves the rank moved.*
+their ToS) — the hosted tier is BYO-credentials too, and we never hold your
+store credentials; the push is a generated-commands handoff. What you pay for is
+the guided onboarding, the scheduler, and the history. The differentiator isn't
+the data — everyone has Apple's popularity numbers. It's that store-ops *ships
+the metadata and proves the rank moved.*
+
+**→ Try the hosted agent: https://store-ops-dashboard.pages.dev**
 
 ## License
 
