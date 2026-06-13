@@ -220,6 +220,29 @@ describe("ResendEmailSender", () => {
     ).rejects.toThrow(/resend/i);
   });
 
+  it("uses the global fetch with a correct `this` when none is injected (no illegal invocation)", async () => {
+    // Reproduce the Workers gotcha: a global fetch that throws if called with the
+    // wrong receiver (i.e. as a bare method off the instance). The sender must
+    // bind it to globalThis so `this.fetchFn(...)` doesn't strip the binding.
+    const realFetch = globalThis.fetch;
+    let sawGoodThis = false;
+    const guarded = function (this: unknown, _url: string, _init: RequestInit) {
+      if (this !== undefined && this !== globalThis) {
+        throw new TypeError("Illegal invocation");
+      }
+      sawGoodThis = true;
+      return Promise.resolve(new Response(JSON.stringify({ id: "ok" }), { status: 200 }));
+    };
+    globalThis.fetch = guarded as unknown as typeof fetch;
+    try {
+      const sender = new ResendEmailSender({ apiKey: "k", from: "x@y.com" }); // no fetchFn
+      await sender.sendMagicLink("u@e.com", "https://app/cb?token=t");
+      expect(sawGoodThis).toBe(true);
+    } finally {
+      globalThis.fetch = realFetch;
+    }
+  });
+
   it("escapes HTML in the link so it can't break out of the anchor", async () => {
     const { fn, calls } = mockFetch();
     const sender = new ResendEmailSender({ apiKey: "k", from: "x@y.com", fetchFn: fn });
