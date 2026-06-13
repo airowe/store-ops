@@ -31,7 +31,7 @@ import {
   persistRun,
 } from "../d1.js";
 import { buildAppInput } from "../api/runConfig.js";
-import { workerFetch } from "../fetchAdapter.js";
+import { fetchForEnv } from "../fetchAdapter.js";
 import type { Env } from "../index.js";
 
 /** Result of evaluating whether this week's data crosses the re-draft threshold. */
@@ -98,7 +98,7 @@ export async function runWeeklySweep(env: Env): Promise<CronReport> {
     try {
       const previous = await getLatestCompetitorMap(env.DB, app.id);
       const input = buildAppInput(app, {}, previous);
-      const result = await runAgent(workerFetch, input);
+      const result = await runAgent(fetchForEnv(env), input);
 
       const decision = evaluateThreshold(result);
       const alreadyOpen = await hasOpenRun(env.DB, app.id);

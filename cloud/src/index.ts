@@ -19,6 +19,9 @@ export type Env = {
   // Secrets (set via `wrangler secret put`):
   SESSION_SECRET?: string;
   STRIPE_TEST_KEY?: string;
+  // When set, iTunes calls route through TinyFish Fetch (clean egress) to dodge
+  // Apple's 403 on Cloudflare datacenter IPs. Unset → direct fetch (local/dev).
+  TINYFISH_API_KEY?: string;
 };
 
 export default {

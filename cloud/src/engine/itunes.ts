@@ -116,7 +116,7 @@ export async function fetchJson(fetchFn: FetchFn, url: string): Promise<unknown>
     } catch (e) {
       lastErr = e;
       // A thrown ItunesError for a non-retryable status should propagate.
-      if (e instanceof ItunesError && !/HTTP (429|500|502|503|504)/.test(e.message)) {
+      if (e instanceof ItunesError && !/HTTP (403|429|500|502|503|504)/.test(e.message)) {
         throw e;
       }
       if (attempt < MAX_RETRIES) {

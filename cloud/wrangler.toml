@@ -40,8 +40,12 @@ APP_ENV = "demo"
 # ── Secrets (DO NOT put values here — set via `wrangler secret put NAME`) ─────
 # SESSION_SECRET     — signs magic-link / session tokens (stubbed auth).
 # STRIPE_TEST_KEY    — Stripe test-mode key for the fake checkout (optional).
+# TINYFISH_API_KEY   — routes iTunes calls through TinyFish Fetch (clean egress).
+#   REQUIRED in production: Apple 403s iTunes /search from Cloudflare egress IPs.
+#   Unset → engine uses direct fetch (fine locally, blocked when deployed).
 #   npx wrangler secret put SESSION_SECRET
 #   npx wrangler secret put STRIPE_TEST_KEY
+#   npx wrangler secret put TINYFISH_API_KEY
 
 # ── Pages (dashboard frontend) — NOT configured by this file ─────────────────
 # The /public dir is a static dashboard deployed to Cloudflare Pages separately:

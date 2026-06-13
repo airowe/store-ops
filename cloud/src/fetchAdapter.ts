@@ -7,9 +7,13 @@
  * instead of sprinkling `as never` casts across the API and cron layers.
  */
 import type { FetchFn } from "./engine/index.js";
+import { makeTinyfishFetch } from "./tinyfishFetch.js";
+import type { Env } from "./index.js";
 
 export const workerFetch: FetchFn = async (url, init) => {
-  const resp = await fetch(url, init?.headers ? { headers: init.headers } : undefined);
+  // method/body ride along on the init even though FetchFn only types `headers`
+  // (the TinyFish adapter sets them). Pass the whole init through to global fetch.
+  const resp = await fetch(url, init as RequestInit | undefined);
   return {
     ok: resp.ok,
     status: resp.status,
@@ -17,3 +21,15 @@ export const workerFetch: FetchFn = async (url, init) => {
     text: () => resp.text(),
   };
 };
+
+/**
+ * Pick the engine's transport for this environment. With TINYFISH_API_KEY set
+ * (production), iTunes calls route through TinyFish Fetch to dodge Apple's 403
+ * on Cloudflare egress; without it (local/dev, where direct fetch works), use
+ * the plain Worker fetch.
+ */
+export function fetchForEnv(env: Env): FetchFn {
+  return env.TINYFISH_API_KEY
+    ? makeTinyfishFetch(workerFetch, env.TINYFISH_API_KEY)
+    : workerFetch;
+}

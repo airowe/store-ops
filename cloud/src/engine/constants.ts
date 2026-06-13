@@ -26,7 +26,10 @@ export const USER_AGENT = "Mozilla/5.0 (Macintosh; store-ops)";
 // Retry policy for the public endpoints (from aso_rank_check.py).
 export const MAX_RETRIES = 3;
 export const BACKOFF_BASE = 1.5; // seconds: 1.5, 3.0, 6.0
-export const RETRY_STATUS = new Set([429, 500, 502, 503, 504]);
+// 403 is included because Apple intermittently 403s requests from datacenter
+// egress (e.g. Cloudflare Workers); a retry — ideally via a clean-egress
+// transport like TinyFish — often clears it.
+export const RETRY_STATUS = new Set([403, 429, 500, 502, 503, 504]);
 
 // ── Screenshot scoring (from aso_screenshot_score.py) ────────────────────────
 export const SCREENSHOT = {
