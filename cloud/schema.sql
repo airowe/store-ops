@@ -12,13 +12,31 @@
 PRAGMA foreign_keys = ON;
 
 -- ── users ────────────────────────────────────────────────────────────────────
--- Auth is STUBBED for the demo (magic-link / simple session). A user is just an
--- email + id; sessions are signed tokens, no password column.
+-- A user is an email + id; auth is passwordless magic-link → a signed session
+-- cookie (no password column). Billing state lives inline (one user == one
+-- subscription account): tier gates autonomy + app count, the stripe_* columns
+-- mirror the Stripe customer/subscription, status/current_period_end track the
+-- live subscription. Everyone defaults to 'free'.
 CREATE TABLE IF NOT EXISTS users (
-  id          TEXT PRIMARY KEY,                       -- uuid
-  email       TEXT NOT NULL UNIQUE,
-  created_at  TEXT NOT NULL DEFAULT (datetime('now'))
+  id                      TEXT PRIMARY KEY,            -- uuid
+  email                   TEXT NOT NULL UNIQUE,
+  created_at              TEXT NOT NULL DEFAULT (datetime('now')),
+  tier                    TEXT NOT NULL DEFAULT 'free'
+                            CHECK (tier IN ('free', 'launch', 'autopilot', 'fleet')),
+  status                  TEXT NOT NULL DEFAULT 'active',   -- mirrors Stripe sub status
+  stripe_customer_id      TEXT,
+  stripe_subscription_id  TEXT,
+  current_period_end      TEXT                          -- ISO; NULL for free / one-time
 );
+
+-- Migration for an EXISTING db (the CREATE above only fires on a fresh db). Run
+-- the same statements remotely + locally:
+--   npx wrangler d1 execute store_ops --command "ALTER TABLE users ADD COLUMN tier TEXT NOT NULL DEFAULT 'free' CHECK (tier IN ('free','launch','autopilot','fleet'))"
+--   npx wrangler d1 execute store_ops --command "ALTER TABLE users ADD COLUMN status TEXT NOT NULL DEFAULT 'active'"
+--   npx wrangler d1 execute store_ops --command "ALTER TABLE users ADD COLUMN stripe_customer_id TEXT"
+--   npx wrangler d1 execute store_ops --command "ALTER TABLE users ADD COLUMN stripe_subscription_id TEXT"
+--   npx wrangler d1 execute store_ops --command "ALTER TABLE users ADD COLUMN current_period_end TEXT"
+-- (add `--local` to each for the local D1; drop it for remote.)
 
 -- ── apps ─────────────────────────────────────────────────────────────────────
 -- An app a customer connected by bundle id. country scopes every iTunes call.
