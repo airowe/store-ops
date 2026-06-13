@@ -3,11 +3,13 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>store-ops — the ASO loop that ships your metadata and proves the rank moved</title>
+<title>ShipASO — the ASO loop that ships your metadata and proves the rank moved</title>
 <meta name="description" content="An AI ASO loop for App Store and Google Play. Audit, research, optimize, push, and verify your rank moved. Free MIT plugin, or a live hosted agent that runs the loop on a schedule.">
-<meta property="og:title" content="store-ops — the ASO loop that proves the rank moved">
+<meta property="og:title" content="ShipASO — the ASO loop that proves the rank moved">
 <meta property="og:description" content="Audit, research, optimize, push, and verify — App Store and Google Play. Free MIT plugin or a live hosted agent.">
 <meta property="og:type" content="website">
+<meta property="og:url" content="https://shipaso.com">
+<link rel="canonical" href="https://shipaso.com">
 <style>
   :root {
     --ink: #15171a; --muted: #5b6470; --line: #e6e8ec;
@@ -21,6 +23,11 @@
   }
   .wrap { max-width: 760px; margin: 0 auto; padding: 0 22px; }
   header { padding: 64px 0 8px; }
+  .brand {
+    font-size: 20px; font-weight: 800; letter-spacing: -0.3px; color: var(--ink);
+    margin-bottom: 28px;
+  }
+  .brand::after { content: ""; }
   .kicker {
     display: inline-block; font-size: 13px; letter-spacing: .04em; text-transform: uppercase;
     color: var(--accent); font-weight: 700; margin-bottom: 14px;
@@ -92,10 +99,11 @@
 <div class="wrap">
 
   <header>
+    <div class="brand">ShipASO</div>
     <span class="kicker">App Store + Google Play · open source</span>
     <h1>The ASO loop that ships your metadata and <span class="hl">proves the rank moved.</span></h1>
     <p class="lede">Every ASO tool tells you what to do, then leaves you in the
-    App Store Connect form. store-ops does the work — and reads the rank back to
+    App Store Connect form. ShipASO does the work — and reads the rank back to
     check it worked.</p>
 
     <div class="loop">
@@ -114,7 +122,7 @@
   <section>
     <h2>The part nobody else ships</h2>
     <p>The data tools — Astro, AppTweak, Sensor Tower — sell numbers and a
-    dashboard. You read them, then go do the work yourself. store-ops closes the
+    dashboard. You read them, then go do the work yourself. ShipASO closes the
     loop: it picks the keywords, writes the metadata, hands you the exact push
     commands, and then reads your <em>actual</em> organic rank for each term and
     logs it over time.</p>
@@ -220,7 +228,7 @@
   </section>
 
   <footer>
-    <p><strong>store-ops</strong> — MIT-licensed ASO for App Store &amp; Google Play.<br>
+    <p><strong>ShipASO</strong> — MIT-licensed ASO for App Store &amp; Google Play.<br>
     Free plugin: <a href="https://github.com/airowe/app-marketplace">github.com/airowe/app-marketplace</a> ·
     Hosted agent: <a href="https://store-ops-dashboard.pages.dev">store-ops-dashboard.pages.dev</a></p>
   </footer>

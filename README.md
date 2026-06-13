@@ -1,19 +1,22 @@
-# store-ops
+# ShipASO
 
 **The reason → execute ASO loop for App Store *and* Google Play.**
+
+> The product is **ShipASO**; the codebase, this repo, and the Cloudflare
+> services are named `store-ops`.
 
 Every other AI ASO tool does one half. Advisory tools (and most "AI ASO agents")
 *reason* about your listing then stop at the copy-paste boundary — and they
 depend on a paid data API. Deploy CLIs (Fastlane, raw APIs) *execute* but have no
-ASO brain. **store-ops does both, on both stores, with no paid data dependency.**
+ASO brain. **ShipASO does both, on both stores, with no paid data dependency.**
 
 > **The open lane: Google Play.** There is no public tool that operationally
-> optimizes a Google Play Console listing end-to-end. store-ops does iOS *and*
+> optimizes a Google Play Console listing end-to-end. ShipASO does iOS *and*
 > Android.
 
 ## What's in this repo
 
-store-ops comes in two forms — run it yourself, or let the hosted agent run it
+ShipASO comes in two forms — run it yourself, or let the hosted agent run it
 for you:
 
 | Path | What |
@@ -42,7 +45,7 @@ audit  →  research keywords  →  optimize to char limits  →  push  →  ver
 ```
 
 **The full loop, not half of it.** The data tools (Astro, AppTweak, Sensor Tower)
-stop at "here's what to do" and leave you in the App Store Connect form. store-ops
+stop at "here's what to do" and leave you in the App Store Connect form. ShipASO
 *picks the keywords, writes the metadata, hands you the push, and then verifies the
 rank actually moved* — the only piece that closes the loop and the one nobody else
 ships.
@@ -155,7 +158,7 @@ We will **never** resell Apple/Google data through a shared account (that breaks
 their ToS) — the hosted tier is BYO-credentials too, and we never hold your
 store credentials; the push is a generated-commands handoff. What you pay for is
 the guided onboarding, the scheduler, and the history. The differentiator isn't
-the data — everyone has Apple's popularity numbers. It's that store-ops *ships
+the data — everyone has Apple's popularity numbers. It's that ShipASO *ships
 the metadata and proves the rank moved.*
 
 **→ Try the hosted agent: https://store-ops-dashboard.pages.dev**
