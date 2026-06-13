@@ -1,0 +1,51 @@
+# wrangler.toml — store-ops Cloudflare Worker (API + agent engine + weekly cron)
+#
+# This is the BACKEND (Worker). The dashboard frontend ships separately to
+# Cloudflare Pages (see "Pages" note at the bottom + README).
+#
+# Quick start:
+#   1) npm install
+#   2) npx wrangler d1 create store_ops        # creates the DB, prints a database_id
+#   3) paste that id into `database_id` below   # <-- FILL ME IN
+#   4) npm run db:migrate:local                 # apply schema.sql to the local DB
+#   5) npm run dev                              # wrangler dev (local Worker + D1)
+#   6) npm run db:migrate && npm run deploy     # remote DB + deploy
+
+name = "store-ops"
+main = "src/index.ts"
+compatibility_date = "2025-01-01"
+# nodejs_compat gives us node: built-ins if the ported engine ever needs them.
+compatibility_flags = ["nodejs_compat"]
+
+# ── D1 (SQLite) — bound as env.DB in the Worker ──────────────────────────────
+[[d1_databases]]
+binding = "DB"                 # code reads it as `env.DB`
+database_name = "store_ops"
+# database_id: FILL ME IN — run `npx wrangler d1 create store_ops` and paste the
+# printed id here. Until then `wrangler dev` works against the LOCAL D1 only.
+database_id = "REPLACE_WITH_YOUR_D1_DATABASE_ID"
+
+# ── Cron Trigger — the weekly autonomy loop ──────────────────────────────────
+# "0 9 * * 1" = every Monday at 09:00 UTC. The scheduled() handler in
+# src/cron/ re-checks ranks, watches competitors, and re-drafts past threshold.
+[triggers]
+crons = ["0 9 * * 1"]
+
+# ── Vars (non-secret config) ─────────────────────────────────────────────────
+[vars]
+DEFAULT_COUNTRY = "US"
+# APP_ENV drives stubbed-auth/billing behavior in the working demo.
+APP_ENV = "demo"
+
+# ── Secrets (DO NOT put values here — set via `wrangler secret put NAME`) ─────
+# SESSION_SECRET     — signs magic-link / session tokens (stubbed auth).
+# STRIPE_TEST_KEY    — Stripe test-mode key for the fake checkout (optional).
+#   npx wrangler secret put SESSION_SECRET
+#   npx wrangler secret put STRIPE_TEST_KEY
+
+# ── Pages (dashboard frontend) — NOT configured by this file ─────────────────
+# The /public dir is a static dashboard deployed to Cloudflare Pages separately:
+#   npx wrangler pages deploy public --project-name store-ops-dashboard
+# Point the dashboard at this Worker's URL (set API_BASE in the dashboard, see
+# README). Keeping Pages + Worker separate is the standard Cloudflare split:
+# Worker = API/engine/cron, Pages = static dashboard.

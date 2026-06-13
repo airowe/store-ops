@@ -1,0 +1,170 @@
+/**
+ * The weekly autonomy loop — the product's core. Fired by the Cron Trigger
+ * `0 9 * * 1` (Mon 09:00 UTC, set in wrangler.toml) via `scheduled()` in
+ * src/index.ts.
+ *
+ * For EACH connected app:
+ *   1. Build the agent input from the stored app row + the LAST competitor
+ *      snapshot map (so the engine can diff this week vs last week).
+ *   2. Run the full agent loop against LIVE iTunes data (audit, ranks,
+ *      competitor watch, keyword reasoning, propose copy, prepare push commands).
+ *   3. Append the rank + competitor snapshots from this pass (always — the
+ *      time-series is the ground truth, recorded every week regardless of action).
+ *   4. THRESHOLD CHECK — decide whether this week's data warrants human attention:
+ *        • a targeted keyword is still unranked (rank === null), OR
+ *        • a competitor's visible listing changed or a new competitor appeared.
+ *      If so, open a NEW run in `awaiting_approval` (carrying the proposals +
+ *      generated push commands) for the human to approve. If not, we still record
+ *      the snapshots but DON'T nag the user with a run.
+ *   5. NEVER push. The cron only PREPARES; the irreversible step stays gated
+ *      behind the human approval in the API.
+ *
+ * Idempotency: if an app already has an open (`awaiting_approval`) run we record
+ * fresh snapshots but skip opening a second run — the human clears the gate
+ * first. D1 is the work queue; one scheduled() invocation walks every app.
+ */
+import { type AgentResult, runAgent } from "../engine/index.js";
+import {
+  getLatestCompetitorMap,
+  hasOpenRun,
+  listAllApps,
+  persistRun,
+} from "../d1.js";
+import { buildAppInput } from "../api/runConfig.js";
+import { workerFetch } from "../fetchAdapter.js";
+import type { Env } from "../index.js";
+
+/** Result of evaluating whether this week's data crosses the re-draft threshold. */
+export type ThresholdDecision = {
+  crossed: boolean;
+  reasons: string[];
+};
+
+/**
+ * Decide if the agent result warrants opening an awaiting_approval run.
+ * Pure (testable): unranked target keyword OR competitor movement.
+ */
+export function evaluateThreshold(result: AgentResult): ThresholdDecision {
+  const reasons: string[] = [];
+
+  // (a) any TARGETED keyword still unranked (not in top 200)
+  const unranked = result.ranks.filter((r) => r.error === "" && r.rank === null);
+  if (unranked.length > 0) {
+    reasons.push(
+      `${unranked.length} targeted keyword(s) unranked: ${unranked
+        .map((r) => r.keyword)
+        .join(", ")}`,
+    );
+  }
+
+  // (b) competitor movement — a new competitor or a changed visible listing
+  for (const c of result.competitors.changes) {
+    if (c.status === "new") {
+      reasons.push(`new competitor surfaced: ${c.name || c.key}`);
+    } else if (c.status === "changed") {
+      const fields = Object.keys(c.fields).join(", ");
+      reasons.push(`competitor "${c.name || c.key}" changed (${fields})`);
+    }
+  }
+
+  return { crossed: reasons.length > 0, reasons };
+}
+
+export type CronReport = {
+  appsProcessed: number;
+  runsOpened: number;
+  perApp: Array<{
+    appId: string;
+    bundleId: string;
+    crossed: boolean;
+    runId: string | null;
+    skippedOpenRun: boolean;
+    reasons: string[];
+    error?: string;
+  }>;
+};
+
+/**
+ * Walk every app once. Returns a report (also handy for tests / manual
+ * invocation). Per-app failures are isolated — one bad app never aborts the
+ * weekly sweep.
+ */
+export async function runWeeklySweep(env: Env): Promise<CronReport> {
+  const apps = await listAllApps(env.DB);
+  const report: CronReport = { appsProcessed: 0, runsOpened: 0, perApp: [] };
+
+  for (const app of apps) {
+    report.appsProcessed++;
+    try {
+      const previous = await getLatestCompetitorMap(env.DB, app.id);
+      const input = buildAppInput(app, {}, previous);
+      const result = await runAgent(workerFetch, input);
+
+      const decision = evaluateThreshold(result);
+      const alreadyOpen = await hasOpenRun(env.DB, app.id);
+
+      if (decision.crossed && !alreadyOpen) {
+        // Open an awaiting_approval run (this also records the snapshots +
+        // proposals + generated push commands in one atomic write).
+        const runId = await persistRun(env.DB, {
+          appId: app.id,
+          status: "awaiting_approval",
+          result,
+          trigger: { source: "cron", reasons: decision.reasons },
+        });
+        report.runsOpened++;
+        report.perApp.push({
+          appId: app.id,
+          bundleId: app.bundle_id,
+          crossed: true,
+          runId,
+          skippedOpenRun: false,
+          reasons: decision.reasons,
+        });
+      } else {
+        // No threshold crossed (or a run is already open): still persist this
+        // week's snapshots as a recorded pass, but mark the run rejected-equivalent
+        // status 'detected' so the time-series stays complete without nagging.
+        const runId = await persistRun(env.DB, {
+          appId: app.id,
+          status: "detected",
+          result,
+          trigger: {
+            source: "cron",
+            reasons: alreadyOpen
+              ? ["snapshot recorded — prior run still awaiting approval"]
+              : ["snapshot recorded — no threshold crossed"],
+          },
+        });
+        report.perApp.push({
+          appId: app.id,
+          bundleId: app.bundle_id,
+          crossed: decision.crossed,
+          runId,
+          skippedOpenRun: alreadyOpen && decision.crossed,
+          reasons: decision.reasons,
+        });
+      }
+    } catch (e) {
+      report.perApp.push({
+        appId: app.id,
+        bundleId: app.bundle_id,
+        crossed: false,
+        runId: null,
+        skippedOpenRun: false,
+        reasons: [],
+        error: String(e),
+      });
+    }
+  }
+
+  return report;
+}
+
+/** The scheduled() entry — runs the sweep. Errors are logged, never thrown. */
+export async function handleScheduled(env: Env): Promise<void> {
+  const report = await runWeeklySweep(env);
+  console.log(
+    `[store-ops cron] swept ${report.appsProcessed} apps, opened ${report.runsOpened} run(s)`,
+  );
+}

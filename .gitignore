@@ -1,0 +1,23 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+
+# Secrets / local env (never commit)
+.env
+.env.local
+*.local
+
+# Node / Cloudflare (cloud/ also has its own .gitignore)
+node_modules/
+.wrangler/
+dist/
+*.sqlite
+*.sqlite-shm
+*.sqlite-wal
+
+# OS / editor
+.DS_Store
+.vscode/
+.idea/
