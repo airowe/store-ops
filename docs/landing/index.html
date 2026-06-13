@@ -4,25 +4,28 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>store-ops — the ASO loop that ships your metadata and proves the rank moved</title>
-<meta name="description" content="An AI ASO loop for App Store and Google Play. Audit, research, optimize, push, and verify your rank moved — free and MIT. Hosted scheduling + guided setup coming soon.">
+<meta name="description" content="An AI ASO loop for App Store and Google Play. Audit, research, optimize, push, and verify your rank moved. Free MIT plugin, or a live hosted agent that runs the loop on a schedule.">
+<meta property="og:title" content="store-ops — the ASO loop that proves the rank moved">
+<meta property="og:description" content="Audit, research, optimize, push, and verify — App Store and Google Play. Free MIT plugin or a live hosted agent.">
+<meta property="og:type" content="website">
 <style>
   :root {
     --ink: #15171a; --muted: #5b6470; --line: #e6e8ec;
     --accent: #e63946; --accent-2: #3fb97d; --bg: #fbfbfc; --card: #fff;
   }
   * { box-sizing: border-box; }
-  html { -webkit-text-size-adjust: 100%; }
+  html { -webkit-text-size-adjust: 100%; scroll-behavior: smooth; }
   body {
     margin: 0; font-family: -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
     color: var(--ink); background: var(--bg); line-height: 1.55; font-size: 17px;
   }
-  .wrap { max-width: 720px; margin: 0 auto; padding: 0 22px; }
+  .wrap { max-width: 760px; margin: 0 auto; padding: 0 22px; }
   header { padding: 64px 0 8px; }
   .kicker {
     display: inline-block; font-size: 13px; letter-spacing: .04em; text-transform: uppercase;
     color: var(--accent); font-weight: 700; margin-bottom: 14px;
   }
-  h1 { font-size: 38px; line-height: 1.12; letter-spacing: -0.5px; margin: 0 0 16px; }
+  h1 { font-size: 40px; line-height: 1.1; letter-spacing: -0.5px; margin: 0 0 16px; }
   h1 .hl { color: var(--accent); }
   .lede { font-size: 20px; color: var(--muted); margin: 0 0 28px; }
   .loop {
@@ -31,47 +34,58 @@
     padding: 16px 18px; margin: 0 0 30px; overflow-x: auto; color: var(--ink);
   }
   .loop b { color: var(--accent-2); }
-  .cta {
-    display: flex; gap: 10px; flex-wrap: wrap; margin: 0 0 10px;
+  .loop i { color: var(--muted); font-style: normal; }
+  .hero-cta { display: flex; gap: 12px; flex-wrap: wrap; margin: 0 0 12px; }
+  .btn {
+    display: inline-block; padding: 13px 22px; font-size: 16px; font-weight: 600;
+    border-radius: 10px; cursor: pointer; text-decoration: none; border: 1px solid transparent;
   }
-  .cta input[type=email] {
-    flex: 1 1 240px; min-width: 0; padding: 13px 15px; font-size: 16px;
-    border: 1px solid var(--line); border-radius: 10px; background: #fff;
-  }
-  .cta button {
-    padding: 13px 22px; font-size: 16px; font-weight: 600; color: #fff;
-    background: var(--ink); border: 0; border-radius: 10px; cursor: pointer;
-  }
-  .cta button:hover { background: #000; }
+  .btn-primary { color: #fff; background: var(--ink); }
+  .btn-primary:hover { background: #000; }
+  .btn-ghost { color: var(--ink); background: #fff; border-color: var(--line); }
+  .btn-ghost:hover { border-color: var(--ink); }
   .fineprint { font-size: 13px; color: var(--muted); margin: 0 0 56px; }
   .fineprint a { color: var(--ink); }
-  h2 { font-size: 22px; letter-spacing: -0.3px; margin: 46px 0 14px; }
+  h2 { font-size: 24px; letter-spacing: -0.3px; margin: 48px 0 14px; }
   section p { color: #2b3038; }
-  .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin: 18px 0 8px; }
-  @media (max-width: 560px) { .grid { grid-template-columns: 1fr; } h1 { font-size: 30px; } }
-  .card {
-    background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 16px 18px;
-  }
-  .card h3 { margin: 0 0 6px; font-size: 16px; }
-  .card p { margin: 0; font-size: 14.5px; color: var(--muted); }
-  table { border-collapse: collapse; width: 100%; font-size: 15px; margin: 14px 0; }
-  th, td { text-align: left; padding: 10px 12px; border-bottom: 1px solid var(--line); vertical-align: top; }
-  th { font-size: 13px; text-transform: uppercase; letter-spacing: .03em; color: var(--muted); }
-  td .yes { color: var(--accent-2); font-weight: 700; }
-  .free-tag {
-    display: inline-block; font-size: 12px; font-weight: 700; color: var(--accent-2);
-    border: 1px solid var(--accent-2); border-radius: 999px; padding: 2px 9px; vertical-align: middle;
-  }
   blockquote {
     margin: 18px 0; padding: 12px 16px; border-left: 3px solid var(--accent);
     background: #fff7f7; color: #3a2b2c; font-size: 15.5px;
   }
+
+  /* how it works */
+  .steps { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin: 18px 0 8px; }
+  @media (max-width: 600px) { .steps { grid-template-columns: 1fr; } h1 { font-size: 31px; } }
+  .step {
+    background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 16px 18px;
+  }
+  .step .n { font-size: 12px; font-weight: 700; color: var(--accent); letter-spacing: .04em; }
+  .step h3 { margin: 4px 0 6px; font-size: 16px; }
+  .step p { margin: 0; font-size: 14.5px; color: var(--muted); }
+
+  /* pricing */
+  .tiers { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin: 18px 0 8px; }
+  @media (max-width: 600px) { .tiers { grid-template-columns: 1fr; } }
+  .tier {
+    background: var(--card); border: 1px solid var(--line); border-radius: 14px;
+    padding: 20px 20px 22px; display: flex; flex-direction: column;
+  }
+  .tier.featured { border-color: var(--accent-2); box-shadow: 0 0 0 1px var(--accent-2); }
+  .tier h3 { margin: 0 0 2px; font-size: 18px; }
+  .tier .price { font-size: 26px; font-weight: 700; margin: 6px 0 2px; letter-spacing: -0.5px; }
+  .tier .price span { font-size: 14px; font-weight: 600; color: var(--muted); }
+  .tier .sub { font-size: 13px; color: var(--muted); margin: 0 0 12px; min-height: 18px; }
+  .tier ul { list-style: none; padding: 0; margin: 0 0 18px; font-size: 14.5px; color: #2b3038; }
+  .tier li { padding: 4px 0 4px 22px; position: relative; }
+  .tier li::before { content: "→"; position: absolute; left: 0; color: var(--accent-2); font-weight: 700; }
+  .tier .btn { margin-top: auto; text-align: center; }
+  .badge {
+    display: inline-block; font-size: 11px; font-weight: 700; color: var(--accent-2);
+    border: 1px solid var(--accent-2); border-radius: 999px; padding: 2px 9px; margin-left: 6px; vertical-align: middle;
+  }
+
   footer { margin: 60px 0 50px; padding-top: 22px; border-top: 1px solid var(--line); color: var(--muted); font-size: 14px; }
   footer a { color: var(--ink); }
-  .ok { display: none; color: var(--accent-2); font-weight: 600; margin: 0 0 56px; }
-  .err { display: none; color: var(--accent); font-weight: 600; margin: 0 0 56px; }
-  .err a { color: var(--accent); }
-  .cta button[disabled] { opacity: .6; cursor: progress; }
 </style>
 </head>
 <body>
@@ -81,29 +95,20 @@
     <span class="kicker">App Store + Google Play · open source</span>
     <h1>The ASO loop that ships your metadata and <span class="hl">proves the rank moved.</span></h1>
     <p class="lede">Every ASO tool tells you what to do, then leaves you in the
-    App Store Connect form. store-ops does the work — and checks whether it
-    worked.</p>
+    App Store Connect form. store-ops does the work — and reads the rank back to
+    check it worked.</p>
 
     <div class="loop">
       audit &nbsp;→&nbsp; research keywords &nbsp;→&nbsp; optimize to char limits
       &nbsp;→&nbsp; push <i>(you approve)</i> &nbsp;→&nbsp; <b>verify rank over time</b>
     </div>
 
-    <!-- Formspree: replace YOUR_FORM_ID below (Formspree dashboard → form → endpoint).
-         AJAX submit keeps the visitor on the page; no redirect to Formspree. -->
-    <form class="cta" id="waitlist" action="https://formspree.io/f/YOUR_FORM_ID" method="POST">
-      <input type="email" name="email" placeholder="you@indie.dev" required aria-label="Email" autocomplete="email">
-      <!-- give Formspree a useful subject + reply-to so emails are readable -->
-      <input type="hidden" name="_subject" value="store-ops hosted waitlist signup">
-      <!-- honeypot: real users never fill this; bots do → Formspree drops it -->
-      <input type="text" name="_gotcha" tabindex="-1" autocomplete="off" aria-hidden="true" style="position:absolute;left:-9999px;opacity:0;height:0;width:0;">
-      <button type="submit" id="submitBtn">Get early access</button>
-    </form>
-    <p class="ok" id="ok">Thanks — you're on the list. I'll email you when hosted scheduling opens.</p>
-    <p class="err" id="err">Something went wrong — email <a href="mailto:hello@airowe.online">hello@airowe.online</a> and I'll add you manually.</p>
-    <p class="fineprint">The plugin is <strong>free and MIT</strong> today —
-    <a href="#open-core">grab it now</a>. The waitlist is for the optional hosted
-    tier (guided setup + scheduled rank tracking). No spam, one launch email.</p>
+    <div class="hero-cta">
+      <a class="btn btn-primary" href="https://store-ops-dashboard.pages.dev">Try the hosted agent</a>
+      <a class="btn btn-ghost" href="https://github.com/airowe/app-marketplace">Get the free plugin</a>
+    </div>
+    <p class="fineprint">The plugin is <strong>free and MIT</strong> — run the whole
+    loop yourself in Claude Code. Or let the hosted agent run it on a schedule.</p>
   </header>
 
   <section>
@@ -120,103 +125,106 @@
     so you see the change land.</p>
 
     <blockquote>
-      Ran it on a meditation app: #45 for "agnostic," #84 for "aurelius," nowhere
+      Ran it on a meditation app: #44 for "agnostic," #84 for "aurelius," nowhere
       for "meditation." That's the strategy working — you don't outrank Calm for
-      "meditation," you own the terms you can win and prove it.
+      "meditation," you own the terms you can win. So the subtitle became "stoic,
+      without religion."
     </blockquote>
   </section>
 
-  <section id="open-core">
-    <h2>Free forever, MIT <span class="free-tag">open source</span></h2>
-    <p>The whole loop runs locally with your own credentials at zero cost. The
-    hosted tier sells <em>convenience, never capability</em> — you're paying to
-    skip the setup pain and to have someone remember the history for you.</p>
+  <section id="how">
+    <h2>How it works</h2>
+    <div class="steps">
+      <div class="step"><div class="n">01 · AUDIT</div><h3>Score the live listing</h3><p>Field by field vs. ASO best practice, including a screenshot score. Read-only — it changes nothing.</p></div>
+      <div class="step"><div class="n">02 · RESEARCH</div><h3>Keywords on real data</h3><p>Store autocomplete, competitor listings, your reviews, and your app's actual ranks. No paid data API.</p></div>
+      <div class="step"><div class="n">03 · OPTIMIZE</div><h3>Copy to exact char limits</h3><p>Name, subtitle, keyword field, promo — verified to the character, with the reasoning for every choice.</p></div>
+      <div class="step"><div class="n">04 · PUSH</div><h3>You approve, it ships</h3><p>It writes the metadata and the exact <code>asc</code>/<code>gplay</code> commands. The approval gate is in code; nothing ships until you say so.</p></div>
+      <div class="step"><div class="n">05 · VERIFY</div><h3>Read the rank back</h3><p>It logs your organic rank per keyword over time, in any of 14 markets — so you see a dated before/after, not a vibe.</p></div>
+      <div class="step"><div class="n">06 · WATCH</div><h3>On a schedule</h3><p>The hosted agent re-runs weekly, watches competitors, and drafts the next fix — pinging you only when there's a real move.</p></div>
+    </div>
+  </section>
 
-    <table>
-      <thead><tr><th>&nbsp;</th><th>Free plugin</th><th>Hosted (coming)</th></tr></thead>
-      <tbody>
-        <tr><td>Full audit → push → verify loop</td><td><span class="yes">✓</span> all 17 skills</td><td><span class="yes">✓</span> same skills</td></tr>
-        <tr><td>Real volume data</td><td>bring your own Apple/Google keys</td><td>guided 10-min setup wizard</td></tr>
-        <tr><td>Rank tracking</td><td>run it by hand</td><td>scheduled weekly + alerts</td></tr>
-        <tr><td>Both stores (iOS + Play)</td><td><span class="yes">✓</span></td><td><span class="yes">✓</span></td></tr>
-        <tr><td>Done-for-you monthly ASO</td><td>—</td><td>optional service</td></tr>
-      </tbody>
-    </table>
+  <section id="pricing">
+    <h2>Pricing</h2>
+    <p>Same engine at every tier — more autonomy as you go up. We never hold your
+    store credentials; the push is always a handoff you approve.</p>
+
+    <div class="tiers">
+
+      <div class="tier">
+        <h3>Free</h3>
+        <div class="price">$0</div>
+        <p class="sub">Run the agent yourself.</p>
+        <ul>
+          <li>The full loop in Claude Code</li>
+          <li>23 skills, MIT-licensed</li>
+          <li>Both stores, your machine</li>
+          <li>Bring your own data keys</li>
+        </ul>
+        <a class="btn btn-ghost" href="https://github.com/airowe/app-marketplace">Get the plugin</a>
+      </div>
+
+      <div class="tier">
+        <h3>Launch Optimization</h3>
+        <div class="price">$49 <span>one-time</span></div>
+        <p class="sub">One full optimization pass.</p>
+        <ul>
+          <li>Full audit + keyword research</li>
+          <li>Copy written to char limits</li>
+          <li>Ship-ready push commands</li>
+          <li>Baseline rank snapshot set</li>
+          <li>+$29/locale · +$39 Google Play</li>
+        </ul>
+        <a class="btn btn-primary" href="https://store-ops-dashboard.pages.dev">Start a pass</a>
+      </div>
+
+      <div class="tier featured">
+        <h3>Autopilot <span class="badge">popular</span></h3>
+        <div class="price">$19 <span>/month</span></div>
+        <p class="sub">It keeps working on its own.</p>
+        <ul>
+          <li>Weekly rank tracking + history</li>
+          <li>Competitor watch + alerts</li>
+          <li>Self-triggered re-optimization</li>
+          <li>It proposes, you approve, it ships</li>
+        </ul>
+        <a class="btn btn-primary" href="https://store-ops-dashboard.pages.dev">Turn on Autopilot</a>
+      </div>
+
+      <div class="tier">
+        <h3>Fleet Autopilot</h3>
+        <div class="price">$149 <span>/month</span></div>
+        <p class="sub">For agencies + multi-app devs.</p>
+        <ul>
+          <li>Both stores, multiple locales</li>
+          <li>Multiple apps, one agent</li>
+          <li>Monthly autonomous re-optimization</li>
+          <li>Portfolio dashboard</li>
+        </ul>
+        <a class="btn btn-primary" href="https://store-ops-dashboard.pages.dev">Run a fleet</a>
+      </div>
+
+    </div>
     <p class="fineprint">We never resell Apple/Google data through a shared
-    account — that breaks their terms. The hosted tier is bring-your-own-keys
-    too. What you pay for is the onboarding, the scheduler, and the history.</p>
+    account — that breaks their terms. Every credentialed source is your own.</p>
   </section>
 
   <section>
     <h2>Why it's different</h2>
-    <div class="grid">
-      <div class="card"><h3>Closes the loop</h3><p>Research → ship → verify, not just advice. The only tool that reads the rank back after you change the listing.</p></div>
-      <div class="card"><h3>Runs on autopilot</h3><p>The hosted agent re-checks ranks, watches competitors, and drafts the next optimization on a schedule — surfacing each decision for you to approve.</p></div>
-      <div class="card"><h3>Google Play too</h3><p>The full operational loop on Android — the lane no public tool covers end to end.</p></div>
-      <div class="card"><h3>No paid data API</h3><p>Reasons over free signals. Your own keys are an optional accelerator, never a gate.</p></div>
-      <div class="card"><h3>Nothing auto-ships</h3><p>It writes the copy and the commands; you run the push. Your store, your call.</p></div>
+    <div class="steps">
+      <div class="step"><h3>Closes the loop</h3><p>Research → ship → verify, not just advice. The only tool that reads the rank back after you change the listing.</p></div>
+      <div class="step"><h3>Runs on autopilot</h3><p>The hosted agent re-checks ranks, watches competitors, and drafts the next optimization on a schedule — surfacing each decision for you to approve.</p></div>
+      <div class="step"><h3>Google Play too</h3><p>The full operational loop on Android — the lane no public tool covers end to end.</p></div>
+      <div class="step"><h3>No paid data API</h3><p>Reasons over free signals. Your own keys are an optional accelerator, never a gate.</p></div>
     </div>
   </section>
 
   <footer>
-    <p><strong>store-ops</strong> — MIT-licensed ASO for App Store &amp; Google Play.
-    Get the plugin: <a href="#">github.com/airowe/app-marketplace</a> ·
-    Questions: <a href="#">@airowe</a></p>
+    <p><strong>store-ops</strong> — MIT-licensed ASO for App Store &amp; Google Play.<br>
+    Free plugin: <a href="https://github.com/airowe/app-marketplace">github.com/airowe/app-marketplace</a> ·
+    Hosted agent: <a href="https://store-ops-dashboard.pages.dev">store-ops-dashboard.pages.dev</a></p>
   </footer>
 
 </div>
-
-<script>
-  // Formspree AJAX submit — keeps the visitor on the page (no redirect to the
-  // Formspree thank-you), shows inline success/error. No PII in URLs; the email
-  // is POSTed as JSON, nothing is stored client-side.
-  //
-  // Setup (one-time):
-  //   1. Create a free form at https://formspree.io → copy its endpoint id.
-  //   2. Replace YOUR_FORM_ID in the form's `action` above (e.g. /f/mwkgabcd).
-  //   3. Confirm the verification email Formspree sends to the form owner.
-  // That's it — the free tier covers 50 submissions/mo, enough to validate.
-  (function () {
-    var form = document.getElementById('waitlist');
-    var ok = document.getElementById('ok');
-    var err = document.getElementById('err');
-    var btn = document.getElementById('submitBtn');
-
-    form.addEventListener('submit', function (e) {
-      e.preventDefault();
-      err.style.display = 'none';
-
-      // Guard against shipping with the placeholder endpoint still in place.
-      if (form.action.indexOf('YOUR_FORM_ID') !== -1) {
-        err.textContent = 'Form not wired yet — set your Formspree endpoint in the action attribute.';
-        err.style.display = 'block';
-        return;
-      }
-
-      btn.disabled = true;
-      var prev = btn.textContent;
-      btn.textContent = 'Adding you…';
-
-      fetch(form.action, {
-        method: 'POST',
-        body: new FormData(form),
-        headers: { 'Accept': 'application/json' }
-      }).then(function (res) {
-        if (res.ok) {
-          form.style.display = 'none';
-          ok.style.display = 'block';
-        } else {
-          return res.json().then(function (data) {
-            throw new Error((data && data.errors && data.errors[0] && data.errors[0].message) || 'submit failed');
-          });
-        }
-      }).catch(function () {
-        btn.disabled = false;
-        btn.textContent = prev;
-        err.style.display = 'block';
-      });
-    });
-  })();
-</script>
 </body>
 </html>

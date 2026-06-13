@@ -3,17 +3,36 @@
  * zero extra deps). Routed from `src/index.ts`. Talks to D1 via `../d1.js` and
  * runs the ASO loop via the engine's `runAgent`.
  *
- * AUTH (STUBBED, documented): every request identifies the user by the
- * `X-User-Email` header — a magic-link stand-in for the demo. The header value
- * get-or-creates a `users` row (see `upsertUser`). No password, no session
- * crypto in the demo path; `SESSION_SECRET` is reserved for signing real tokens
- * later. All app/run access is scoped to that user — you can't read another
- * user's app or run.
+ * AUTH (passwordless magic-link → signed session cookie):
+ *   - Real path: POST /auth/request mints an HMAC-signed, expiring magic-link
+ *     token and "sends" it (ConsoleEmailSender by default). GET /auth/callback
+ *     verifies it, upserts the user, and sets an HttpOnly/Secure/SameSite=Lax
+ *     session cookie (a separate, longer-lived signed token). POST /auth/logout
+ *     clears it. See src/auth.ts for the crypto.
+ *   - `requireUser` precedence: session cookie > X-User-Email (demo only) > 401.
+ *     The X-User-Email header is kept ALIVE in APP_ENV==="demo" so the live demo
+ *     + existing tests still work; outside demo it is ignored.
+ *   All app/run access is scoped to the user — you can't read another user's data.
  *
- * CORS: permissive for the Pages dashboard origin (configurable via the
- * `Origin` echo). Preflight handled.
+ * BILLING (Stripe, see src/billing.ts + commercial/OFFER.md): POST
+ * /billing/checkout mints a Stripe Checkout Session for a tier; POST
+ * /billing/webhook applies subscription state to the user's tier (signature
+ * verified). Tier gates: free/launch = manual only + 1 app; autopilot/fleet =
+ * cron autonomy + more apps. A blocked gate returns 402.
+ *
+ * CORS: echoes the dashboard origin (not "*") and allows credentials so the
+ * session cookie rides cross-origin from the Pages dashboard. Preflight handled.
  *
  * ROUTES:
+ *   POST /auth/request      {email} → mint + "send" a magic link. Always 200
+ *                           {sent:true} (never leaks whether the email exists).
+ *   GET  /auth/callback     ?token=… → verify the magic link, set the session
+ *                           cookie, redirect to the dashboard (or 200 {ok}).
+ *   POST /auth/logout       clear the session cookie.
+ *   POST /billing/checkout  {tier} → create a Stripe Checkout Session, return
+ *                           {url}. tier ∈ launch|autopilot|fleet.
+ *   POST /billing/webhook   Stripe events → update the user's tier/status. The
+ *                           Stripe-Signature header is verified (raw body HMAC).
  *   POST /resolve           {query} → connectable candidates (name / App Store or
  *                           Play URL / numeric id / bundle id). No connect, no run.
  *                           kind: "resolved" | "candidates" | "not-found".
@@ -42,40 +61,86 @@ import {
 } from "../engine/index.js";
 import type { ReasoningTrace } from "../d1.js";
 import {
+  countAppsForUser,
   createApp,
   getApp,
   getApproval,
   getLatestCompetitorMap,
   getRankHistory,
   getRun,
+  getTier,
+  getUserByStripeCustomer,
   listAppsForUser,
   listRunsForApp,
   persistRun,
   recordApproval,
+  setTier,
   upsertUser,
 } from "../d1.js";
+import {
+  ConsoleEmailSender,
+  type EmailSender,
+  mintMagicToken,
+  mintSessionToken,
+  parseCookie,
+  resolveSessionSecret,
+  serializeLogoutCookie,
+  serializeSessionCookie,
+  SESSION_COOKIE,
+  verifyMagicToken,
+  verifySessionToken,
+} from "../auth.js";
+import {
+  appLimitForTier,
+  createCheckoutSession,
+  type StripePriceEnv,
+  tierForPriceId,
+  verifyStripeSignature,
+} from "../billing.js";
 import { buildAppInput, type RunOverrides } from "./runConfig.js";
 import { fetchForEnv } from "../fetchAdapter.js";
 import type { Env } from "../index.js";
+
+// ── token + cookie lifetimes ───────────────────────────────────────────────────
+/** Magic-link is short-lived (single use, clicked within minutes). */
+const MAGIC_LINK_TTL_SECONDS = 15 * 60; // 15 min
+/** Session cookie is long-lived (stay signed-in). */
+const SESSION_TTL_SECONDS = 30 * 24 * 60 * 60; // 30 days
 
 // ── HTTP helpers ──────────────────────────────────────────────────────────────
 
 const JSON_HEADERS = { "content-type": "application/json" } as const;
 
-function corsHeaders(origin: string | null): Record<string, string> {
-  return {
-    "access-control-allow-origin": origin ?? "*",
+/**
+ * CORS for a credentialed (cookie-bearing) cross-origin dashboard. We must echo a
+ * concrete origin — never "*" — when credentials are allowed, so we reflect the
+ * request Origin (the dashboard). `DASHBOARD_ORIGIN`, when set, is preferred so a
+ * no-Origin caller (curl/tests) still gets a sane, fixed value.
+ */
+function corsHeaders(origin: string | null, env?: Env): Record<string, string> {
+  const allowOrigin = origin ?? env?.DASHBOARD_ORIGIN ?? "*";
+  const headers: Record<string, string> = {
+    "access-control-allow-origin": allowOrigin,
     "access-control-allow-methods": "GET,POST,OPTIONS",
-    "access-control-allow-headers": "content-type,x-user-email",
+    "access-control-allow-headers": "content-type,x-user-email,stripe-signature",
     "access-control-max-age": "86400",
     "vary": "Origin",
   };
+  // Credentials can only be combined with a concrete origin, not "*".
+  if (allowOrigin !== "*") headers["access-control-allow-credentials"] = "true";
+  return headers;
 }
 
-function json(body: unknown, status: number, origin: string | null): Response {
+function json(
+  body: unknown,
+  status: number,
+  origin: string | null,
+  env?: Env,
+  extra?: Record<string, string>,
+): Response {
   return new Response(JSON.stringify(body), {
     status,
-    headers: { ...JSON_HEADERS, ...corsHeaders(origin) },
+    headers: { ...JSON_HEADERS, ...corsHeaders(origin, env), ...extra },
   });
 }
 
@@ -154,16 +219,108 @@ function rankSummary(
   };
 }
 
-// ── auth (stubbed) ─────────────────────────────────────────────────────────────
+// ── auth ─────────────────────────────────────────────────────────────────────
 
-/** Identify the user from X-User-Email (magic-link stand-in). Get-or-create. */
+/** The signing secret for this env (dev fallback in demo, required otherwise). */
+function sessionSecret(env: Env): string {
+  return resolveSessionSecret(env.SESSION_SECRET, env.APP_ENV);
+}
+
+/**
+ * Identify the request's user. Precedence:
+ *   1. a valid signed session cookie (the real auth path), else
+ *   2. the X-User-Email header — ONLY in APP_ENV==="demo" (keeps the live demo +
+ *      existing tests working), else
+ *   3. 401.
+ * In both valid paths the email get-or-creates the `users` row.
+ */
 async function requireUser(req: Request, env: Env): Promise<{ id: string; email: string }> {
-  const email = req.headers.get("x-user-email")?.trim().toLowerCase();
-  if (!email || !email.includes("@")) {
-    throw new HttpError(401, "missing X-User-Email header (stubbed auth)");
+  // (1) session cookie
+  const jar = parseCookie(req.headers.get("Cookie"));
+  const token = jar[SESSION_COOKIE];
+  if (token) {
+    const res = await verifySessionToken(sessionSecret(env), token);
+    if (res.ok) {
+      const user = await upsertUser(env.DB, res.email);
+      return { id: user.id, email: user.email };
+    }
   }
-  const user = await upsertUser(env.DB, email);
-  return { id: user.id, email: user.email };
+
+  // (2) demo-only header fallback
+  if (env.APP_ENV === "demo") {
+    const email = req.headers.get("x-user-email")?.trim().toLowerCase();
+    if (email && email.includes("@")) {
+      const user = await upsertUser(env.DB, email);
+      return { id: user.id, email: user.email };
+    }
+  }
+
+  throw new HttpError(401, "authentication required");
+}
+
+/** Pick the email sender for this env. Console sender by default (no vendor). */
+function emailSender(_env: Env): EmailSender {
+  // Resend/Postmark impls slot in here later, selected via env.
+  return new ConsoleEmailSender();
+}
+
+/** Base URL for building the magic-link callback (dashboard origin or request). */
+function authBaseUrl(req: Request, env: Env): string {
+  if (env.DASHBOARD_ORIGIN) return env.DASHBOARD_ORIGIN.replace(/\/+$/, "");
+  return new URL(req.url).origin;
+}
+
+/**
+ * POST /auth/request {email} — mint + "send" a magic link. We ALWAYS answer 200
+ * {sent:true} regardless of whether the email is known, so we never leak account
+ * existence. A malformed email is also treated as "sent" (no enumeration).
+ */
+async function authRequest(req: Request, env: Env): Promise<unknown> {
+  const body = await readJson<{ email?: string }>(req);
+  const email = body.email?.trim().toLowerCase();
+  if (email && email.includes("@")) {
+    const token = await mintMagicToken(sessionSecret(env), email, {
+      ttlSeconds: MAGIC_LINK_TTL_SECONDS,
+    });
+    const base = new URL(req.url).origin; // callback is served by THIS worker
+    const link = `${base}/auth/callback?token=${encodeURIComponent(token)}`;
+    await emailSender(env).sendMagicLink(email, link);
+  }
+  return { sent: true };
+}
+
+/**
+ * GET /auth/callback?token=… — verify the magic link, upsert the user, set the
+ * session cookie. Redirects to the dashboard (302) so the browser lands signed
+ * in; an Accept: application/json caller gets a 200 body instead.
+ */
+async function authCallback(req: Request, env: Env, origin: string | null): Promise<Response> {
+  const url = new URL(req.url);
+  const token = url.searchParams.get("token") ?? "";
+  const res = await verifyMagicToken(sessionSecret(env), token);
+  if (!res.ok) {
+    return json({ error: "invalid or expired link" }, 400, origin, env);
+  }
+  await upsertUser(env.DB, res.email);
+  const session = await mintSessionToken(sessionSecret(env), res.email, {
+    ttlSeconds: SESSION_TTL_SECONDS,
+  });
+  const cookie = serializeSessionCookie(session, { maxAgeSeconds: SESSION_TTL_SECONDS });
+
+  // Browser navigation → redirect home, signed in. JSON client → 200 body.
+  const wantsJson = (req.headers.get("Accept") ?? "").includes("application/json");
+  if (wantsJson) {
+    return json({ ok: true, email: res.email }, 200, origin, env, { "set-cookie": cookie });
+  }
+  return new Response(null, {
+    status: 302,
+    headers: { ...corsHeaders(origin, env), "set-cookie": cookie, location: authBaseUrl(req, env) },
+  });
+}
+
+/** POST /auth/logout — clear the session cookie. */
+function authLogout(origin: string | null, env: Env): Response {
+  return json({ ok: true }, 200, origin, env, { "set-cookie": serializeLogoutCookie() });
 }
 
 /** Load an app and assert it belongs to this user. */
@@ -238,6 +395,24 @@ async function connectApp(req: Request, env: Env, userId: string): Promise<unkno
     }
     bundleId = res.candidates[0]?.bundleId;
     if (!bundleId) throw new HttpError(404, `no connectable app for "${query}"`);
+  }
+
+  // Tier gate: enforce the per-tier connected-app limit BEFORE we resolve/create.
+  // Re-connecting an app the user already owns is always allowed (no new slot).
+  const tier = await getTier(env.DB, userId);
+  const existingForBundle = (await listAppsForUser(env.DB, userId)).find(
+    (a) => a.bundle_id === bundleId,
+  );
+  if (!existingForBundle) {
+    const count = await countAppsForUser(env.DB, userId);
+    const limit = appLimitForTier(tier);
+    if (count >= limit) {
+      throw new HttpError(
+        402,
+        `your ${tier} plan allows ${limit} connected app${limit === 1 ? "" : "s"}. ` +
+          `Upgrade to connect more.`,
+      );
+    }
   }
 
   // Look up the live listing up front so we store the RICH name (e.g. "Heathen -
@@ -478,6 +653,156 @@ async function pushCommandsRoute(env: Env, userId: string, runId: string): Promi
   return { commands: trace.pushCommands };
 }
 
+// ── billing ────────────────────────────────────────────────────────────────────
+
+/** Pull the Stripe price-env slice off the worker Env. */
+function priceEnv(env: Env): StripePriceEnv {
+  const prices: StripePriceEnv = {};
+  if (env.STRIPE_PRICE_LAUNCH !== undefined) prices.STRIPE_PRICE_LAUNCH = env.STRIPE_PRICE_LAUNCH;
+  if (env.STRIPE_PRICE_AUTOPILOT !== undefined)
+    prices.STRIPE_PRICE_AUTOPILOT = env.STRIPE_PRICE_AUTOPILOT;
+  if (env.STRIPE_PRICE_FLEET !== undefined) prices.STRIPE_PRICE_FLEET = env.STRIPE_PRICE_FLEET;
+  return prices;
+}
+
+type CheckoutBody = { tier?: string };
+
+/**
+ * POST /billing/checkout {tier} — create a Stripe Checkout Session for a paid
+ * tier and hand back its hosted URL. The client redirects the browser there.
+ */
+async function billingCheckout(
+  req: Request,
+  env: Env,
+  user: { id: string; email: string },
+): Promise<unknown> {
+  if (!env.STRIPE_TEST_KEY) throw new HttpError(503, "billing is not configured");
+  const body = await readJson<CheckoutBody>(req);
+  const tier = body.tier?.trim();
+  if (tier !== "launch" && tier !== "autopilot" && tier !== "fleet") {
+    throw new HttpError(400, "tier must be one of: launch, autopilot, fleet");
+  }
+  const base = authBaseUrl(req, env);
+  try {
+    const session = await createCheckoutSession(fetch, {
+      secretKey: env.STRIPE_TEST_KEY,
+      tier,
+      prices: priceEnv(env),
+      customerEmail: user.email,
+      successUrl: `${base}/?checkout=success`,
+      cancelUrl: `${base}/?checkout=cancel`,
+      clientReferenceId: user.id,
+    });
+    return { url: session.url };
+  } catch (e) {
+    // a missing price id is a config error, not the user's fault.
+    throw new HttpError(503, `could not start checkout: ${String(e)}`);
+  }
+}
+
+/** Narrow shape of the Stripe events we act on (only the fields we read). */
+type StripeEvent = {
+  type?: string;
+  data?: {
+    object?: {
+      /** the object's own id (e.g. the subscription id on a subscription event). */
+      id?: string;
+      client_reference_id?: string;
+      customer?: string;
+      customer_email?: string;
+      subscription?: string;
+      status?: string;
+      current_period_end?: number;
+      mode?: string;
+      items?: { data?: Array<{ price?: { id?: string } }> };
+    };
+  };
+};
+
+/** unix-seconds → ISO string (Stripe sends current_period_end as a number). */
+function isoFromUnix(secs: number | undefined): string | null {
+  if (typeof secs !== "number" || !Number.isFinite(secs)) return null;
+  return new Date(secs * 1000).toISOString();
+}
+
+/**
+ * POST /billing/webhook — verify the Stripe-Signature over the RAW body, then
+ * apply the subscription state to the user's tier. Handles:
+ *   checkout.session.completed       → set tier from the line-item price (+ ids)
+ *   customer.subscription.updated    → sync status / period / tier
+ *   customer.subscription.deleted    → downgrade to free
+ * Returns 200 fast; unknown events are acknowledged (200) and ignored.
+ */
+async function billingWebhook(req: Request, env: Env, origin: string | null): Promise<Response> {
+  const secret = env.STRIPE_WEBHOOK_SECRET;
+  if (!secret) return json({ error: "webhook not configured" }, 503, origin, env);
+
+  const raw = await req.text();
+  const ok = await verifyStripeSignature(secret, req.headers.get("Stripe-Signature"), raw);
+  if (!ok) return json({ error: "invalid signature" }, 400, origin, env);
+
+  let event: StripeEvent;
+  try {
+    event = JSON.parse(raw) as StripeEvent;
+  } catch {
+    return json({ error: "invalid body" }, 400, origin, env);
+  }
+
+  const obj = event.data?.object ?? {};
+  const prices = priceEnv(env);
+
+  if (event.type === "checkout.session.completed") {
+    const userId = obj.client_reference_id;
+    // The bare checkout.session does not include line items, so we can't read the
+    // price here. For the one-time LAUNCH purchase (mode=payment) we set the tier
+    // now (it has no subscription to sync later). Subscription tiers
+    // (autopilot/fleet) are set authoritatively from customer.subscription.updated,
+    // which fires right after with the price; here we just persist the Stripe ids.
+    const tier = obj.mode === "payment" ? "launch" : null;
+    if (userId) {
+      await setTier(env.DB, {
+        userId,
+        ...(tier ? { tier } : {}),
+        status: "active",
+        ...(obj.customer ? { stripeCustomerId: obj.customer } : {}),
+        ...(obj.subscription ? { stripeSubscriptionId: obj.subscription } : {}),
+      });
+    }
+  } else if (event.type === "customer.subscription.updated") {
+    const customer = obj.customer;
+    const priceId = obj.items?.data?.[0]?.price?.id;
+    const tier = priceId ? tierForPriceId(priceId, prices) : null;
+    if (customer) {
+      const u = await getUserByStripeCustomer(env.DB, customer);
+      if (u) {
+        await setTier(env.DB, {
+          userId: u.id,
+          ...(tier ? { tier } : {}),
+          ...(obj.status ? { status: obj.status } : {}),
+          ...(obj.id ? { stripeSubscriptionId: obj.id } : {}),
+          currentPeriodEnd: isoFromUnix(obj.current_period_end),
+        });
+      }
+    }
+  } else if (event.type === "customer.subscription.deleted") {
+    const customer = obj.customer;
+    if (customer) {
+      const u = await getUserByStripeCustomer(env.DB, customer);
+      if (u) {
+        await setTier(env.DB, {
+          userId: u.id,
+          tier: "free",
+          status: "canceled",
+          stripeSubscriptionId: null,
+          currentPeriodEnd: null,
+        });
+      }
+    }
+  }
+
+  return json({ received: true }, 200, origin, env);
+}
+
 // ── router ─────────────────────────────────────────────────────────────────────
 
 /** Match `/runs/:id/approve` style paths into [segments]. */
@@ -489,7 +814,7 @@ export async function handleApi(req: Request, env: Env): Promise<Response> {
   const origin = req.headers.get("Origin");
 
   if (req.method === "OPTIONS") {
-    return new Response(null, { status: 204, headers: corsHeaders(origin) });
+    return new Response(null, { status: 204, headers: corsHeaders(origin, env) });
   }
 
   const url = new URL(req.url);
@@ -498,11 +823,43 @@ export async function handleApi(req: Request, env: Env): Promise<Response> {
 
   // health / root
   if (seg.length === 0) {
-    return json({ ok: true, service: "store-ops", env: env.APP_ENV }, 200, origin);
+    return json({ ok: true, service: "store-ops", env: env.APP_ENV }, 200, origin, env);
+  }
+
+  // ── PUBLIC routes (no requireUser): auth + Stripe webhook ────────────────────
+  try {
+    if (seg[0] === "auth") {
+      if (seg[1] === "request" && seg.length === 2 && method === "POST") {
+        return json(await authRequest(req, env), 200, origin, env);
+      }
+      if (seg[1] === "callback" && seg.length === 2 && method === "GET") {
+        return authCallback(req, env, origin);
+      }
+      if (seg[1] === "logout" && seg.length === 2 && method === "POST") {
+        return authLogout(origin, env);
+      }
+    }
+    // Stripe calls this server-to-server with NO cookie — auth is the signature.
+    if (
+      seg[0] === "billing" &&
+      seg[1] === "webhook" &&
+      seg.length === 2 &&
+      method === "POST"
+    ) {
+      return billingWebhook(req, env, origin);
+    }
+  } catch (e) {
+    if (e instanceof HttpError) return json({ error: e.message }, e.status, origin, env);
+    return json({ error: "internal error", detail: String(e) }, 500, origin, env);
   }
 
   try {
     const user = await requireUser(req, env);
+
+    // /billing/checkout — authenticated (the buyer is the signed-in user)
+    if (seg[0] === "billing" && seg[1] === "checkout" && seg.length === 2 && method === "POST") {
+      return json(await billingCheckout(req, env, user), 200, origin, env);
+    }
 
     // /resolve — query → candidates (no connect, no run)
     if (seg[0] === "resolve" && seg.length === 1 && method === "POST") {

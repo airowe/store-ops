@@ -21,7 +21,18 @@ import type { RunStatus } from "./engine/constants.js";
 
 // ── Row types (mirror schema.sql) ────────────────────────────────────────────
 
-export type UserRow = { id: string; email: string; created_at: string };
+export type Tier = "free" | "launch" | "autopilot" | "fleet";
+
+export type UserRow = {
+  id: string;
+  email: string;
+  created_at: string;
+  tier: Tier;
+  status: string;
+  stripe_customer_id: string | null;
+  stripe_subscription_id: string | null;
+  current_period_end: string | null;
+};
 
 export type AppRow = {
   id: string;
@@ -105,20 +116,113 @@ const now = (): string => new Date().toISOString().replace("T", " ").slice(0, 19
 
 // ── users ────────────────────────────────────────────────────────────────────
 
-/** Get-or-create the demo user by email (stubbed auth). Idempotent. */
+const USER_COLS =
+  "id, email, created_at, tier, status, stripe_customer_id, stripe_subscription_id, current_period_end";
+
+/** Get-or-create a user by email (magic-link/session resolves to this). Idempotent. */
 export async function upsertUser(db: D1Database, email: string): Promise<UserRow> {
   const existing = await db
-    .prepare("SELECT id, email, created_at FROM users WHERE email = ?")
+    .prepare(`SELECT ${USER_COLS} FROM users WHERE email = ?`)
     .bind(email)
     .first<UserRow>();
   if (existing) return existing;
 
-  const row: UserRow = { id: uuid(), email, created_at: now() };
+  const row: UserRow = {
+    id: uuid(),
+    email,
+    created_at: now(),
+    tier: "free",
+    status: "active",
+    stripe_customer_id: null,
+    stripe_subscription_id: null,
+    current_period_end: null,
+  };
   await db
-    .prepare("INSERT INTO users (id, email, created_at) VALUES (?, ?, ?)")
-    .bind(row.id, row.email, row.created_at)
+    .prepare("INSERT INTO users (id, email, created_at, tier, status) VALUES (?, ?, ?, ?, ?)")
+    .bind(row.id, row.email, row.created_at, row.tier, row.status)
     .run();
   return row;
+}
+
+export async function getUser(db: D1Database, userId: string): Promise<UserRow | null> {
+  return db
+    .prepare(`SELECT ${USER_COLS} FROM users WHERE id = ?`)
+    .bind(userId)
+    .first<UserRow>();
+}
+
+/** The user's current tier (defaults to 'free' if the row is somehow missing). */
+export async function getTier(db: D1Database, userId: string): Promise<Tier> {
+  const row = await db
+    .prepare("SELECT tier FROM users WHERE id = ?")
+    .bind(userId)
+    .first<{ tier: Tier }>();
+  return row?.tier ?? "free";
+}
+
+/**
+ * Update a user's billing state (the webhook + checkout flows call this). Only
+ * the provided fields are written; omit a field to leave it untouched.
+ */
+export async function setTier(
+  db: D1Database,
+  args: {
+    userId: string;
+    tier?: Tier;
+    status?: string;
+    stripeCustomerId?: string | null;
+    stripeSubscriptionId?: string | null;
+    currentPeriodEnd?: string | null;
+  },
+): Promise<void> {
+  const sets: string[] = [];
+  const binds: Array<string | null> = [];
+  if (args.tier !== undefined) {
+    sets.push("tier = ?");
+    binds.push(args.tier);
+  }
+  if (args.status !== undefined) {
+    sets.push("status = ?");
+    binds.push(args.status);
+  }
+  if (args.stripeCustomerId !== undefined) {
+    sets.push("stripe_customer_id = ?");
+    binds.push(args.stripeCustomerId);
+  }
+  if (args.stripeSubscriptionId !== undefined) {
+    sets.push("stripe_subscription_id = ?");
+    binds.push(args.stripeSubscriptionId);
+  }
+  if (args.currentPeriodEnd !== undefined) {
+    sets.push("current_period_end = ?");
+    binds.push(args.currentPeriodEnd);
+  }
+  if (sets.length === 0) return;
+  binds.push(args.userId);
+  await db
+    .prepare(`UPDATE users SET ${sets.join(", ")} WHERE id = ?`)
+    .bind(...binds)
+    .run();
+}
+
+/** Find a user by their Stripe customer id (webhook → local user resolution). */
+export async function getUserByStripeCustomer(
+  db: D1Database,
+  customerId: string,
+): Promise<UserRow | null> {
+  return db
+    .prepare(`SELECT ${USER_COLS} FROM users WHERE stripe_customer_id = ?`)
+    .bind(customerId)
+    .first<UserRow>();
+}
+
+/** How many apps this user has connected (for the per-tier app-count gate). */
+export async function countAppsForUser(db: D1Database, userId: string): Promise<number> {
+  const row = await db
+    .prepare("SELECT COUNT(*) AS n FROM apps WHERE user_id = ?")
+    .bind(userId)
+    .first<{ n: number }>();
+  return row?.n ?? 0;
 }
 
 // ── apps ─────────────────────────────────────────────────────────────────────

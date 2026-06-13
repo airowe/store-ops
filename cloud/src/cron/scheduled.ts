@@ -26,10 +26,12 @@
 import { type AgentResult, runAgent } from "../engine/index.js";
 import {
   getLatestCompetitorMap,
+  getTier,
   hasOpenRun,
   listAllApps,
   persistRun,
 } from "../d1.js";
+import { canRunCron } from "../billing.js";
 import { buildAppInput } from "../api/runConfig.js";
 import { fetchForEnv } from "../fetchAdapter.js";
 import type { Env } from "../index.js";
@@ -73,12 +75,16 @@ export function evaluateThreshold(result: AgentResult): ThresholdDecision {
 export type CronReport = {
   appsProcessed: number;
   runsOpened: number;
+  /** apps skipped because their owner's tier has no standing autonomy (free/launch). */
+  skippedTier: number;
   perApp: Array<{
     appId: string;
     bundleId: string;
     crossed: boolean;
     runId: string | null;
     skippedOpenRun: boolean;
+    /** true when skipped: owner is on a tier without cron autonomy. */
+    skippedTier?: boolean;
     reasons: string[];
     error?: string;
   }>;
@@ -91,11 +97,28 @@ export type CronReport = {
  */
 export async function runWeeklySweep(env: Env): Promise<CronReport> {
   const apps = await listAllApps(env.DB);
-  const report: CronReport = { appsProcessed: 0, runsOpened: 0, perApp: [] };
+  const report: CronReport = { appsProcessed: 0, runsOpened: 0, skippedTier: 0, perApp: [] };
 
   for (const app of apps) {
     report.appsProcessed++;
     try {
+      // Tier gate: standing autonomy is an autopilot/fleet feature. Free + launch
+      // apps are NOT swept — they run manually from the dashboard only.
+      const tier = await getTier(env.DB, app.user_id);
+      if (!canRunCron(tier)) {
+        report.skippedTier++;
+        report.perApp.push({
+          appId: app.id,
+          bundleId: app.bundle_id,
+          crossed: false,
+          runId: null,
+          skippedOpenRun: false,
+          skippedTier: true,
+          reasons: [`skipped — ${tier} tier has no scheduled autonomy`],
+        });
+        continue;
+      }
+
       const previous = await getLatestCompetitorMap(env.DB, app.id);
       const input = buildAppInput(app, {}, previous);
       const result = await runAgent(fetchForEnv(env), input);
