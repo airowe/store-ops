@@ -26,7 +26,8 @@ export type Env = {
   COOKIE_DOMAIN?: string;
   // Secrets (set via `wrangler secret put`):
   SESSION_SECRET?: string; // signs magic-link + session tokens (HMAC-SHA256)
-  STRIPE_TEST_KEY?: string; // Stripe test-mode secret key (Bearer for the REST API)
+  STRIPE_SECRET_KEY?: string; // Stripe secret key (Bearer for the REST API) — test OR live
+  STRIPE_TEST_KEY?: string; // deprecated alias for STRIPE_SECRET_KEY; read as a fallback during migration
   STRIPE_WEBHOOK_SECRET?: string; // verifies the Stripe-Signature on /billing/webhook
   // Stripe Price ids per tier (test mode). tier → price lookup for Checkout.
   STRIPE_PRICE_LAUNCH?: string; // $49 one-time (mode=payment)

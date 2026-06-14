@@ -82,13 +82,14 @@ export function auditReadiness(env: Env): ReadinessReport {
   });
 
   // ── warns: billing (Stripe) ───────────────────────────────────────────────
+  const stripeKeySet = isSet(env.STRIPE_SECRET_KEY) || isSet(env.STRIPE_TEST_KEY);
   checks.push({
-    name: "stripe_test_key",
-    ok: isSet(env.STRIPE_TEST_KEY),
+    name: "stripe_secret_key",
+    ok: stripeKeySet,
     severity: "warn",
-    detail: isSet(env.STRIPE_TEST_KEY)
-      ? "STRIPE_TEST_KEY is set."
-      : "STRIPE_TEST_KEY is missing — Checkout/billing calls will fail.",
+    detail: stripeKeySet
+      ? "STRIPE_SECRET_KEY is set."
+      : "STRIPE_SECRET_KEY is missing — Checkout/billing calls will fail.",
   });
 
   checks.push({

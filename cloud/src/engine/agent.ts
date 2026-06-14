@@ -52,6 +52,9 @@ export type Audit = {
   bundleId: string;
   screenshots: ShotScore | null;
   liveName: string;
+  /** The live listing's description, when iTunes returns one — used as baseCopy
+   *  so a connect-by-name proposal isn't blank (issue #12). */
+  liveDescription?: string;
 };
 
 export type AgentResult = {
@@ -89,12 +92,15 @@ async function audit(fetchFn: FetchFn, input: AppInput): Promise<Audit> {
   const country = input.country ?? "US";
   let screenshots: ShotScore | null = null;
   let liveName = "";
+  let liveDescription: string | undefined;
   try {
     const url = buildUrl(ITUNES_LOOKUP_URL, { bundleId: input.bundleId, country });
     const data = asResponse(await fetchJson(fetchFn, url));
     const r = (data.results ?? [])[0] as ItunesResult | undefined;
     if (r) {
       liveName = r.trackName ?? "";
+      const desc = r.description?.trim();
+      if (desc) liveDescription = desc;
       screenshots = scoreScreenshots(input.app, {
         screenshotUrls: r.screenshotUrls ?? [],
         ipadScreenshotUrls: r.ipadScreenshotUrls ?? [],
@@ -103,7 +109,13 @@ async function audit(fetchFn: FetchFn, input: AppInput): Promise<Audit> {
   } catch {
     screenshots = null;
   }
-  return { app: input.app, bundleId: input.bundleId, screenshots, liveName };
+  return {
+    app: input.app,
+    bundleId: input.bundleId,
+    screenshots,
+    liveName,
+    ...(liveDescription !== undefined ? { liveDescription } : {}),
+  };
 }
 
 /** Build the (non-executed) push command handoff from proposed copy. */
@@ -175,13 +187,14 @@ export async function runAgent(fetchFn: FetchFn, input: AppInput): Promise<Agent
   const reasoning = bucketize(input.keywords);
 
   // 5. propose copy within hard char limits (never over-limit)
+  // Prefer an explicit baseCopy, else fall back to the live listing so a
+  // connect-by-name proposal carries real copy instead of blanks (issue #12).
+  const description = input.baseCopy?.description ?? auditResult.liveDescription;
   const proposedCopy = optimizeCopy(reasoning, {
     name: input.baseCopy?.name ?? auditResult.liveName,
     subtitle: input.baseCopy?.subtitle ?? "",
     ...(input.baseCopy?.promo !== undefined ? { promo: input.baseCopy.promo } : {}),
-    ...(input.baseCopy?.description !== undefined
-      ? { description: input.baseCopy.description }
-      : {}),
+    ...(description !== undefined ? { description } : {}),
   });
 
   // 6. PREPARE (do not execute) the push command handoff
