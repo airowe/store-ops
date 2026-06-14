@@ -458,7 +458,7 @@
       card.appendChild(el("div", { class: "locked" }, [el("span", { class: "lock" }, ["✕"]), "You rejected this proposal. Nothing was pushed. The agent will re-draft on the next data threshold or manual run."]));
     } else {
       // approved or shipped → reveal the handoff
-      card.appendChild(el("p", { class: "muted", style: "margin-top:0" }, ["Approved. Take the metadata to your build pipeline — ShipASO never holds your store credentials or pushes for you."]));
+      card.appendChild(el("p", { class: "muted", style: "margin-top:0" }, ["Approved. Hand the metadata to your build pipeline (recommended) — that path is credential-free. Or verify your App Store Connect key directly below; ShipASO uses it once and never stores it."]));
       card.appendChild(commandsBox(R.pushCommands || [], run.id, R.proposedCopy || {}));
     }
     return card;
@@ -481,7 +481,7 @@
       el("button", { class: "btn primary", onclick: function () { downloadFastlane(runId, copy); } }, ["↓ Download Fastlane metadata"]),
     ]));
     handoff.appendChild(el("p", { class: "faint", style: "font-size:12.5px;margin:10px 0 0" }, [
-      "Commit the tree (or merge the PR), then your pipeline pushes it. ShipASO never holds your credentials.",
+      "Commit the tree (or merge the PR), then your pipeline pushes it. This path needs no credentials from you.",
     ]));
     wrap.appendChild(handoff);
 
