@@ -42,6 +42,8 @@
   }
   .loop b { color: var(--accent-2); }
   .loop i { color: var(--muted); font-style: normal; }
+  .ttv { font-size: 14.5px; color: var(--muted); margin: 0 0 22px; }
+  .ttv b { color: var(--ink); font-weight: 600; }
   .hero-cta { display: flex; gap: 12px; flex-wrap: wrap; margin: 0 0 12px; }
   .btn {
     display: inline-block; padding: 13px 22px; font-size: 16px; font-weight: 600;
@@ -91,6 +93,17 @@
     border: 1px solid var(--accent-2); border-radius: 999px; padding: 2px 9px; margin-left: 6px; vertical-align: middle;
   }
 
+  /* email capture */
+  .signup { margin: 56px 0 0; }
+  .signup label { display: block; font-size: 14.5px; font-weight: 600; color: var(--ink); margin: 0 0 10px; }
+  .signup-form { display: flex; gap: 10px; flex-wrap: wrap; }
+  .signup-form input[type="email"] {
+    flex: 1 1 240px; min-width: 0; padding: 13px 15px; font-size: 16px; color: var(--ink);
+    background: #fff; border: 1px solid var(--line); border-radius: 10px; font-family: inherit;
+  }
+  .signup-form input[type="email"]:focus { outline: none; border-color: var(--ink); }
+  .signup-form .btn { cursor: pointer; }
+
   footer { margin: 60px 0 50px; padding-top: 22px; border-top: 1px solid var(--line); color: var(--muted); font-size: 14px; }
   footer a { color: var(--ink); }
 </style>
@@ -110,6 +123,8 @@
       audit &nbsp;→&nbsp; research keywords &nbsp;→&nbsp; optimize to char limits
       &nbsp;→&nbsp; push <i>(you approve)</i> &nbsp;→&nbsp; <b>verify rank over time</b>
     </div>
+
+    <p class="ttv">Connect an app → <b>first audit + rank baseline in minutes.</b></p>
 
     <div class="hero-cta">
       <a class="btn btn-primary" href="https://app.shipaso.com">Try the hosted agent</a>
@@ -165,7 +180,7 @@
         <p class="sub">Run the agent yourself.</p>
         <ul>
           <li>The full loop in Claude Code</li>
-          <li>23 skills, MIT-licensed</li>
+          <li>24 skills, MIT-licensed</li>
           <li>Both stores, your machine</li>
           <li>Bring your own data keys</li>
         </ul>
@@ -225,6 +240,14 @@
       <div class="step"><h3>Google Play too</h3><p>The full operational loop on Android — the lane no public tool covers end to end.</p></div>
       <div class="step"><h3>No paid data API</h3><p>Reasons over free signals. Your own keys are an optional accelerator, never a gate.</p></div>
     </div>
+  </section>
+
+  <section class="signup">
+    <form class="signup-form" action="https://api.shipaso.com/subscribe" method="post">
+      <label for="signup-email">Get launch updates</label>
+      <input id="signup-email" type="email" name="email" placeholder="you@example.com" autocomplete="email" required>
+      <button class="btn btn-primary" type="submit">Subscribe</button>
+    </form>
   </section>
 
   <footer>

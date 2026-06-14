@@ -250,10 +250,26 @@ export function resolveSessionSecret(
 
 // ── email delivery ───────────────────────────────────────────────────────────────
 
-/** Pluggable magic-link delivery. Swap in a Resend/Postmark impl behind this. */
+/** A fully-composed message handed to the transport. The caller owns formatting. */
+export type EmailMessage = {
+  to: string;
+  subject: string;
+  html: string;
+  text: string;
+};
+
+/**
+ * Pluggable email delivery. Swap in a Resend/Postmark impl behind this.
+ *
+ * `send` is the generic primitive — any email type (magic link, weekly digest,
+ * future receipts) composes its own subject/html/text and hands it here, so the
+ * transport never knows about ranks or links. `sendMagicLink` stays as a thin,
+ * stable convenience for the auth flow and is expressed in terms of `send`.
+ */
 export type EmailSender = {
   /** human-readable channel name, surfaced for diagnostics. */
   readonly channel: string;
+  send(msg: EmailMessage): Promise<void>;
   sendMagicLink(email: string, link: string): Promise<void>;
 };
 
@@ -268,6 +284,10 @@ export class ConsoleEmailSender implements EmailSender {
 
   constructor(log: (line: string) => void = (line) => console.log(line)) {
     this.log = log;
+  }
+
+  async send(msg: EmailMessage): Promise<void> {
+    this.log(`[store-ops email] ${msg.subject} -> ${msg.to}\n${msg.text}`);
   }
 
   async sendMagicLink(email: string, link: string): Promise<void> {
@@ -307,6 +327,29 @@ export class ResendEmailSender implements EmailSender {
     this.fetchFn = opts.fetchFn ?? fetch.bind(globalThis);
   }
 
+  /** The generic transport: one POST to Resend's /emails. Throws on non-2xx. */
+  async send(msg: EmailMessage): Promise<void> {
+    const resp = await this.fetchFn("https://api.resend.com/emails", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${this.apiKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        from: this.from,
+        to: [msg.to],
+        subject: msg.subject,
+        html: msg.html,
+        text: msg.text,
+      }),
+    });
+
+    if (!resp.ok) {
+      const detail = await resp.text().catch(() => "");
+      throw new Error(`resend send failed (${resp.status}): ${detail}`);
+    }
+  }
+
   async sendMagicLink(email: string, link: string): Promise<void> {
     const safe = escapeHtml(link);
     const html =
@@ -317,24 +360,11 @@ export class ResendEmailSender implements EmailSender {
       `Sign in to store-ops:\n${link}\n\n` +
       `This link expires in 15 minutes. If you didn't request it, ignore this email.`;
 
-    const resp = await this.fetchFn("https://api.resend.com/emails", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${this.apiKey}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        from: this.from,
-        to: [email],
-        subject: "Your store-ops sign-in link",
-        html,
-        text,
-      }),
+    await this.send({
+      to: email,
+      subject: "Your store-ops sign-in link",
+      html,
+      text,
     });
-
-    if (!resp.ok) {
-      const detail = await resp.text().catch(() => "");
-      throw new Error(`resend send failed (${resp.status}): ${detail}`);
-    }
   }
 }

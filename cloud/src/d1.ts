@@ -225,6 +225,26 @@ export async function countAppsForUser(db: D1Database, userId: string): Promise<
   return row?.n ?? 0;
 }
 
+// ── subscribers (landing email capture) ──────────────────────────────────────
+
+/**
+ * Record a launch-list signup. Idempotent on email (INSERT OR IGNORE), so a
+ * repeat submit is a no-op, not an error. Returns true if a new row was added.
+ */
+export async function recordSubscriber(
+  db: D1Database,
+  email: string,
+  source: string,
+): Promise<boolean> {
+  const res = await db
+    .prepare(
+      "INSERT OR IGNORE INTO subscribers (id, email, source) VALUES (?, ?, ?)",
+    )
+    .bind(uuid(), email, source)
+    .run();
+  return (res.meta?.changes ?? 0) > 0;
+}
+
 // ── apps ─────────────────────────────────────────────────────────────────────
 
 /** Connect an app (or return the existing row for this user+bundle). */

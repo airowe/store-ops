@@ -26,12 +26,16 @@
 import { type AgentResult, runAgent } from "../engine/index.js";
 import {
   getLatestCompetitorMap,
+  getRankHistory,
   getTier,
+  getUser,
   hasOpenRun,
   listAllApps,
   persistRun,
 } from "../d1.js";
 import { canRunCron } from "../billing.js";
+import { type DigestAppInput, planDigests } from "../digest.js";
+import { emailSenderForEnv } from "../emailSender.js";
 import { buildAppInput } from "../api/runConfig.js";
 import { fetchForEnv } from "../fetchAdapter.js";
 import type { Env } from "../index.js";
@@ -184,10 +188,61 @@ export async function runWeeklySweep(env: Env): Promise<CronReport> {
   return report;
 }
 
-/** The scheduled() entry — runs the sweep. Errors are logged, never thrown. */
+/**
+ * After the sweep has persisted this week's snapshots, email the "what moved"
+ * digest to every autopilot/fleet app's owner. Gating + composition is the pure
+ * `planDigests`; here we just gather each app's inputs from D1 and send. Failures
+ * are isolated per-message and never abort the run. Returns the count sent.
+ */
+export async function sendWeeklyDigests(env: Env, report: CronReport): Promise<number> {
+  const dashboardUrl = env.DASHBOARD_ORIGIN ?? "https://app.shipaso.com";
+  const apps = await listAllApps(env.DB);
+  const byId = new Map(apps.map((a) => [a.id, a]));
+
+  const inputs: DigestAppInput[] = [];
+  for (const entry of report.perApp) {
+    const app = byId.get(entry.appId);
+    if (!app) continue;
+    const tier = await getTier(env.DB, app.user_id);
+    if (tier !== "autopilot" && tier !== "fleet") continue; // skip the gate early (saves the reads)
+    const user = await getUser(env.DB, app.user_id);
+    if (!user?.email) continue;
+    inputs.push({
+      appId: app.id,
+      appName: app.name,
+      email: user.email,
+      tier,
+      // Authoritative: is there an open run AT THE GATE right now? (Inferring from
+      // the report's `crossed` over-reports — a crossed threshold whose run was
+      // opened in a PRIOR week is a 'detected' snapshot, not a pending gate.)
+      hasPendingApproval: await hasOpenRun(env.DB, app.id),
+      rankHistory: await getRankHistory(env.DB, app.id),
+    });
+  }
+
+  const messages = planDigests(inputs, { dashboardUrl });
+  const sender = emailSenderForEnv(env);
+  let sent = 0;
+  for (const msg of messages) {
+    try {
+      await sender.send(msg);
+      sent++;
+    } catch (e) {
+      console.error(`[store-ops cron] digest send failed for ${msg.to}: ${String(e)}`);
+    }
+  }
+  return sent;
+}
+
+/** The scheduled() entry — runs the sweep, then sends the weekly digests. */
 export async function handleScheduled(env: Env): Promise<void> {
   const report = await runWeeklySweep(env);
+  const digests = await sendWeeklyDigests(env, report).catch((e) => {
+    console.error(`[store-ops cron] digest pass failed: ${String(e)}`);
+    return 0;
+  });
   console.log(
-    `[store-ops cron] swept ${report.appsProcessed} apps, opened ${report.runsOpened} run(s)`,
+    `[store-ops cron] swept ${report.appsProcessed} apps, opened ${report.runsOpened} run(s), ` +
+      `sent ${digests} digest(s)`,
   );
 }

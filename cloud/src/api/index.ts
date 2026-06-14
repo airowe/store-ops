@@ -33,6 +33,8 @@
  *                           {url}. tier ∈ launch|autopilot|fleet.
  *   POST /billing/webhook   Stripe events → update the user's tier/status. The
  *                           Stripe-Signature header is verified (raw body HMAC).
+ *   POST /subscribe         public launch-list capture (HTML form → 303 back, or
+ *                           JSON → 200). Idempotent on email; no auth.
  *   POST /resolve           {query} → connectable candidates (name / App Store or
  *                           Play URL / numeric id / bundle id). No connect, no run.
  *                           kind: "resolved" | "candidates" | "not-found".
@@ -74,13 +76,11 @@ import {
   listRunsForApp,
   persistRun,
   recordApproval,
+  recordSubscriber,
   setTier,
   upsertUser,
 } from "../d1.js";
 import {
-  ConsoleEmailSender,
-  type EmailSender,
-  ResendEmailSender,
   mintMagicToken,
   mintSessionToken,
   parseCookie,
@@ -91,6 +91,7 @@ import {
   verifyMagicToken,
   verifySessionToken,
 } from "../auth.js";
+import { emailSenderForEnv } from "../emailSender.js";
 import {
   appLimitForTier,
   createCheckoutSession,
@@ -260,16 +261,9 @@ async function requireUser(req: Request, env: Env): Promise<{ id: string; email:
 }
 
 /**
- * Pick the email sender for this env. With RESEND_API_KEY (+ RESEND_FROM) set we
- * deliver via Resend; otherwise fall back to the ConsoleEmailSender (logs the
- * link), so auth always works even with no vendor configured.
+ * The email sender is selected by `emailSenderForEnv` (shared with the cron's
+ * weekly digest) — Resend when configured, else the console logger.
  */
-function emailSender(env: Env): EmailSender {
-  if (env.RESEND_API_KEY && env.RESEND_FROM) {
-    return new ResendEmailSender({ apiKey: env.RESEND_API_KEY, from: env.RESEND_FROM });
-  }
-  return new ConsoleEmailSender();
-}
 
 /**
  * Cookie scope for this env. With COOKIE_DOMAIN set (split app/api subdomains),
@@ -305,7 +299,7 @@ async function authRequest(req: Request, env: Env): Promise<unknown> {
     // Delivery failure must NOT change the response (no account enumeration, no
     // leaking vendor errors). Log server-side and still answer {sent:true}.
     try {
-      await emailSender(env).sendMagicLink(email, link);
+      await emailSenderForEnv(env).sendMagicLink(email, link);
     } catch (e) {
       console.error(`[store-ops auth] magic-link send failed for ${email}: ${String(e)}`);
     }
@@ -396,6 +390,44 @@ async function resolveQuery(req: Request, env: Env): Promise<unknown> {
     query: res.query,
     candidates: res.candidates.map(candidateView),
   };
+}
+
+/** A loose email shape check — not validation, just "looks like an address". */
+function looksLikeEmail(s: string): boolean {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(s);
+}
+
+/**
+ * POST /subscribe — public launch-list capture from the marketing landing.
+ * Accepts an HTML form (application/x-www-form-urlencoded → 303 redirect back to
+ * the dashboard/landing with ?subscribed=1) or JSON (→ 200 {ok}). Idempotent on
+ * email; never reveals whether the address was already on the list.
+ */
+async function subscribe(req: Request, env: Env, origin: string | null): Promise<Response> {
+  const ctype = req.headers.get("content-type") ?? "";
+  const isForm = ctype.includes("application/x-www-form-urlencoded") || ctype.includes("multipart/form-data");
+
+  let email = "";
+  if (isForm) {
+    const form = await req.formData().catch(() => null);
+    email = String(form?.get("email") ?? "").trim().toLowerCase();
+  } else {
+    const body = await req.json<{ email?: string }>().catch(() => ({}) as { email?: string });
+    email = (body.email ?? "").trim().toLowerCase();
+  }
+
+  if (looksLikeEmail(email)) {
+    await recordSubscriber(env.DB, email, "landing").catch((e) => {
+      console.error(`[store-ops] subscribe failed for ${email}: ${String(e)}`);
+    });
+  }
+
+  // Form submitters are browsers → redirect back so they see a confirmation.
+  if (isForm) {
+    const back = (env.DASHBOARD_ORIGIN ?? "https://shipaso.com").replace(/\/+$/, "");
+    return new Response(null, { status: 303, headers: { location: `${back}/?subscribed=1` } });
+  }
+  return json({ ok: true }, 200, origin, env);
 }
 
 /** POST /apps — connect + initial run. */
@@ -876,6 +908,10 @@ export async function handleApi(req: Request, env: Env): Promise<Response> {
       method === "POST"
     ) {
       return billingWebhook(req, env, origin);
+    }
+    // Public launch-list capture from the marketing landing (HTML form or JSON).
+    if (seg[0] === "subscribe" && seg.length === 1 && method === "POST") {
+      return subscribe(req, env, origin);
     }
   } catch (e) {
     if (e instanceof HttpError) return json({ error: e.message }, e.status, origin, env);

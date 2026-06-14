@@ -119,3 +119,15 @@ CREATE TABLE IF NOT EXISTS proposals (
   char_count  INTEGER NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_proposals_run ON proposals(run_id);
+
+-- ── subscribers ──────────────────────────────────────────────────────────────
+-- Launch / "notify me" email capture from the marketing landing. Not a user
+-- account — just an intent-to-stay list. Email is unique (idempotent signup).
+-- Migration for an existing db:
+--   npx wrangler d1 execute store_ops --command "CREATE TABLE IF NOT EXISTS subscribers (id TEXT PRIMARY KEY, email TEXT NOT NULL UNIQUE, source TEXT, created_at TEXT NOT NULL DEFAULT (datetime('now')))"
+CREATE TABLE IF NOT EXISTS subscribers (
+  id          TEXT PRIMARY KEY,                       -- uuid
+  email       TEXT NOT NULL UNIQUE,
+  source      TEXT,                                   -- where they signed up (e.g. 'landing')
+  created_at  TEXT NOT NULL DEFAULT (datetime('now'))
+);
