@@ -29,6 +29,8 @@
  *   GET  /auth/callback     ?token=… → verify the magic link, set the session
  *                           cookie, redirect to the dashboard (or 200 {ok}).
  *   POST /auth/logout       clear the session cookie.
+ *   GET  /auth/me           { authed, via:"session"|"demo", email? } — the
+ *                           dashboard's boot check (login screen vs app).
  *   POST /billing/checkout  {tier} → create a Stripe Checkout Session, return
  *                           {url}. tier ∈ launch|autopilot|fleet.
  *   POST /billing/webhook   Stripe events → update the user's tier/status. The
@@ -358,6 +360,30 @@ function authLogout(origin: string | null, env: Env): Response {
   return json({ ok: true }, 200, origin, env, {
     "set-cookie": serializeLogoutCookie(cookieOpts(env)),
   });
+}
+
+/**
+ * GET /auth/me — who is the caller, and HOW are they authed? The dashboard polls
+ * this on boot to decide between the logged-in app and the login screen.
+ *   { authed:true,  via:"session", email }  → a real signed-in session
+ *   { authed:true,  via:"demo",    email }  → the X-User-Email stub (demo only)
+ *   { authed:false }                         → show the login screen
+ * Always 200 (the body carries the state) so it's a simple client check.
+ */
+async function authMe(req: Request, env: Env, origin: string | null): Promise<Response> {
+  const jar = parseCookie(req.headers.get("Cookie"));
+  const token = jar[SESSION_COOKIE];
+  if (token) {
+    const res = await verifySessionToken(sessionSecret(env), token);
+    if (res.ok) return json({ authed: true, via: "session", email: res.email }, 200, origin, env);
+  }
+  if (env.APP_ENV === "demo") {
+    const email = req.headers.get("x-user-email")?.trim().toLowerCase();
+    if (email && email.includes("@")) {
+      return json({ authed: true, via: "demo", email }, 200, origin, env);
+    }
+  }
+  return json({ authed: false }, 200, origin, env);
 }
 
 /** Load an app and assert it belongs to this user. */
@@ -1017,6 +1043,9 @@ export async function handleApi(req: Request, env: Env): Promise<Response> {
       }
       if (seg[1] === "logout" && seg.length === 2 && method === "POST") {
         return authLogout(origin, env);
+      }
+      if (seg[1] === "me" && seg.length === 2 && method === "GET") {
+        return authMe(req, env, origin);
       }
     }
     // Stripe calls this server-to-server with NO cookie — auth is the signature.

@@ -20,14 +20,40 @@
   var API_BASE = (CFG.API_BASE || "").replace(/\/$/, "");
   var LIMITS = { name: 30, subtitle: 30, keywords: 100, promo: 170, description: 4000 };
 
-  // ── stubbed auth: an email in localStorage, sent as X-User-Email ──────────
-  function email() { return localStorage.getItem("store-ops:email") || "demo@store-ops.dev"; }
-  function setEmail(e) { localStorage.setItem("store-ops:email", e); }
+  // ── auth ──────────────────────────────────────────────────────────────────
+  // Real path: a signed-in session cookie (magic-link). Demo path (when the
+  // backend runs APP_ENV=demo): an email in localStorage sent as X-User-Email.
+  // `session` is loaded from GET /auth/me on boot; null until then.
+  var session = null; // { authed, via:"session"|"demo", email } | { authed:false }
+  function email() { return (session && session.email) || localStorage.getItem("store-ops:email") || "demo@store-ops.dev"; }
+
+  // Has the user DELIBERATELY opted into the demo (typed an email into the
+  // "acting as" field)? We only send X-User-Email then — never the silent
+  // default — so a fresh visitor with no session falls through to the login
+  // screen instead of being auto-logged-in as the demo user.
+  function explicitDemoEmail() { return localStorage.getItem("store-ops:email") || null; }
+
+  // Ask the backend who we are. Never throws — returns {authed:false} on any failure.
+  async function loadSession() {
+    if (!API_BASE) { session = { authed: true, via: "demo", email: email() }; return session; }
+    try {
+      var headers = {};
+      var demo = explicitDemoEmail();
+      if (demo) headers["X-User-Email"] = demo; // only when explicitly chosen
+      var res = await fetch(API_BASE + "/auth/me", { credentials: "include", headers: headers });
+      session = await res.json();
+    } catch (e) { session = { authed: false }; }
+    return session;
+  }
 
   // ── API client ────────────────────────────────────────────────────────────
   var liveMode = !!API_BASE; // becomes false if the live Worker errors out
   async function api(method, path, body) {
-    var headers = { "X-User-Email": email() };
+    var headers = {};
+    // Session cookie is the real auth; only add the demo header when the user
+    // explicitly opted into the demo (and there's no real session).
+    var demo = explicitDemoEmail();
+    if (demo && !(session && session.via === "session")) headers["X-User-Email"] = demo;
     if (body) headers["content-type"] = "application/json";
     // credentials:include sends the session cookie cross-origin (app.shipaso.com
     // → api.shipaso.com). Requires the API to echo a concrete Origin + allow
@@ -507,8 +533,50 @@
     root().appendChild(el("div", { class: "empty" }, [el("div", { class: "big" }, ["⚠️"]), el("div", {}, [e.message || "Something went wrong"]), e.status ? el("div", { class: "faint" }, ["HTTP " + e.status]) : null]));
   }
 
+  /* ════════════════════════ login ═════════════════════════════════════════ */
+  // The magic-link sign-in screen. Shown when there's a live backend and no
+  // session. Posts to /auth/request; the emailed link's callback sets the cookie
+  // and redirects back here, after which /auth/me reports the session.
+  function loginView() {
+    var c = root(); clear(c);
+    var input, btn;
+    function submit(ev) {
+      ev.preventDefault();
+      var e = input.value.trim();
+      if (!e || e.indexOf("@") < 0) { toast("Enter your email"); input.focus(); return; }
+      btn.disabled = true; btn.innerHTML = '<span class="spin"></span> Sending…';
+      fetch(API_BASE + "/auth/request", {
+        method: "POST", credentials: "include",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ email: e }),
+      }).then(function () {
+        clear(c);
+        c.appendChild(el("div", { class: "card", style: "max-width:440px;margin:64px auto;text-align:center" }, [
+          el("h2", {}, ["Check your email"]),
+          el("p", { class: "faint" }, ["If " + e + " has access, a sign-in link is on its way. Click it to continue — the link expires in 15 minutes."]),
+        ]));
+      }).catch(function () {
+        btn.disabled = false; btn.textContent = "Send sign-in link";
+        toast("Couldn't reach the server — try again.");
+      });
+    }
+    input = el("input", { class: "txt", type: "email", placeholder: "you@example.com", autocomplete: "email", spellcheck: "false" });
+    btn = el("button", { class: "btn primary", type: "submit" }, ["Send sign-in link"]);
+    var card = el("div", { class: "card", style: "max-width:440px;margin:64px auto" }, [
+      el("h2", {}, ["Sign in to ShipASO"]),
+      el("p", { class: "faint", style: "margin-top:0" }, ["Passwordless — we email you a one-time sign-in link."]),
+      el("form", { onsubmit: submit }, [
+        el("label", { class: "fld" }, [el("span", { class: "lab" }, ["Email"]), input]),
+        el("div", { class: "btn-row", style: "margin-top:10px" }, [btn]),
+      ]),
+    ]);
+    c.appendChild(card);
+  }
+
   /* ════════════════════════ router ════════════════════════════════════════ */
   function route() {
+    // Gate: with a live backend and no session, force the login screen.
+    if (API_BASE && session && session.authed === false) return loginView();
     var h = location.hash.replace(/^#/, "") || "/";
     var m;
     if ((m = h.match(/^\/apps\/([^/]+)$/))) return viewApp(m[1]);
@@ -518,12 +586,52 @@
 
   window.addEventListener("hashchange", route);
   window.addEventListener("DOMContentLoaded", function () {
-    // wire the email field (stubbed auth)
-    var input = document.getElementById("emailInput");
-    input.value = email();
-    input.addEventListener("change", function () { setEmail(input.value.trim() || "demo@store-ops.dev"); toast("Acting as " + email()); route(); });
     document.getElementById("logo").addEventListener("click", function () { go("#/"); });
-    setEnvPill();
-    route();
+    // wire the demo "acting as" field. Typing an email opts into the demo path
+    // (only works when the backend runs APP_ENV=demo); clearing it logs out of
+    // demo and falls back to the real login screen. Empty by default — we never
+    // silently act as a demo user.
+    var input = document.getElementById("emailInput");
+    if (input) {
+      input.value = explicitDemoEmail() || "";
+      input.placeholder = "demo: act as…";
+      input.addEventListener("change", function () {
+        var v = input.value.trim();
+        if (v) localStorage.setItem("store-ops:email", v);
+        else localStorage.removeItem("store-ops:email");
+        loadSession().then(function () { applyAuthHeader(); setEnvPill(); route(); });
+      });
+    }
+    // Load the session FIRST, then render — so a logged-out visitor sees login,
+    // not a flash of the app acting as the demo user.
+    loadSession().then(function () {
+      if (input) input.value = explicitDemoEmail() || "";
+      applyAuthHeader();
+      setEnvPill();
+      route();
+    });
   });
+
+  // Reflect auth state in the header: a real session shows the email + Sign out
+  // (and hides the demo "acting as" field); demo/none keeps the editable field.
+  function applyAuthHeader() {
+    var who = document.querySelector(".who");
+    var input = document.getElementById("emailInput");
+    if (!who) return;
+    var bySession = session && session.authed && session.via === "session";
+    if (input) input.style.display = bySession ? "none" : "";
+    var existing = document.getElementById("authState");
+    if (existing) existing.remove();
+    if (bySession) {
+      var span = el("span", { id: "authState", class: "faint", style: "display:flex;gap:8px;align-items:center" }, [
+        el("span", {}, [session.email]),
+        el("a", { href: "#", style: "color:inherit;text-decoration:underline;cursor:pointer", onclick: function (e) {
+          e.preventDefault();
+          fetch(API_BASE + "/auth/logout", { method: "POST", credentials: "include" })
+            .then(function () { session = { authed: false }; applyAuthHeader(); route(); });
+        } }, ["Sign out"]),
+      ]);
+      who.insertBefore(span, document.getElementById("envpill"));
+    }
+  }
 })();
