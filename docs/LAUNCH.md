@@ -66,8 +66,8 @@ approve — and we never hold your store credentials; the push is a
 generated-commands handoff you run yourself. Same engine as the plugin, but it
 keeps working while you build.
 
-- Repo (free plugin): https://github.com/airowe/app-marketplace
-- Hosted agent (live): https://store-ops-dashboard.pages.dev
+- Repo (free plugin): https://github.com/airowe/store-ops
+- Hosted agent (live): https://app.shipaso.com
 
 What's honest about the state of it: the hosted app's auth is a stubbed email
 header and billing isn't wired yet — it's a working demo of the loop, not a

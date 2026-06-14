@@ -92,8 +92,8 @@ ships without you.
 
 **9/ (CTA)**
 
-Hosted agent (live, connect an app): https://store-ops-dashboard.pages.dev
+Hosted agent (live, connect an app): https://app.shipaso.com
 
-Free plugin (MIT, run it yourself): https://github.com/airowe/app-marketplace
+Free plugin (MIT, run it yourself): https://github.com/airowe/store-ops
 
 The ASO loop that ships your metadata and proves the rank moved.
