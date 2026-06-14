@@ -120,6 +120,7 @@ import { fetchForEnv } from "../fetchAdapter.js";
 import { buildFastlaneBundle } from "../engine/fastlane.js";
 import { zipStore } from "../engine/zip.js";
 import { mintAscJwt } from "../engine/ascJwt.js";
+import { findAscAppId, applyAscMetadata, AscWriteError } from "../engine/ascWrite.js";
 import type { Env } from "../index.js";
 
 // ── token + cookie lifetimes ───────────────────────────────────────────────────
@@ -920,6 +921,68 @@ async function ascVerifyRoute(
   return { ok: true, appsVisible: total };
 }
 
+type AscPushBody = AscVerifyBody & { locale?: string };
+
+/**
+ * POST /runs/:id/asc/push — opt-in direct App Store Connect metadata WRITE (#11).
+ *
+ * Gated behind ASC_WRITE_ENABLED (unset → 403; the credential-free Fastlane
+ * handoff is the default). Only an APPROVED run may push. The user uploads their
+ * `.p8` + key/issuer id; the Worker mints a short-lived ES256 JWT, resolves the
+ * ASC app id from the bundle id, finds the editable version's localization, and
+ * PATCHes the approved copy. The `.p8` is used in-request and NEVER persisted or
+ * logged; only non-empty fields are pushed (a blank never wipes live metadata).
+ */
+async function ascPushRoute(
+  req: Request,
+  env: Env,
+  userId: string,
+  runId: string,
+): Promise<unknown> {
+  if (!isFlagOn(env.ASC_WRITE_ENABLED)) {
+    throw new HttpError(403, "direct App Store Connect push is not enabled; use the Fastlane handoff");
+  }
+  const run = await getRun(env.DB, runId);
+  if (!run) throw new HttpError(404, "run not found");
+  const app = await requireOwnedApp(env, run.app_id, userId);
+  if (run.status !== "shipped" && run.status !== "approved") {
+    throw new HttpError(403, "approval required before pushing");
+  }
+
+  const body = await req.json<AscPushBody>().catch(() => ({}) as AscPushBody);
+  if (!body.p8 || !body.keyId || !body.issuerId) {
+    throw new HttpError(400, "p8, keyId, and issuerId are required");
+  }
+  const locale = body.locale?.trim() || "en-US";
+
+  let token: string;
+  try {
+    token = await mintAscJwt({ p8: body.p8, keyId: body.keyId, issuerId: body.issuerId });
+  } catch (e) {
+    throw new HttpError(400, e instanceof Error ? e.message : "invalid credentials");
+  }
+
+  const trace = JSON.parse(run.reasoning_json) as ReasoningTrace;
+  try {
+    const ascAppId = await findAscAppId(fetch, token, app.bundle_id);
+    const result = await applyAscMetadata(fetch, {
+      token,
+      appId: ascAppId,
+      copy: trace.proposedCopy,
+      locale,
+    });
+    return result; // { ok: true, versionId, localizationId, fieldsPushed }
+  } catch (e) {
+    if (e instanceof AscWriteError) return { ok: false, reason: e.message };
+    throw e;
+  }
+}
+
+/** Truthy flag parse for opt-in env switches. */
+function isFlagOn(v: string | undefined): boolean {
+  return v === "1" || v?.toLowerCase() === "true";
+}
+
 // ── billing ────────────────────────────────────────────────────────────────────
 
 /** The Stripe secret key — STRIPE_SECRET_KEY, with the legacy STRIPE_TEST_KEY as
@@ -1237,6 +1300,9 @@ export async function handleApi(req: Request, env: Env): Promise<Response> {
       }
       if (seg.length === 4 && seg[2] === "asc" && seg[3] === "verify" && method === "POST") {
         return json(await ascVerifyRoute(req, env, user.id, runId), 200, origin);
+      }
+      if (seg.length === 4 && seg[2] === "asc" && seg[3] === "push" && method === "POST") {
+        return json(await ascPushRoute(req, env, user.id, runId), 200, origin);
       }
     }
 

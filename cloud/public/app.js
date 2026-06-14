@@ -514,22 +514,59 @@
   // is sent once to verify and is NOT stored by ShipASO.
   function ascVerifyPanel(runId) {
     var det = el("details", { class: "rawcmds asc-verify", style: "margin-top:16px" });
-    det.appendChild(el("summary", {}, ["Or verify App Store Connect credentials directly"]));
+    det.appendChild(el("summary", {}, ["Or connect App Store Connect directly (advanced)"]));
     det.appendChild(el("p", { class: "faint", style: "font-size:12.5px;margin:8px 0 12px" }, [
-      "Checks that your App Store Connect API key works (read-only — no changes are made). ",
-      el("b", { style: "color:var(--dim)" }, ["Your .p8 is used once to verify and is never stored."]),
-      " Most teams should use the Fastlane handoff above instead.",
+      "Verify your App Store Connect API key, or push the approved metadata straight to your editable App Store version. ",
+      el("b", { style: "color:var(--dim)" }, ["Your .p8 is used once and never stored."]),
+      " Most teams should use the credential-free Fastlane handoff above instead.",
     ]));
     var issuer = el("input", { class: "txt mono", type: "text", placeholder: "Issuer ID (e.g. 57246542-96fe-…)", autocomplete: "off", spellcheck: "false" });
     var keyId = el("input", { class: "txt mono", type: "text", placeholder: "Key ID (e.g. ABC123DEFG)", autocomplete: "off", spellcheck: "false" });
     var p8 = el("textarea", { class: "txt mono", rows: "4", placeholder: "-----BEGIN PRIVATE KEY-----\n…paste your .p8 contents…\n-----END PRIVATE KEY-----", autocomplete: "off", spellcheck: "false" });
     var status = el("span", { class: "faint", style: "font-size:12.5px" }, []);
-    var btn = el("button", { class: "btn", onclick: function () { verifyAsc(runId, { issuerId: issuer.value, keyId: keyId.value, p8: p8.value }, btn, status); } }, ["Verify credential"]);
+    var creds = function () { return { issuerId: issuer.value, keyId: keyId.value, p8: p8.value }; };
+    var btn = el("button", { class: "btn", onclick: function () { verifyAsc(runId, creds(), btn, status); } }, ["Verify credential"]);
+    var pushBtn = el("button", { class: "btn primary", onclick: function () { pushAsc(runId, creds(), pushBtn, status); } }, ["↥ Push to App Store Connect"]);
     det.appendChild(el("label", { class: "fld" }, [el("span", { class: "lab" }, ["Issuer ID"]), issuer]));
     det.appendChild(el("label", { class: "fld" }, [el("span", { class: "lab" }, ["Key ID"]), keyId]));
     det.appendChild(el("label", { class: "fld" }, [el("span", { class: "lab" }, [".p8 private key"]), p8]));
-    det.appendChild(el("div", { class: "btn-row", style: "align-items:center;gap:12px" }, [btn, status]));
+    det.appendChild(el("div", { class: "btn-row", style: "align-items:center;gap:12px;flex-wrap:wrap" }, [btn, pushBtn, status]));
+    det.appendChild(el("p", { class: "faint", style: "font-size:12px;margin:10px 0 0" }, [
+      el("b", { style: "color:var(--warn)" }, ["Push writes to your live App Store version"]),
+      " (the editable one in App Store Connect). Verify first. Your .p8 is used once and never stored.",
+    ]));
     return det;
+  }
+
+  async function pushAsc(runId, creds, btn, status) {
+    if (!creds.issuerId.trim() || !creds.keyId.trim() || !creds.p8.trim()) {
+      status.textContent = "Fill in issuer id, key id, and the .p8."; status.style.color = "var(--warn)"; return;
+    }
+    if (!(API_BASE && liveMode)) {
+      status.textContent = "Live API required to push."; status.style.color = "var(--warn)"; return;
+    }
+    btn.disabled = true; status.textContent = "Pushing to App Store Connect…"; status.style.color = "var(--dim)";
+    try {
+      var res = await fetch(API_BASE + "/runs/" + runId + "/asc/push", {
+        method: "POST", credentials: "include",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(creds),
+      });
+      if (res.status === 403) {
+        status.textContent = "Direct push isn't enabled — use the Fastlane handoff above.";
+        status.style.color = "var(--warn)"; return;
+      }
+      var out = await res.json();
+      if (out.ok) {
+        status.textContent = "✓ Pushed " + (out.fieldsPushed || []).length + " field(s) to the editable version.";
+        status.style.color = "var(--signal)";
+      } else {
+        status.textContent = "✕ " + (out.reason || out.error || "Push failed.");
+        status.style.color = "var(--bad)";
+      }
+    } catch (e) {
+      status.textContent = "✕ " + (e.message || "Request failed."); status.style.color = "var(--bad)";
+    } finally { btn.disabled = false; }
   }
 
   async function verifyAsc(runId, creds, btn, status) {
