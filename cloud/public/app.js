@@ -450,7 +450,7 @@
       card.appendChild(el("div", { class: "locked" }, [el("span", { class: "lock" }, ["✕"]), "You rejected this proposal. Nothing was pushed. The agent will re-draft on the next data threshold or manual run."]));
     } else {
       // approved or shipped → reveal commands
-      card.appendChild(el("p", { class: "muted", style: "margin-top:0" }, ["Approved. Run these from a machine that holds your store credentials — store-ops never does."]));
+      card.appendChild(el("p", { class: "muted", style: "margin-top:0" }, ["Approved. Run these from a machine that holds your store credentials — ShipASO never does."]));
       card.appendChild(commandsBox(R.pushCommands || []));
     }
     return card;
@@ -505,8 +505,8 @@
     svg.setAttribute("class", "spark"); svg.setAttribute("viewBox", "0 0 " + W + " " + H); svg.setAttribute("preserveAspectRatio", "none");
     svg.innerHTML =
       '<defs><linearGradient id="sparkfill" x1="0" y1="0" x2="0" y2="1">' +
-      '<stop offset="0%" stop-color="#5b8cff" stop-opacity="0.35"/>' +
-      '<stop offset="100%" stop-color="#5b8cff" stop-opacity="0"/></linearGradient></defs>' +
+      '<stop offset="0%" stop-color="#34d399" stop-opacity="0.35"/>' +
+      '<stop offset="100%" stop-color="#34d399" stop-opacity="0"/></linearGradient></defs>' +
       '<line class="axis" x1="' + pad + '" y1="' + (H - pad) + '" x2="' + (W - pad) + '" y2="' + (H - pad) + '"/>' +
       '<path class="area" d="' + dArea + '"/>' +
       '<path class="line" d="' + dLine + '"/>';
