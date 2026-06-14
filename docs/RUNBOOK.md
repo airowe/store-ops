@@ -198,6 +198,19 @@ Today's launch posture is demo-grade (test-mode Stripe, magic-link,
    - Set the live secrets: `STRIPE_TEST_KEY` → the live key, the three
      `STRIPE_PRICE_*` → the live ids, `STRIPE_WEBHOOK_SECRET` → the live secret
      (all via `wrangler secret put`), then `wrangler deploy`.
+     > **Naming gotcha:** the runtime reads the Bearer key from `STRIPE_TEST_KEY`
+     > for BOTH test and live — the name is historical, the code doesn't care.
+     > In live mode this var holds your `rk_live_…` secret. Don't be fooled by the
+     > "TEST" in the name into treating it as non-sensitive. (Rename to
+     > `STRIPE_SECRET_KEY` is tracked separately; until then, this is the var.)
+
+   **Activation is the gate.** None of the above (live key, products, webhook)
+   can exist until the Stripe account is **activated** for live mode (business +
+   bank details, in the dashboard — Stripe blocks all live charges otherwise).
+   Ordered: activate → create `rk_live_` key → `STRIPE_KEY=rk_live_… node
+   cloud/scripts/stripe-setup.mjs --live` (prints 3 live price ids) → register
+   live webhook (capture `whsec_`) → set the 5 secrets above → `wrangler deploy`
+   → verify via `GET /health`.
 5. **Verify `RESEND_FROM`** on a verified brand domain (e.g.
    `login@shipaso.com` once `shipaso.com` is verified in Resend).
 

@@ -109,7 +109,15 @@
     try { await navigator.clipboard.writeText(s); toast((label || "Copied") + " ✓"); }
     catch (e) { toast("Copy failed — select & ⌘C"); }
   }
-
+  // Trigger a client-side file download of `text` as `filename`.
+  function downloadText(text, filename, label) {
+    var blob = new Blob([text], { type: "text/x-shellscript" });
+    var url = URL.createObjectURL(blob);
+    var a = el("a", { href: url, download: filename });
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(function () { URL.revokeObjectURL(url); }, 0);
+    toast((label || "Downloaded") + " ✓");
+  }
   function loading(msg) { clear(root()); root().appendChild(el("div", { class: "empty" }, [el("div", { class: "spin" }), " " + (msg || "Loading…")])); }
 
   function setEnvPill() {
@@ -449,9 +457,9 @@
     } else if (run.status === "rejected") {
       card.appendChild(el("div", { class: "locked" }, [el("span", { class: "lock" }, ["✕"]), "You rejected this proposal. Nothing was pushed. The agent will re-draft on the next data threshold or manual run."]));
     } else {
-      // approved or shipped → reveal commands
-      card.appendChild(el("p", { class: "muted", style: "margin-top:0" }, ["Approved. Run these from a machine that holds your store credentials — store-ops never does."]));
-      card.appendChild(commandsBox(R.pushCommands || []));
+      // approved or shipped → reveal the handoff
+      card.appendChild(el("p", { class: "muted", style: "margin-top:0" }, ["Approved. Hand the metadata to your build pipeline (recommended) — that path is credential-free. Or verify your App Store Connect key directly below; ShipASO uses it once and never stores it."]));
+      card.appendChild(commandsBox(R.pushCommands || [], run.id, R.proposedCopy || {}));
     }
     return card;
   }
@@ -460,24 +468,137 @@
     return el("div", { class: "locked", style: "margin-top:14px" }, [el("span", { class: "lock" }, ["🔒"]), "Generated push commands are hidden until you approve."]);
   }
 
-  function commandsBox(cmds) {
+  function commandsBox(cmds, runId, copy) {
     var wrap = el("div", { class: "cmds", style: "margin-top:14px" });
+
+    // ── primary handoff: Fastlane metadata that drops into their pipeline ──
+    var handoff = el("div", { class: "handoff" });
+    handoff.appendChild(el("div", { class: "handoff-h" }, [
+      el("span", { class: "store-tag appstore" }, ["fastlane"]),
+      el("span", { class: "desc" }, ["Drops into your repo as a ", el("code", {}, ["fastlane/metadata/"]), " tree — your CI runs ", el("code", {}, ["deliver"]), " / ", el("code", {}, ["supply"]), " with the credentials it already holds."]),
+    ]));
+    handoff.appendChild(el("div", { class: "btn-row", style: "margin-top:12px" }, [
+      el("button", { class: "btn primary", onclick: function () { downloadFastlane(runId, copy); } }, ["↓ Download Fastlane metadata"]),
+    ]));
+    handoff.appendChild(el("p", { class: "faint", style: "font-size:12.5px;margin:10px 0 0" }, [
+      "Commit the tree (or merge the PR), then your pipeline pushes it. This path needs no credentials from you.",
+    ]));
+    wrap.appendChild(handoff);
+
+    // ── secondary: the raw commands, for manual operators ──
     var all = cmds.map(function (c) { return c.command; }).join("\n");
+    var det = el("details", { class: "rawcmds", style: "margin-top:16px" });
+    det.appendChild(el("summary", {}, ["Or run the commands manually"]));
     cmds.forEach(function (c) {
-      var pre = el("pre", {}, [c.command]);
-      wrap.appendChild(el("div", { class: "cmd" }, [
+      det.appendChild(el("div", { class: "cmd" }, [
         el("div", { class: "cmd-h" }, [
           el("span", { class: "store-tag " + c.store }, [c.tool]),
           el("span", { class: "desc" }, [c.description]),
           el("button", { class: "btn ghost copy-btn", onclick: function () { copyText(c.command, "Command copied"); } }, ["Copy"]),
         ]),
-        pre,
+        el("pre", {}, [c.command]),
       ]));
     });
-    wrap.appendChild(el("div", { class: "btn-row", style: "margin-top:4px" }, [
+    det.appendChild(el("div", { class: "btn-row", style: "margin-top:4px" }, [
       el("button", { class: "btn", onclick: function () { copyText(all, "All commands copied"); } }, ["Copy all"]),
     ]));
+    wrap.appendChild(det);
+
+    // ── opt-in: verify App Store Connect credentials (the .p8 path) ──
+    wrap.appendChild(ascVerifyPanel(runId));
     return wrap;
+  }
+
+  // Opt-in App Store Connect credential check. Collapsed by default — the
+  // credential-free Fastlane path above stays the recommended default. The .p8
+  // is sent once to verify and is NOT stored by ShipASO.
+  function ascVerifyPanel(runId) {
+    var det = el("details", { class: "rawcmds asc-verify", style: "margin-top:16px" });
+    det.appendChild(el("summary", {}, ["Or verify App Store Connect credentials directly"]));
+    det.appendChild(el("p", { class: "faint", style: "font-size:12.5px;margin:8px 0 12px" }, [
+      "Checks that your App Store Connect API key works (read-only — no changes are made). ",
+      el("b", { style: "color:var(--dim)" }, ["Your .p8 is used once to verify and is never stored."]),
+      " Most teams should use the Fastlane handoff above instead.",
+    ]));
+    var issuer = el("input", { class: "txt mono", type: "text", placeholder: "Issuer ID (e.g. 57246542-96fe-…)", autocomplete: "off", spellcheck: "false" });
+    var keyId = el("input", { class: "txt mono", type: "text", placeholder: "Key ID (e.g. ABC123DEFG)", autocomplete: "off", spellcheck: "false" });
+    var p8 = el("textarea", { class: "txt mono", rows: "4", placeholder: "-----BEGIN PRIVATE KEY-----\n…paste your .p8 contents…\n-----END PRIVATE KEY-----", autocomplete: "off", spellcheck: "false" });
+    var status = el("span", { class: "faint", style: "font-size:12.5px" }, []);
+    var btn = el("button", { class: "btn", onclick: function () { verifyAsc(runId, { issuerId: issuer.value, keyId: keyId.value, p8: p8.value }, btn, status); } }, ["Verify credential"]);
+    det.appendChild(el("label", { class: "fld" }, [el("span", { class: "lab" }, ["Issuer ID"]), issuer]));
+    det.appendChild(el("label", { class: "fld" }, [el("span", { class: "lab" }, ["Key ID"]), keyId]));
+    det.appendChild(el("label", { class: "fld" }, [el("span", { class: "lab" }, [".p8 private key"]), p8]));
+    det.appendChild(el("div", { class: "btn-row", style: "align-items:center;gap:12px" }, [btn, status]));
+    return det;
+  }
+
+  async function verifyAsc(runId, creds, btn, status) {
+    if (!creds.issuerId.trim() || !creds.keyId.trim() || !creds.p8.trim()) {
+      status.textContent = "Fill in issuer id, key id, and the .p8."; status.style.color = "var(--warn)"; return;
+    }
+    if (!(API_BASE && liveMode)) {
+      status.textContent = "Live API required — connect the dashboard to api.shipaso.com to verify."; status.style.color = "var(--warn)"; return;
+    }
+    btn.disabled = true; status.textContent = "Verifying…"; status.style.color = "var(--dim)";
+    try {
+      var res = await fetch(API_BASE + "/runs/" + runId + "/asc/verify", {
+        method: "POST", credentials: "include",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(creds),
+      });
+      var out = await res.json();
+      if (out.ok) {
+        status.textContent = "✓ Credential works — " + (out.appsVisible || 0) + " app(s) visible.";
+        status.style.color = "var(--signal)";
+      } else {
+        status.textContent = "✕ " + (out.reason || out.error || "Verification failed.");
+        status.style.color = "var(--bad)";
+      }
+    } catch (e) {
+      status.textContent = "✕ " + (e.message || "Request failed."); status.style.color = "var(--bad)";
+    } finally { btn.disabled = false; }
+  }
+
+  // Download the Fastlane metadata bundle. Live: stream the zip from the Worker
+  // (real archive, cookie-authed). Mock/no-API: build the file tree client-side
+  // and download it as a single readable .txt preview (no zip lib in the browser).
+  async function downloadFastlane(runId, copy) {
+    if (API_BASE && liveMode) {
+      try {
+        var res = await fetch(API_BASE + "/runs/" + runId + "/fastlane.zip", { credentials: "include" });
+        if (!res.ok) throw new Error("HTTP " + res.status);
+        var blob = await res.blob();
+        var url = URL.createObjectURL(blob);
+        var a = el("a", { href: url, download: "fastlane-metadata.zip" });
+        document.body.appendChild(a); a.click(); a.remove();
+        setTimeout(function () { URL.revokeObjectURL(url); }, 0);
+        toast("Fastlane metadata downloaded ✓");
+        return;
+      } catch (e) { toast("Download failed — " + (e.message || "try again")); return; }
+    }
+    // mock preview: concatenate the tree into one annotated file
+    var files = buildFastlaneFiles(copy);
+    var preview = files.map(function (f) { return "# ===== " + f.path + " =====\n" + f.content; }).join("\n\n");
+    downloadText(preview, "fastlane-metadata.txt", "Fastlane metadata (preview) downloaded");
+  }
+
+  // Client mirror of cloud/src/engine/fastlane.ts (that module is the tested
+  // source of truth). Maps proposed copy → the fastlane/metadata file tree.
+  function buildFastlaneFiles(copy, locale) {
+    locale = locale || "en-US";
+    var files = [];
+    var add = function (p, v) { if (v !== undefined && v !== null && v !== "") files.push({ path: p, content: v }); };
+    var ios = "fastlane/metadata/" + locale;
+    add(ios + "/name.txt", copy.name);
+    add(ios + "/subtitle.txt", copy.subtitle);
+    add(ios + "/keywords.txt", copy.keywords);
+    add(ios + "/promotional_text.txt", copy.promo);
+    add(ios + "/description.txt", copy.description);
+    var android = "fastlane/metadata/android/" + locale;
+    add(android + "/title.txt", copy.name);
+    add(android + "/short_description.txt", copy.subtitle);
+    add(android + "/full_description.txt", copy.description);
+    return files;
   }
 
   function decide(runId, action, card) {
@@ -505,8 +626,8 @@
     svg.setAttribute("class", "spark"); svg.setAttribute("viewBox", "0 0 " + W + " " + H); svg.setAttribute("preserveAspectRatio", "none");
     svg.innerHTML =
       '<defs><linearGradient id="sparkfill" x1="0" y1="0" x2="0" y2="1">' +
-      '<stop offset="0%" stop-color="#5b8cff" stop-opacity="0.35"/>' +
-      '<stop offset="100%" stop-color="#5b8cff" stop-opacity="0"/></linearGradient></defs>' +
+      '<stop offset="0%" stop-color="#34d399" stop-opacity="0.35"/>' +
+      '<stop offset="100%" stop-color="#34d399" stop-opacity="0"/></linearGradient></defs>' +
       '<line class="axis" x1="' + pad + '" y1="' + (H - pad) + '" x2="' + (W - pad) + '" y2="' + (H - pad) + '"/>' +
       '<path class="area" d="' + dArea + '"/>' +
       '<path class="line" d="' + dLine + '"/>';
