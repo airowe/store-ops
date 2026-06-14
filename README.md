@@ -21,7 +21,7 @@ for you:
 
 | Path | What |
 |------|------|
-| **`skills/` + `lib/`** | The **free OSS Claude Code plugin** — 23 skills + the engine (Python, 158 tests). Run the whole loop yourself in your editor. |
+| **`skills/` + `lib/`** | The **free OSS Claude Code plugin** — 24 skills + the engine (Python, 168 tests). Run the whole loop yourself in your editor. |
 | **`cloud/`** | The **hosted autonomous agent** — a Cloudflare app (Workers + D1 + Cron + Pages) that runs the loop on a schedule and surfaces decisions for approval. Engine ported to TypeScript (45 tests). See `cloud/README.md` + `cloud/DEPLOY.md`. |
 | **`commercial/`, `docs/`** | The offer, the launch posts, the landing page. |
 
@@ -35,7 +35,7 @@ is the product (it keeps working while you build). Same engine, two surfaces.
 - **Hosted + autonomous** — connect an app by bundle id and an agent runs the
   loop on a weekly schedule: re-checking ranks, watching competitors, drafting
   the next optimization, surfacing each decision for you to approve. It's live:
-  **https://store-ops-dashboard.pages.dev**
+  **https://app.shipaso.com**
 
 ## What it does
 
@@ -120,29 +120,30 @@ reviews, rollout, vitals — for both App Store Connect and Google Play Console.
 ## Install
 
 ```
-/plugin marketplace add airowe/app-marketplace
-/plugin install store-ops
+/plugin marketplace add airowe/store-ops
+/plugin install store-ops@store-ops
 ```
 
 ## Open-core — what's free vs. hosted
 
 **The plugin is free and MIT-licensed, forever.** Everything above — the full
-audit → research → optimize → push → verify loop, both stores, all 23 skills —
+audit → research → optimize → push → verify loop, both stores, all 24 skills —
 runs locally with your own credentials at no cost. Use it, fork it, ship apps
 with it. That's the whole product for anyone who's comfortable in a terminal.
 
 The line for the **hosted tier** is *convenience, never capability*. The free
 plugin is complete; the paid tier sells you out of the setup pain and the
 remembering. The hosted agent is **live now** at
-**https://store-ops-dashboard.pages.dev** — connect an app and watch the loop
-run on a schedule.
+**https://app.shipaso.com** — connect an app and watch the loop run on a
+schedule.
 
 | | Free (this plugin) | Hosted agent |
 |---|---|---|
-| The 23 skills + full loop | ✅ all of it | ✅ same engine |
+| The 24 skills + full loop | ✅ all of it | ✅ same engine |
 | Real volume data | BYO Apple/Google keys | guided setup |
 | Rank tracking | run `aso-rank-check` by hand | **scheduled** weekly + history + delta alerts |
-| Apps | unlimited (it's local) | unlimited |
+| Standing autonomy (weekly cron) | ❌ you re-run it | ✅ Autopilot / Fleet |
+| Apps | unlimited (it's local) | 1 (Launch) · 3 (Autopilot) · 50 (Fleet) |
 | Approval gate | you run the push | enforced in code — commands withheld until you approve |
 
 The tiers:
@@ -161,7 +162,7 @@ the guided onboarding, the scheduler, and the history. The differentiator isn't
 the data — everyone has Apple's popularity numbers. It's that ShipASO *ships
 the metadata and proves the rank moved.*
 
-**→ Try the hosted agent: https://store-ops-dashboard.pages.dev**
+**→ Try the hosted agent: https://app.shipaso.com**
 
 ## License
 

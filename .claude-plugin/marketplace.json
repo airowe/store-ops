@@ -1,0 +1,17 @@
+{
+  "name": "store-ops",
+  "owner": {
+    "name": "Adam Rowe"
+  },
+  "metadata": {
+    "description": "ShipASO — AI-native ASO for App Store and Google Play. Audit, research on real rank data, optimize to exact char limits, push, and prove the rank moved.",
+    "version": "0.1.0"
+  },
+  "plugins": [
+    {
+      "name": "store-ops",
+      "source": ".",
+      "description": "The reason -> ship -> verify -> watch ASO loop for App Store AND Google Play. No paid data API."
+    }
+  ]
+}
