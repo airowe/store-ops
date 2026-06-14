@@ -119,6 +119,7 @@ import { buildAppInput, type RunOverrides } from "./runConfig.js";
 import { fetchForEnv } from "../fetchAdapter.js";
 import { buildFastlaneBundle } from "../engine/fastlane.js";
 import { zipStore } from "../engine/zip.js";
+import { mintAscJwt } from "../engine/ascJwt.js";
 import type { Env } from "../index.js";
 
 // ── token + cookie lifetimes ───────────────────────────────────────────────────
@@ -868,6 +869,57 @@ async function fastlaneZipRoute(
   });
 }
 
+type AscVerifyBody = { p8?: string; keyId?: string; issuerId?: string };
+
+/**
+ * POST /runs/:id/asc/verify — opt-in App Store Connect credential check.
+ *
+ * The user uploads their `.p8` + key id + issuer id; the Worker mints a
+ * short-lived ES256 JWT and calls a READ endpoint (`GET /v1/apps`) to prove the
+ * credential works. This is the thin slice of the "one-click upload" path — it
+ * authenticates only, no writes yet.
+ *
+ * SECURITY: the `.p8` is used in-request and never persisted (no D1, no secret)
+ * and never logged. Only a boolean result + Apple's app count leave this fn.
+ */
+async function ascVerifyRoute(
+  req: Request,
+  env: Env,
+  userId: string,
+  runId: string,
+): Promise<unknown> {
+  const run = await getRun(env.DB, runId);
+  if (!run) throw new HttpError(404, "run not found");
+  await requireOwnedApp(env, run.app_id, userId);
+
+  const body = await req.json<AscVerifyBody>().catch(() => ({}) as AscVerifyBody);
+  if (!body.p8 || !body.keyId || !body.issuerId) {
+    throw new HttpError(400, "p8, keyId, and issuerId are required");
+  }
+
+  let token: string;
+  try {
+    token = await mintAscJwt({ p8: body.p8, keyId: body.keyId, issuerId: body.issuerId });
+  } catch (e) {
+    // AscCredError messages are key-free by construction.
+    throw new HttpError(400, e instanceof Error ? e.message : "invalid credentials");
+  }
+
+  // Probe a read endpoint to confirm the credential is accepted by Apple.
+  const res = await fetch("https://api.appstoreconnect.apple.com/v1/apps?limit=1", {
+    headers: { authorization: `Bearer ${token}` },
+  });
+  if (res.status === 401 || res.status === 403) {
+    return { ok: false, reason: "Apple rejected the credential (401/403). Check the key id, issuer id, and that the key has the right role." };
+  }
+  if (!res.ok) {
+    return { ok: false, reason: `App Store Connect returned ${res.status}.` };
+  }
+  const data = (await res.json().catch(() => ({}))) as { data?: unknown[]; meta?: { paging?: { total?: number } } };
+  const total = data.meta?.paging?.total ?? (Array.isArray(data.data) ? data.data.length : 0);
+  return { ok: true, appsVisible: total };
+}
+
 // ── billing ────────────────────────────────────────────────────────────────────
 
 /** Pull the Stripe price-env slice off the worker Env. */
@@ -1175,6 +1227,9 @@ export async function handleApi(req: Request, env: Env): Promise<Response> {
       }
       if (seg.length === 3 && seg[2] === "fastlane.zip" && method === "GET") {
         return await fastlaneZipRoute(env, user.id, runId, origin);
+      }
+      if (seg.length === 4 && seg[2] === "asc" && seg[3] === "verify" && method === "POST") {
+        return json(await ascVerifyRoute(req, env, user.id, runId), 200, origin);
       }
     }
 

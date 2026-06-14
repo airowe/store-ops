@@ -503,7 +503,60 @@
       el("button", { class: "btn", onclick: function () { copyText(all, "All commands copied"); } }, ["Copy all"]),
     ]));
     wrap.appendChild(det);
+
+    // ── opt-in: verify App Store Connect credentials (the .p8 path) ──
+    wrap.appendChild(ascVerifyPanel(runId));
     return wrap;
+  }
+
+  // Opt-in App Store Connect credential check. Collapsed by default — the
+  // credential-free Fastlane path above stays the recommended default. The .p8
+  // is sent once to verify and is NOT stored by ShipASO.
+  function ascVerifyPanel(runId) {
+    var det = el("details", { class: "rawcmds asc-verify", style: "margin-top:16px" });
+    det.appendChild(el("summary", {}, ["Or verify App Store Connect credentials directly"]));
+    det.appendChild(el("p", { class: "faint", style: "font-size:12.5px;margin:8px 0 12px" }, [
+      "Checks that your App Store Connect API key works (read-only — no changes are made). ",
+      el("b", { style: "color:var(--dim)" }, ["Your .p8 is used once to verify and is never stored."]),
+      " Most teams should use the Fastlane handoff above instead.",
+    ]));
+    var issuer = el("input", { class: "txt mono", type: "text", placeholder: "Issuer ID (e.g. 57246542-96fe-…)", autocomplete: "off", spellcheck: "false" });
+    var keyId = el("input", { class: "txt mono", type: "text", placeholder: "Key ID (e.g. ABC123DEFG)", autocomplete: "off", spellcheck: "false" });
+    var p8 = el("textarea", { class: "txt mono", rows: "4", placeholder: "-----BEGIN PRIVATE KEY-----\n…paste your .p8 contents…\n-----END PRIVATE KEY-----", autocomplete: "off", spellcheck: "false" });
+    var status = el("span", { class: "faint", style: "font-size:12.5px" }, []);
+    var btn = el("button", { class: "btn", onclick: function () { verifyAsc(runId, { issuerId: issuer.value, keyId: keyId.value, p8: p8.value }, btn, status); } }, ["Verify credential"]);
+    det.appendChild(el("label", { class: "fld" }, [el("span", { class: "lab" }, ["Issuer ID"]), issuer]));
+    det.appendChild(el("label", { class: "fld" }, [el("span", { class: "lab" }, ["Key ID"]), keyId]));
+    det.appendChild(el("label", { class: "fld" }, [el("span", { class: "lab" }, [".p8 private key"]), p8]));
+    det.appendChild(el("div", { class: "btn-row", style: "align-items:center;gap:12px" }, [btn, status]));
+    return det;
+  }
+
+  async function verifyAsc(runId, creds, btn, status) {
+    if (!creds.issuerId.trim() || !creds.keyId.trim() || !creds.p8.trim()) {
+      status.textContent = "Fill in issuer id, key id, and the .p8."; status.style.color = "var(--warn)"; return;
+    }
+    if (!(API_BASE && liveMode)) {
+      status.textContent = "Live API required — connect the dashboard to api.shipaso.com to verify."; status.style.color = "var(--warn)"; return;
+    }
+    btn.disabled = true; status.textContent = "Verifying…"; status.style.color = "var(--dim)";
+    try {
+      var res = await fetch(API_BASE + "/runs/" + runId + "/asc/verify", {
+        method: "POST", credentials: "include",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(creds),
+      });
+      var out = await res.json();
+      if (out.ok) {
+        status.textContent = "✓ Credential works — " + (out.appsVisible || 0) + " app(s) visible.";
+        status.style.color = "var(--signal)";
+      } else {
+        status.textContent = "✕ " + (out.reason || out.error || "Verification failed.");
+        status.style.color = "var(--bad)";
+      }
+    } catch (e) {
+      status.textContent = "✕ " + (e.message || "Request failed."); status.style.color = "var(--bad)";
+    } finally { btn.disabled = false; }
   }
 
   // Download the Fastlane metadata bundle. Live: stream the zip from the Worker
