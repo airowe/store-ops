@@ -40,11 +40,11 @@ DEFAULT_COUNTRY = "US"
 # anything else (e.g. "production") to REQUIRE SESSION_SECRET and DISABLE the
 # X-User-Email fallback — only signed session cookies authenticate.
 APP_ENV = "demo"
-# DASHBOARD_ORIGIN — the Pages dashboard origin, echoed on CORS responses (must
-# be a concrete origin, not "*", because cookies are sent with credentials) and
-# used to build the post-login redirect. Optional: falls back to the request
-# Origin when unset.
-# DASHBOARD_ORIGIN = "https://store-ops-dashboard.pages.dev"
+# DASHBOARD_ORIGIN — the canonical dashboard origin. Echoed on CORS responses
+# (must be a concrete origin, not "*", because cookies are sent with credentials)
+# AND used to build the post-login + Stripe redirect targets, so the browser
+# lands on the dashboard (not the bare Worker) after the magic link / checkout.
+DASHBOARD_ORIGIN = "https://app.shipaso.com"
 
 # ── Secrets (DO NOT put values here — set via `wrangler secret put NAME`) ─────
 # Auth:
