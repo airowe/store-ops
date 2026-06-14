@@ -1,0 +1,240 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>How to Check Your App's Organic App Store Rank for Free (No Account)</title>
+<meta name="description" content="Check your app's real organic App Store rank for any keyword — free, no account, no sign-up. The public iTunes Search API returns apps in the store's own ranking order, so your spot in the results IS your rank. Here's the exact command.">
+<meta property="og:title" content="Check your app's organic App Store rank — free, no account">
+<meta property="og:description" content="The public iTunes Search API returns apps in the store's own ranking order, so your position in the results is your rank for that keyword. Here's the free method — and the exact command.">
+<meta property="og:type" content="article">
+<meta property="og:url" content="https://shipaso.com/check-your-rank">
+<link rel="canonical" href="https://shipaso.com/check-your-rank">
+<style>
+  :root {
+    --ink: #15171a; --muted: #5b6470; --line: #e6e8ec;
+    --accent: #e63946; --accent-2: #3fb97d; --bg: #fbfbfc; --card: #fff;
+  }
+  * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; scroll-behavior: smooth; }
+  body {
+    margin: 0; font-family: -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    color: var(--ink); background: var(--bg); line-height: 1.55; font-size: 17px;
+  }
+  .wrap { max-width: 760px; margin: 0 auto; padding: 0 22px; }
+  header { padding: 64px 0 8px; }
+  .brand {
+    font-size: 20px; font-weight: 800; letter-spacing: -0.3px; color: var(--ink);
+    margin-bottom: 28px;
+  }
+  .brand a { color: inherit; text-decoration: none; }
+  .kicker {
+    display: inline-block; font-size: 13px; letter-spacing: .04em; text-transform: uppercase;
+    color: var(--accent); font-weight: 700; margin-bottom: 14px;
+  }
+  h1 { font-size: 40px; line-height: 1.1; letter-spacing: -0.5px; margin: 0 0 16px; }
+  h1 .hl { color: var(--accent); }
+  .lede { font-size: 20px; color: var(--muted); margin: 0 0 28px; }
+  .loop {
+    font-family: "SF Mono", ui-monospace, Menlo, monospace; font-size: 14px;
+    background: var(--card); border: 1px solid var(--line); border-radius: 12px;
+    padding: 16px 18px; margin: 0 0 30px; overflow-x: auto; color: var(--ink);
+  }
+  .loop b { color: var(--accent-2); }
+  .loop i { color: var(--muted); font-style: normal; }
+  .ttv { font-size: 14.5px; color: var(--muted); margin: 0 0 22px; }
+  .ttv b { color: var(--ink); font-weight: 600; }
+  .hero-cta { display: flex; gap: 12px; flex-wrap: wrap; margin: 0 0 12px; }
+  .btn {
+    display: inline-block; padding: 13px 22px; font-size: 16px; font-weight: 600;
+    border-radius: 10px; cursor: pointer; text-decoration: none; border: 1px solid transparent;
+  }
+  .btn-primary { color: #fff; background: var(--ink); }
+  .btn-primary:hover { background: #000; }
+  .btn-ghost { color: var(--ink); background: #fff; border-color: var(--line); }
+  .btn-ghost:hover { border-color: var(--ink); }
+  .fineprint { font-size: 13px; color: var(--muted); margin: 0 0 56px; }
+  .fineprint a { color: var(--ink); }
+  h2 { font-size: 24px; letter-spacing: -0.3px; margin: 48px 0 14px; }
+  h3 { letter-spacing: -0.2px; }
+  section p { color: #2b3038; }
+  section code {
+    font-family: "SF Mono", ui-monospace, Menlo, monospace; font-size: 14px;
+    background: #f2f3f5; border: 1px solid var(--line); border-radius: 6px; padding: 1px 6px;
+  }
+  blockquote {
+    margin: 18px 0; padding: 12px 16px; border-left: 3px solid var(--accent);
+    background: #fff7f7; color: #3a2b2c; font-size: 15.5px;
+  }
+  .cmd {
+    font-family: "SF Mono", ui-monospace, Menlo, monospace; font-size: 14px;
+    background: var(--card); border: 1px solid var(--line); border-radius: 12px;
+    padding: 16px 18px; margin: 16px 0 8px; overflow-x: auto; color: var(--ink);
+    white-space: pre; line-height: 1.5;
+  }
+  .cmd .c { color: var(--muted); }
+  .cmd .p { color: var(--accent-2); }
+
+  /* how it works */
+  .steps { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin: 18px 0 8px; }
+  @media (max-width: 600px) { .steps { grid-template-columns: 1fr; } h1 { font-size: 31px; } }
+  .step {
+    background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 16px 18px;
+  }
+  .step .n { font-size: 12px; font-weight: 700; color: var(--accent); letter-spacing: .04em; }
+  .step h3 { margin: 4px 0 6px; font-size: 16px; }
+  .step p { margin: 0; font-size: 14.5px; color: var(--muted); }
+
+  /* value ladder / tiers */
+  .tiers { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin: 18px 0 8px; }
+  @media (max-width: 600px) { .tiers { grid-template-columns: 1fr; } }
+  .tier {
+    background: var(--card); border: 1px solid var(--line); border-radius: 14px;
+    padding: 20px 20px 22px; display: flex; flex-direction: column;
+  }
+  .tier.featured { border-color: var(--accent-2); box-shadow: 0 0 0 1px var(--accent-2); }
+  .tier h3 { margin: 0 0 2px; font-size: 18px; }
+  .tier .price { font-size: 26px; font-weight: 700; margin: 6px 0 2px; letter-spacing: -0.5px; }
+  .tier .price span { font-size: 14px; font-weight: 600; color: var(--muted); }
+  .tier .sub { font-size: 13px; color: var(--muted); margin: 0 0 12px; min-height: 18px; }
+  .tier ul { list-style: none; padding: 0; margin: 0 0 18px; font-size: 14.5px; color: #2b3038; }
+  .tier li { padding: 4px 0 4px 22px; position: relative; }
+  .tier li::before { content: "→"; position: absolute; left: 0; color: var(--accent-2); font-weight: 700; }
+  .tier .btn { margin-top: auto; text-align: center; }
+  .badge {
+    display: inline-block; font-size: 11px; font-weight: 700; color: var(--accent-2);
+    border: 1px solid var(--accent-2); border-radius: 999px; padding: 2px 9px; margin-left: 6px; vertical-align: middle;
+  }
+
+  footer { margin: 60px 0 50px; padding-top: 22px; border-top: 1px solid var(--line); color: var(--muted); font-size: 14px; }
+  footer a { color: var(--ink); }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <div class="brand"><a href="https://shipaso.com">ShipASO</a></div>
+    <span class="kicker">App Store · free method · no account</span>
+    <h1>How to check your app's organic App Store rank <span class="hl">— free, no account.</span></h1>
+    <p class="lede">You don't need a paid ASO tool to see where your app ranks for
+    a keyword. The App Store already publishes the answer — you just have to read it.</p>
+
+    <div class="loop">
+      search a keyword &nbsp;→&nbsp; the store returns apps <b>in ranking order</b>
+      &nbsp;→&nbsp; your position in that list <i>is</i> your rank
+    </div>
+
+    <p class="ttv">One command, no sign-up → <b>your real rank for any keyword.</b></p>
+
+    <div class="hero-cta">
+      <a class="btn btn-primary" href="https://github.com/airowe/store-ops">Get the free plugin</a>
+      <a class="btn btn-ghost" href="#how">See the method</a>
+    </div>
+    <p class="fineprint">The plugin is <strong>free and MIT</strong>. The rank check
+    below needs <strong>no account, no API key, and no tracking</strong> — it reads
+    a public Apple endpoint.</p>
+  </header>
+
+  <section>
+    <h2>Why this actually works</h2>
+    <p>When you search a keyword in the App Store, Apple returns a list of apps.
+    That list isn't random or alphabetical — it's the store's <em>own</em> ranking
+    for that term. The same ordering is exposed by the public <strong>iTunes Search
+    API</strong>, an endpoint Apple has published for years that anybody can call
+    over plain HTTPS.</p>
+
+    <p>So the trick is simple and honest: query that endpoint for a keyword, get
+    back the apps in store order, and find the position of your bundle ID in the
+    results. <strong>Your spot in the list is your organic rank for that keyword.</strong>
+    No scraping, no account, no paid data API — you're just reading the order Apple
+    already hands out.</p>
+
+    <blockquote>
+      One caveat, stated plainly: this reads the public Search API, not the
+      logged-in store on a real device. It's an excellent, free proxy for organic
+      keyword rank — and it's the same signal ShipASO uses — but it can differ
+      slightly from what a specific user sees with personalization and regional
+      A/B tests in play.
+    </blockquote>
+  </section>
+
+  <section id="how">
+    <h2>How it works</h2>
+    <div class="steps">
+      <div class="step"><div class="n">01 · PICK</div><h3>A keyword + your bundle ID</h3><p>The term you want to rank for, and your app's bundle identifier (e.g. <code>com.acme.app</code>).</p></div>
+      <div class="step"><div class="n">02 · QUERY</div><h3>The public Search API</h3><p>One HTTPS call to Apple's iTunes Search endpoint returns the apps for that term, in the store's ranking order.</p></div>
+      <div class="step"><div class="n">03 · FIND</div><h3>Your position in the list</h3><p>Scan the results for your bundle ID. Result #7 means you rank #7 organically for that keyword.</p></div>
+      <div class="step"><div class="n">04 · REPEAT</div><h3>Across your keyword set + markets</h3><p>Run it for every term you care about, in any of the store's regional markets, to build a full rank picture.</p></div>
+    </div>
+
+    <h3 style="margin-top:34px;">The exact command</h3>
+    <p>ShipASO's free, MIT-licensed plugin ships the same rank reader it uses
+    internally. Clone <a href="https://github.com/airowe/store-ops">the repo</a>,
+    then run:</p>
+
+    <div class="cmd"><span class="p">python3</span> lib/aso_rank_check.py --bundle &lt;id&gt; <span class="c">"&lt;keywords&gt;"</span></div>
+
+    <p style="margin-top:14px;">For example, to check a meditation app against three terms:</p>
+
+    <div class="cmd"><span class="p">python3</span> lib/aso_rank_check.py --bundle com.acme.meditate <span class="c">"meditation, stoic, journaling"</span></div>
+
+    <p style="margin-top:14px;">It prints each keyword with your app's organic
+    rank for it — or marks the term if you're not in the visible results. That's
+    the whole method. No account, no key, no cost.</p>
+  </section>
+
+  <section>
+    <h2>This checks once. ShipASO proves it moved.</h2>
+    <p>The command above gives you a snapshot — your rank for a keyword,
+    <em>right now</em>. That's genuinely useful, and it's free forever. But a single
+    number doesn't tell you whether a metadata change actually worked. For that you
+    need the same read, on a schedule, with the history kept.</p>
+
+    <p>That's the only difference between the free method and the product:
+    <strong>this checks once; ShipASO tracks it weekly and proves the change
+    landed</strong> — a dated before/after per keyword, not a vibe.</p>
+
+    <div class="tiers">
+
+      <div class="tier">
+        <h3>Free plugin</h3>
+        <div class="price">$0</div>
+        <p class="sub">The rank check on this page — yours.</p>
+        <ul>
+          <li>The exact <code>aso_rank_check.py</code> command</li>
+          <li>Check any keyword, any market</li>
+          <li>No account, no API key, no tracking</li>
+          <li>MIT-licensed, run it on your machine</li>
+        </ul>
+        <a class="btn btn-ghost" href="https://github.com/airowe/store-ops">Get the free plugin</a>
+      </div>
+
+      <div class="tier featured">
+        <h3>Hosted agent <span class="badge">tracks it</span></h3>
+        <div class="price">ShipASO</div>
+        <p class="sub">The same read, weekly, with history.</p>
+        <ul>
+          <li>Weekly rank tracking per keyword</li>
+          <li>Dated before/after — proof it moved</li>
+          <li>Ships the metadata, then re-reads the rank</li>
+          <li>Pings you only on a real move</li>
+        </ul>
+        <a class="btn btn-primary" href="https://app.shipaso.com">Track it on autopilot</a>
+      </div>
+
+    </div>
+    <p class="fineprint">Same signal at both tiers — the free plugin reads the rank
+    once; the hosted agent keeps reading it so you see the change land. We never hold
+    your store credentials.</p>
+  </section>
+
+  <footer>
+    <p><strong>ShipASO</strong> — MIT-licensed ASO for App Store &amp; Google Play.<br>
+    Free plugin: <a href="https://github.com/airowe/store-ops">github.com/airowe/store-ops</a> ·
+    Hosted agent: <a href="https://app.shipaso.com">app.shipaso.com</a></p>
+  </footer>
+
+</div>
+</body>
+</html>

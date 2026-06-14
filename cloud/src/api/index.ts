@@ -37,6 +37,9 @@
  *                           JSON → 200). Idempotent on email; no auth.
  *   GET  /proof             public anonymized aggregate proof (rank-win numbers
  *                           for the landing). No app/user data. Cached 1h.
+ *   GET  /portfolio         Fleet-tier roll-up: every app's grade / lead rank /
+ *                           pending-approval + summary counts (402 below Fleet).
+ *   POST /runs/approve-all  bulk-approve every pending run across the user's apps.
  *   POST /resolve           {query} → connectable candidates (name / App Store or
  *                           Play URL / numeric id / bundle id). No connect, no run.
  *                           kind: "resolved" | "candidates" | "not-found".
@@ -96,6 +99,8 @@ import {
 } from "../auth.js";
 import { emailSenderForEnv } from "../emailSender.js";
 import { aggregateProof, extractWins } from "../proof.js";
+import { type AppCard, summarizePortfolio } from "../portfolio.js";
+import { type RunRef, planBulkApprove } from "../bulkApprove.js";
 import {
   appLimitForTier,
   createCheckoutSession,
@@ -448,6 +453,70 @@ async function proofStats(env: Env, origin: string | null): Promise<Response> {
   );
   const agg = aggregateProof(winsByApp);
   return json(agg, 200, origin, env, { "cache-control": "public, max-age=3600" });
+}
+
+/**
+ * GET /portfolio — the Fleet "one glance" roll-up: every app with its grade,
+ * lead rank, and pending-approval flag, plus the summary counts. Fleet-tier
+ * gated (it's the agency/multi-app view). Pure shaping is summarizePortfolio;
+ * here we assemble the cards from each app's latest run.
+ */
+async function portfolioView(env: Env, userId: string): Promise<unknown> {
+  const tier = await getTier(env.DB, userId);
+  if (tier !== "fleet") {
+    throw new HttpError(402, "the portfolio view is a Fleet feature — upgrade to Fleet Autopilot");
+  }
+  const rows = await listAppsForUser(env.DB, userId);
+  const cards: AppCard[] = await Promise.all(
+    rows.map(async (a) => {
+      let grade: string | null = null;
+      let leadKeyword: string | null = null;
+      let leadRank: number | null = null;
+      let pendingApproval = false;
+      if (a.latest_run_id) {
+        const run = await getRun(env.DB, a.latest_run_id);
+        if (run) {
+          pendingApproval = run.status === "awaiting_approval";
+          const trace = JSON.parse(run.reasoning_json) as ReasoningTrace;
+          grade = trace.audit?.screenshots?.grade ?? null;
+          const summary = rankSummary(trace.ranks);
+          if (summary) {
+            leadKeyword = summary.lead_keyword || null;
+            leadRank = summary.lead_rank;
+          }
+        }
+      }
+      return { appId: a.id, name: a.name, grade, leadKeyword, leadRank, pendingApproval };
+    }),
+  );
+  return summarizePortfolio(cards);
+}
+
+/**
+ * POST /runs/approve-all — approve every run currently at the gate across the
+ * user's apps (a Fleet ergonomic). planBulkApprove decides approvability
+ * (strictly awaiting_approval); we recordApproval each, ownership already
+ * guaranteed by only gathering the caller's own runs.
+ */
+async function approveAll(env: Env, userId: string): Promise<unknown> {
+  const apps = await listAppsForUser(env.DB, userId);
+  const refs: RunRef[] = [];
+  for (const a of apps) {
+    const runs = await listRunsForApp(env.DB, a.id);
+    for (const r of runs) refs.push({ runId: r.id, appId: a.id, status: r.status });
+  }
+  const plan = planBulkApprove(refs);
+
+  const approved: string[] = [];
+  for (const runId of plan.approvable) {
+    // Re-check no prior approval (defensive — a concurrent single-approve could
+    // have landed between the plan and here).
+    const existing = await getApproval(env.DB, runId);
+    if (existing) continue;
+    await recordApproval(env.DB, { runId, decision: "approved" });
+    approved.push(runId);
+  }
+  return { approved, approvedCount: approved.length, skipped: plan.skipped };
 }
 
 /** POST /apps — connect + initial run. */
@@ -980,6 +1049,16 @@ export async function handleApi(req: Request, env: Env): Promise<Response> {
     // /resolve — query → candidates (no connect, no run)
     if (seg[0] === "resolve" && seg.length === 1 && method === "POST") {
       return json(await resolveQuery(req, env), 200, origin);
+    }
+
+    // /portfolio — the Fleet roll-up across all of the user's apps
+    if (seg[0] === "portfolio" && seg.length === 1 && method === "GET") {
+      return json(await portfolioView(env, user.id), 200, origin, env);
+    }
+
+    // /runs/approve-all — bulk-approve every pending run (matched BEFORE /runs/:id)
+    if (seg[0] === "runs" && seg[1] === "approve-all" && seg.length === 2 && method === "POST") {
+      return json(await approveAll(env, user.id), 200, origin, env);
     }
 
     // /apps ...
