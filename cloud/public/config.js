@@ -11,5 +11,5 @@
  * it falls back to the demo backend for the session (and flips the header pill).
  */
 window.STORE_OPS = {
-  API_BASE: "https://store-ops.adaminsley.workers.dev",
+  API_BASE: "https://api.shipaso.com",
 };

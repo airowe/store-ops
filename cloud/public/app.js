@@ -29,7 +29,10 @@
   async function api(method, path, body) {
     var headers = { "X-User-Email": email() };
     if (body) headers["content-type"] = "application/json";
-    var init = { method: method, headers: headers };
+    // credentials:include sends the session cookie cross-origin (app.shipaso.com
+    // → api.shipaso.com). Requires the API to echo a concrete Origin + allow
+    // credentials (it does), and the cookie to be SameSite=None + Domain-scoped.
+    var init = { method: method, headers: headers, credentials: "include" };
     if (body) init.body = JSON.stringify(body);
 
     if (API_BASE && liveMode) {

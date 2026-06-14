@@ -176,31 +176,39 @@ export function verifySessionToken(
 
 // ── cookies ─────────────────────────────────────────────────────────────────────
 
-/** Serialize the HttpOnly, Secure, SameSite=Lax session cookie. */
-export function serializeSessionCookie(
-  token: string,
-  opts: { maxAgeSeconds: number },
-): string {
-  return [
-    `${SESSION_COOKIE}=${token}`,
-    "Path=/",
-    "HttpOnly",
-    "Secure",
-    "SameSite=Lax",
-    `Max-Age=${opts.maxAgeSeconds}`,
-  ].join("; ");
+export type SameSite = "Lax" | "Strict" | "None";
+
+/** Shared cookie attributes. `None` forces `Secure` (browsers require it). */
+type CookieOpts = { sameSite?: SameSite; domain?: string };
+
+function cookieAttrs(opts: CookieOpts): string[] {
+  const sameSite = opts.sameSite ?? "Lax";
+  const attrs = ["Path=/", "HttpOnly", "Secure", `SameSite=${sameSite}`];
+  if (opts.domain) attrs.push(`Domain=${opts.domain}`);
+  return attrs;
 }
 
-/** A cookie that clears the session (expires immediately). */
-export function serializeLogoutCookie(): string {
-  return [
-    `${SESSION_COOKIE}=`,
-    "Path=/",
-    "HttpOnly",
-    "Secure",
-    "SameSite=Lax",
-    "Max-Age=0",
-  ].join("; ");
+/**
+ * Serialize the session cookie. Defaults to SameSite=Lax with no Domain (single
+ * origin). For a split dashboard↔API across sibling subdomains (app.shipaso.com
+ * ↔ api.shipaso.com) pass `sameSite:"None"` + `domain:".shipaso.com"` so the
+ * cookie is shared and sent on cross-site fetch (with credentials).
+ */
+export function serializeSessionCookie(
+  token: string,
+  opts: { maxAgeSeconds: number } & CookieOpts,
+): string {
+  return [`${SESSION_COOKIE}=${token}`, ...cookieAttrs(opts), `Max-Age=${opts.maxAgeSeconds}`].join(
+    "; ",
+  );
+}
+
+/**
+ * A cookie that clears the session. Must carry the SAME Domain/SameSite the
+ * session was set with, or the browser keeps the original cookie.
+ */
+export function serializeLogoutCookie(opts: CookieOpts = {}): string {
+  return [`${SESSION_COOKIE}=`, ...cookieAttrs(opts), "Max-Age=0"].join("; ");
 }
 
 /** Parse a Cookie request header into a name→value jar. Tolerant of null/empty. */
