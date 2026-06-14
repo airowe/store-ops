@@ -8,6 +8,8 @@ import {
   appLimitForTier,
   canRunCron,
   createCheckoutSession,
+  dunningEmail,
+  dunningOutcome,
   signStripePayload,
   stripeCheckoutParams,
   tierForPriceId,
@@ -212,3 +214,59 @@ describe("Stripe webhook signature", () => {
     expect(await verifyStripeSignature(SECRET, "", body, { now: 1 })).toBe(false);
   });
 });
+
+describe("dunningOutcome (failed-payment recovery, pure)", () => {
+  it("flags a failed payment as past_due and queues the past_due nudge", () => {
+    expect(dunningOutcome("invoice.payment_failed", "active")).toEqual({
+      newStatus: "past_due",
+      sendEmail: "past_due",
+    });
+  });
+
+  it("flags a failed payment as past_due even if already past_due (idempotent re-flag)", () => {
+    expect(dunningOutcome("invoice.payment_failed", "past_due")).toEqual({
+      newStatus: "past_due",
+      sendEmail: "past_due",
+    });
+  });
+
+  it("recovers a past_due account back to active and queues the recovered email", () => {
+    expect(dunningOutcome("invoice.payment_succeeded", "past_due")).toEqual({
+      newStatus: "active",
+      sendEmail: "recovered",
+    });
+  });
+
+  it("treats a payment success on an already-active account as a normal renewal no-op", () => {
+    expect(dunningOutcome("invoice.payment_succeeded", "active")).toEqual({});
+  });
+
+  it("ignores unrelated event types", () => {
+    expect(dunningOutcome("customer.subscription.updated", "active")).toEqual({});
+    expect(dunningOutcome("checkout.session.completed", "past_due")).toEqual({});
+  });
+});
+
+describe("dunningEmail (recovery email composer, pure)", () => {
+  const dashboardUrl = "https://app.shipaso.com/billing";
+
+  it("composes a past_due nudge with the update-card CTA pointing at the dashboard", () => {
+    const email = dunningEmail("past_due", { dashboardUrl });
+    expect(email.subject.toLowerCase()).toContain("payment");
+    expect(email.text).toContain(dashboardUrl);
+    expect(email.html).toContain(dashboardUrl);
+    // single CTA — exactly one link to the dashboard
+    expect(email.html.match(new RegExp(escapeRegExp(dashboardUrl), "g"))).toHaveLength(1);
+  });
+
+  it("composes a recovered confirmation that says Autopilot is running again", () => {
+    const email = dunningEmail("recovered", { dashboardUrl });
+    expect(email.subject.toLowerCase()).toContain("autopilot");
+    expect(email.text.toLowerCase()).toContain("running again");
+    expect(email.html.toLowerCase()).toContain("running again");
+  });
+});
+
+function escapeRegExp(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}

@@ -35,6 +35,8 @@
  *                           Stripe-Signature header is verified (raw body HMAC).
  *   POST /subscribe         public launch-list capture (HTML form → 303 back, or
  *                           JSON → 200). Idempotent on email; no auth.
+ *   GET  /proof             public anonymized aggregate proof (rank-win numbers
+ *                           for the landing). No app/user data. Cached 1h.
  *   POST /resolve           {query} → connectable candidates (name / App Store or
  *                           Play URL / numeric id / bundle id). No connect, no run.
  *                           kind: "resolved" | "candidates" | "not-found".
@@ -72,6 +74,7 @@ import {
   getRun,
   getTier,
   getUserByStripeCustomer,
+  listAllApps,
   listAppsForUser,
   listRunsForApp,
   persistRun,
@@ -92,9 +95,12 @@ import {
   verifySessionToken,
 } from "../auth.js";
 import { emailSenderForEnv } from "../emailSender.js";
+import { aggregateProof, extractWins } from "../proof.js";
 import {
   appLimitForTier,
   createCheckoutSession,
+  dunningEmail,
+  dunningOutcome,
   type StripePriceEnv,
   tierForPriceId,
   verifyStripeSignature,
@@ -428,6 +434,20 @@ async function subscribe(req: Request, env: Env, origin: string | null): Promise
     return new Response(null, { status: 303, headers: { location: `${back}/?subscribed=1` } });
   }
   return json({ ok: true }, 200, origin, env);
+}
+
+/**
+ * GET /proof — anonymized aggregate proof for the landing ("real movement across
+ * N apps"). Iterates every app's rank history, extracts wins, and returns ONLY
+ * numbers (no app names, no emails). Public + safe to cache.
+ */
+async function proofStats(env: Env, origin: string | null): Promise<Response> {
+  const apps = await listAllApps(env.DB);
+  const winsByApp = await Promise.all(
+    apps.map(async (a) => extractWins(await getRankHistory(env.DB, a.id))),
+  );
+  const agg = aggregateProof(winsByApp);
+  return json(agg, 200, origin, env, { "cache-control": "public, max-age=3600" });
 }
 
 /** POST /apps — connect + initial run. */
@@ -859,6 +879,33 @@ async function billingWebhook(req: Request, env: Env, origin: string | null): Pr
         });
       }
     }
+  } else if (
+    event.type === "invoice.payment_failed" ||
+    event.type === "invoice.payment_succeeded"
+  ) {
+    // Dunning: a failed payment flags the account past_due (so the gates can
+    // react), a recovery clears it. The pure dunningOutcome decides; we only
+    // EMAIL on the actual transition — Stripe re-fires payment_failed on every
+    // smart-retry, so emailing each time would spam "update your card".
+    const customer = obj.customer;
+    if (customer) {
+      const u = await getUserByStripeCustomer(env.DB, customer);
+      if (u) {
+        const prev = u.status;
+        const decision = dunningOutcome(event.type, prev);
+        if (decision.newStatus && decision.newStatus !== prev) {
+          await setTier(env.DB, { userId: u.id, status: decision.newStatus });
+        }
+        const transitioned = decision.newStatus !== undefined && decision.newStatus !== prev;
+        if (decision.sendEmail && transitioned && u.email) {
+          const dashboardUrl = env.DASHBOARD_ORIGIN ?? "https://app.shipaso.com";
+          const mail = dunningEmail(decision.sendEmail, { dashboardUrl });
+          await emailSenderForEnv(env)
+            .send({ to: u.email, ...mail })
+            .catch((e) => console.error(`[store-ops] dunning email failed: ${String(e)}`));
+        }
+      }
+    }
   }
 
   return json({ received: true }, 200, origin, env);
@@ -912,6 +959,10 @@ export async function handleApi(req: Request, env: Env): Promise<Response> {
     // Public launch-list capture from the marketing landing (HTML form or JSON).
     if (seg[0] === "subscribe" && seg.length === 1 && method === "POST") {
       return subscribe(req, env, origin);
+    }
+    // Public anonymized proof stat for the landing.
+    if (seg[0] === "proof" && seg.length === 1 && method === "GET") {
+      return proofStats(env, origin);
     }
   } catch (e) {
     if (e instanceof HttpError) return json({ error: e.message }, e.status, origin, env);

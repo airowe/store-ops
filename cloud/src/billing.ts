@@ -79,6 +79,72 @@ export function tierForPriceId(priceId: string, prices: StripePriceEnv): Tier | 
   return null;
 }
 
+// ── Dunning (failed-payment recovery) — PURE decision + email composer ────────────
+//
+// The webhook I/O lives in api/index.ts; these two functions are the testable
+// brain. `dunningOutcome` decides the state transition + which email to queue;
+// `dunningEmail` composes the plain, single-CTA message. Neither touches the DB,
+// Stripe, or the mail transport.
+
+/** Which recovery email to send, if any. */
+export type DunningEmailKind = "past_due" | "recovered";
+
+/** The pure decision for a billing event given the account's current status. */
+export type DunningDecision = {
+  /** The status to persist, when the event changes it. */
+  newStatus?: string;
+  /** The recovery email to queue, `null`/absent when none. */
+  sendEmail?: DunningEmailKind | null;
+};
+
+/**
+ * Decide the dunning transition for a Stripe invoice event.
+ *
+ *   invoice.payment_failed                  → past_due  + past_due nudge
+ *   invoice.payment_succeeded (was past_due) → active    + recovered email
+ *   invoice.payment_succeeded (was active)   → {} (normal renewal, no-op)
+ *   anything else                            → {}
+ */
+export function dunningOutcome(eventType: string, currentStatus: string): DunningDecision {
+  if (eventType === "invoice.payment_failed") {
+    return { newStatus: "past_due", sendEmail: "past_due" };
+  }
+  if (eventType === "invoice.payment_succeeded") {
+    // Only a *recovery* from past_due is interesting; a success on an
+    // already-active account is just a normal renewal — say nothing.
+    if (currentStatus === "past_due") {
+      return { newStatus: "active", sendEmail: "recovered" };
+    }
+    return {};
+  }
+  return {};
+}
+
+/** Compose a plain, one-CTA recovery email. Pure — caller injects the URL. */
+export function dunningEmail(
+  kind: DunningEmailKind,
+  opts: { dashboardUrl: string },
+): { subject: string; html: string; text: string } {
+  const { dashboardUrl } = opts;
+  if (kind === "past_due") {
+    const subject = "Your ShipASO payment didn't go through";
+    const line =
+      "Your ShipASO payment didn't go through — update your card to keep Autopilot running.";
+    const text = `${line}\n\nUpdate your card: ${dashboardUrl}`;
+    const html =
+      `<p>${line}</p>` +
+      `<p><a href="${dashboardUrl}">Update your card</a></p>`;
+    return { subject, html, text };
+  }
+  // recovered
+  const subject = "You're all set — Autopilot is running again";
+  const line = "You're all set — Autopilot is running again.";
+  const text = `${line}\n\nManage billing: ${dashboardUrl}`;
+  const html =
+    `<p>${line}</p>` + `<p><a href="${dashboardUrl}">Manage billing</a></p>`;
+  return { subject, html, text };
+}
+
 // ── Checkout Session creation (Stripe REST via fetch) ─────────────────────────────
 
 export type CreateCheckoutArgs = {
