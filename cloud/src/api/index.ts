@@ -814,7 +814,7 @@ async function decideRun(
   return {
     id: runId,
     status: "shipped",
-    note: "Approved. Run these commands yourself — we never hold your store credentials.",
+    note: "Approved. Hand the metadata to your build pipeline (credential-free), or apply it yourself — ShipASO never stores your store credentials.",
     pushCommands: trace.pushCommands,
   };
 }
