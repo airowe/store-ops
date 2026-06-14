@@ -37,6 +37,8 @@
  *                           JSON → 200). Idempotent on email; no auth.
  *   GET  /proof             public anonymized aggregate proof (rank-win numbers
  *                           for the landing). No app/user data. Cached 1h.
+ *   GET  /health            authed production-readiness audit (200 ready / 503
+ *                           when an error-severity check fails). Not public.
  *   GET  /portfolio         Fleet-tier roll-up: every app's grade / lead rank /
  *                           pending-approval + summary counts (402 below Fleet).
  *   POST /runs/approve-all  bulk-approve every pending run across the user's apps.
@@ -101,6 +103,7 @@ import { emailSenderForEnv } from "../emailSender.js";
 import { aggregateProof, extractWins } from "../proof.js";
 import { type AppCard, summarizePortfolio } from "../portfolio.js";
 import { type RunRef, planBulkApprove } from "../bulkApprove.js";
+import { auditReadiness } from "../readiness.js";
 import {
   appLimitForTier,
   createCheckoutSession,
@@ -1049,6 +1052,14 @@ export async function handleApi(req: Request, env: Env): Promise<Response> {
     // /resolve — query → candidates (no connect, no run)
     if (seg[0] === "resolve" && seg.length === 1 && method === "POST") {
       return json(await resolveQuery(req, env), 200, origin);
+    }
+
+    // /health — production-readiness audit (authed: it names which secrets are
+    // unset, so it's not public). Returns 200 when ready, 503 when an error check
+    // fails, so an uptime probe can alert on a misconfigured deploy.
+    if (seg[0] === "health" && seg.length === 1 && method === "GET") {
+      const report = auditReadiness(env);
+      return json(report, report.ready ? 200 : 503, origin, env);
     }
 
     // /portfolio — the Fleet roll-up across all of the user's apps

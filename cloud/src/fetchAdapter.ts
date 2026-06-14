@@ -8,6 +8,7 @@
  */
 import type { FetchFn } from "./engine/index.js";
 import { makeTinyfishFetch } from "./tinyfishFetch.js";
+import { makeFallbackFetch } from "./resilientFetch.js";
 import type { Env } from "./index.js";
 
 export const workerFetch: FetchFn = async (url, init) => {
@@ -24,12 +25,14 @@ export const workerFetch: FetchFn = async (url, init) => {
 
 /**
  * Pick the engine's transport for this environment. With TINYFISH_API_KEY set
- * (production), iTunes calls route through TinyFish Fetch to dodge Apple's 403
- * on Cloudflare egress; without it (local/dev, where direct fetch works), use
- * the plain Worker fetch.
+ * (production), iTunes calls route through TinyFish Fetch (clean egress) to dodge
+ * Apple's 403 on Cloudflare egress — but if TinyFish itself errors (throws or
+ * returns a retryable status), we fall back to the plain Worker fetch so a
+ * TinyFish outage doesn't take the whole run down. Without a key (local/dev,
+ * where direct fetch works), use the plain Worker fetch alone.
  */
 export function fetchForEnv(env: Env): FetchFn {
-  return env.TINYFISH_API_KEY
-    ? makeTinyfishFetch(workerFetch, env.TINYFISH_API_KEY)
-    : workerFetch;
+  if (!env.TINYFISH_API_KEY) return workerFetch;
+  const tinyfish = makeTinyfishFetch(workerFetch, env.TINYFISH_API_KEY);
+  return makeFallbackFetch(tinyfish, workerFetch);
 }
