@@ -36,6 +36,11 @@ Works for **both** App Store and Google Play.
      **Optional scrape accelerator** below) — but it is never required.
    - **Synonyms / modifiers** — add intent modifiers (free, best, app, tracker,
      planner, for X) and morphological variants.
+   - **User language (on- + off-store)** — the highest-signal seeds are the words
+     real users actually type. Run **aso-review-mine** (your own App Store
+     reviews) and **aso-offstore-mine** ("best <category> apps" articles + YouTube
+     review videos) and fold their keyword candidates in as high-relevance seeds.
+     off-store mining also surfaces the competitors articles compare you to.
 2. **Score** each candidate keyword:
    `score = volume*0.4 + (100 - difficulty)*0.3 + relevance*0.3`
    - **volume** — see **Grounded volume** below. If an Apple Search Ads
