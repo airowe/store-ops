@@ -176,15 +176,28 @@ errors.
 Today's launch posture is demo-grade (test-mode Stripe, magic-link,
 `APP_ENV=demo` header fallback). To go live:
 
-1. **Flip `APP_ENV`** off `demo` (e.g. `production`) in `[vars]`. This disables
-   the `X-User-Email` demo fallback and **requires** signed session cookies.
-   Verify nothing in the paid path depends on the stub.
+1. ~~**Flip `APP_ENV`** off `demo` → `production` in `[vars]`.~~ **DONE** — the
+   `X-User-Email` demo fallback is disabled; only signed session cookies
+   authenticate. (Set back to `demo` only to re-open the stub for local testing.)
 2. **Set `SESSION_SECRET`** (required outside demo — demo uses an insecure dev
    fallback): `npx wrangler secret put SESSION_SECRET`.
 3. **Rotate all setup-time keys** and do a secret-hygiene review.
-4. **Stripe live mode:** live secret key, real products/prices, verified
-   production webhook (`STRIPE_TEST_KEY` → live key, refresh `STRIPE_PRICE_*` and
-   `STRIPE_WEBHOOK_SECRET`).
+4. **Stripe live mode** (separate from the auth flip above — needed before the
+   paid flow takes REAL money; test mode is fine until then):
+   - In Stripe, toggle to **Live mode** and complete account activation
+     (business + bank details) — Stripe won't process live charges otherwise.
+   - Create a **live** restricted/secret key (`sk_live_…` / `rk_live_…`).
+   - Create the live products/prices:
+     `STRIPE_KEY=<live key> node cloud/scripts/stripe-setup.mjs --live`
+     (the script refuses a live key WITHOUT `--live`, and refuses `--live`
+     without a live key — two locks, no accidental live objects). It prints the
+     three live `price_…` ids.
+   - Register the **live** webhook for `…/billing/webhook` (events:
+     `checkout.session.completed`, `customer.subscription.updated/.deleted`,
+     `invoice.payment_failed/.payment_succeeded`) → capture its `whsec_…`.
+   - Set the live secrets: `STRIPE_TEST_KEY` → the live key, the three
+     `STRIPE_PRICE_*` → the live ids, `STRIPE_WEBHOOK_SECRET` → the live secret
+     (all via `wrangler secret put`), then `wrangler deploy`.
 5. **Verify `RESEND_FROM`** on a verified brand domain (e.g.
    `login@shipaso.com` once `shipaso.com` is verified in Resend).
 
