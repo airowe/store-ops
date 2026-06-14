@@ -922,6 +922,12 @@ async function ascVerifyRoute(
 
 // ── billing ────────────────────────────────────────────────────────────────────
 
+/** The Stripe secret key — STRIPE_SECRET_KEY, with the legacy STRIPE_TEST_KEY as
+ *  a fallback during the rename migration (#9). */
+function stripeSecretKey(env: Env): string | undefined {
+  return env.STRIPE_SECRET_KEY ?? env.STRIPE_TEST_KEY;
+}
+
 /** Pull the Stripe price-env slice off the worker Env. */
 function priceEnv(env: Env): StripePriceEnv {
   const prices: StripePriceEnv = {};
@@ -943,7 +949,8 @@ async function billingCheckout(
   env: Env,
   user: { id: string; email: string },
 ): Promise<unknown> {
-  if (!env.STRIPE_TEST_KEY) throw new HttpError(503, "billing is not configured");
+  const secretKey = stripeSecretKey(env);
+  if (!secretKey) throw new HttpError(503, "billing is not configured");
   const body = await readJson<CheckoutBody>(req);
   const tier = body.tier?.trim();
   if (tier !== "launch" && tier !== "autopilot" && tier !== "fleet") {
@@ -952,7 +959,7 @@ async function billingCheckout(
   const base = authBaseUrl(req, env);
   try {
     const session = await createCheckoutSession(fetch, {
-      secretKey: env.STRIPE_TEST_KEY,
+      secretKey,
       tier,
       prices: priceEnv(env),
       customerEmail: user.email,

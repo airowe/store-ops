@@ -84,7 +84,7 @@ values to `wrangler.toml`).
 
 ```bash
 npx wrangler secret put SESSION_SECRET          # HMAC key for magic-link + session tokens (REQUIRED outside demo)
-npx wrangler secret put STRIPE_TEST_KEY         # Stripe secret key (Bearer for REST API)
+npx wrangler secret put STRIPE_SECRET_KEY       # Stripe secret key (Bearer for REST API), test OR live
 npx wrangler secret put STRIPE_WEBHOOK_SECRET   # verifies Stripe-Signature on /billing/webhook
 npx wrangler secret put STRIPE_PRICE_LAUNCH     # Price id — Launch Optimization ($49 one-time)
 npx wrangler secret put STRIPE_PRICE_AUTOPILOT  # Price id — Autopilot ($19/mo)
@@ -195,14 +195,13 @@ Today's launch posture is demo-grade (test-mode Stripe, magic-link,
    - Register the **live** webhook for `…/billing/webhook` (events:
      `checkout.session.completed`, `customer.subscription.updated/.deleted`,
      `invoice.payment_failed/.payment_succeeded`) → capture its `whsec_…`.
-   - Set the live secrets: `STRIPE_TEST_KEY` → the live key, the three
+   - Set the live secrets: `STRIPE_SECRET_KEY` → the live key, the three
      `STRIPE_PRICE_*` → the live ids, `STRIPE_WEBHOOK_SECRET` → the live secret
      (all via `wrangler secret put`), then `wrangler deploy`.
-     > **Naming gotcha:** the runtime reads the Bearer key from `STRIPE_TEST_KEY`
-     > for BOTH test and live — the name is historical, the code doesn't care.
-     > In live mode this var holds your `rk_live_…` secret. Don't be fooled by the
-     > "TEST" in the name into treating it as non-sensitive. (Rename to
-     > `STRIPE_SECRET_KEY` is tracked separately; until then, this is the var.)
+     > The runtime reads the Bearer key from `STRIPE_SECRET_KEY` for both test and
+     > live (the legacy `STRIPE_TEST_KEY` is still read as a fallback during
+     > migration — prefer the new name). In live mode this holds your `rk_live_…`
+     > secret; treat it as sensitive.
 
    **Activation is the gate.** None of the above (live key, products, webhook)
    can exist until the Stripe account is **activated** for live mode (business +

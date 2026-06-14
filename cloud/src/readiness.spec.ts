@@ -27,7 +27,7 @@ function prodEnv(over: EnvOverrides = {}): Env {
     DASHBOARD_ORIGIN: "https://app.shipaso.com",
     COOKIE_DOMAIN: ".shipaso.com",
     SESSION_SECRET: "a-32-char-long-session-secret!!",
-    STRIPE_TEST_KEY: "sk_test_123",
+    STRIPE_SECRET_KEY: "sk_test_123",
     STRIPE_WEBHOOK_SECRET: "whsec_123",
     STRIPE_PRICE_LAUNCH: "price_launch",
     STRIPE_PRICE_AUTOPILOT: "price_autopilot",
@@ -129,6 +129,7 @@ describe("auditReadiness — prod missing only warn-level config", () => {
   it("stays ready while surfacing warn checks for each missing integration", () => {
     const report = auditReadiness(
       prodEnv({
+        STRIPE_SECRET_KEY: undefined,
         STRIPE_TEST_KEY: undefined,
         STRIPE_WEBHOOK_SECRET: undefined,
         STRIPE_PRICE_AUTOPILOT: undefined,
@@ -147,7 +148,7 @@ describe("auditReadiness — prod missing only warn-level config", () => {
     const failedWarn = warnFailures(report).map((c) => c.name);
     expect(failedWarn).toEqual(
       expect.arrayContaining([
-        "stripe_test_key",
+        "stripe_secret_key",
         "stripe_webhook_secret",
         "stripe_prices",
         "tinyfish_api_key",
@@ -172,6 +173,25 @@ describe("auditReadiness — Stripe price completeness", () => {
 
   it("passes only when all three price ids are present", () => {
     expect(check(auditReadiness(prodEnv()), "stripe_prices").ok).toBe(true);
+  });
+});
+
+describe("auditReadiness — Stripe secret key (rename migration #9)", () => {
+  it("passes on the new STRIPE_SECRET_KEY name", () => {
+    const report = auditReadiness(prodEnv({ STRIPE_SECRET_KEY: "sk_test_x", STRIPE_TEST_KEY: undefined }));
+    expect(check(report, "stripe_secret_key").ok).toBe(true);
+  });
+
+  it("still passes on the legacy STRIPE_TEST_KEY (fallback during migration)", () => {
+    const report = auditReadiness(prodEnv({ STRIPE_SECRET_KEY: undefined, STRIPE_TEST_KEY: "sk_test_legacy" }));
+    expect(check(report, "stripe_secret_key").ok).toBe(true);
+  });
+
+  it("fails (warn) when neither name is set", () => {
+    const report = auditReadiness(prodEnv({ STRIPE_SECRET_KEY: undefined, STRIPE_TEST_KEY: undefined }));
+    const c = check(report, "stripe_secret_key");
+    expect(c.ok).toBe(false);
+    expect(c.severity).toBe("warn");
   });
 });
 

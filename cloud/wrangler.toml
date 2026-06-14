@@ -62,8 +62,10 @@ COOKIE_DOMAIN = ".shipaso.com"
 # Auth:
 #   SESSION_SECRET        — HMAC key signing magic-link + session tokens.
 #                           REQUIRED outside demo (demo uses a dev fallback).
-# Billing (Stripe, test mode):
-#   STRIPE_TEST_KEY       — Stripe secret key (Bearer for the REST API).
+# Billing (Stripe):
+#   STRIPE_SECRET_KEY     — Stripe secret key (Bearer for the REST API), test OR
+#                           live. (Legacy STRIPE_TEST_KEY is still read as a
+#                           fallback during migration; prefer the new name.)
 #   STRIPE_WEBHOOK_SECRET — verifies the Stripe-Signature on /billing/webhook.
 #   STRIPE_PRICE_LAUNCH   — Price id for Launch Optimization ($49 one-time).
 #   STRIPE_PRICE_AUTOPILOT— Price id for Autopilot ($19/mo).
@@ -80,7 +82,7 @@ COOKIE_DOMAIN = ".shipaso.com"
 #                           entry (not secret) or a secret — either works.
 #
 #   npx wrangler secret put SESSION_SECRET
-#   npx wrangler secret put STRIPE_TEST_KEY
+#   npx wrangler secret put STRIPE_SECRET_KEY
 #   npx wrangler secret put STRIPE_WEBHOOK_SECRET
 #   npx wrangler secret put STRIPE_PRICE_LAUNCH
 #   npx wrangler secret put STRIPE_PRICE_AUTOPILOT
