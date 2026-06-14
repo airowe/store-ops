@@ -19,6 +19,11 @@ export type Env = {
   // Public base URL of the dashboard (for magic-link callback + CORS origin echo).
   // Optional: falls back to the request Origin when unset.
   DASHBOARD_ORIGIN?: string;
+  // When the dashboard (app.shipaso.com) and API (api.shipaso.com) live on
+  // sibling subdomains, set COOKIE_DOMAIN=".shipaso.com" so the session cookie is
+  // shared across them and uses SameSite=None (sent on cross-site fetch). Unset →
+  // SameSite=Lax, host-only cookie (single-origin / local dev).
+  COOKIE_DOMAIN?: string;
   // Secrets (set via `wrangler secret put`):
   SESSION_SECRET?: string; // signs magic-link + session tokens (HMAC-SHA256)
   STRIPE_TEST_KEY?: string; // Stripe test-mode secret key (Bearer for the REST API)

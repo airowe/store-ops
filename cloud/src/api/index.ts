@@ -271,6 +271,17 @@ function emailSender(env: Env): EmailSender {
   return new ConsoleEmailSender();
 }
 
+/**
+ * Cookie scope for this env. With COOKIE_DOMAIN set (split app/api subdomains),
+ * the session cookie is shared across `.shipaso.com` and uses SameSite=None so it
+ * rides cross-site fetches from the dashboard. Unset → host-only, SameSite=Lax.
+ */
+function cookieOpts(env: Env): { sameSite: "Lax" | "None"; domain?: string } {
+  return env.COOKIE_DOMAIN
+    ? { sameSite: "None", domain: env.COOKIE_DOMAIN }
+    : { sameSite: "Lax" };
+}
+
 /** Base URL for building the magic-link callback (dashboard origin or request). */
 function authBaseUrl(req: Request, env: Env): string {
   if (env.DASHBOARD_ORIGIN) return env.DASHBOARD_ORIGIN.replace(/\/+$/, "");
@@ -318,7 +329,10 @@ async function authCallback(req: Request, env: Env, origin: string | null): Prom
   const session = await mintSessionToken(sessionSecret(env), res.email, {
     ttlSeconds: SESSION_TTL_SECONDS,
   });
-  const cookie = serializeSessionCookie(session, { maxAgeSeconds: SESSION_TTL_SECONDS });
+  const cookie = serializeSessionCookie(session, {
+    maxAgeSeconds: SESSION_TTL_SECONDS,
+    ...cookieOpts(env),
+  });
 
   // Browser navigation → redirect home, signed in. JSON client → 200 body.
   const wantsJson = (req.headers.get("Accept") ?? "").includes("application/json");
@@ -331,9 +345,11 @@ async function authCallback(req: Request, env: Env, origin: string | null): Prom
   });
 }
 
-/** POST /auth/logout — clear the session cookie. */
+/** POST /auth/logout — clear the session cookie (same scope it was set with). */
 function authLogout(origin: string | null, env: Env): Response {
-  return json({ ok: true }, 200, origin, env, { "set-cookie": serializeLogoutCookie() });
+  return json({ ok: true }, 200, origin, env, {
+    "set-cookie": serializeLogoutCookie(cookieOpts(env)),
+  });
 }
 
 /** Load an app and assert it belongs to this user. */

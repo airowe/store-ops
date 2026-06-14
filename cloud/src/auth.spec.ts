@@ -115,7 +115,7 @@ describe("session tokens", () => {
 });
 
 describe("cookies", () => {
-  it("serializes an HttpOnly, Secure, SameSite=Lax session cookie", () => {
+  it("serializes an HttpOnly, Secure, SameSite=Lax session cookie by default", () => {
     const c = serializeSessionCookie("the-token", { maxAgeSeconds: 3600 });
     expect(c).toContain(`${SESSION_COOKIE}=the-token`);
     expect(c).toContain("HttpOnly");
@@ -123,12 +123,31 @@ describe("cookies", () => {
     expect(c).toContain("SameSite=Lax");
     expect(c).toContain("Path=/");
     expect(c).toContain("Max-Age=3600");
+    expect(c).not.toContain("Domain="); // no Domain unless asked
+  });
+
+  it("supports SameSite=None + a Domain for cross-subdomain (app↔api) sessions", () => {
+    const c = serializeSessionCookie("tok", {
+      maxAgeSeconds: 3600,
+      sameSite: "None",
+      domain: ".shipaso.com",
+    });
+    expect(c).toContain("SameSite=None");
+    expect(c).toContain("Secure"); // None REQUIRES Secure
+    expect(c).toContain("Domain=.shipaso.com");
   });
 
   it("serializes a logout cookie that expires immediately", () => {
     const c = serializeLogoutCookie();
     expect(c).toContain(`${SESSION_COOKIE}=`);
     expect(c).toContain("Max-Age=0");
+  });
+
+  it("clears the cookie on the same Domain it was set with (so it actually clears)", () => {
+    const c = serializeLogoutCookie({ domain: ".shipaso.com", sameSite: "None" });
+    expect(c).toContain("Domain=.shipaso.com");
+    expect(c).toContain("Max-Age=0");
+    expect(c).toContain("SameSite=None");
   });
 
   it("parses a single cookie value out of a Cookie header", () => {

@@ -17,6 +17,14 @@ compatibility_date = "2025-01-01"
 # nodejs_compat gives us node: built-ins if the ported engine ever needs them.
 compatibility_flags = ["nodejs_compat"]
 
+# ── Custom domain — the API on-brand at api.shipaso.com ──────────────────────
+# `custom_domain = true` makes `wrangler deploy` provision the DNS record + cert
+# on the shipaso.com zone automatically. The workers.dev URL stays live too, so
+# the dashboard's existing API_BASE keeps working during the cutover.
+[[routes]]
+pattern = "api.shipaso.com"
+custom_domain = true
+
 # ── D1 (SQLite) — bound as env.DB in the Worker ──────────────────────────────
 [[d1_databases]]
 binding = "DB"                 # code reads it as `env.DB`
@@ -45,6 +53,10 @@ APP_ENV = "demo"
 # AND used to build the post-login + Stripe redirect targets, so the browser
 # lands on the dashboard (not the bare Worker) after the magic link / checkout.
 DASHBOARD_ORIGIN = "https://app.shipaso.com"
+# COOKIE_DOMAIN — shares the session cookie across the dashboard (app.shipaso.com)
+# and API (api.shipaso.com) subdomains, with SameSite=None so it rides cross-site
+# fetches. Leave unset for single-origin / local dev (→ host-only, SameSite=Lax).
+COOKIE_DOMAIN = ".shipaso.com"
 
 # ── Secrets (DO NOT put values here — set via `wrangler secret put NAME`) ─────
 # Auth:
