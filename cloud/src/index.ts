@@ -40,6 +40,10 @@ export type Env = {
   // emails the link via Resend; unset → ConsoleEmailSender (logs the link).
   RESEND_API_KEY?: string;
   RESEND_FROM?: string; // verified sender, e.g. "store-ops <login@mail.yourdomain>"
+  // Opt-in gate for the direct ASC metadata WRITE (#11). Unset → the push
+  // endpoint returns 403 (the credential-free Fastlane handoff stays the default).
+  // Set to "1"/"true" only after verifying against a test app.
+  ASC_WRITE_ENABLED?: string;
 };
 
 export default {
