@@ -109,7 +109,15 @@
     try { await navigator.clipboard.writeText(s); toast((label || "Copied") + " ✓"); }
     catch (e) { toast("Copy failed — select & ⌘C"); }
   }
-
+  // Trigger a client-side file download of `text` as `filename`.
+  function downloadText(text, filename, label) {
+    var blob = new Blob([text], { type: "text/x-shellscript" });
+    var url = URL.createObjectURL(blob);
+    var a = el("a", { href: url, download: filename });
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(function () { URL.revokeObjectURL(url); }, 0);
+    toast((label || "Downloaded") + " ✓");
+  }
   function loading(msg) { clear(root()); root().appendChild(el("div", { class: "empty" }, [el("div", { class: "spin" }), " " + (msg || "Loading…")])); }
 
   function setEnvPill() {
@@ -449,9 +457,9 @@
     } else if (run.status === "rejected") {
       card.appendChild(el("div", { class: "locked" }, [el("span", { class: "lock" }, ["✕"]), "You rejected this proposal. Nothing was pushed. The agent will re-draft on the next data threshold or manual run."]));
     } else {
-      // approved or shipped → reveal commands
-      card.appendChild(el("p", { class: "muted", style: "margin-top:0" }, ["Approved. Run these from a machine that holds your store credentials — ShipASO never does."]));
-      card.appendChild(commandsBox(R.pushCommands || []));
+      // approved or shipped → reveal the handoff
+      card.appendChild(el("p", { class: "muted", style: "margin-top:0" }, ["Approved. Take the metadata to your build pipeline — ShipASO never holds your store credentials or pushes for you."]));
+      card.appendChild(commandsBox(R.pushCommands || [], run.id, R.proposedCopy || {}));
     }
     return card;
   }
@@ -460,24 +468,84 @@
     return el("div", { class: "locked", style: "margin-top:14px" }, [el("span", { class: "lock" }, ["🔒"]), "Generated push commands are hidden until you approve."]);
   }
 
-  function commandsBox(cmds) {
+  function commandsBox(cmds, runId, copy) {
     var wrap = el("div", { class: "cmds", style: "margin-top:14px" });
+
+    // ── primary handoff: Fastlane metadata that drops into their pipeline ──
+    var handoff = el("div", { class: "handoff" });
+    handoff.appendChild(el("div", { class: "handoff-h" }, [
+      el("span", { class: "store-tag appstore" }, ["fastlane"]),
+      el("span", { class: "desc" }, ["Drops into your repo as a ", el("code", {}, ["fastlane/metadata/"]), " tree — your CI runs ", el("code", {}, ["deliver"]), " / ", el("code", {}, ["supply"]), " with the credentials it already holds."]),
+    ]));
+    handoff.appendChild(el("div", { class: "btn-row", style: "margin-top:12px" }, [
+      el("button", { class: "btn primary", onclick: function () { downloadFastlane(runId, copy); } }, ["↓ Download Fastlane metadata"]),
+    ]));
+    handoff.appendChild(el("p", { class: "faint", style: "font-size:12.5px;margin:10px 0 0" }, [
+      "Commit the tree (or merge the PR), then your pipeline pushes it. ShipASO never holds your credentials.",
+    ]));
+    wrap.appendChild(handoff);
+
+    // ── secondary: the raw commands, for manual operators ──
     var all = cmds.map(function (c) { return c.command; }).join("\n");
+    var det = el("details", { class: "rawcmds", style: "margin-top:16px" });
+    det.appendChild(el("summary", {}, ["Or run the commands manually"]));
     cmds.forEach(function (c) {
-      var pre = el("pre", {}, [c.command]);
-      wrap.appendChild(el("div", { class: "cmd" }, [
+      det.appendChild(el("div", { class: "cmd" }, [
         el("div", { class: "cmd-h" }, [
           el("span", { class: "store-tag " + c.store }, [c.tool]),
           el("span", { class: "desc" }, [c.description]),
           el("button", { class: "btn ghost copy-btn", onclick: function () { copyText(c.command, "Command copied"); } }, ["Copy"]),
         ]),
-        pre,
+        el("pre", {}, [c.command]),
       ]));
     });
-    wrap.appendChild(el("div", { class: "btn-row", style: "margin-top:4px" }, [
+    det.appendChild(el("div", { class: "btn-row", style: "margin-top:4px" }, [
       el("button", { class: "btn", onclick: function () { copyText(all, "All commands copied"); } }, ["Copy all"]),
     ]));
+    wrap.appendChild(det);
     return wrap;
+  }
+
+  // Download the Fastlane metadata bundle. Live: stream the zip from the Worker
+  // (real archive, cookie-authed). Mock/no-API: build the file tree client-side
+  // and download it as a single readable .txt preview (no zip lib in the browser).
+  async function downloadFastlane(runId, copy) {
+    if (API_BASE && liveMode) {
+      try {
+        var res = await fetch(API_BASE + "/runs/" + runId + "/fastlane.zip", { credentials: "include" });
+        if (!res.ok) throw new Error("HTTP " + res.status);
+        var blob = await res.blob();
+        var url = URL.createObjectURL(blob);
+        var a = el("a", { href: url, download: "fastlane-metadata.zip" });
+        document.body.appendChild(a); a.click(); a.remove();
+        setTimeout(function () { URL.revokeObjectURL(url); }, 0);
+        toast("Fastlane metadata downloaded ✓");
+        return;
+      } catch (e) { toast("Download failed — " + (e.message || "try again")); return; }
+    }
+    // mock preview: concatenate the tree into one annotated file
+    var files = buildFastlaneFiles(copy);
+    var preview = files.map(function (f) { return "# ===== " + f.path + " =====\n" + f.content; }).join("\n\n");
+    downloadText(preview, "fastlane-metadata.txt", "Fastlane metadata (preview) downloaded");
+  }
+
+  // Client mirror of cloud/src/engine/fastlane.ts (that module is the tested
+  // source of truth). Maps proposed copy → the fastlane/metadata file tree.
+  function buildFastlaneFiles(copy, locale) {
+    locale = locale || "en-US";
+    var files = [];
+    var add = function (p, v) { if (v !== undefined && v !== null && v !== "") files.push({ path: p, content: v }); };
+    var ios = "fastlane/metadata/" + locale;
+    add(ios + "/name.txt", copy.name);
+    add(ios + "/subtitle.txt", copy.subtitle);
+    add(ios + "/keywords.txt", copy.keywords);
+    add(ios + "/promotional_text.txt", copy.promo);
+    add(ios + "/description.txt", copy.description);
+    var android = "fastlane/metadata/android/" + locale;
+    add(android + "/title.txt", copy.name);
+    add(android + "/short_description.txt", copy.subtitle);
+    add(android + "/full_description.txt", copy.description);
+    return files;
   }
 
   function decide(runId, action, card) {

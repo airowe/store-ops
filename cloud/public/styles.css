@@ -282,6 +282,29 @@ table.kw .score { font-family: var(--mono); font-weight: 700; color: var(--ink);
 .charbar.warn > i { background: var(--warn); }
 .charbar.full > i { background: var(--signal); }
 
+/* ── fastlane handoff (the primary, build-pipeline path) ─────── */
+.handoff {
+  background: linear-gradient(120deg, rgba(52,211,153,0.06), rgba(91,140,255,0.04));
+  border: 1px solid var(--signal-dim); border-radius: 12px; padding: 18px;
+}
+.handoff-h { display: flex; align-items: flex-start; gap: 10px; }
+.handoff-h .desc { color: var(--dim); font-size: 13.5px; line-height: 1.5; }
+.handoff code {
+  font-family: var(--mono); font-size: .86em; background: var(--bg-2);
+  border: 1px solid var(--line-soft); border-radius: 5px; padding: 1px 5px; color: var(--signal);
+}
+
+/* ── raw commands, secondary (collapsed by default) ──────────── */
+.rawcmds > summary {
+  cursor: pointer; color: var(--dim); font-size: 13px; padding: 6px 0;
+  list-style: none; display: inline-flex; align-items: center; gap: 7px;
+}
+.rawcmds > summary::-webkit-details-marker { display: none; }
+.rawcmds > summary::before { content: "▸"; color: var(--faint); transition: transform .15s; }
+.rawcmds[open] > summary::before { transform: rotate(90deg); }
+.rawcmds > summary:hover { color: var(--ink); }
+.rawcmds .cmd { margin-top: 10px; }
+
 /* ── commands box (the landing terminal) ─────────────────────── */
 .cmds { display: grid; gap: 10px; }
 .cmd {

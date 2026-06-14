@@ -117,6 +117,8 @@ import {
 } from "../billing.js";
 import { buildAppInput, type RunOverrides } from "./runConfig.js";
 import { fetchForEnv } from "../fetchAdapter.js";
+import { buildFastlaneBundle } from "../engine/fastlane.js";
+import { zipStore } from "../engine/zip.js";
 import type { Env } from "../index.js";
 
 // ── token + cookie lifetimes ───────────────────────────────────────────────────
@@ -832,6 +834,40 @@ async function pushCommandsRoute(env: Env, userId: string, runId: string): Promi
   return { commands: trace.pushCommands };
 }
 
+/**
+ * GET /runs/:id/fastlane.zip — the post-approval metadata handoff as a Fastlane
+ * `metadata/` tree, zipped. The user commits this (or merges the PR that adds it)
+ * and their CI runs `fastlane deliver`/`supply` with the credentials it already
+ * holds. Gated identically to push-commands: 403 until the run is approved.
+ */
+async function fastlaneZipRoute(
+  env: Env,
+  userId: string,
+  runId: string,
+  origin: string | null,
+): Promise<Response> {
+  const run = await getRun(env.DB, runId);
+  if (!run) throw new HttpError(404, "run not found");
+  await requireOwnedApp(env, run.app_id, userId);
+  if (run.status !== "shipped" && run.status !== "approved") {
+    throw new HttpError(403, "approval required");
+  }
+  const trace = JSON.parse(run.reasoning_json) as ReasoningTrace;
+  const bundle = buildFastlaneBundle(trace.proposedCopy);
+  const zip = zipStore(bundle.files);
+  // a Uint8Array is a valid BodyInit; copy into a fresh one so the body is backed
+  // by a plain ArrayBuffer (not a possibly-shared buffer view).
+  const body = new Uint8Array(zip);
+  return new Response(body, {
+    status: 200,
+    headers: {
+      ...corsHeaders(origin, env),
+      "content-type": "application/zip",
+      "content-disposition": 'attachment; filename="fastlane-metadata.zip"',
+    },
+  });
+}
+
 // ── billing ────────────────────────────────────────────────────────────────────
 
 /** Pull the Stripe price-env slice off the worker Env. */
@@ -1136,6 +1172,9 @@ export async function handleApi(req: Request, env: Env): Promise<Response> {
       }
       if (seg.length === 3 && seg[2] === "push-commands" && method === "GET") {
         return json(await pushCommandsRoute(env, user.id, runId), 200, origin);
+      }
+      if (seg.length === 3 && seg[2] === "fastlane.zip" && method === "GET") {
+        return await fastlaneZipRoute(env, user.id, runId, origin);
       }
     }
 
