@@ -182,6 +182,9 @@ export async function createCheckoutSession(
     headers: {
       Authorization: `Bearer ${args.secretKey}`,
       "Content-Type": "application/x-www-form-urlencoded",
+      // Idempotency: a retried checkout (network blip, double-click) for the same
+      // user+tier reuses the existing session instead of creating a duplicate.
+      "Idempotency-Key": `checkout:${args.clientReferenceId}:${args.tier}`,
     },
     body: form.toString(),
   });

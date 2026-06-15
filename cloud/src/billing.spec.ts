@@ -116,6 +116,9 @@ describe("createCheckoutSession", () => {
     const headers = call.init.headers as Record<string, string>;
     expect(headers.Authorization).toBe("Bearer sk_test_abc");
     expect(headers["Content-Type"]).toBe("application/x-www-form-urlencoded");
+    // idempotency: a retried checkout for the same user+tier reuses the session
+    // instead of creating a duplicate. Key is derived from those, not random.
+    expect(headers["Idempotency-Key"]).toBe("checkout:user-1:autopilot");
 
     const body = String(call.init.body);
     expect(body).toContain("mode=subscription");
