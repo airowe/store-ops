@@ -73,6 +73,46 @@ function seedKeywordsFromName(name: string): KeywordInput[] {
   return out;
 }
 
+/** A keyword string longer than this is almost certainly junk or an attack. */
+const MAX_KEYWORD_LEN = 80;
+
+function clamp01(n: unknown): number {
+  const x = typeof n === "number" && Number.isFinite(n) ? n : 0;
+  return Math.max(0, Math.min(100, x));
+}
+
+/**
+ * Sanitize client-supplied keyword overrides. These arrive in the untrusted
+ * POST /apps/:id/run body and are persisted to rank_snapshots, then re-served to
+ * the dashboard — so we normalize them at this single chokepoint: strip control
+ * characters, collapse whitespace, cap length, drop empties, and clamp the
+ * numeric proxies into 0–100. Defense in depth: even though the dashboard renders
+ * keywords as text nodes today, no unbounded or control-char string is ever
+ * stored or re-served.
+ */
+function sanitizeKeywords(keywords: KeywordInput[]): KeywordInput[] {
+  const out: KeywordInput[] = [];
+  for (const k of keywords) {
+    // Replace any control character (codepoint < 0x20 or 0x7f) with a space,
+    // collapse whitespace, trim, and cap length. Done via a codepoint check
+    // rather than a control-char regex literal so the source stays byte-clean.
+    let stripped = "";
+    for (const ch of String(k?.keyword ?? "")) {
+      const code = ch.codePointAt(0) ?? 0;
+      stripped += code < 0x20 || code === 0x7f ? " " : ch;
+    }
+    const cleaned = stripped.replace(/\s+/g, " ").trim().slice(0, MAX_KEYWORD_LEN);
+    if (!cleaned) continue;
+    out.push({
+      keyword: cleaned,
+      volume: clamp01(k.volume),
+      difficulty: clamp01(k.difficulty),
+      relevance: clamp01(k.relevance),
+    });
+  }
+  return out;
+}
+
 /**
  * Compose the agent input. Precedence: explicit overrides > name-derived seeds.
  * `previousCompetitors` is threaded in separately by the caller (it comes from
@@ -83,10 +123,9 @@ export function buildAppInput(
   overrides: RunOverrides = {},
   previousCompetitors: Record<string, Record<string, string>> = {},
 ): AppInput {
+  const clean = overrides.keywords ? sanitizeKeywords(overrides.keywords) : [];
   const keywords =
-    overrides.keywords && overrides.keywords.length > 0
-      ? overrides.keywords
-      : seedKeywordsFromName(app.name || app.bundle_id);
+    clean.length > 0 ? clean : seedKeywordsFromName(app.name || app.bundle_id);
 
   const input: AppInput = {
     app: app.name || app.bundle_id,

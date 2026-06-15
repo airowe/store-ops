@@ -1381,7 +1381,10 @@ export async function handleApi(req: Request, env: Env): Promise<Response> {
     }
   } catch (e) {
     if (e instanceof HttpError) return json({ error: e.message }, e.status, origin, env);
-    return json({ error: "internal error", detail: String(e) }, 500, origin, env);
+    // Log the real error server-side; return a generic message so unexpected
+    // exception text is never echoed to the client.
+    console.error("unhandled error (public routes):", e);
+    return json({ error: "internal error" }, 500, origin, env);
   }
 
   try {
@@ -1477,7 +1480,10 @@ export async function handleApi(req: Request, env: Env): Promise<Response> {
     return json({ error: "not found", path: url.pathname }, 404, origin);
   } catch (e) {
     if (e instanceof HttpError) return json({ error: e.message }, e.status, origin);
-    return json({ error: "internal error", detail: String(e) }, 500, origin);
+    // Log the real error server-side; return a generic message so unexpected
+    // exception text is never echoed to the client.
+    console.error("unhandled error (authed routes):", e);
+    return json({ error: "internal error" }, 500, origin);
   }
 }
 
