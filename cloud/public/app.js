@@ -762,12 +762,12 @@
         .then(function (r) {
           if (r.needsChoice) { showCandidates(r.candidates || []); return; }
           if (!r.preview) { clear(results); results.appendChild(el("div", { class: "faint" }, [r.error || "Couldn't preview that app."])); return; }
-          showPreviewResult(r.preview, displayName);
+          showPreviewResult(r.preview, displayName, r.bundleId);
         })
         .catch(function () { clear(results); results.appendChild(el("div", { class: "faint" }, ["Couldn't reach the server — try again."])); });
     }
 
-    function showPreviewResult(p, displayName) {
+    function showPreviewResult(p, displayName, bundleId) {
       clear(results);
       var grade = p.auditGrade || "—";
       var lead = p.leadRank != null ? ("#" + p.leadRank + " for “" + p.leadKeyword + "”") : "not in the top 200 yet";
@@ -786,6 +786,11 @@
           "Your optimized title, subtitle & keyword field — plus the exact push commands — are ready. Sign up to connect this app and run the full agent.",
         ]),
         el("button", { class: "btn primary", style: "width:100%;justify-content:center", onclick: function () {
+          // Carry the previewed app THROUGH signup so we auto-connect it after
+          // the magic-link round-trip — the gate promised "we connect the app".
+          if (bundleId) {
+            try { localStorage.setItem("store-ops:pendingApp", JSON.stringify({ bundle_id: bundleId, name: p.appName || displayName || "" })); } catch (e) {}
+          }
           loginView({ heading: "Sign up to connect " + (p.appName || "your app"), sub: "We email you a one-time link. Then we connect the app, run the full agent, and prepare the push — you approve it.", backTo: true });
         } }, ["Connect & run the agent →"]),
       ]);
@@ -802,7 +807,7 @@
         .then(function (r) {
           submitBtn.disabled = false; submitBtn.textContent = "Preview";
           if (r.needsChoice) { showCandidates(r.candidates || []); return; }
-          if (r.preview) { showPreviewResult(r.preview, q); return; }
+          if (r.preview) { showPreviewResult(r.preview, q, r.bundleId); return; }
           showCandidates(r.candidates || []);
         })
         .catch(function () { submitBtn.disabled = false; submitBtn.textContent = "Preview"; toast("Search failed — try again."); });
@@ -863,9 +868,40 @@
       if (input) input.value = explicitDemoEmail() || "";
       applyAuthHeader();
       setEnvPill();
+      // Just signed in from the preview gate? Auto-connect the app they previewed
+      // (the gate promised "we connect the app") and drop them into the run.
+      if (session && session.authed === true) {
+        var pending = takePendingApp();
+        if (pending && pending.bundle_id) return connectPendingApp(pending);
+      }
       route();
     });
   });
+
+  // Pull + clear the pending-app intent stashed at the preview gate.
+  function takePendingApp() {
+    try {
+      var raw = localStorage.getItem("store-ops:pendingApp");
+      if (!raw) return null;
+      localStorage.removeItem("store-ops:pendingApp");
+      return JSON.parse(raw);
+    } catch (e) { return null; }
+  }
+
+  // Auto-connect + run the previewed app right after signup, then land on its run.
+  function connectPendingApp(pending) {
+    loading("Connecting " + (pending.name || "your app") + " — running the full agent…");
+    api("POST", "/apps", { bundle_id: pending.bundle_id, name: pending.name })
+      .then(function (r) {
+        toast("Connected — running the agent…");
+        return api("POST", "/apps/" + r.id + "/run").then(function () { go("#/apps/" + r.id); route(); });
+      })
+      .catch(function (e) {
+        // Fall back to the dashboard; the connect card is right there.
+        toast(e.message || "Couldn't auto-connect — connect it below.");
+        go("#/"); route();
+      });
+  }
 
   // Reflect auth state in the header: a real session shows the email + Sign out
   // (and hides the demo "acting as" field); demo/none keeps the editable field.
