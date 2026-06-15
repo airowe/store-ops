@@ -211,6 +211,14 @@
   .signup-form input[type="email"]::placeholder { color: var(--faint); }
   .signup-form input[type="email"]:focus { outline: none; border-color: var(--signal-dim); box-shadow: 0 0 0 3px var(--signal-glow); }
 
+  /* live proof strip */
+  .proof-strip { margin: 8px 0 24px; padding: 16px 20px; border: 1px solid var(--signal-dim); border-radius: 14px;
+    background: linear-gradient(100deg, rgba(52,211,153,0.06), transparent 70%);
+    display: flex; align-items: center; gap: 18px; flex-wrap: wrap; }
+  .proof-eyebrow { font-family: var(--mono); font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: var(--signal); }
+  .proof-stats { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; font-family: var(--mono); font-size: 14px; color: var(--dim); }
+  .proof-stats b { color: var(--ink); font-weight: 700; }
+  .proof-sep { color: var(--line); }
   footer { margin: 70px 0 60px; padding-top: 26px; border-top: 1px solid var(--line-soft); color: var(--faint); font-size: 13.5px; display: flex; flex-wrap: wrap; gap: 8px 22px; align-items: center; }
   footer a { color: var(--dim); text-decoration: none; }
   footer a:hover { color: var(--ink); }
@@ -264,6 +272,18 @@
     <p class="fineprint reveal d6">The plugin is <strong>free and MIT</strong> — run the whole
     loop yourself in Claude Code. Or let the hosted agent run it on a schedule.</p>
   </header>
+
+  <!-- live proof strip — real aggregate wins, hidden until there are any -->
+  <div id="proof-strip" class="proof-strip" hidden>
+    <span class="proof-eyebrow">proof, not promises</span>
+    <div class="proof-stats">
+      <span class="proof-stat"><b id="proof-apps">—</b> apps moved</span>
+      <span class="proof-sep">·</span>
+      <span class="proof-stat"><b id="proof-wins">—</b> keyword wins</span>
+      <span class="proof-sep">·</span>
+      <span class="proof-stat">best jump <b id="proof-best">—</b></span>
+    </div>
+  </div>
 
   <section>
     <div class="eyebrow">the gap</div>
@@ -398,5 +418,18 @@
   </footer>
 
 </div>
+<script>
+  // Live proof strip: pull real aggregate wins from the API. Show ONLY when
+  // there's genuine movement — no fake social proof when the number is zero.
+  (function () {
+    fetch("https://api.shipaso.com/proof").then(function (r) { return r.json(); }).then(function (p) {
+      if (!p || !p.totalWins || p.appsWithWins < 1) return; // stay hidden until real
+      document.getElementById("proof-apps").textContent = p.appsWithWins;
+      document.getElementById("proof-wins").textContent = p.totalWins;
+      document.getElementById("proof-best").textContent = "+" + p.bestImprovement + " spots";
+      document.getElementById("proof-strip").hidden = false;
+    }).catch(function () {});
+  })();
+</script>
 </body>
 </html>
