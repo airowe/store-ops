@@ -55,6 +55,12 @@ jobs:
       - name: Test
         run: npm test
 
+      - name: Install Playwright browser
+        run: ./node_modules/.bin/playwright install --with-deps chromium
+
+      - name: E2E (dashboard funnel vs mock backend)
+        run: npm run test:e2e
+
       # ── deploy gate: only deploy when the Cloudflare secrets are configured.
       # Keeps the workflow green (gates still run) before one-time secret setup,
       # instead of failing loudly on a missing CLOUDFLARE_API_TOKEN.

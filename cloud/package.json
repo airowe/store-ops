@@ -9,6 +9,7 @@
     "deploy": "wrangler deploy",
     "test": "vitest run",
     "test:watch": "vitest",
+    "test:e2e": "playwright test",
     "typecheck": "tsc --noEmit",
     "db:migrate": "wrangler d1 execute store_ops --file=./schema.sql",
     "db:migrate:local": "wrangler d1 execute store_ops --local --file=./schema.sql"
@@ -16,6 +17,7 @@
   "devDependencies": {
     "@cloudflare/vitest-pool-workers": "^0.8.0",
     "@cloudflare/workers-types": "^4.20250101.0",
+    "@playwright/test": "^1.61.0",
     "typescript": "^5.7.0",
     "vitest": "^2.1.0",
     "wrangler": "^3.114.17"
