@@ -47,6 +47,10 @@ export type Env = {
   // endpoint returns 403 (the credential-free Fastlane handoff stays the default).
   // Set to "1"/"true" only after verifying against a test app.
   ASC_WRITE_ENABLED?: string;
+  // GitHub App (the metadata-PR path, #8). The App id + its private key (PKCS#8
+  // PEM) are ShipASO's own credential. Unset → the /github/pr endpoint is inert.
+  GITHUB_APP_ID?: string;
+  GITHUB_APP_PRIVATE_KEY?: string;
 };
 
 export default {
