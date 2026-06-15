@@ -78,8 +78,33 @@ a:hover { text-decoration: underline; }
 .reveal { opacity: 0; animation: rise .7s cubic-bezier(.2,.7,.2,1) forwards; }
 .d1 { animation-delay: .05s } .d2 { animation-delay: .15s } .d3 { animation-delay: .25s }
 .d4 { animation-delay: .35s } .d5 { animation-delay: .45s } .d6 { animation-delay: .55s }
+
+/* ── evaluation-card flip-in (grid cards + reasoning steps) ── */
+@keyframes flipIn {
+  from { opacity: 0; transform: perspective(700px) rotateX(-18deg) translateY(10px); }
+  60%  { opacity: 1; }
+  to   { opacity: 1; transform: perspective(700px) rotateX(0) translateY(0); }
+}
+.flip-in { opacity: 0; transform-origin: top center; animation: flipIn .55s cubic-bezier(.2,.7,.2,1) forwards; }
+/* staggered children (set via inline --i on each card/step) */
+.flip-in { animation-delay: calc(var(--i, 0) * 70ms); }
+
+/* ── rank-movement: positions pop in, with a quality-tinted flash ── */
+@keyframes rankPop {
+  0%   { opacity: 0; transform: translateY(6px) scale(.9); }
+  60%  { transform: translateY(0) scale(1.08); }
+  100% { opacity: 1; transform: none; }
+}
+.rank-pop { display: inline-block; animation: rankPop .5s cubic-bezier(.2,.8,.2,1) both; animation-delay: calc(var(--i, 0) * 60ms); }
+@keyframes rankFlashGood { 0% { color: var(--ink); } 35% { color: var(--signal); text-shadow: 0 0 12px var(--signal-glow); } 100% {} }
+.rank-pop.good { animation: rankPop .5s cubic-bezier(.2,.8,.2,1) both, rankFlashGood 1.1s ease-out .15s 1; animation-delay: calc(var(--i,0) * 60ms), calc(var(--i,0) * 60ms + 150ms); }
+/* up/down arrow that fades in beside a moved rank */
+.rank-arrow { display: inline-block; font-size: .8em; margin-left: 3px; opacity: 0; animation: rise .4s ease-out forwards; animation-delay: calc(var(--i, 0) * 60ms + 250ms); }
+.rank-arrow.up { color: var(--signal); }
+.rank-arrow.down { color: var(--bad); }
+
 @media (prefers-reduced-motion: reduce) {
-  .reveal { animation: none; opacity: 1; }
+  .reveal, .flip-in, .rank-pop, .rank-arrow { animation: none !important; opacity: 1 !important; transform: none !important; }
   *, html { scroll-behavior: auto !important; }
   .logo .dot, .agentline .live-dot, .cursor, .spin { animation: none !important; }
 }

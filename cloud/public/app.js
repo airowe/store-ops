@@ -164,7 +164,7 @@
     }
 
     var grid = el("div", { class: "grid" });
-    apps.forEach(function (a) { grid.appendChild(appCard(a)); });
+    apps.forEach(function (a, i) { var c = appCard(a); c.classList.add("flip-in"); c.style.setProperty("--i", i); grid.appendChild(c); });
     c.appendChild(grid);
   }
 
@@ -372,11 +372,12 @@
     steps.push({ cls: "warn", ico: "⏸", t: "Stopped at the approval gate", d: "Generated the asc/gplay push commands but did NOT run them. The irreversible store push is yours to approve." });
 
     var list = el("div", { class: "reasoning" });
-    steps.forEach(function (s) {
-      list.appendChild(el("div", { class: "step " + s.cls }, [
+    steps.forEach(function (s, i) {
+      var step = el("div", { class: "step flip-in " + s.cls, style: "--i:" + i }, [
         el("div", { class: "ico" }, [s.ico]),
         el("div", {}, [el("b", {}, [s.t]), el("br"), el("span", {}, [s.d])]),
-      ]));
+      ]);
+      list.appendChild(step);
     });
     return el("div", { class: "card" }, [el("h3", {}, ["What the agent did"]), list]);
   }
@@ -428,11 +429,13 @@
 
   function rankCard(ranks) {
     var box = el("div", { class: "ranklist" });
-    ranks.forEach(function (r) {
-      box.appendChild(el("div", { class: "rankrow" }, [
-        el("span", { class: "kw" }, [r.keyword]),
-        el("span", { class: "pos " + rankClass(r.rank) }, [rankText(r.rank)]),
-      ]));
+    ranks.forEach(function (r, i) {
+      var q = rankClass(r.rank); // good | mid | none
+      var pos = el("span", { class: "pos rank-pop " + q, style: "--i:" + i }, [rankText(r.rank)]);
+      var children = [el("span", { class: "kw" }, [r.keyword]), pos];
+      // a top-10 rank gets an up-arrow flourish (the "you're winning here" cue)
+      if (r.rank != null && r.rank <= 10) children.push(el("span", { class: "rank-arrow up", style: "--i:" + i }, ["▲"]));
+      box.appendChild(el("div", { class: "rankrow" }, children));
     });
     return el("div", { class: "card" }, [el("h3", {}, ["Organic ranks (real iTunes data)"]), box]);
   }
