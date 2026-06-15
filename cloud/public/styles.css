@@ -129,6 +129,10 @@ a:hover { text-decoration: underline; }
 .dchip.lost { color: var(--warn); background: rgba(251, 191, 36, .12); }
 .dchip.same { color: var(--faint); background: var(--line-soft); }
 
+/* share-a-win row under the movement card */
+.share-row { display: flex; gap: 10px; align-items: center; margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--line-soft); flex-wrap: wrap; }
+.sharebtn { font-size: 13px; }
+
 @media (prefers-reduced-motion: reduce) {
   .reveal, .flip-in, .rank-pop, .rank-arrow, .dchip { animation: none !important; opacity: 1 !important; transform: none !important; }
   *, html { scroll-behavior: auto !important; }

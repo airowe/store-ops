@@ -107,6 +107,7 @@ import {
 } from "../auth.js";
 import { emailSenderForEnv } from "../emailSender.js";
 import { rankDeltasView } from "../digest.js";
+import { pickShareWin, renderShareCardSvg } from "../shareCard.js";
 import { aggregateProof, extractWins } from "../proof.js";
 import { type AppCard, summarizePortfolio } from "../portfolio.js";
 import { type RunRef, planBulkApprove } from "../bulkApprove.js";
@@ -830,6 +831,37 @@ async function appDeltas(env: Env, userId: string, appId: string): Promise<unkno
   return rankDeltasView(history, { appName: app.name });
 }
 
+/**
+ * GET /apps/:id/share-card.svg?size=wide|square — a branded, self-contained SVG
+ * of the app's top honest rank win (#23), for screenshotting/sharing. Owner-
+ * scoped. Returns 404 when there's no real win to show (a climb or a strong new
+ * entry) — we never dress up a hold or a slip. The dashboard rasterizes the SVG
+ * to PNG client-side.
+ */
+async function shareCardRoute(
+  env: Env,
+  userId: string,
+  appId: string,
+  url: URL,
+  origin: string | null,
+): Promise<Response> {
+  const app = await requireOwnedApp(env, appId, userId);
+  const history = await getRankHistory(env.DB, appId, {});
+  const view = rankDeltasView(history, { appName: app.name });
+  const win = pickShareWin(view);
+  if (!win) throw new HttpError(404, "no rank win to share yet");
+  const size = url.searchParams.get("size") === "square" ? "square" : "wide";
+  const svg = renderShareCardSvg(win, { size, appName: app.name });
+  return new Response(svg, {
+    status: 200,
+    headers: {
+      ...corsHeaders(origin, env),
+      "content-type": "image/svg+xml; charset=utf-8",
+      "cache-control": "no-store",
+    },
+  });
+}
+
 /** GET /runs/:id — full run view (scoped to the owner). */
 async function getRunRoute(env: Env, userId: string, runId: string): Promise<unknown> {
   const run = await getRun(env.DB, runId);
@@ -1448,6 +1480,9 @@ export async function handleApi(req: Request, env: Env): Promise<Response> {
       }
       if (seg.length === 3 && seg[1] && seg[2] === "deltas" && method === "GET") {
         return json(await appDeltas(env, user.id, seg[1]), 200, origin);
+      }
+      if (seg.length === 3 && seg[1] && seg[2] === "share-card.svg" && method === "GET") {
+        return await shareCardRoute(env, user.id, seg[1], url, origin);
       }
     }
 

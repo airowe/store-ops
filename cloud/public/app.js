@@ -112,11 +112,15 @@
   // Trigger a client-side file download of `text` as `filename`.
   function downloadText(text, filename, label) {
     var blob = new Blob([text], { type: "text/x-shellscript" });
+    downloadBlob(blob, filename, label);
+  }
+  // Trigger a client-side download of an arbitrary Blob (png/svg/etc.).
+  function downloadBlob(blob, filename, label) {
     var url = URL.createObjectURL(blob);
     var a = el("a", { href: url, download: filename });
     document.body.appendChild(a); a.click(); a.remove();
     setTimeout(function () { URL.revokeObjectURL(url); }, 0);
-    toast((label || "Downloaded") + " ✓");
+    if (label !== false) toast((label || "Downloaded") + " ✓");
   }
   function loading(msg) { clear(root()); root().appendChild(el("div", { class: "empty" }, [el("div", { class: "spin" }), " " + (msg || "Loading…")])); }
 
@@ -297,7 +301,7 @@
     c.appendChild(el("p", { class: "lead mono", style: "font-family:ui-monospace,Menlo,monospace;font-size:13px" }, [app.bundle_id + " · " + (app.country || "US")]));
 
     // rank movement this week — animated prev→cur per keyword (the headline)
-    c.appendChild(rankMovementCard(deltas || {}));
+    c.appendChild(rankMovementCard(deltas || {}, app.id));
 
     // rank trend mini-chart
     c.appendChild(el("div", { class: "card" }, [
@@ -323,7 +327,54 @@
   // (the API already orders entries by movement weight). Single-snapshot keywords
   // come back direction:"new" / previous:null and animate as a clean reveal.
   var DIR_GLYPH = { up: "▲", down: "▼", "new": "✦", lost: "▽", same: "•" };
-  function rankMovementCard(deltas) {
+
+  // Mirror the server's pickShareWin: only a real climb or a strong new entry
+  // (top-50) is brag-worthy. Used to decide whether to show the share button —
+  // the SVG itself is always rendered server-side (single source of truth).
+  function hasShareWin(deltas) {
+    var entries = deltas.entries || [];
+    for (var i = 0; i < entries.length; i++) {
+      var e = entries[i];
+      if (e.direction === "up" && e.current != null) return true;
+      if (e.direction === "new" && e.current != null && e.current <= 50) return true;
+    }
+    return false;
+  }
+
+  // Fetch the branded share-card SVG from the API, rasterize it to a PNG via an
+  // off-screen canvas (the data-URI SVG is same-origin-safe, so the canvas is not
+  // tainted), and download it. Falls back to a direct SVG download if the canvas
+  // path is unavailable. Mock/demo mode has no server route → guides the user.
+  function generateShareCard(appId, size, btn) {
+    if (!(API_BASE && liveMode)) { toast("Connect a real app to generate a shareable win."); return; }
+    var label = btn.textContent; btn.disabled = true; btn.innerHTML = '<span class="spin"></span> Building…';
+    var url = API_BASE + "/apps/" + appId + "/share-card.svg?size=" + size;
+    fetch(url, { credentials: "include" })
+      .then(function (r) { if (!r.ok) throw new Error(r.status === 404 ? "No rank win to share yet." : "Couldn’t build the card."); return r.text(); })
+      .then(function (svgText) {
+        var W = size === "square" ? 1080 : 1200, H = size === "square" ? 1080 : 630;
+        var img = new Image();
+        var blobUrl = URL.createObjectURL(new Blob([svgText], { type: "image/svg+xml" }));
+        img.onload = function () {
+          try {
+            var canvas = document.createElement("canvas");
+            canvas.width = W; canvas.height = H;
+            canvas.getContext("2d").drawImage(img, 0, 0, W, H);
+            canvas.toBlob(function (blob) {
+              URL.revokeObjectURL(blobUrl);
+              if (!blob) { downloadBlob(new Blob([svgText], { type: "image/svg+xml" }), "shipaso-win.svg", "Saved SVG"); return; }
+              downloadBlob(blob, "shipaso-win-" + size + ".png", "Saved your win ✓");
+            }, "image/png");
+          } catch (e) { URL.revokeObjectURL(blobUrl); downloadBlob(new Blob([svgText], { type: "image/svg+xml" }), "shipaso-win.svg", "Saved SVG"); }
+          btn.disabled = false; btn.textContent = label;
+        };
+        img.onerror = function () { URL.revokeObjectURL(blobUrl); btn.disabled = false; btn.textContent = label; toast("Couldn’t render the card."); };
+        img.src = blobUrl;
+      })
+      .catch(function (e) { btn.disabled = false; btn.textContent = label; toast(e.message || "Couldn’t build the card."); });
+  }
+
+  function rankMovementCard(deltas, appId) {
     var entries = (deltas.entries || []);
     var box = el("div", { class: "deltalist" });
     if (!entries.length) {
@@ -351,10 +402,23 @@
     var sub = entries.length
       ? (deltas.anyMovement ? "Week-over-week organic position. Lower is better — green means you climbed." : "All tracked keywords held steady this week.")
       : "";
+
+    // Share-a-win: only offered when there's a real win (matches the server gate).
+    var shareRow = null;
+    if (appId && hasShareWin(deltas)) {
+      var wideBtn = el("button", { class: "btn sharebtn", onclick: function () { generateShareCard(appId, "wide", wideBtn); } }, ["⤳ Share this win"]);
+      var sqBtn = el("button", { class: "btn ghost sharebtn", onclick: function () { generateShareCard(appId, "square", sqBtn); } }, ["square"]);
+      shareRow = el("div", { class: "share-row" }, [
+        wideBtn, sqBtn,
+        el("span", { class: "faint", style: "font-size:12px;align-self:center" }, ["Branded image of your best move — post it."]),
+      ]);
+    }
+
     return el("div", { class: "card" }, [
       el("h3", {}, ["Rank movement this week"]),
       sub ? el("div", { class: "faint", style: "font-size:12.5px;margin-bottom:12px" }, [sub]) : null,
       box,
+      shareRow,
     ]);
   }
 
