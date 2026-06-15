@@ -70,7 +70,8 @@ import {
   resolveAppQuery,
   runAgent,
 } from "../engine/index.js";
-import type { ReasoningTrace } from "../d1.js";
+import type { ReasoningTrace, AppRow } from "../d1.js";
+import { buildPreview } from "../engine/preview.js";
 import {
   countAppsForUser,
   createApp,
@@ -434,6 +435,47 @@ async function resolveQuery(req: Request, env: Env): Promise<unknown> {
     query: res.query,
     candidates: res.candidates.map(candidateView),
   };
+}
+
+/**
+ * POST /preview — PUBLIC try-before-signup. Resolve a query to a single app,
+ * run the read-only agent (audit + rank baseline), and return a teaser-safe
+ * subset (grade, lead rank, top-10 count, sample) — NO DB write, no auth. The
+ * payoff (optimized copy + push commands) is withheld until the visitor signs
+ * up and connects the app. If the query is ambiguous, hand back the pick-list so
+ * the client can re-POST a bundle_id, same as /apps.
+ */
+async function previewApp(req: Request, env: Env): Promise<unknown> {
+  const body = await readJson<{ query?: string; bundle_id?: string; country?: string }>(req);
+  const country = body.country?.trim() || env.DEFAULT_COUNTRY || "US";
+
+  let bundleId = body.bundle_id?.trim();
+  let name = "";
+  if (!bundleId) {
+    const query = body.query?.trim();
+    if (!query) throw new HttpError(400, "query or bundle_id is required");
+    const res = await resolveAppQuery(fetchForEnv(env), query, { country });
+    if (res.kind === "not-found") throw new HttpError(404, `no app found for "${query}"`);
+    if (res.kind === "candidates") {
+      return { needsChoice: true, query: res.query, candidates: res.candidates.map(candidateView) };
+    }
+    bundleId = res.candidates[0]?.bundleId;
+    name = res.candidates[0]?.name ?? "";
+    if (!bundleId) throw new HttpError(404, `no connectable app for "${query}"`);
+  }
+
+  // Always seed from the live listing's name + genres (same as connectApp), so a
+  // bare bundle_id preview doesn't tokenize the bundle id into junk keywords.
+  if (!name) {
+    const live = await lookup(fetchForEnv(env), bundleId, { by: "bundleId", country });
+    name = [live.name, live.genres].filter(Boolean).join(" ").trim() || bundleId;
+  }
+
+  // Build a throwaway app row (never persisted) just to drive the engine.
+  const appRow = { id: "preview", user_id: "preview", bundle_id: bundleId, name, country } as AppRow;
+  const input = buildAppInput(appRow, {}, {});
+  const result = await runAgent(fetchForEnv(env), input);
+  return { preview: buildPreview(result), bundleId, country };
 }
 
 /** A loose email shape check — not validation, just "looks like an address". */
@@ -1223,6 +1265,14 @@ export async function handleApi(req: Request, env: Env): Promise<Response> {
     if (seg[0] === "proof" && seg.length === 1 && method === "GET") {
       return proofStats(env, origin);
     }
+    // Public try-before-signup: resolve a query → candidates (read-only).
+    if (seg[0] === "resolve" && seg.length === 1 && method === "POST") {
+      return json(await resolveQuery(req, env), 200, origin, env);
+    }
+    // Public try-before-signup: a real audit + rank preview, no DB write, no auth.
+    if (seg[0] === "preview" && seg.length === 1 && method === "POST") {
+      return json(await previewApp(req, env), 200, origin, env);
+    }
   } catch (e) {
     if (e instanceof HttpError) return json({ error: e.message }, e.status, origin, env);
     return json({ error: "internal error", detail: String(e) }, 500, origin, env);
@@ -1236,10 +1286,7 @@ export async function handleApi(req: Request, env: Env): Promise<Response> {
       return json(await billingCheckout(req, env, user), 200, origin, env);
     }
 
-    // /resolve — query → candidates (no connect, no run)
-    if (seg[0] === "resolve" && seg.length === 1 && method === "POST") {
-      return json(await resolveQuery(req, env), 200, origin);
-    }
+    // (/resolve is now a PUBLIC route — see the public block above.)
 
     // /health — production-readiness audit (authed: it names which secrets are
     // unset, so it's not public). Returns 200 when ready, 503 when an error check

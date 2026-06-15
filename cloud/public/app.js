@@ -695,7 +695,8 @@
   // The magic-link sign-in screen. Shown when there's a live backend and no
   // session. Posts to /auth/request; the emailed link's callback sets the cookie
   // and redirects back here, after which /auth/me reports the session.
-  function loginView() {
+  function loginView(ctx) {
+    ctx = ctx || {};
     var c = root(); clear(c);
     var input, btn;
     function submit(ev) {
@@ -721,8 +722,9 @@
     input = el("input", { class: "txt", type: "email", placeholder: "you@example.com", autocomplete: "email", spellcheck: "false" });
     btn = el("button", { class: "btn primary", type: "submit" }, ["Send sign-in link"]);
     var card = el("div", { class: "card", style: "max-width:440px;margin:64px auto" }, [
-      el("h2", {}, ["Sign in to ShipASO"]),
-      el("p", { class: "faint", style: "margin-top:0" }, ["Passwordless — we email you a one-time sign-in link."]),
+      el("h2", {}, [ctx.heading || "Sign in to ShipASO"]),
+      el("p", { class: "faint", style: "margin-top:0" }, [ctx.sub || "Passwordless — we email you a one-time sign-in link."]),
+      ctx.backTo ? el("div", { class: "backlink", onclick: function () { previewView(); } }, ["← back to preview"]) : null,
       el("form", { onsubmit: submit }, [
         el("label", { class: "fld" }, [el("span", { class: "lab" }, ["Email"]), input]),
         el("div", { class: "btn-row", style: "margin-top:10px" }, [btn]),
@@ -731,10 +733,105 @@
     c.appendChild(card);
   }
 
+  /* ═══════════════════ try-before-signup (logged-out preview) ═══════════════ */
+  function previewView() {
+    var c = root(); clear(c);
+    var queryInput, results, submitBtn;
+
+    function showCandidates(cands) {
+      clear(results);
+      if (!cands.length) { results.appendChild(el("div", { class: "faint", style: "font-size:12.5px" }, ["No apps found. Try a different name, an App Store / Play link, or a bundle id."])); return; }
+      results.appendChild(el("div", { class: "faint", style: "font-size:12.5px;margin:2px 0 6px" }, [cands.length === 1 ? "Found it — click to preview:" : "Pick your app:"]));
+      cands.forEach(function (c2) {
+        var meta = [c2.publisher, (c2.genres && c2.genres.length ? c2.genres[0] : null)].filter(Boolean).join(" · ");
+        results.appendChild(el("div", { class: "card appcard", style: "padding:10px 12px;margin-bottom:6px", onclick: function () { runPreview({ bundle_id: c2.bundle_id }, c2.name); } }, [
+          el("div", { class: "row1" }, [
+            c2.icon_url ? el("img", { src: c2.icon_url, width: "28", height: "28", style: "border-radius:6px;margin-right:8px;vertical-align:middle" }) : null,
+            el("span", { class: "name" }, [c2.name || c2.bundle_id]),
+          ]),
+          el("div", { class: "bundle" }, [c2.bundle_id + (meta ? "  ·  " + meta : "")]),
+        ]));
+      });
+    }
+
+    function runPreview(payload, displayName) {
+      clear(results);
+      results.appendChild(el("div", { class: "empty", style: "padding:24px" }, [el("span", { class: "spin" }), " Auditing " + (displayName || "the app") + " on live data…"]));
+      fetch(API_BASE + "/preview", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(payload) })
+        .then(function (r) { return r.json(); })
+        .then(function (r) {
+          if (r.needsChoice) { showCandidates(r.candidates || []); return; }
+          if (!r.preview) { clear(results); results.appendChild(el("div", { class: "faint" }, [r.error || "Couldn't preview that app."])); return; }
+          showPreviewResult(r.preview, displayName);
+        })
+        .catch(function () { clear(results); results.appendChild(el("div", { class: "faint" }, ["Couldn't reach the server — try again."])); });
+    }
+
+    function showPreviewResult(p, displayName) {
+      clear(results);
+      var grade = p.auditGrade || "—";
+      var lead = p.leadRank != null ? ("#" + p.leadRank + " for “" + p.leadKeyword + "”") : "not in the top 200 yet";
+      var card = el("div", { class: "card", style: "border-color:var(--signal-dim)" }, [
+        el("div", { class: "row1", style: "margin-bottom:12px" }, [
+          el("span", { class: "name", style: "font-size:18px" }, [p.appName || displayName || "Your app"]),
+          el("span", { class: "grade " + grade, style: "margin-left:auto" }, [grade]),
+        ]),
+        el("div", { class: "meta", style: "display:flex;gap:22px;margin-bottom:14px" }, [
+          el("div", {}, [el("div", { class: "k" }, ["LEAD RANK"]), el("div", { class: "v" }, [lead])]),
+          el("div", {}, [el("div", { class: "k" }, ["KEYWORDS"]), el("div", { class: "v" }, [String(p.keywordsChecked)])]),
+          el("div", {}, [el("div", { class: "k" }, ["IN TOP 10"]), el("div", { class: "v" }, [p.inTop10 + " / " + p.keywordsChecked])]),
+        ]),
+        el("div", { class: "locked", style: "margin:6px 0 16px" }, [
+          el("span", { class: "lock" }, ["🔒"]),
+          "Your optimized title, subtitle & keyword field — plus the exact push commands — are ready. Sign up to connect this app and run the full agent.",
+        ]),
+        el("button", { class: "btn primary", style: "width:100%;justify-content:center", onclick: function () {
+          loginView({ heading: "Sign up to connect " + (p.appName || "your app"), sub: "We email you a one-time link. Then we connect the app, run the full agent, and prepare the push — you approve it.", backTo: true });
+        } }, ["Connect & run the agent →"]),
+      ]);
+      results.appendChild(card);
+    }
+
+    function submit(ev) {
+      ev.preventDefault();
+      var q = queryInput.value.trim();
+      if (!q) { toast("Enter an app name, link, or bundle id"); queryInput.focus(); return; }
+      submitBtn.disabled = true; submitBtn.innerHTML = '<span class="spin"></span> Searching…';
+      fetch(API_BASE + "/preview", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ query: q }) })
+        .then(function (r) { return r.json(); })
+        .then(function (r) {
+          submitBtn.disabled = false; submitBtn.textContent = "Preview";
+          if (r.needsChoice) { showCandidates(r.candidates || []); return; }
+          if (r.preview) { showPreviewResult(r.preview, q); return; }
+          showCandidates(r.candidates || []);
+        })
+        .catch(function () { submitBtn.disabled = false; submitBtn.textContent = "Preview"; toast("Search failed — try again."); });
+    }
+
+    queryInput = el("input", { class: "txt", placeholder: "App name, App Store / Play link, or bundle id", autocomplete: "off" });
+    submitBtn = el("button", { class: "btn primary", type: "submit" }, ["Preview"]);
+    results = el("div", { style: "margin-top:12px" });
+
+    c.appendChild(el("div", { class: "agentline", style: "margin-top:26px" }, [
+      el("span", { class: "live-dot" }), null,
+      el("span", { html: "Try it free — <b style='color:var(--txt)'>paste your app, get a real audit + rank baseline.</b> No account needed to look." }),
+    ]));
+    c.appendChild(el("div", { class: "card" }, [
+      el("h2", { style: "margin-top:4px" }, ["See where your app really ranks"]),
+      el("p", { class: "lead" }, ["Paste your app — ShipASO audits the live listing and checks your organic rank on real iTunes data. Free, no sign-up to preview."]),
+      el("form", { onsubmit: submit }, [
+        el("label", { class: "fld" }, [el("span", { class: "lab" }, ["Your app"]), queryInput]),
+        el("div", { class: "btn-row" }, [submitBtn]),
+      ]),
+      results,
+    ]));
+  }
+
   /* ════════════════════════ router ════════════════════════════════════════ */
   function route() {
-    // Gate: with a live backend and no session, force the login screen.
-    if (API_BASE && session && session.authed === false) return loginView();
+    // Logged-out + live backend → the try-before-signup preview (NOT a cold
+    // login wall). Signup is gated at "Connect & run", after they've seen value.
+    if (API_BASE && session && session.authed === false) return previewView();
     var h = location.hash.replace(/^#/, "") || "/";
     var m;
     if ((m = h.match(/^\/apps\/([^/]+)$/))) return viewApp(m[1]);
