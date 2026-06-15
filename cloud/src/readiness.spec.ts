@@ -152,7 +152,7 @@ describe("auditReadiness — prod missing only warn-level config", () => {
         "stripe_webhook_secret",
         "stripe_prices",
         "tinyfish_api_key",
-        "resend_email",
+        "email_delivery",
         "dashboard_origin",
       ]),
     );
@@ -195,12 +195,21 @@ describe("auditReadiness — Stripe secret key (rename migration #9)", () => {
   });
 });
 
-describe("auditReadiness — Resend pairing", () => {
-  it.each([
-    ["RESEND_API_KEY", { RESEND_API_KEY: undefined } as EnvOverrides],
-    ["RESEND_FROM", { RESEND_FROM: undefined } as EnvOverrides],
-  ])("warns when %s alone is missing", (_label, over) => {
-    expect(check(auditReadiness(prodEnv(over)), "resend_email").ok).toBe(false);
+describe("auditReadiness — email delivery (Brevo preferred, Resend fallback)", () => {
+  it("passes on Resend alone (the prodEnv default)", () => {
+    expect(check(auditReadiness(prodEnv()), "email_delivery").ok).toBe(true);
+  });
+
+  it("passes on Brevo alone, even with Resend unset", () => {
+    const over = { RESEND_API_KEY: undefined, RESEND_FROM: undefined, BREVO_API_KEY: "xkeysib", BREVO_FROM: "ShipASO <login@shipaso.com>" } as EnvOverrides;
+    expect(check(auditReadiness(prodEnv(over)), "email_delivery").ok).toBe(true);
+  });
+
+  it("warns when neither provider is fully configured", () => {
+    const over = { RESEND_API_KEY: undefined, RESEND_FROM: undefined } as EnvOverrides;
+    const c = check(auditReadiness(prodEnv(over)), "email_delivery");
+    expect(c.ok).toBe(false);
+    expect(c.severity).toBe("warn");
   });
 });
 

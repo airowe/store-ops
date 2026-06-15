@@ -12,6 +12,7 @@ import {
   mintSessionToken,
   parseCookie,
   ResendEmailSender,
+  BrevoEmailSender,
   resolveSessionSecret,
   serializeSessionCookie,
   serializeLogoutCookie,
@@ -269,5 +270,76 @@ describe("ResendEmailSender", () => {
     const payload = JSON.parse(calls[0]!.init.body as string);
     expect(payload.html).not.toContain("<script>x</script>");
     expect(payload.html).toContain("&lt;script&gt;");
+  });
+});
+
+describe("BrevoEmailSender", () => {
+  type Call = { url: string; init: RequestInit };
+  function mockFetch(status = 201, body: unknown = { messageId: "m-1" }) {
+    const calls: Call[] = [];
+    const fn = (async (url: string, init: RequestInit) => {
+      calls.push({ url, init });
+      return new Response(JSON.stringify(body), { status });
+    }) as unknown as typeof fetch;
+    return { fn, calls };
+  }
+
+  it("POSTs to the Brevo transactional API with the api-key header", async () => {
+    const { fn, calls } = mockFetch();
+    const sender = new BrevoEmailSender({
+      apiKey: "xkeysib-test",
+      from: "ShipASO <login@shipaso.com>",
+      fetchFn: fn,
+    });
+    await sender.sendMagicLink("user@example.com", "https://app/auth/callback?token=abc");
+
+    expect(sender.channel).toBe("brevo");
+    expect(calls).toHaveLength(1);
+    expect(calls[0]!.url).toBe("https://api.brevo.com/v3/smtp/email");
+    const headers = calls[0]!.init.headers as Record<string, string>;
+    expect(headers["api-key"]).toBe("xkeysib-test");
+    expect(headers["Content-Type"]).toBe("application/json");
+  });
+
+  it("parses a 'Name <email>' from into Brevo's sender object", async () => {
+    const { fn, calls } = mockFetch();
+    const sender = new BrevoEmailSender({ apiKey: "k", from: "ShipASO <login@shipaso.com>", fetchFn: fn });
+    await sender.sendMagicLink("user@example.com", "https://app/cb?token=abc");
+    const payload = JSON.parse(calls[0]!.init.body as string);
+    expect(payload.sender).toEqual({ name: "ShipASO", email: "login@shipaso.com" });
+    expect(payload.to).toEqual([{ email: "user@example.com" }]);
+  });
+
+  it("accepts a bare email as the from (no name)", async () => {
+    const { fn, calls } = mockFetch();
+    const sender = new BrevoEmailSender({ apiKey: "k", from: "login@shipaso.com", fetchFn: fn });
+    await sender.sendMagicLink("u@e.com", "https://app/cb?token=t");
+    const payload = JSON.parse(calls[0]!.init.body as string);
+    expect(payload.sender.email).toBe("login@shipaso.com");
+  });
+
+  it("puts the magic link in both htmlContent and textContent", async () => {
+    const { fn, calls } = mockFetch();
+    const sender = new BrevoEmailSender({ apiKey: "k", from: "login@shipaso.com", fetchFn: fn });
+    await sender.sendMagicLink("u@e.com", "https://app/auth/callback?token=abc");
+    const payload = JSON.parse(calls[0]!.init.body as string);
+    expect(payload.htmlContent).toContain("https://app/auth/callback?token=abc");
+    expect(payload.textContent).toContain("https://app/auth/callback?token=abc");
+    expect(typeof payload.subject).toBe("string");
+  });
+
+  it("throws on a non-2xx so /auth/request can surface a delivery failure", async () => {
+    const { fn } = mockFetch(400, { message: "sender not verified" });
+    const sender = new BrevoEmailSender({ apiKey: "k", from: "x@y.com", fetchFn: fn });
+    await expect(sender.sendMagicLink("u@e.com", "https://app/cb?token=t")).rejects.toThrow(/brevo/i);
+  });
+
+  it("escapes HTML in the link", async () => {
+    const { fn, calls } = mockFetch();
+    const sender = new BrevoEmailSender({ apiKey: "k", from: "x@y.com", fetchFn: fn });
+    await sender.sendMagicLink("u@e.com", 'https://app/cb?token=a"><script>x</script>');
+    const payload = JSON.parse(calls[0]!.init.body as string);
+    expect(payload.htmlContent).not.toContain("<script>x</script>");
+    expect(payload.htmlContent).toContain("&lt;script&gt;");
   });
 });
