@@ -69,6 +69,32 @@ test.describe("approval gate — reject path", () => {
   });
 });
 
+test.describe("connect picker pagination (Show more)", () => {
+  test("an ambiguous search shows a page of results and 'Show more' loads the next page", async ({
+    page,
+  }) => {
+    await gotoMockDashboard(page);
+    const search = page.getByPlaceholder(/app name, app store .* link, or bundle id/i);
+    // "meditation" matches several mock-catalog apps → an ambiguous search that
+    // the mock pads into a long, paged list (so "Show more" is exercisable).
+    await search.fill("meditation");
+    await page.getByRole("button", { name: /^search$/i }).click();
+
+    await expect(page.getByText(/pick your app/i)).toBeVisible();
+    // First page shows 12 candidate cards.
+    const cards = page.locator("#view .appcard");
+    await expect(cards).toHaveCount(12);
+
+    // "Show more results" is present (more pages exist) → click it.
+    const more = page.getByRole("button", { name: /show more results/i });
+    await expect(more).toBeVisible();
+    await more.click();
+
+    // The next page is appended (12 → 24).
+    await expect(cards).toHaveCount(24);
+  });
+});
+
 test.describe("dashboard states", () => {
   test("empty dashboard shows the connect form when no apps exist", async ({ page }) => {
     await gotoMockDashboard(page);

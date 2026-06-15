@@ -138,6 +138,10 @@
   function labelFor(s) { return ({ detected: "Detected", researching: "Researching", awaiting_approval: "Awaiting approval", approved: "Approved", rejected: "Rejected", shipped: "Shipped" })[s] || s; }
   function rankClass(r) { return r == null ? "none" : r <= 10 ? "good" : r <= 50 ? "mid" : ""; }
   function rankText(r) { return r == null ? "—" : "#" + r; }
+  // Plain-English meaning of an audit grade (matches the engine's A≥85…F bands).
+  function gradeMeaning(g) {
+    return ({ A: "excellent — your listing is dialed in", B: "good, with room to sharpen", C: "average — a few clear wins available", D: "weak — leaving installs on the table", F: "needs work — big opportunity here" })[g] || "";
+  }
 
   // ── motion: tween an element's text from one rank number to another ──────────
   // Honors prefers-reduced-motion (jumps straight to the final value). `from`/`to`
@@ -215,12 +219,20 @@
         });
     }
 
-    // Render the resolver's candidate list as a clickable picker.
-    function renderCandidates(cands) {
-      clear(results);
-      if (!cands.length) { results.appendChild(el("div", { class: "faint", style: "font-size:12.5px" }, ["No apps found. Try a different name, an App Store / Play link, or a bundle id."])); return; }
-      var heading = cands.length === 1 ? "Found it — click to connect:" : "Pick your app:";
-      results.appendChild(el("div", { class: "faint", style: "font-size:12.5px;margin:2px 0 6px" }, [heading]));
+    // Render the resolver's candidate list as a clickable picker. `r` carries
+    // { candidates, hasMore, offset }; `term` powers "Show more"; `append` keeps
+    // prior rows when paging.
+    function renderCandidates(r, term, append) {
+      var cands = (r && r.candidates) || [];
+      if (!append) clear(results);
+      var oldPager = results.querySelector(".pager");
+      if (oldPager) oldPager.remove();
+
+      if (!cands.length && !append) { results.appendChild(el("div", { class: "faint", style: "font-size:12.5px" }, ["No apps found. Try a different name, an App Store / Play link, or a bundle id."])); return; }
+      if (!append) {
+        var heading = cands.length === 1 ? "Found it — click to connect:" : "Pick your app:";
+        results.appendChild(el("div", { class: "faint", style: "font-size:12.5px;margin:2px 0 6px" }, [heading]));
+      }
       cands.forEach(function (c) {
         var meta = [c.publisher, (c.genres && c.genres.length ? c.genres[0] : null)].filter(Boolean).join(" · ");
         var row = el("div", { class: "card appcard", style: "padding:10px 12px;margin-bottom:6px", onclick: function () { connect(c.bundle_id, c.name); } }, [
@@ -232,6 +244,18 @@
         ]);
         results.appendChild(row);
       });
+      if (r && r.hasMore && term) {
+        var nextOffset = (r.offset || 0) + (cands.length || 12);
+        var more = el("button", { class: "btn ghost more-btn", onclick: function () {
+          more.disabled = true; more.innerHTML = '<span class="spin"></span> Loading…';
+          api("POST", "/resolve", { query: term, offset: nextOffset })
+            .then(function (x) { renderCandidates(x, term, true); })
+            .catch(function (e) { more.disabled = false; more.textContent = "Show more results ↓"; toast(e.message || "Couldn't load more"); });
+        } }, ["Show more results ↓"]);
+        results.appendChild(el("div", { class: "pager", style: "margin-top:4px" }, [more]));
+      } else if (!append && cands.length > 1) {
+        results.appendChild(el("div", { class: "pager faint", style: "font-size:12px;margin-top:6px" }, ["That's everything matching — refine the name if your app isn't here."]));
+      }
     }
 
     function submit(ev) {
@@ -245,7 +269,7 @@
           submitBtn.disabled = false; submitBtn.textContent = "Search";
           // Exact single hit (bundle id / link / unique name) → connect straight away.
           if (r.kind === "resolved" && r.candidates.length === 1) { connect(r.candidates[0].bundle_id, r.candidates[0].name); return; }
-          renderCandidates(r.candidates || []);
+          renderCandidates(r, q, false);
         })
         .catch(function (e) {
           submitBtn.disabled = false; submitBtn.textContent = "Search";
@@ -943,10 +967,24 @@
     var c = root(); clear(c);
     var queryInput, results, submitBtn;
 
-    function showCandidates(cands) {
-      clear(results);
-      if (!cands.length) { results.appendChild(el("div", { class: "faint", style: "font-size:12.5px" }, ["No apps found. Try a different name, an App Store / Play link, or a bundle id."])); return; }
-      results.appendChild(el("div", { class: "faint", style: "font-size:12.5px;margin:2px 0 6px" }, [cands.length === 1 ? "Found it — click to preview:" : "Pick your app:"]));
+    // Render a candidate picker. `r` is the /preview (or /resolve) response that
+    // carries { candidates, hasMore, offset, query }. `append` keeps prior rows
+    // (for "Show more"); otherwise it replaces. The original search term is
+    // threaded so the "Show more" button can request the next page.
+    function showCandidates(r, term, append) {
+      var cands = (r && r.candidates) || [];
+      if (!append) clear(results);
+      // strip any previous "Show more"/pager controls before re-appending
+      var oldPager = results.querySelector(".pager");
+      if (oldPager) oldPager.remove();
+
+      if (!cands.length && !append) {
+        results.appendChild(el("div", { class: "faint", style: "font-size:12.5px" }, ["No apps found. Try a different name, an App Store / Play link, or a bundle id."]));
+        return;
+      }
+      if (!append) {
+        results.appendChild(el("div", { class: "faint", style: "font-size:12.5px;margin:2px 0 6px" }, [cands.length === 1 ? "Found it — click to preview:" : "Pick your app:"]));
+      }
       cands.forEach(function (c2) {
         var meta = [c2.publisher, (c2.genres && c2.genres.length ? c2.genres[0] : null)].filter(Boolean).join(" · ");
         results.appendChild(el("div", { class: "card appcard", style: "padding:10px 12px;margin-bottom:6px", onclick: function () { runPreview({ bundle_id: c2.bundle_id }, c2.name); } }, [
@@ -957,6 +995,20 @@
           el("div", { class: "bundle" }, [c2.bundle_id + (meta ? "  ·  " + meta : "")]),
         ]));
       });
+      // "Show more" when the API says another page exists (and we have a term).
+      if (r && r.hasMore && term) {
+        var nextOffset = (r.offset || 0) + (cands.length || 12);
+        var more = el("button", { class: "btn ghost more-btn", onclick: function () {
+          more.disabled = true; more.innerHTML = '<span class="spin"></span> Loading…';
+          fetch(API_BASE + "/preview", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ query: term, offset: nextOffset }) })
+            .then(function (x) { return x.json(); })
+            .then(function (x2) { showCandidates(x2, term, true); })
+            .catch(function () { more.disabled = false; more.textContent = "Show more results ↓"; toast("Couldn't load more — try again."); });
+        } }, ["Show more results ↓"]);
+        results.appendChild(el("div", { class: "pager", style: "margin-top:4px" }, [more]));
+      } else if (!append && cands.length > 1) {
+        results.appendChild(el("div", { class: "pager faint", style: "font-size:12px;margin-top:6px" }, ["That's everything matching — refine the name if your app isn't here."]));
+      }
     }
 
     function runPreview(payload, displayName) {
@@ -965,7 +1017,7 @@
       fetch(API_BASE + "/preview", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(payload) })
         .then(function (r) { return r.json(); })
         .then(function (r) {
-          if (r.needsChoice) { showCandidates(r.candidates || []); return; }
+          if (r.needsChoice) { showCandidates(r, payload.query, false); return; }
           if (!r.preview) { clear(results); results.appendChild(el("div", { class: "faint" }, [r.error || "Couldn't preview that app."])); return; }
           showPreviewResult(r.preview, displayName, r.bundleId);
         })
@@ -979,7 +1031,11 @@
       var card = el("div", { class: "card", style: "border-color:var(--signal-dim)" }, [
         el("div", { class: "row1", style: "margin-bottom:12px" }, [
           el("span", { class: "name", style: "font-size:18px" }, [p.appName || displayName || "Your app"]),
-          el("span", { class: "grade " + grade, style: "margin-left:auto" }, [grade]),
+          el("span", { class: "tip", tabindex: "0", style: "margin-left:auto;display:inline-flex;align-items:center" }, [
+            el("span", { class: "grade " + grade }, [grade]),
+            el("span", { class: "tip-q" }, ["?"]),
+            el("div", { class: "tip-body", html: "<b>Listing audit grade (A–F).</b> How well your App Store listing is set up to convert — scored from your screenshot set (count, captions, polish). <b>" + (grade === "—" ? "Not graded yet." : grade + "</b> = " + gradeMeaning(grade) + ".") }),
+          ]),
         ]),
         el("div", { class: "meta", style: "display:flex;gap:22px;margin-bottom:14px" }, [
           el("div", {}, [el("div", { class: "k" }, ["LEAD RANK"]), el("div", { class: "v" }, [lead])]),
@@ -1011,9 +1067,9 @@
         .then(function (r) { return r.json(); })
         .then(function (r) {
           submitBtn.disabled = false; submitBtn.textContent = "Preview";
-          if (r.needsChoice) { showCandidates(r.candidates || []); return; }
+          if (r.needsChoice) { showCandidates(r, q, false); return; }
           if (r.preview) { showPreviewResult(r.preview, q, r.bundleId); return; }
-          showCandidates(r.candidates || []);
+          showCandidates(r, q, false);
         })
         .catch(function () { submitBtn.disabled = false; submitBtn.textContent = "Preview"; toast("Search failed — try again."); });
     }
@@ -1027,7 +1083,7 @@
       el("span", { html: "Try it free — <b style='color:var(--txt)'>paste your app, get a real audit + rank baseline.</b> No account needed to look." }),
     ]));
     c.appendChild(el("div", { class: "card" }, [
-      el("h2", { style: "margin-top:4px" }, ["See where your app really ranks"]),
+      el("h2", { style: "margin-top:4px", html: "See where your app <em>really</em> ranks" }),
       el("p", { class: "lead" }, ["Paste your app — ShipASO audits the live listing and checks your organic rank on real iTunes data. Free, no sign-up to preview."]),
       el("form", { onsubmit: submit }, [
         el("label", { class: "fld" }, [el("span", { class: "lab" }, ["Your app"]), queryInput]),

@@ -158,3 +158,67 @@ describe("resolveAppQuery", () => {
     expect(res.candidates[0]?.bundleId).toBe("app.airowe.clarity");
   });
 });
+
+/** N distinct connectable iTunes results, so we can exercise paging boundaries. */
+function makeResults(n: number, start = 0): unknown[] {
+  return Array.from({ length: n }, (_, i) => ({
+    bundleId: `com.example.app${start + i}`,
+    trackId: 1000 + start + i,
+    trackName: `App ${start + i}`,
+    artistName: "Example",
+    genres: ["Utilities"],
+  }));
+}
+
+describe("resolveAppQuery — pagination (Show more)", () => {
+  it("caps a name search at PAGE_SIZE (12) candidates per page", async () => {
+    // iTunes returns more than a page; the result must be trimmed to PAGE_SIZE.
+    const fetchFn = mockFetch({ resultCount: 20, results: makeResults(20) });
+    const res = await resolveAppQuery(fetchFn, "meditation", { country: "US" });
+    expect(res.kind).toBe("candidates");
+    expect(res.candidates).toHaveLength(12);
+  });
+
+  it("reports hasMore:true when a full extra row beyond the page exists", async () => {
+    // 13 results back (PAGE_SIZE 12 + the lookahead row) → there's a next page.
+    const fetchFn = mockFetch({ resultCount: 13, results: makeResults(13) });
+    const res = await resolveAppQuery(fetchFn, "meditation", { country: "US" });
+    expect(res.candidates).toHaveLength(12);
+    expect(res.hasMore).toBe(true);
+  });
+
+  it("reports hasMore:false on the last (partial) page", async () => {
+    const fetchFn = mockFetch({ resultCount: 5, results: makeResults(5) });
+    const res = await resolveAppQuery(fetchFn, "meditation", { country: "US" });
+    expect(res.candidates).toHaveLength(5);
+    expect(res.hasMore).toBe(false);
+  });
+
+  it("requests the page with a limit one larger than PAGE_SIZE (lookahead) and the given offset", async () => {
+    const calls: string[] = [];
+    const fetchFn = mockFetch({ resultCount: 13, results: makeResults(13, 12) }, calls);
+    const res = await resolveAppQuery(fetchFn, "meditation", { country: "US", offset: 12 });
+    const url = calls[0]!;
+    expect(url).toContain("limit=13"); // 12 + 1 lookahead
+    expect(url).toContain("offset=12");
+    expect(res.offset).toBe(12);
+  });
+
+  it("defaults offset to 0 when omitted (no offset param in the URL)", async () => {
+    const calls: string[] = [];
+    const fetchFn = mockFetch({ resultCount: 3, results: makeResults(3) }, calls);
+    const res = await resolveAppQuery(fetchFn, "meditation", { country: "US" });
+    expect(res.offset).toBe(0);
+    expect(calls[0]).not.toContain("offset=");
+  });
+
+  it("does not paginate id/bundle lookups (they resolve to a single match)", async () => {
+    const calls: string[] = [];
+    const fetchFn = mockFetch({ resultCount: 1, results: [clarity] }, calls);
+    const res = await resolveAppQuery(fetchFn, "app.airowe.clarity", { country: "US", offset: 50 });
+    expect(res.kind).toBe("resolved");
+    expect(res.hasMore).toBe(false);
+    // a lookup never carries a search offset
+    expect(calls[0]).not.toContain("offset=");
+  });
+});

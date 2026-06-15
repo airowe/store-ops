@@ -261,6 +261,31 @@ p.lead.mono, .mono { font-family: var(--mono); }
 .grade.C           { background: rgba(251,191,36,.14); color: var(--warn); }
 .grade.D, .grade.F { background: rgba(248,113,113,.14); color: var(--bad); }
 
+/* ── CSS-only hover tooltip (e.g. "what does this grade mean?") ── */
+.tip { position: relative; cursor: help; }
+.tip > .tip-q {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 15px; height: 15px; margin-left: 6px; border-radius: 50%;
+  border: 1px solid var(--faint); color: var(--dim);
+  font-family: var(--mono); font-size: 10px; font-weight: 700; line-height: 1;
+  vertical-align: middle;
+}
+.tip .tip-body {
+  position: absolute; right: 0; top: calc(100% + 8px); z-index: 40;
+  width: 264px; padding: 11px 13px; border-radius: 10px;
+  background: var(--panel-2); border: 1px solid var(--line);
+  box-shadow: 0 16px 40px -12px rgba(0,0,0,.6);
+  color: var(--dim); font-family: var(--sans); font-size: 12.5px; line-height: 1.5;
+  font-weight: 400; text-align: left; white-space: normal;
+  opacity: 0; transform: translateY(-4px); pointer-events: none;
+  transition: opacity .14s ease, transform .14s ease;
+}
+.tip .tip-body b { color: var(--ink); font-weight: 600; }
+.tip:hover .tip-body, .tip:focus-within .tip-body { opacity: 1; transform: translateY(0); }
+@media (prefers-reduced-motion: reduce) {
+  .tip .tip-body { transition: none; transform: none; }
+}
+
 /* ── forms / buttons ─────────────────────────────────────────── */
 label.fld { display: block; margin: 0 0 14px; }
 label.fld .lab { font-family: var(--mono); font-size: 12px; color: var(--dim); margin-bottom: 6px; display: block; }

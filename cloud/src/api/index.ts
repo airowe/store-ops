@@ -432,16 +432,26 @@ function candidateView(c: AppCandidate) {
  * the search box + picker, then POSTs the chosen bundle_id to /apps.
  */
 async function resolveQuery(req: Request, env: Env): Promise<unknown> {
-  const body = await readJson<{ query?: string; country?: string }>(req);
+  const body = await readJson<{ query?: string; country?: string; offset?: number }>(req);
   const query = body.query?.trim();
   if (!query) throw new HttpError(400, "query is required");
   const country = body.country?.trim() || env.DEFAULT_COUNTRY || "US";
-  const res = await resolveAppQuery(fetchForEnv(env), query, { country });
+  const offset = normalizeOffset(body.offset);
+  const res = await resolveAppQuery(fetchForEnv(env), query, { country, offset });
   return {
     kind: res.kind, // "resolved" | "candidates" | "not-found"
     query: res.query,
     candidates: res.candidates.map(candidateView),
+    offset: res.offset,
+    hasMore: res.hasMore,
   };
+}
+
+/** Clamp a client-supplied offset to a sane non-negative integer. */
+function normalizeOffset(raw: unknown): number {
+  const n = typeof raw === "number" ? raw : Number(raw);
+  if (!Number.isFinite(n) || n < 0) return 0;
+  return Math.min(Math.floor(n), 200); // iTunes caps search results around 200
 }
 
 /**
@@ -453,7 +463,7 @@ async function resolveQuery(req: Request, env: Env): Promise<unknown> {
  * the client can re-POST a bundle_id, same as /apps.
  */
 async function previewApp(req: Request, env: Env): Promise<unknown> {
-  const body = await readJson<{ query?: string; bundle_id?: string; country?: string }>(req);
+  const body = await readJson<{ query?: string; bundle_id?: string; country?: string; offset?: number }>(req);
   const country = body.country?.trim() || env.DEFAULT_COUNTRY || "US";
 
   let bundleId = body.bundle_id?.trim();
@@ -461,10 +471,17 @@ async function previewApp(req: Request, env: Env): Promise<unknown> {
   if (!bundleId) {
     const query = body.query?.trim();
     if (!query) throw new HttpError(400, "query or bundle_id is required");
-    const res = await resolveAppQuery(fetchForEnv(env), query, { country });
+    const offset = normalizeOffset(body.offset);
+    const res = await resolveAppQuery(fetchForEnv(env), query, { country, offset });
     if (res.kind === "not-found") throw new HttpError(404, `no app found for "${query}"`);
     if (res.kind === "candidates") {
-      return { needsChoice: true, query: res.query, candidates: res.candidates.map(candidateView) };
+      return {
+        needsChoice: true,
+        query: res.query,
+        candidates: res.candidates.map(candidateView),
+        offset: res.offset,
+        hasMore: res.hasMore,
+      };
     }
     bundleId = res.candidates[0]?.bundleId;
     name = res.candidates[0]?.name ?? "";

@@ -21,8 +21,14 @@ import {
   fetchJson,
 } from "./itunes.js";
 
-/** How many name-search candidates we surface for the user to pick from. */
-export const MAX_CANDIDATES = 8;
+/** How many name-search candidates we surface per page (the user can page on). */
+export const PAGE_SIZE = 12;
+
+/**
+ * @deprecated kept as an alias for back-compat; use PAGE_SIZE. Equal to the page
+ * size so any old import still behaves.
+ */
+export const MAX_CANDIDATES = PAGE_SIZE;
 
 /** The classification of a raw query string. */
 export type Query =
@@ -49,6 +55,10 @@ export type ResolveResult = {
   kind: "resolved" | "candidates" | "not-found";
   query: Query;
   candidates: AppCandidate[];
+  /** the offset this page started at (0 for the first page). */
+  offset: number;
+  /** true when another page of name-search results exists (drives "Show more"). */
+  hasMore: boolean;
 };
 
 const APPSTORE_ID_RE = /\bid(\d+)/i; // .../id1600000000 (anywhere in an apps.apple.com URL)
@@ -116,18 +126,19 @@ async function searchCandidates(
   fetchFn: FetchFn,
   term: string,
   country: string,
+  offset: number,
 ): Promise<AppCandidate[]> {
-  const data = asResponse(
-    await fetchJson(
-      fetchFn,
-      buildUrl(ITUNES_SEARCH_URL, {
-        term,
-        country,
-        entity: "software",
-        limit: MAX_CANDIDATES,
-      }),
-    ),
-  );
+  // Fetch ONE more than a page so the caller can tell whether a next page exists
+  // without a second round-trip. `offset` is omitted entirely when 0 so the
+  // first-page URL stays clean (and matches the cache key Apple already serves).
+  const params: Record<string, string | number> = {
+    term,
+    country,
+    entity: "software",
+    limit: PAGE_SIZE + 1,
+  };
+  if (offset > 0) params.offset = offset;
+  const data = asResponse(await fetchJson(fetchFn, buildUrl(ITUNES_SEARCH_URL, params)));
   return (data.results ?? []).map(toCandidate).filter((c): c is AppCandidate => c !== null);
 }
 
@@ -139,20 +150,30 @@ async function searchCandidates(
 export async function resolveAppQuery(
   fetchFn: FetchFn,
   raw: string,
-  { country = "US" }: { country?: string } = {},
+  { country = "US", offset = 0 }: { country?: string; offset?: number } = {},
 ): Promise<ResolveResult> {
   const query = classifyQuery(raw);
 
-  let candidates: AppCandidate[];
-  if (query.kind === "appstore-id") {
-    candidates = await lookupCandidates(fetchFn, "id", query.id, country);
-  } else if (query.kind === "bundle-id") {
-    candidates = await lookupCandidates(fetchFn, "bundleId", query.id, country);
-  } else {
-    candidates = await searchCandidates(fetchFn, query.term, country);
+  // id / bundle lookups resolve to a single exact match — they don't paginate.
+  if (query.kind === "appstore-id" || query.kind === "bundle-id") {
+    const by = query.kind === "appstore-id" ? "id" : "bundleId";
+    const candidates = await lookupCandidates(fetchFn, by, query.id, country);
+    const kind = candidates.length === 0 ? "not-found" : candidates.length === 1 ? "resolved" : "candidates";
+    return { kind, query, candidates, offset: 0, hasMore: false };
   }
 
+  // Name search: fetch PAGE_SIZE+1, the extra row signals a next page exists.
+  const page = await searchCandidates(fetchFn, query.term, country, offset);
+  const hasMore = page.length > PAGE_SIZE;
+  const candidates = hasMore ? page.slice(0, PAGE_SIZE) : page;
+
+  // A lone first-page hit collapses to "resolved" (connect can proceed directly);
+  // once the user has paged (offset > 0) we always keep the picker open.
   const kind =
-    candidates.length === 0 ? "not-found" : candidates.length === 1 ? "resolved" : "candidates";
-  return { kind, query, candidates };
+    candidates.length === 0
+      ? "not-found"
+      : candidates.length === 1 && offset === 0 && !hasMore
+        ? "resolved"
+        : "candidates";
+  return { kind, query, candidates, offset, hasMore };
 }

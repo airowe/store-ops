@@ -15,9 +15,10 @@ test.describe("dashboard funnel (mock backend)", () => {
   }) => {
     await gotoMockDashboard(page);
 
-    // The connect form: search a real catalog name → single match auto-connects.
-    // Target the connect search box by its placeholder (NOT input.first(), which
-    // is the header "act as…" email field).
+    // The connect form: search a name that resolves to a single catalog app
+    // ("Calm" is unique in the mock catalog), which auto-connects + runs. Target
+    // the connect search box by its placeholder (NOT input.first(), which is the
+    // header "act as…" email field).
     const search = page.getByPlaceholder(/app name, app store .* link, or bundle id/i);
     await search.fill("Calm");
     await page.getByRole("button", { name: /^search$/i }).click();

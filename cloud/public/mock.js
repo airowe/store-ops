@@ -252,8 +252,12 @@
     { bundle_id: "com.hallow.app", name: "Hallow: Prayer & Meditation", publisher: "Hallow", genres: ["Lifestyle"], icon_url: null },
   ];
 
-  // Mirror the server resolver's classify → resolved | candidates | not-found.
-  function resolveMock(q) {
+  var PAGE_SIZE = 12;
+
+  // Mirror the server resolver's classify → resolved | candidates | not-found,
+  // now with offset-based paging for name searches (offset defaults to 0).
+  function resolveMock(q, offset) {
+    offset = offset || 0;
     var raw = q.trim();
     var query;
     var byExact = null;
@@ -269,22 +273,40 @@
       query = { kind: "name", term: raw };
     }
 
-    var cands;
-    if (byExact) {
-      var hit = CATALOG.filter(function (c) { return c.bundle_id === byExact; });
-      // Unknown bundle id still connects in the demo (echo it back as one candidate).
-      cands = hit.length ? hit : [{ bundle_id: byExact, name: byExact, publisher: null, genres: [], icon_url: null }];
-    } else if (query.kind === "name") {
-      var needle = raw.toLowerCase();
-      cands = CATALOG.filter(function (c) {
-        return c.name.toLowerCase().indexOf(needle) >= 0 || (c.publisher || "").toLowerCase().indexOf(needle) >= 0;
-      });
-    } else {
-      cands = []; // numeric appstore-id has no demo catalog mapping
+    // id / bundle lookups don't paginate.
+    if (byExact || query.kind !== "name") {
+      var cands;
+      if (byExact) {
+        var hit = CATALOG.filter(function (c) { return c.bundle_id === byExact; });
+        cands = hit.length ? hit : [{ bundle_id: byExact, name: byExact, publisher: null, genres: [], icon_url: null }];
+      } else {
+        cands = []; // numeric appstore-id has no demo catalog mapping
+      }
+      var k = cands.length === 0 ? "not-found" : cands.length === 1 ? "resolved" : "candidates";
+      return { kind: k, query: query, candidates: cands, offset: 0, hasMore: false };
     }
 
-    var kind = cands.length === 0 ? "not-found" : cands.length === 1 ? "resolved" : "candidates";
-    return { kind: kind, query: query, candidates: cands };
+    // Name search: matching catalog entries, padded with deterministic extras so
+    // the demo can exercise "Show more" the way real iTunes results would.
+    var needle = raw.toLowerCase();
+    var matches = CATALOG.filter(function (c) {
+      return c.name.toLowerCase().indexOf(needle) >= 0 || (c.publisher || "").toLowerCase().indexOf(needle) >= 0;
+    });
+    var all = matches.slice();
+    // Only pad to a long list when the search is genuinely AMBIGUOUS (2+ real
+    // catalog matches) — a single exact-ish match stays a clean single result so
+    // it can still auto-resolve. This lets the demo exercise "Show more" without
+    // fabricating a pick-list for an unambiguous query.
+    if (matches.length >= 2) {
+      var TOTAL = 27; // pretend iTunes returned a long list
+      for (var i = all.length; i < TOTAL; i++) {
+        all.push({ bundle_id: "com.demo." + needle.replace(/[^a-z0-9]/g, "") + "." + i, name: title(raw) + " — result " + (i + 1), publisher: "Demo Publisher", genres: ["Utilities"], icon_url: null });
+      }
+    }
+    var page = all.slice(offset, offset + PAGE_SIZE);
+    var hasMore = offset + PAGE_SIZE < all.length;
+    var kind = all.length === 0 ? "not-found" : (page.length === 1 && offset === 0 && !hasMore) ? "resolved" : "candidates";
+    return { kind: kind, query: query, candidates: page, offset: offset, hasMore: hasMore };
   }
 
   function handle(method, path, body, email) {
@@ -296,7 +318,7 @@
     if (method === "POST" && path === "/resolve") {
       var q = (body.query || "").trim();
       if (!q) return json(400, { error: "query is required" });
-      var resolved = resolveMock(q);
+      var resolved = resolveMock(q, body.offset || 0);
       return json(200, resolved);
     }
 
