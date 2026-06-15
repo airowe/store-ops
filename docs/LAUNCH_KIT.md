@@ -6,7 +6,7 @@ abandons you at the App Store Connect form. ShipASO does the work and proves the
 rank moved.** New angle since the early drafts: **you can see your real rank for
 free, no signup** (the try-before-signup preview).
 
-Current facts (keep these accurate): 24 skills (12 ASO + 12 store-CLI), 324 cloud
+Current facts (keep these accurate): 24 skills (12 ASO + 12 store-CLI), 344 cloud
 tests, App Store + Google Play, MIT plugin + a hosted agent at app.shipaso.com.
 
 ---
@@ -50,7 +50,7 @@ difficulty scores, rank graphs. They stop at "here's what to do." The doing is
 still on you, and most gate the data behind a paid API.
 
 So I built the other half. ShipASO is a set of agent skills that run in Claude
-Code (24 skills, 324 tests on the hosted side). It does the whole loop: audits
+Code (24 skills, 344 tests on the hosted side). It does the whole loop: audits
 your live listing, researches keywords on **real rank data with no paid API**
 (it reads the public iTunes Search API — your position in the results *is* your
 rank), optimizes copy to exact char limits, hands you the exact `asc`/`gplay`
