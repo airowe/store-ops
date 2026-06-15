@@ -1,0 +1,74 @@
+# Auto-deploy to Cloudflare on merge to main — gated on the test suite.
+#
+# Flow: install → typecheck → test → (only if green) deploy the Worker, then the
+# Pages dashboard. A red build never reaches production.
+#
+# Required repo secrets (Settings → Secrets and variables → Actions):
+#   CLOUDFLARE_API_TOKEN   — a scoped token (see SETUP below)
+#   CLOUDFLARE_ACCOUNT_ID  — your Cloudflare account id
+#
+# SETUP (one-time, owner only):
+#   1. Cloudflare dashboard → My Profile → API Tokens → Create Token.
+#      Use the "Edit Cloudflare Workers" template, then ADD permissions:
+#        - Account · Workers Scripts · Edit
+#        - Account · Cloudflare Pages · Edit
+#        - Account · D1 · Edit            (only if CI ever runs migrations)
+#      Scope it to the account + the shipaso.com zone. Copy the token.
+#   2. Cloudflare dashboard → account home → copy the Account ID (right sidebar).
+#   3. Add both as the repo secrets named above.
+#   The workflow stays inert until those secrets exist.
+
+name: deploy
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch: {} # allow manual runs from the Actions tab
+
+# One deploy at a time; a newer push supersedes an in-flight one.
+concurrency:
+  group: deploy-prod
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: cloud
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: cloud/package-lock.json
+
+      - name: Install
+        run: npm ci
+
+      # ── quality gate: a failure here stops the deploy ──
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Test
+        run: npm test
+
+      # ── deploy the Worker (API at api.shipaso.com) ──
+      - name: Deploy Worker
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          workingDirectory: cloud
+          command: deploy
+
+      # ── deploy the dashboard (Pages at app.shipaso.com) ──
+      - name: Deploy Pages dashboard
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          workingDirectory: cloud
+          command: pages deploy public --project-name store-ops-dashboard --branch main
