@@ -221,35 +221,76 @@ export function renderDigestText(digest: Digest, opts: RenderOpts): string {
   return lines.join("\n");
 }
 
+/**
+ * A branded, share-worthy weekly digest. Inline styles only (email clients strip
+ * <style>), dark ShipASO palette, and a visual "rank moved" hero so a screenshot
+ * of the email reads as a real result — the thing people post. Still exactly one
+ * dashboard CTA (no link clutter). Falls back to an honest held-steady card.
+ */
 export function renderDigestHtml(digest: Digest, opts: RenderOpts): string {
   const appName = escapeHtml(opts.appName);
   const url = escapeHtml(opts.dashboardUrl);
-  const parts: string[] = [];
-
-  parts.push(`<h2>What moved this week for ${appName}</h2>`);
-
+  const SIGNAL = "#34d399";
   const moved = movedEntries(digest);
-  if (!digest.anyMovement || moved.length === 0) {
-    parts.push(`<p>${escapeHtml(HELD_STEADY)}</p>`);
+
+  // ── hero: the top mover as a big before→after, or the held-steady note ──
+  let hero: string;
+  if (digest.anyMovement && digest.topMover) {
+    const m = digest.topMover;
+    const cur = m.current === null ? "—" : `#${m.current}`;
+    const prev = m.previous === null ? "—" : `#${m.previous}`;
+    const arrow = m.direction === "up" || m.direction === "new" ? "▲" : m.direction === "down" || m.direction === "lost" ? "▼" : "→";
+    const heroColor = m.direction === "up" || m.direction === "new" ? SIGNAL : m.direction === "same" ? "#97a1b6" : "#f87171";
+    hero =
+      `<div style="font:13px/1.4 -apple-system,Segoe UI,Roboto,sans-serif;color:#97a1b6;text-transform:uppercase;letter-spacing:.06em;margin:0 0 6px">Top mover · ${escapeHtml(m.keyword)}</div>` +
+      `<div style="font:600 34px/1 Georgia,serif;color:#eef1f7;margin:0 0 6px">${prev} <span style="color:${heroColor}">${arrow} ${cur}</span></div>`;
   } else {
-    if (digest.topMover) {
-      parts.push(`<p><strong>Top mover:</strong> ${escapeHtml(describeEntry(digest.topMover))}</p>`);
+    hero =
+      `<div style="font:600 22px/1.3 Georgia,serif;color:#eef1f7;margin:0 0 4px">Held steady this week</div>` +
+      `<div style="font:14px/1.5 -apple-system,Segoe UI,Roboto,sans-serif;color:#97a1b6">${escapeHtml(HELD_STEADY)}</div>`;
+  }
+
+  // ── the rest of the moves (skip the one already shown as the hero) ──
+  let movesList = "";
+  if (digest.anyMovement && moved.length > 0) {
+    const rest = digest.topMover ? moved.filter((e) => e.keyword !== digest.topMover!.keyword) : moved;
+    if (rest.length) {
+      const rows = rest
+        .map(
+          (e) =>
+            `<tr><td style="padding:6px 0;border-top:1px solid #222a3b;font:14px/1.5 -apple-system,Segoe UI,Roboto,sans-serif;color:#97a1b6">${escapeHtml(describeEntry(e))}</td></tr>`,
+        )
+        .join("");
+      movesList = `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:18px 0 0">${rows}</table>`;
     }
-    parts.push("<ul>");
-    for (const e of moved) parts.push(`<li>${escapeHtml(describeEntry(e))}</li>`);
-    parts.push("</ul>");
   }
 
-  if (opts.hasPendingApproval) {
-    parts.push(
-      `<p>A new optimization is waiting for your approval -> ` +
-        `<a href="${url}">${url}</a></p>`,
-    );
-  } else {
-    parts.push(`<p><a href="${url}">See the full trend in your dashboard</a></p>`);
-  }
+  const ctaText = opts.hasPendingApproval
+    ? "Review the pending optimization →"
+    : "See the full trend →";
+  const ctaNote = opts.hasPendingApproval
+    ? `<div style="font:13px/1.5 -apple-system,Segoe UI,Roboto,sans-serif;color:#97a1b6;margin:0 0 14px">A new optimization is ready and waiting for your approval.</div>`
+    : "";
 
-  return parts.join("");
+  return [
+    `<div style="background:#07090e;padding:28px 16px;font-family:-apple-system,Segoe UI,Roboto,sans-serif">`,
+    `<div style="max-width:520px;margin:0 auto;background:#11151f;border:1px solid #222a3b;border-radius:14px;overflow:hidden">`,
+    // brand bar
+    `<div style="padding:16px 22px;border-bottom:1px solid #1a2130">`,
+    `<span style="font:700 15px/1 'JetBrains Mono',ui-monospace,monospace;color:#eef1f7;letter-spacing:-.3px">ShipASO</span>`,
+    `<span style="font:12px/1 -apple-system,Segoe UI,Roboto,sans-serif;color:#626c83;margin-left:8px">weekly rank report · ${appName}</span>`,
+    `</div>`,
+    // hero
+    `<div style="padding:24px 22px 8px">${hero}${movesList}</div>`,
+    // CTA
+    `<div style="padding:8px 22px 24px">`,
+    ctaNote,
+    `<a href="${url}" style="display:inline-block;background:${SIGNAL};color:#04140d;text-decoration:none;font:600 14px/1 -apple-system,Segoe UI,Roboto,sans-serif;padding:12px 20px;border-radius:10px">${ctaText}</a>`,
+    `</div>`,
+    `</div>`,
+    `<div style="max-width:520px;margin:14px auto 0;font:12px/1.5 -apple-system,Segoe UI,Roboto,sans-serif;color:#626c83;text-align:center">ShipASO ran the loop on real rank data — we never hold your store credentials.</div>`,
+    `</div>`,
+  ].join("");
 }
 
 // ── planning: who gets a digest, and the composed message ─────────────────────

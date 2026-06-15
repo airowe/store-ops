@@ -290,6 +290,24 @@ describe("renderDigestHtml / renderDigestText — content + CTA", () => {
     expect(html.toLowerCase()).toContain("nothing needs you");
   });
 
+  it("is a branded, share-worthy email — ShipASO identity + a visual rank-moved hero", () => {
+    const digest = buildDigest(
+      [snap("meditation", 12, WEEK1), snap("meditation", 4, WEEK2)],
+      { appName: "Calm" },
+    );
+    const html = renderDigestHtml(digest, { appName: "Calm", dashboardUrl, hasPendingApproval: false });
+    // brand identity present (so a screenshot of the email reads as ShipASO)
+    expect(html).toContain("ShipASO");
+    // the signal-green brand color shows up (the "rank moved" visual)
+    expect(html.toLowerCase()).toContain("#34d399");
+    // the top mover's before→after is rendered as the hero number
+    expect(html).toContain("#12");
+    expect(html).toContain("#4");
+    // still exactly one dashboard CTA (the share-worthy upgrade must not add link clutter)
+    const hrefs = html.match(new RegExp(`href="${dashboardUrl.replace(/[.?*+^$[\]\\(){}|-]/g, "\\$&")}"`, "g")) ?? [];
+    expect(hrefs).toHaveLength(1);
+  });
+
   it("surfaces a pending-approval line + link when hasPendingApproval is true", () => {
     const digest = buildDigest(
       [snap("flat", 10, WEEK1), snap("flat", 10, WEEK2)],
