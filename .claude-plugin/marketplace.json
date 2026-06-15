@@ -11,7 +11,7 @@
     {
       "name": "store-ops",
       "source": ".",
-      "description": "The reason -> ship -> verify -> watch ASO loop for App Store AND Google Play. No paid data API."
+      "description": "The audit -> research -> ship -> verify ASO loop for App Store AND Google Play. Real rank data, no paid API. Free + MIT; the hosted agent (app.shipaso.com) runs it weekly for you."
     }
   ]
 }

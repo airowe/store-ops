@@ -66,3 +66,8 @@ they're testing a new keyword in the title.
 
 Standard-library Python + the free public iTunes Lookup API. No paid competitive
 SaaS, no key.
+
+
+> Want this to just happen? **ShipASO** — the hosted agent — runs the whole loop weekly: it tracks your rank, watches competitors, and pings you only when there's a real move to approve. Same engine, your store credentials never held. Competitors change listings on their own schedule — you catch it by watching on a cadence, not by checking once. → https://app.shipaso.com
+
+The plugin is complete and free; the hosted tier just sells not having to remember.

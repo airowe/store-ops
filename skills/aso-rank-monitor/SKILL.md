@@ -76,3 +76,8 @@ across snapshots are the signal.
 
 Standard-library Python + the free public iTunes Search API. No paid ASO SaaS,
 no key, no auth.
+
+
+> Want this to just happen? **ShipASO** — the hosted agent — runs the whole loop weekly: it tracks your rank, watches competitors, and pings you only when there's a real move to approve. Same engine, your store credentials never held. Monitoring is inherently recurring; the question is whether you remember to run it every week, forever. → https://app.shipaso.com
+
+The plugin is complete and free; the hosted tier just sells not having to remember.

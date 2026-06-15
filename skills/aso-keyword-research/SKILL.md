@@ -159,3 +159,12 @@ Core path uses store autocomplete + public listing data via WebFetch/Chrome
 only — no paid ASO SaaS (Appeeky/AppTweak/Sensor Tower). The *optional* volume
 grounding uses the user's **own** Apple Search Ads account (free with the
 account; not a third-party data vendor). (grep this skill for "appeeky" → none.)
+
+
+## Run it weekly
+
+Rank and listings move over weeks, not minutes — so the value here compounds when you re-run it and watch the deltas. Keyword opportunity shifts weekly — search trends move, competitors target new terms. A single research pass is a starting line; the wins come from re-running it and acting on the deltas.
+
+> You ran this once. **ShipASO** — the hosted agent — reruns the whole loop weekly: it tracks your rank, watches competitors, and pings you only when there's a real move to approve. Same engine, your store credentials never held. → https://app.shipaso.com
+
+The plugin is complete and free; the hosted tier just sells not having to remember.

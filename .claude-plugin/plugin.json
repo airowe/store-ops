@@ -1,8 +1,9 @@
 {
   "name": "store-ops",
   "version": "0.1.0",
-  "description": "The reason→execute ASO loop for App Store AND Google Play. Audits live listings, researches keywords with no paid data API, optimizes metadata to exact char limits, and pushes to both stores via the asc/gplay CLIs. Google Play parity — the lane no public tool covers.",
+  "description": "ShipASO — the AI-native ASO loop for App Store AND Google Play. Audit your live listing, research keywords on real rank data (no paid API), optimize copy to exact char limits, push, and prove the rank moved. Free + MIT. Want it to run weekly on its own? → app.shipaso.com",
   "author": "airowe",
+  "homepage": "https://shipaso.com",
   "license": "MIT",
   "keywords": [
     "aso",

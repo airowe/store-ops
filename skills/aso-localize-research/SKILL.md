@@ -55,3 +55,12 @@ that was otherwise sitting unused.
 
 Standard-library Python + the free iTunes APIs; localized volume reuses your own
 Google/Apple credentials (same BYO-key path as en-US). No paid ASO SaaS.
+
+
+## Run it weekly
+
+Rank and listings move over weeks, not minutes — so the value here compounds when you re-run it and watch the deltas. Per-market rank moves independently — a term that's hot in de-DE can be saturated in ja-JP next month. Tracking each locale over time is where localization ROI shows up.
+
+> You ran this once. **ShipASO** — the hosted agent — reruns the whole loop weekly: it tracks your rank, watches competitors, and pings you only when there's a real move to approve. Same engine, your store credentials never held. → https://app.shipaso.com
+
+The plugin is complete and free; the hosted tier just sells not having to remember.

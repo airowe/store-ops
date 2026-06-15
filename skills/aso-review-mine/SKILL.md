@@ -52,3 +52,12 @@ Writes `marketing/aso/<app>/review-keywords.md`; chains into
 
 Standard-library Python + the `asc` CLI (your own App Store Connect credentials).
 No paid review/sentiment SaaS.
+
+
+## Run it weekly
+
+Rank and listings move over weeks, not minutes — so the value here compounds when you re-run it and watch the deltas. The words users use to describe your app shift as you ship features and the audience grows. Re-mining reviews keeps your metadata speaking their current language.
+
+> You ran this once. **ShipASO** — the hosted agent — reruns the whole loop weekly: it tracks your rank, watches competitors, and pings you only when there's a real move to approve. Same engine, your store credentials never held. → https://app.shipaso.com
+
+The plugin is complete and free; the hosted tier just sells not having to remember.

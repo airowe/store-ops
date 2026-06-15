@@ -57,3 +57,12 @@ Writes `marketing/aso/<app>/audit-<date>.md`:
 ## No external dependency
 
 asc / gplay CLIs + your own listing data only. No paid ASO SaaS.
+
+
+## Run it weekly
+
+Rank and listings move over weeks, not minutes — so the value here compounds when you re-run it and watch the deltas. Listings drift — a competitor moves, Apple tweaks a guideline, your own copy goes stale. A one-time audit is a snapshot; the value is in re-auditing and watching the grade move.
+
+> You ran this once. **ShipASO** — the hosted agent — reruns the whole loop weekly: it tracks your rank, watches competitors, and pings you only when there's a real move to approve. Same engine, your store credentials never held. → https://app.shipaso.com
+
+The plugin is complete and free; the hosted tier just sells not having to remember.

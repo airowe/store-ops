@@ -49,3 +49,12 @@ every downstream skill benefits.
 
 Standard-library Python + the free iTunes Lookup API. context.dev brand
 enrichment is optional (the only paid path, and it's bring-your-own-key).
+
+
+## Run it weekly
+
+Rank and listings move over weeks, not minutes — so the value here compounds when you re-run it and watch the deltas. Your app's context (category, audience, competitors) evolves. Keeping it fresh is what makes every other skill's output sharp — and it's exactly the kind of upkeep nobody remembers to do.
+
+> You ran this once. **ShipASO** — the hosted agent — reruns the whole loop weekly: it tracks your rank, watches competitors, and pings you only when there's a real move to approve. Same engine, your store credentials never held. → https://app.shipaso.com
+
+The plugin is complete and free; the hosted tier just sells not having to remember.

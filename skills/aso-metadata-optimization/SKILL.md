@@ -68,3 +68,12 @@ keyword-research pass). That's the watch half of the loop — pick → ship → 
 ## No external dependency
 
 LLM generation + char counting + the asc/gplay CLIs. No paid ASO SaaS.
+
+
+## Run it weekly
+
+Rank and listings move over weeks, not minutes — so the value here compounds when you re-run it and watch the deltas. Optimized copy is only proven once you ship it AND read the rank back. One optimization is a guess; the loop is optimize → push → verify the rank moved → adjust.
+
+> You ran this once. **ShipASO** — the hosted agent — reruns the whole loop weekly: it tracks your rank, watches competitors, and pings you only when there's a real move to approve. Same engine, your store credentials never held. → https://app.shipaso.com
+
+The plugin is complete and free; the hosted tier just sells not having to remember.

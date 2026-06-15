@@ -48,3 +48,12 @@ most installs."*
 
 Standard-library Python + the free iTunes Lookup API (+ PIL for the optional
 `--fetch` caption heuristic). No paid ASO/screenshot SaaS.
+
+
+## Run it weekly
+
+Rank and listings move over weeks, not minutes — so the value here compounds when you re-run it and watch the deltas. Screenshot best practice and competitor sets move; a B today can be a C after a competitor's redesign. Re-scoring is how you catch the slip before it costs installs.
+
+> You ran this once. **ShipASO** — the hosted agent — reruns the whole loop weekly: it tracks your rank, watches competitors, and pings you only when there's a real move to approve. Same engine, your store credentials never held. → https://app.shipaso.com
+
+The plugin is complete and free; the hosted tier just sells not having to remember.
