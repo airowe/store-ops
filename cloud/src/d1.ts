@@ -32,6 +32,8 @@ export type UserRow = {
   stripe_customer_id: string | null;
   stripe_subscription_id: string | null;
   current_period_end: string | null;
+  github_installation_id: string | null;
+  github_repo: string | null;
 };
 
 export type AppRow = {
@@ -117,7 +119,7 @@ const now = (): string => new Date().toISOString().replace("T", " ").slice(0, 19
 // ── users ────────────────────────────────────────────────────────────────────
 
 const USER_COLS =
-  "id, email, created_at, tier, status, stripe_customer_id, stripe_subscription_id, current_period_end";
+  "id, email, created_at, tier, status, stripe_customer_id, stripe_subscription_id, current_period_end, github_installation_id, github_repo";
 
 /** Get-or-create a user by email (magic-link/session resolves to this). Idempotent. */
 export async function upsertUser(db: D1Database, email: string): Promise<UserRow> {
@@ -136,6 +138,8 @@ export async function upsertUser(db: D1Database, email: string): Promise<UserRow
     stripe_customer_id: null,
     stripe_subscription_id: null,
     current_period_end: null,
+    github_installation_id: null,
+    github_repo: null,
   };
   await db
     .prepare("INSERT INTO users (id, email, created_at, tier, status) VALUES (?, ?, ?, ?, ?)")
@@ -149,6 +153,21 @@ export async function getUser(db: D1Database, userId: string): Promise<UserRow |
     .prepare(`SELECT ${USER_COLS} FROM users WHERE id = ?`)
     .bind(userId)
     .first<UserRow>();
+}
+
+/** Save (or clear) a user's GitHub App connection — installation id + target repo. */
+export async function setGithubConnection(
+  db: D1Database,
+  args: { userId: string; installationId: string | null; repo?: string | null },
+): Promise<void> {
+  const sets = ["github_installation_id = ?"];
+  const binds: Array<string | null> = [args.installationId];
+  if (args.repo !== undefined) {
+    sets.push("github_repo = ?");
+    binds.push(args.repo);
+  }
+  binds.push(args.userId);
+  await db.prepare(`UPDATE users SET ${sets.join(", ")} WHERE id = ?`).bind(...binds).run();
 }
 
 /** The user's current tier (defaults to 'free' if the row is somehow missing). */

@@ -26,7 +26,9 @@ CREATE TABLE IF NOT EXISTS users (
   status                  TEXT NOT NULL DEFAULT 'active',   -- mirrors Stripe sub status
   stripe_customer_id      TEXT,
   stripe_subscription_id  TEXT,
-  current_period_end      TEXT                          -- ISO; NULL for free / one-time
+  current_period_end      TEXT,                         -- ISO; NULL for free / one-time
+  github_installation_id  TEXT,                         -- GitHub App installation id (not sensitive)
+  github_repo             TEXT                          -- "owner/name" target for metadata PRs
 );
 
 -- Migration for an EXISTING db (the CREATE above only fires on a fresh db). Run
@@ -36,6 +38,8 @@ CREATE TABLE IF NOT EXISTS users (
 --   npx wrangler d1 execute store_ops --command "ALTER TABLE users ADD COLUMN stripe_customer_id TEXT"
 --   npx wrangler d1 execute store_ops --command "ALTER TABLE users ADD COLUMN stripe_subscription_id TEXT"
 --   npx wrangler d1 execute store_ops --command "ALTER TABLE users ADD COLUMN current_period_end TEXT"
+--   npx wrangler d1 execute store_ops --command "ALTER TABLE users ADD COLUMN github_installation_id TEXT"
+--   npx wrangler d1 execute store_ops --command "ALTER TABLE users ADD COLUMN github_repo TEXT"
 -- (add `--local` to each for the local D1; drop it for remote.)
 
 -- ── apps ─────────────────────────────────────────────────────────────────────

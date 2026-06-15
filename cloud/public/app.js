@@ -494,13 +494,18 @@
       el("span", { class: "store-tag appstore" }, ["fastlane"]),
       el("span", { class: "desc" }, ["Drops into your repo as a ", el("code", {}, ["fastlane/metadata/"]), " tree — your CI runs ", el("code", {}, ["deliver"]), " / ", el("code", {}, ["supply"]), " with the credentials it already holds."]),
     ]));
-    handoff.appendChild(el("div", { class: "btn-row", style: "margin-top:12px" }, [
+    var prBtn = el("button", { class: "btn", onclick: function () { openGithubPr(runId, prBtn, prStatus); } }, ["⌥ Open a PR in your repo"]);
+    var prStatus = el("span", { class: "faint", style: "align-self:center;font-size:12.5px" }, []);
+    handoff.appendChild(el("div", { class: "btn-row", style: "margin-top:12px;align-items:center;gap:12px;flex-wrap:wrap" }, [
       el("button", { class: "btn primary", onclick: function () { downloadFastlane(runId, copy); } }, ["↓ Download Fastlane metadata"]),
+      prBtn, prStatus,
     ]));
     handoff.appendChild(el("p", { class: "faint", style: "font-size:12.5px;margin:10px 0 0" }, [
       "Commit the tree (or merge the PR), then your pipeline pushes it. This path needs no credentials from you.",
     ]));
     wrap.appendChild(handoff);
+    // hide the PR button unless the GitHub App is configured for this deployment
+    maybeShowPrButton(prBtn, prStatus);
 
     // ── secondary: the raw commands, for manual operators ──
     var all = cmds.map(function (c) { return c.command; }).join("\n");
@@ -634,6 +639,50 @@
     var files = buildFastlaneFiles(copy);
     var preview = files.map(function (f) { return "# ===== " + f.path + " =====\n" + f.content; }).join("\n\n");
     downloadText(preview, "fastlane-metadata.txt", "Fastlane metadata (preview) downloaded");
+  }
+
+  // Show the "Open a PR" button only when the GitHub App is configured for this
+  // deployment (otherwise the credential-free Fastlane download stands alone).
+  function maybeShowPrButton(btn, status) {
+    btn.style.display = "none";
+    if (!(API_BASE && liveMode)) return;
+    fetch(API_BASE + "/github/status", { credentials: "include" })
+      .then(function (r) { return r.json(); })
+      .then(function (s) {
+        if (!s.appConfigured) return; // stays hidden
+        btn.style.display = "";
+        if (s.connected) { status.textContent = "→ " + s.repo; }
+        else { status.textContent = "connect a repo first"; }
+      })
+      .catch(function () {});
+  }
+
+  // Open a PR with the metadata tree. If not connected to a repo yet, prompt for
+  // it inline, save the connection, then open the PR.
+  async function openGithubPr(runId, btn, status) {
+    btn.disabled = true; status.textContent = "Checking…"; status.style.color = "var(--dim)";
+    try {
+      var st = await fetch(API_BASE + "/github/status", { credentials: "include" }).then(function (r) { return r.json(); });
+      if (!st.connected) {
+        var repo = window.prompt("Your GitHub repo (owner/name) — install the ShipASO app on it first:", "");
+        if (!repo) { btn.disabled = false; status.textContent = "connect a repo first"; status.style.color = "var(--faint)"; return; }
+        var inst = window.prompt("Your ShipASO app installation id (from the app's install URL):", "");
+        await fetch(API_BASE + "/github/connect", { method: "POST", credentials: "include", headers: { "content-type": "application/json" }, body: JSON.stringify({ repo: repo, installation_id: inst }) });
+      }
+      status.textContent = "Opening a PR…";
+      var res = await fetch(API_BASE + "/runs/" + runId + "/github/pr", { method: "POST", credentials: "include" });
+      if (res.status === 403) { status.textContent = "GitHub PR not enabled — use the download."; status.style.color = "var(--warn)"; btn.disabled = false; return; }
+      var out = await res.json();
+      if (out.ok) {
+        status.innerHTML = "✓ PR #" + out.number + " opened — ";
+        status.appendChild(el("a", { href: out.url, target: "_blank", style: "color:var(--signal)" }, ["view"]));
+        status.style.color = "var(--signal)";
+      } else {
+        status.textContent = "✕ " + (out.reason || out.error || "Failed."); status.style.color = "var(--bad)";
+      }
+    } catch (e) {
+      status.textContent = "✕ " + (e.message || "Request failed."); status.style.color = "var(--bad)";
+    } finally { btn.disabled = false; }
   }
 
   // Client mirror of cloud/src/engine/fastlane.ts (that module is the tested

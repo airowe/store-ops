@@ -77,6 +77,7 @@ import {
   createApp,
   deleteApp,
   getApp,
+  getUser,
   getApproval,
   getLatestCompetitorMap,
   getRankHistory,
@@ -89,6 +90,7 @@ import {
   persistRun,
   recordApproval,
   recordSubscriber,
+  setGithubConnection,
   setTier,
   upsertUser,
 } from "../d1.js";
@@ -123,6 +125,8 @@ import { buildFastlaneBundle } from "../engine/fastlane.js";
 import { zipStore } from "../engine/zip.js";
 import { mintAscJwt } from "../engine/ascJwt.js";
 import { findAscAppId, applyAscMetadata, AscWriteError } from "../engine/ascWrite.js";
+import { mintAppJwt, installationToken, GithubAppError } from "../engine/githubApp.js";
+import { openMetadataPr } from "../engine/githubPr.js";
 import type { Env } from "../index.js";
 
 // ── token + cookie lifetimes ───────────────────────────────────────────────────
@@ -924,6 +928,79 @@ async function fastlaneZipRoute(
   });
 }
 
+/**
+ * POST /runs/:id/github/pr — open a PR with the Fastlane metadata tree (#8).
+ *
+ * Inert unless the GitHub App is configured (GITHUB_APP_ID + private key) AND the
+ * user has connected a repo (github_installation_id + github_repo). Approved-run,
+ * owner-scoped. ShipASO's App key is the only credential; we mint a short-lived
+ * App JWT → installation token → create branch + commit the tree + open the PR.
+ * Falls back (403 with a clear reason) to the zip handoff when not connected.
+ */
+async function githubPrRoute(env: Env, userId: string, runId: string): Promise<unknown> {
+  if (!env.GITHUB_APP_ID || !env.GITHUB_APP_PRIVATE_KEY) {
+    throw new HttpError(403, "the GitHub PR integration isn't configured; use the Fastlane download");
+  }
+  const run = await getRun(env.DB, runId);
+  if (!run) throw new HttpError(404, "run not found");
+  const app = await requireOwnedApp(env, run.app_id, userId);
+  if (run.status !== "shipped" && run.status !== "approved") {
+    throw new HttpError(403, "approval required before opening a PR");
+  }
+
+  const user = await getUser(env.DB, userId);
+  if (!user?.github_installation_id || !user?.github_repo) {
+    throw new HttpError(409, "connect a GitHub repo first (install the ShipASO app), or use the Fastlane download");
+  }
+
+  const trace = JSON.parse(run.reasoning_json) as ReasoningTrace;
+  const bundle = buildFastlaneBundle(trace.proposedCopy);
+
+  try {
+    const jwt = await mintAppJwt({ appId: env.GITHUB_APP_ID, privateKeyPem: env.GITHUB_APP_PRIVATE_KEY });
+    const token = await installationToken(fetch, { jwt, installationId: user.github_installation_id });
+    const result = await openMetadataPr(fetch, {
+      token,
+      repo: user.github_repo,
+      runId,
+      appName: app.name,
+      files: bundle.files,
+    });
+    return result; // { ok: true, url, number, branch }
+  } catch (e) {
+    if (e instanceof GithubAppError) return { ok: false, reason: e.message };
+    throw e;
+  }
+}
+
+type GithubConnectBody = { installation_id?: string; repo?: string };
+
+/**
+ * POST /github/connect — link the user's GitHub App installation + target repo
+ * (owner/name) for the metadata-PR path. The installation id is not sensitive.
+ * Pass {installation_id: null} (or omit) + nothing to disconnect.
+ */
+async function githubConnectRoute(req: Request, env: Env, userId: string): Promise<unknown> {
+  const body = await req.json<GithubConnectBody>().catch(() => ({}) as GithubConnectBody);
+  const installationId = body.installation_id?.trim() || null;
+  const repo = body.repo?.trim();
+  if (installationId && repo && !/^[^/\s]+\/[^/\s]+$/.test(repo)) {
+    throw new HttpError(400, "repo must be in owner/name form");
+  }
+  await setGithubConnection(env.DB, { userId, installationId, repo: repo ?? null });
+  return { connected: !!installationId, repo: repo ?? null };
+}
+
+/** GET /github/status — does the user have a GitHub connection + the app configured? */
+async function githubStatusRoute(env: Env, userId: string): Promise<unknown> {
+  const user = await getUser(env.DB, userId);
+  return {
+    appConfigured: !!(env.GITHUB_APP_ID && env.GITHUB_APP_PRIVATE_KEY),
+    connected: !!(user?.github_installation_id && user?.github_repo),
+    repo: user?.github_repo ?? null,
+  };
+}
+
 type AscVerifyBody = { p8?: string; keyId?: string; issuerId?: string };
 
 /**
@@ -1318,6 +1395,14 @@ export async function handleApi(req: Request, env: Env): Promise<Response> {
       return json(await approveAll(env, user.id), 200, origin, env);
     }
 
+    // /github — connect a repo (+ installation id) / status for the metadata-PR path
+    if (seg[0] === "github" && seg[1] === "connect" && seg.length === 2 && method === "POST") {
+      return json(await githubConnectRoute(req, env, user.id), 200, origin);
+    }
+    if (seg[0] === "github" && seg[1] === "status" && seg.length === 2 && method === "GET") {
+      return json(await githubStatusRoute(env, user.id), 200, origin);
+    }
+
     // /apps ...
     if (seg[0] === "apps") {
       if (seg.length === 1) {
@@ -1363,6 +1448,9 @@ export async function handleApi(req: Request, env: Env): Promise<Response> {
       }
       if (seg.length === 4 && seg[2] === "asc" && seg[3] === "push" && method === "POST") {
         return json(await ascPushRoute(req, env, user.id, runId), 200, origin);
+      }
+      if (seg.length === 4 && seg[2] === "github" && seg[3] === "pr" && method === "POST") {
+        return json(await githubPrRoute(env, user.id, runId), 200, origin);
       }
     }
 
