@@ -286,6 +286,23 @@ export async function getApp(db: D1Database, appId: string): Promise<AppRow | nu
     .first<AppRow>();
 }
 
+/**
+ * Delete an app and everything under it, atomically. The schema declares
+ * ON DELETE CASCADE, but FK enforcement isn't guaranteed on every D1 connection,
+ * so we delete the children EXPLICITLY (proposals/approvals via their runs, then
+ * runs, rank/competitor snapshots, then the app) in one batch — no orphans.
+ */
+export async function deleteApp(db: D1Database, appId: string): Promise<void> {
+  await db.batch([
+    db.prepare("DELETE FROM approvals WHERE run_id IN (SELECT id FROM runs WHERE app_id = ?)").bind(appId),
+    db.prepare("DELETE FROM proposals WHERE run_id IN (SELECT id FROM runs WHERE app_id = ?)").bind(appId),
+    db.prepare("DELETE FROM runs WHERE app_id = ?").bind(appId),
+    db.prepare("DELETE FROM rank_snapshots WHERE app_id = ?").bind(appId),
+    db.prepare("DELETE FROM competitor_snapshots WHERE app_id = ?").bind(appId),
+    db.prepare("DELETE FROM apps WHERE id = ?").bind(appId),
+  ]);
+}
+
 /** All apps for a user, with the latest run's status/id folded in (for the list view). */
 export async function listAppsForUser(
   db: D1Database,

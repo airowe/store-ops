@@ -325,6 +325,16 @@
       return json(200, { app: appSummary(app), runs: runs });
     }
 
+    // DELETE /apps/:id — disconnect (cascade its runs)
+    if (method === "DELETE" && (m = path.match(/^\/apps\/([^/]+)$/))) {
+      var app = db.apps[m[1]];
+      if (!app) return json(404, { error: "app not found" });
+      (app.runs || []).forEach(function (rid) { delete db.runs[rid]; });
+      delete db.apps[m[1]];
+      save(db);
+      return json(200, { deleted: true, id: m[1] });
+    }
+
     // GET /apps/:id/ranks — rank trend time-series for the sparkline
     if (method === "GET" && (m = path.match(/^\/apps\/([^/]+)\/ranks$/))) {
       var app = db.apps[m[1]];

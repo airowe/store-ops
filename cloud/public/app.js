@@ -281,6 +281,23 @@
       el("div", { class: "btn-row", style: "margin-bottom:14px" }, [runBtn, el("span", { class: "faint", style: "align-self:center;font-size:12.5px" }, ["Same code path the weekly cron uses."])]),
       runList(runs),
     ]));
+
+    // disconnect (irreversible — two-click confirm, no blocking dialog)
+    c.appendChild(disconnectRow(app));
+  }
+
+  // Inline two-click disconnect: first click arms, second confirms. Avoids a
+  // blocking confirm() dialog while still guarding the irreversible delete.
+  function disconnectRow(app) {
+    var armed = false;
+    var btn = el("button", { class: "btn bad", onclick: function () {
+      if (!armed) { armed = true; btn.textContent = "Click again to confirm — this deletes its runs & history"; setTimeout(function () { if (armed) { armed = false; btn.textContent = "Disconnect app"; } }, 4000); return; }
+      btn.disabled = true; btn.innerHTML = '<span class="spin"></span> Disconnecting…';
+      api("DELETE", "/apps/" + app.id)
+        .then(function () { toast("Disconnected " + (app.name || "the app")); go("#/"); route(); })
+        .catch(function (e) { btn.disabled = false; btn.textContent = "Disconnect app"; armed = false; toast(e.message || "Failed to disconnect"); });
+    } }, ["Disconnect app"]);
+    return el("div", { style: "margin-top:18px;text-align:right" }, [btn]);
   }
 
   function runList(runs) {
