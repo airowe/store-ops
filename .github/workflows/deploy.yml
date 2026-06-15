@@ -55,8 +55,24 @@ jobs:
       - name: Test
         run: npm test
 
+      # ── deploy gate: only deploy when the Cloudflare secrets are configured.
+      # Keeps the workflow green (gates still run) before one-time secret setup,
+      # instead of failing loudly on a missing CLOUDFLARE_API_TOKEN.
+      - name: Check deploy credentials
+        id: creds
+        env:
+          CF_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          if [ -n "$CF_TOKEN" ]; then
+            echo "configured=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::CLOUDFLARE_API_TOKEN not set — skipping deploy. Add CLOUDFLARE_API_TOKEN + CLOUDFLARE_ACCOUNT_ID repo secrets to enable auto-deploy (see .github/workflows/deploy.yml header)."
+          fi
+
       # ── deploy the Worker (API at api.shipaso.com) ──
       - name: Deploy Worker
+        if: steps.creds.outputs.configured == 'true'
         uses: cloudflare/wrangler-action@v3
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
@@ -66,6 +82,7 @@ jobs:
 
       # ── deploy the dashboard (Pages at app.shipaso.com) ──
       - name: Deploy Pages dashboard
+        if: steps.creds.outputs.configured == 'true'
         uses: cloudflare/wrangler-action@v3
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
