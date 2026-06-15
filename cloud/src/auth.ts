@@ -351,20 +351,72 @@ export class ResendEmailSender implements EmailSender {
   }
 
   async sendMagicLink(email: string, link: string): Promise<void> {
-    const safe = escapeHtml(link);
-    const html =
-      `<p>Click to sign in to store-ops:</p>` +
-      `<p><a href="${safe}">Sign in</a></p>` +
-      `<p>This link expires in 15 minutes. If you didn't request it, ignore this email.</p>`;
-    const text =
-      `Sign in to store-ops:\n${link}\n\n` +
-      `This link expires in 15 minutes. If you didn't request it, ignore this email.`;
+    await this.send({ to: email, ...magicLinkMessage(link) });
+  }
+}
 
-    await this.send({
-      to: email,
-      subject: "Your store-ops sign-in link",
-      html,
-      text,
+/** Shared magic-link email body (subject/html/text). Branding lives here so all
+ *  senders stay consistent. */
+export function magicLinkMessage(link: string): { subject: string; html: string; text: string } {
+  const safe = escapeHtml(link);
+  return {
+    subject: "Your ShipASO sign-in link",
+    html:
+      `<p>Click to sign in to ShipASO:</p>` +
+      `<p><a href="${safe}">Sign in</a></p>` +
+      `<p>This link expires in 15 minutes. If you didn't request it, ignore this email.</p>`,
+    text:
+      `Sign in to ShipASO:\n${link}\n\n` +
+      `This link expires in 15 minutes. If you didn't request it, ignore this email.`,
+  };
+}
+
+/** Split a `Name <email>` (or bare `email`) into Brevo's sender object. */
+function parseSender(from: string): { name?: string; email: string } {
+  const m = from.match(/^\s*(.*?)\s*<\s*([^>]+)\s*>\s*$/);
+  if (m && m[2]) return m[1] ? { name: m[1], email: m[2] } : { email: m[2] };
+  return { email: from.trim() };
+}
+
+/**
+ * Sends via Brevo (formerly Sendinblue) — POST /v3/smtp/email with the API key
+ * in the `api-key` header (NOT Bearer). Brevo wants a structured sender
+ * ({name,email}) + to ([{email}]) + htmlContent/textContent, so the shared
+ * `from` string is parsed into its object form. `fetchFn` injected for tests.
+ */
+export class BrevoEmailSender implements EmailSender {
+  readonly channel = "brevo";
+  private readonly apiKey: string;
+  private readonly sender: { name?: string; email: string };
+  private readonly fetchFn: typeof fetch;
+
+  constructor(opts: { apiKey: string; from: string; fetchFn?: typeof fetch }) {
+    this.apiKey = opts.apiKey;
+    this.sender = parseSender(opts.from);
+    // Bind to globalThis (same Workers "Illegal invocation" guard as Resend).
+    this.fetchFn = opts.fetchFn ?? fetch.bind(globalThis);
+  }
+
+  async send(msg: EmailMessage): Promise<void> {
+    const resp = await this.fetchFn("https://api.brevo.com/v3/smtp/email", {
+      method: "POST",
+      headers: { "api-key": this.apiKey, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        sender: this.sender,
+        to: [{ email: msg.to }],
+        subject: msg.subject,
+        htmlContent: msg.html,
+        textContent: msg.text,
+      }),
     });
+
+    if (!resp.ok) {
+      const detail = await resp.text().catch(() => "");
+      throw new Error(`brevo send failed (${resp.status}): ${detail}`);
+    }
+  }
+
+  async sendMagicLink(email: string, link: string): Promise<void> {
+    await this.send({ to: email, ...magicLinkMessage(link) });
   }
 }

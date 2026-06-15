@@ -38,8 +38,11 @@ export type Env = {
   TINYFISH_API_KEY?: string;
   // Resend (magic-link email delivery). With RESEND_API_KEY set, /auth/request
   // emails the link via Resend; unset → ConsoleEmailSender (logs the link).
+  // Brevo (the configured email provider; preferred over Resend when set).
+  BREVO_API_KEY?: string;
+  BREVO_FROM?: string; // verified sender, e.g. "ShipASO <login@shipaso.com>"
   RESEND_API_KEY?: string;
-  RESEND_FROM?: string; // verified sender, e.g. "store-ops <login@mail.yourdomain>"
+  RESEND_FROM?: string; // legacy fallback sender, e.g. "ShipASO <login@mail.yourdomain>"
   // Opt-in gate for the direct ASC metadata WRITE (#11). Unset → the push
   // endpoint returns 403 (the credential-free Fastlane handoff stays the default).
   // Set to "1"/"true" only after verifying against a test app.
