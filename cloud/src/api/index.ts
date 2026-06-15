@@ -75,6 +75,7 @@ import { buildPreview } from "../engine/preview.js";
 import {
   countAppsForUser,
   createApp,
+  deleteApp,
   getApp,
   getApproval,
   getLatestCompetitorMap,
@@ -144,7 +145,7 @@ function corsHeaders(origin: string | null, env?: Env): Record<string, string> {
   const allowOrigin = origin ?? env?.DASHBOARD_ORIGIN ?? "*";
   const headers: Record<string, string> = {
     "access-control-allow-origin": allowOrigin,
-    "access-control-allow-methods": "GET,POST,OPTIONS",
+    "access-control-allow-methods": "GET,POST,DELETE,OPTIONS",
     "access-control-allow-headers": "content-type,x-user-email,stripe-signature",
     "access-control-max-age": "86400",
     "vary": "Origin",
@@ -745,6 +746,17 @@ async function runApp(
   return { id: runId, status: "awaiting_approval", digest: result.competitors.digest };
 }
 
+/**
+ * DELETE /apps/:id — disconnect an app the user owns. Cascades to its runs,
+ * rank/competitor snapshots, and approvals/proposals (see deleteApp), freeing a
+ * tier slot. Owner-scoped: deleting another user's app 404s before any write.
+ */
+async function disconnectApp(env: Env, userId: string, appId: string): Promise<unknown> {
+  const app = await requireOwnedApp(env, appId, userId);
+  await deleteApp(env.DB, app.id);
+  return { deleted: true, id: app.id };
+}
+
 /** GET /apps/:id — detail with the full run history list. */
 async function appDetail(env: Env, userId: string, appId: string): Promise<unknown> {
   const app = await requireOwnedApp(env, appId, userId);
@@ -1321,6 +1333,7 @@ export async function handleApi(req: Request, env: Env): Promise<Response> {
       if (seg.length === 2 && seg[1]) {
         const appId = seg[1];
         if (method === "GET") return json(await appDetail(env, user.id, appId), 200, origin);
+        if (method === "DELETE") return json(await disconnectApp(env, user.id, appId), 200, origin);
       }
       if (seg.length === 3 && seg[1] && seg[2] === "run" && method === "POST") {
         return json(await runApp(req, env, user.id, seg[1]), 201, origin);
