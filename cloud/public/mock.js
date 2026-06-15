@@ -205,6 +205,32 @@
     return { keyword: lead, points: pts };
   }
 
+  // ── per-keyword week-over-week deltas (the animated dashboard payload) ─────
+  // Mirrors the Worker's GET /apps/:id/deltas: each tracked keyword gets a
+  // previous→current move, ordered biggest-mover-first, with a "same" trailer.
+  function rankDeltas(app) {
+    var kws = (app.keywords && app.keywords.length ? app.keywords : defaultKeywords(app.name)).slice(0, 6);
+    var entries = kws.map(function (kw, i) {
+      var seed = hash(kw + (app.bundleId || ""));
+      var prev = 12 + (seed % 70);
+      var move = ((seed >> 3) % 31) - 8; // mostly improvements, some slips/flat
+      var cur = Math.max(1, prev + move);
+      var delta = cur - prev; // lower is better; negative = improved
+      var direction = delta < 0 ? "up" : delta > 0 ? "down" : "same";
+      if (i === kws.length - 1) { cur = prev; delta = 0; direction = "same"; } // a flat trailer
+      return { keyword: kw, current: cur, previous: prev, delta: delta, direction: direction };
+    });
+    function weight(e) {
+      if (e.direction === "up") return 1000 + Math.abs(e.delta);
+      if (e.direction === "down") return 500 + Math.abs(e.delta);
+      if (e.direction === "new") return 400;
+      if (e.direction === "lost") return 300;
+      return 0;
+    }
+    entries.sort(function (a, b) { return weight(b) - weight(a); });
+    return { appName: app.name, entries: entries, anyMovement: entries.some(function (e) { return e.direction !== "same"; }) };
+  }
+
   // ── the router: parse method+path and return a Response ──────────────────
   function appSummary(app) {
     var r = app.latestRun ? app.runs && app.runs : null;
@@ -340,6 +366,13 @@
       var app = db.apps[m[1]];
       if (!app) return json(404, { error: "app not found" });
       return json(200, rankHistory(app));
+    }
+
+    // GET /apps/:id/deltas — per-keyword week-over-week movement (animated)
+    if (method === "GET" && (m = path.match(/^\/apps\/([^/]+)\/deltas$/))) {
+      var dApp = db.apps[m[1]];
+      if (!dApp) return json(404, { error: "app not found" });
+      return json(200, rankDeltas(dApp));
     }
 
     // GET /runs/:id — full run detail (reasoning + proposals + commands).

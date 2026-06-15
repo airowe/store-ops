@@ -13,6 +13,7 @@
 import { describe, expect, it } from "vitest";
 import {
   buildDigest,
+  rankDeltasView,
   planDigests,
   renderDigestHtml,
   renderDigestText,
@@ -116,6 +117,58 @@ describe("buildDigest — delta + direction classification", () => {
     const e = entryFor(entries, "obscure kw");
     expect(e.delta).toBeNull();
     expect(e.direction).toBe("same");
+  });
+});
+
+describe("rankDeltasView — the API payload that feeds the animated dashboard", () => {
+  it("returns one entry per keyword, each with current/previous/delta/direction", () => {
+    const history = [
+      snap("budget tracker", 40, WEEK1),
+      snap("budget tracker", 12, WEEK2),
+      snap("expense app", 10, WEEK1),
+      snap("expense app", 33, WEEK2),
+    ];
+    const view = rankDeltasView(history, { appName: "Acme" });
+    expect(view.appName).toBe("Acme");
+    const up = entryFor(view.entries, "budget tracker");
+    expect(up).toMatchObject({ current: 12, previous: 40, delta: -28, direction: "up" });
+    const down = entryFor(view.entries, "expense app");
+    expect(down).toMatchObject({ current: 33, previous: 10, delta: 23, direction: "down" });
+  });
+
+  it("orders entries by movement significance: biggest improvement first, 'same' last", () => {
+    const history = [
+      snap("small win", 20, WEEK1),
+      snap("small win", 17, WEEK2), // up 3
+      snap("big win", 80, WEEK1),
+      snap("big win", 9, WEEK2), // up 71 — should lead
+      snap("flat", 5, WEEK1),
+      snap("flat", 5, WEEK2), // same — should trail
+    ];
+    const view = rankDeltasView(history, { appName: "Acme" });
+    expect(view.entries[0]!.keyword).toBe("big win");
+    expect(view.entries[view.entries.length - 1]!.keyword).toBe("flat");
+  });
+
+  it("falls back to the on-render shape (previous null) for single-snapshot keywords", () => {
+    const history = [snap("brand new", 55, WEEK1)];
+    const view = rankDeltasView(history, { appName: "Acme" });
+    const e = entryFor(view.entries, "brand new");
+    expect(e.previous).toBeNull();
+    expect(e.current).toBe(55);
+    expect(e.direction).toBe("new");
+  });
+
+  it("flags anyMovement false when nothing moved (so the UI can skip the animation)", () => {
+    const history = [snap("flat", 5, WEEK1), snap("flat", 5, WEEK2)];
+    const view = rankDeltasView(history, { appName: "Acme" });
+    expect(view.anyMovement).toBe(false);
+  });
+
+  it("returns an empty entry list (not a throw) for an app with no history", () => {
+    const view = rankDeltasView([], { appName: "Acme" });
+    expect(view.entries).toEqual([]);
+    expect(view.anyMovement).toBe(false);
   });
 });
 

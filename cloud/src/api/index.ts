@@ -106,6 +106,7 @@ import {
   verifySessionToken,
 } from "../auth.js";
 import { emailSenderForEnv } from "../emailSender.js";
+import { rankDeltasView } from "../digest.js";
 import { aggregateProof, extractWins } from "../proof.js";
 import { type AppCard, summarizePortfolio } from "../portfolio.js";
 import { type RunRef, planBulkApprove } from "../bulkApprove.js";
@@ -813,6 +814,22 @@ async function appRanks(
   return { keyword, points };
 }
 
+/**
+ * GET /apps/:id/deltas — per-keyword week-over-week rank movement for the
+ * animated dashboard. Reads the full rank history and shapes it with the same
+ * `rankDeltasView` the digest uses, so the email and the UI never disagree about
+ * a delta. Returns `{ appName, entries:[{keyword,current,previous,delta,
+ * direction}], anyMovement }`, ordered biggest-mover-first. Single-snapshot
+ * keywords come back with `previous: null` so the UI falls back to today's
+ * on-render animation. Unblocks the animated-delta dashboard, the share-a-win
+ * card (#23), and the competitor war-room view (#25).
+ */
+async function appDeltas(env: Env, userId: string, appId: string): Promise<unknown> {
+  const app = await requireOwnedApp(env, appId, userId);
+  const history = await getRankHistory(env.DB, appId, {});
+  return rankDeltasView(history, { appName: app.name });
+}
+
 /** GET /runs/:id — full run view (scoped to the owner). */
 async function getRunRoute(env: Env, userId: string, runId: string): Promise<unknown> {
   const run = await getRun(env.DB, runId);
@@ -1425,6 +1442,9 @@ export async function handleApi(req: Request, env: Env): Promise<Response> {
       }
       if (seg.length === 3 && seg[1] && seg[2] === "ranks" && method === "GET") {
         return json(await appRanks(env, user.id, seg[1], url), 200, origin);
+      }
+      if (seg.length === 3 && seg[1] && seg[2] === "deltas" && method === "GET") {
+        return json(await appDeltas(env, user.id, seg[1]), 200, origin);
       }
     }
 

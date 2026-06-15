@@ -150,6 +150,53 @@ export function buildDigest(
   return { appName: opts.appName, entries, topMover, anyMovement };
 }
 
+// ── delta view: the dashboard's animated rank-movement payload ────────────────
+
+export type RankDeltaView = {
+  appName: string;
+  /** per-keyword deltas, ordered by movement significance (biggest move first). */
+  entries: DigestEntry[];
+  /** false when every keyword held — lets the UI skip the movement animation. */
+  anyMovement: boolean;
+};
+
+/**
+ * A "how much did this matter" weight for ordering the dashboard so the loudest
+ * moves lead. Higher sorts first. Improvements outrank regressions; any real
+ * transition (new/lost) outranks a hold; an unchanged keyword sinks to the end.
+ */
+function movementWeight(e: DigestEntry): number {
+  switch (e.direction) {
+    case "up":
+      return 1000 + Math.abs(e.delta ?? 0); // bigger jump → higher
+    case "down":
+      return 500 + Math.abs(e.delta ?? 0);
+    case "new":
+      return 400;
+    case "lost":
+      return 300;
+    case "same":
+      return 0;
+  }
+}
+
+/**
+ * Shapes the same per-keyword deltas the digest computes into the payload the
+ * dashboard animates (prev → cur count-up + direction pulse). Reuses
+ * `buildDigest` so the email and the UI can never disagree about a delta, then
+ * orders by `movementWeight` so the biggest mover renders first. Single-snapshot
+ * keywords come back with `previous: null` / `direction: "new"`, which the UI
+ * renders as today's on-render animation (the graceful fallback).
+ */
+export function rankDeltasView(
+  rankHistory: RankSnapshotRow[],
+  opts: BuildDigestOpts,
+): RankDeltaView {
+  const { appName, entries, anyMovement } = buildDigest(rankHistory, opts);
+  const ordered = [...entries].sort((a, b) => movementWeight(b) - movementWeight(a));
+  return { appName, entries: ordered, anyMovement };
+}
+
 // ── rendering ────────────────────────────────────────────────────────────────
 
 function escapeHtml(s: string): string {
