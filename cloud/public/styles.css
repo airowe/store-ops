@@ -103,8 +103,34 @@ a:hover { text-decoration: underline; }
 .rank-arrow.up { color: var(--signal); }
 .rank-arrow.down { color: var(--bad); }
 
+/* ── rank-movement card: per-keyword previous → current, animated ── */
+.deltalist { display: flex; flex-direction: column; gap: 2px; }
+.deltarow {
+  display: grid; grid-template-columns: 1fr auto auto; align-items: center; gap: 14px;
+  padding: 10px 2px; border-bottom: 1px solid var(--line-soft);
+}
+.deltarow:last-child { border-bottom: 0; }
+.deltarow .dkw { font-weight: 600; color: var(--ink); }
+.deltarow .dmove { display: inline-flex; align-items: baseline; gap: 8px; font-family: var(--mono); font-variant-numeric: tabular-nums; }
+.deltarow .dprev { color: var(--faint); font-size: .9em; }
+.deltarow .darrow { color: var(--faint); }
+.deltarow .dcur { color: var(--ink); font-weight: 600; min-width: 3.2ch; text-align: right; }
+.deltarow .dcur.good { color: var(--signal); }
+/* direction chip — tinted pill, fades up after the number lands */
+.dchip {
+  display: inline-block; font-family: var(--mono); font-size: 11.5px; font-weight: 600;
+  padding: 2px 8px; border-radius: 999px; white-space: nowrap;
+  border: 1px solid transparent; opacity: 0; animation: rise .42s ease-out forwards;
+  animation-delay: calc(var(--i, 0) * 60ms + 320ms);
+}
+.dchip.up   { color: var(--signal); background: var(--signal-glow); border-color: var(--signal-dim); }
+.dchip.down { color: var(--bad); background: rgba(248, 113, 113, .12); }
+.dchip.new  { color: var(--brand); background: rgba(91, 140, 255, .12); }
+.dchip.lost { color: var(--warn); background: rgba(251, 191, 36, .12); }
+.dchip.same { color: var(--faint); background: var(--line-soft); }
+
 @media (prefers-reduced-motion: reduce) {
-  .reveal, .flip-in, .rank-pop, .rank-arrow { animation: none !important; opacity: 1 !important; transform: none !important; }
+  .reveal, .flip-in, .rank-pop, .rank-arrow, .dchip { animation: none !important; opacity: 1 !important; transform: none !important; }
   *, html { scroll-behavior: auto !important; }
   .logo .dot, .agentline .live-dot, .cursor, .spin { animation: none !important; }
 }

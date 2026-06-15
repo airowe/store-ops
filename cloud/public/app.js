@@ -135,6 +135,31 @@
   function rankClass(r) { return r == null ? "none" : r <= 10 ? "good" : r <= 50 ? "mid" : ""; }
   function rankText(r) { return r == null ? "—" : "#" + r; }
 
+  // ── motion: tween an element's text from one rank number to another ──────────
+  // Honors prefers-reduced-motion (jumps straight to the final value). `from`/`to`
+  // may be null (unranked) — a null endpoint renders "—" and skips the count.
+  var REDUCED_MOTION = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  function countUpRank(node, from, to, delayMs) {
+    if (to == null) { node.textContent = "—"; return; }
+    if (from == null || REDUCED_MOTION) { node.textContent = "#" + to; return; }
+    var dur = 650, start = 0, done = false, delay = delayMs || 0;
+    node.textContent = "#" + from;
+    function settle() { if (!done) { done = true; node.textContent = "#" + to; } }
+    function step(ts) {
+      if (done) return;
+      if (!start) start = ts;
+      var t = Math.min(1, (ts - start) / dur);
+      var eased = 1 - Math.pow(1 - t, 3); // easeOutCubic
+      node.textContent = "#" + Math.round(from + (to - from) * eased);
+      if (t < 1) requestAnimationFrame(step); else settle();
+    }
+    setTimeout(function () { requestAnimationFrame(step); }, delay);
+    // Safety net: rAF is throttled in background tabs and can stall mid-tween.
+    // Force the exact final value after the animation window so the displayed
+    // number can never be left stranded between `from` and `to`.
+    setTimeout(settle, delay + dur + 80);
+  }
+
   /* ════════════════════════ VIEW: dashboard ════════════════════════════════ */
   async function viewDashboard() {
     loading("Loading your apps…");
@@ -257,8 +282,12 @@
   /* ════════════════════════ VIEW: app detail ═══════════════════════════════ */
   async function viewApp(id) {
     loading("Loading app…");
-    var data, ranks;
-    try { data = await api("GET", "/apps/" + id); ranks = await api("GET", "/apps/" + id + "/ranks"); }
+    var data, ranks, deltas;
+    try {
+      data = await api("GET", "/apps/" + id);
+      ranks = await api("GET", "/apps/" + id + "/ranks");
+      deltas = await api("GET", "/apps/" + id + "/deltas");
+    }
     catch (e) { return errorBox(e); }
     var app = data.app, runs = data.runs || [];
 
@@ -266,6 +295,9 @@
     c.appendChild(backlink("#/", "All apps"));
     c.appendChild(el("h1", {}, [app.name || app.bundle_id]));
     c.appendChild(el("p", { class: "lead mono", style: "font-family:ui-monospace,Menlo,monospace;font-size:13px" }, [app.bundle_id + " · " + (app.country || "US")]));
+
+    // rank movement this week — animated prev→cur per keyword (the headline)
+    c.appendChild(rankMovementCard(deltas || {}));
 
     // rank trend mini-chart
     c.appendChild(el("div", { class: "card" }, [
@@ -284,6 +316,46 @@
 
     // disconnect (irreversible — two-click confirm, no blocking dialog)
     c.appendChild(disconnectRow(app));
+  }
+
+  // Rank movement card: per-keyword "previous → current" with a count-up tween,
+  // a direction-tinted delta chip, and an arrow. Biggest mover renders first
+  // (the API already orders entries by movement weight). Single-snapshot keywords
+  // come back direction:"new" / previous:null and animate as a clean reveal.
+  var DIR_GLYPH = { up: "▲", down: "▼", "new": "✦", lost: "▽", same: "•" };
+  function rankMovementCard(deltas) {
+    var entries = (deltas.entries || []);
+    var box = el("div", { class: "deltalist" });
+    if (!entries.length) {
+      box.appendChild(el("div", { class: "faint" }, ["No rank history yet — run the agent to start tracking weekly movement."]));
+    }
+    entries.forEach(function (e, i) {
+      var dir = e.direction || "same";
+      var prevEl = el("span", { class: "dprev" }, [rankText(e.previous)]);
+      var curEl = el("span", { class: "dcur rank-pop " + (dir === "up" ? "good" : ""), style: "--i:" + i }, [rankText(e.current)]);
+      // tween the current number from previous → current (staggered with the pop)
+      countUpRank(curEl, e.previous, e.current, 120 + i * 60);
+
+      var chipText = dir === "up" ? "↑ " + Math.abs(e.delta) :
+                     dir === "down" ? "↓ " + Math.abs(e.delta) :
+                     dir === "new" ? "new" :
+                     dir === "lost" ? "dropped" : "held";
+      var chip = el("span", { class: "dchip " + dir, style: "--i:" + i }, [DIR_GLYPH[dir] + " ", chipText]);
+
+      box.appendChild(el("div", { class: "deltarow flip-in", style: "--i:" + i }, [
+        el("span", { class: "dkw" }, [e.keyword]),
+        el("span", { class: "dmove" }, [prevEl, el("span", { class: "darrow" }, ["→"]), curEl]),
+        chip,
+      ]));
+    });
+    var sub = entries.length
+      ? (deltas.anyMovement ? "Week-over-week organic position. Lower is better — green means you climbed." : "All tracked keywords held steady this week.")
+      : "";
+    return el("div", { class: "card" }, [
+      el("h3", {}, ["Rank movement this week"]),
+      sub ? el("div", { class: "faint", style: "font-size:12.5px;margin-bottom:12px" }, [sub]) : null,
+      box,
+    ]);
   }
 
   // Inline two-click disconnect: first click arms, second confirms. Avoids a
