@@ -30,6 +30,13 @@ fancy tier before the basic one converts. Bias all effort toward Phase 0 → 1.
 - [`phase-2-retain.md`](./phase-2-retain.md) — retention + self-generating proof
 - [`phase-3-expand.md`](./phase-3-expand.md) — fleet/agency + second channel
 - [`phase-4-moat.md`](./phase-4-moat.md) — data resilience + production hardening
+- [`mcp-server.md`](./mcp-server.md) — hosted MCP server *(deferred; Phase-3 channel)*
+
+## Competitive
+
+- [`../competitive/appkittie.md`](../competitive/appkittie.md) — AppKittie read
+  (intelligence platform; ASO is one feature). Their paid MCP motivates the
+  deferred MCP-server plan above.
 
 ## What "no fluff" means here (the bar for Phase 0/1)
 

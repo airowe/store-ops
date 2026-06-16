@@ -22,6 +22,10 @@ The plugin + launch is channel #1. Validate one more, demand-led:
   buyer makes ("App Store Connect keyword field character limit," "check your
   app's organic rank free"), each ending in the tool.
 - **OR** a Claude Code plugin-directory / "awesome-list" presence push.
+- **OR** a **hosted MCP server** — see [`mcp-server.md`](./mcp-server.md). A
+  funded competitor (AppKittie) proves MCP is a real channel for this buyer; we
+  enter it by exposing our closed loop (audit → push → verify), not their
+  breadth. **Deferred — post-launch.**
 - Pick one, instrument it, only scale what converts.
 
 ### Pricing experiments (now that there's volume)
