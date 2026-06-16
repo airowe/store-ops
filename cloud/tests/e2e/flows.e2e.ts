@@ -95,6 +95,56 @@ test.describe("connect picker pagination (Show more)", () => {
   });
 });
 
+test.describe("run with App Store Connect (#30 Mode A)", () => {
+  test("the ASC-run panel requires creds, then runs a read-and-improve pass", async ({ page }) => {
+    await gotoMockDashboard(page);
+    const id = await seedAppWithRun(page);
+    await page.goto(`/index.html#/apps/${id}`);
+
+    // Expand the opt-in ASC panel.
+    await page.getByText(/run with app store connect/i).click();
+    const runBtn = page.getByRole("button", { name: /run with asc read/i });
+    await expect(runBtn).toBeVisible();
+
+    // Clicking with empty creds must NOT navigate (validation guard).
+    await runBtn.click();
+    await expect(page).toHaveURL(new RegExp(`#/apps/${id}$`));
+
+    // Fill the credential fields and run — lands on the new run.
+    await page.getByPlaceholder(/issuer id/i).fill("11111111-2222-3333-4444-555555555555");
+    await page.getByPlaceholder(/key id/i).fill("ABC123DEFG");
+    await page.getByPlaceholder(/begin private key/i).fill("-----BEGIN PRIVATE KEY-----\nMOCK\n-----END PRIVATE KEY-----");
+    await runBtn.click();
+    await expect(page).toHaveURL(/#\/runs\//, { timeout: 10_000 });
+
+    // The ASC-read run proposes a subtitle + keywords (the read-and-improve path).
+    const proposal = await page.evaluate(async (appId) => {
+      const M = (window as any).STORE_OPS_MOCK;
+      const detail = await (await M.handle("GET", `/apps/${appId}`, null, "demo@store-ops.dev")).json();
+      const runId = detail.runs[0].id;
+      const run = await (await M.handle("GET", `/runs/${runId}`, null, "demo@store-ops.dev")).json();
+      const c = run.result.proposedCopy;
+      return { subtitle: c.subtitle, keywords: c.keywords };
+    }, id);
+    expect(proposal.subtitle.length).toBeGreaterThan(0);
+    expect(proposal.keywords.length).toBeGreaterThan(0);
+  });
+
+  test("a normal run leaves subtitle/keywords empty (no blind overwrite)", async ({ page }) => {
+    await gotoMockDashboard(page);
+    const id = await seedAppWithRun(page);
+    const proposal = await page.evaluate(async (appId) => {
+      const M = (window as any).STORE_OPS_MOCK;
+      // a plain /run (no ASC) — the seed run used this path
+      const detail = await (await M.handle("GET", `/apps/${appId}`, null, "demo@store-ops.dev")).json();
+      const run = await (await M.handle("GET", `/runs/${detail.runs[0].id}`, null, "demo@store-ops.dev")).json();
+      return run.result.proposedCopy;
+    }, id);
+    expect(proposal.subtitle).toBe("");
+    expect(proposal.keywords).toBe("");
+  });
+});
+
 test.describe("dashboard states", () => {
   test("empty dashboard shows the connect form when no apps exist", async ({ page }) => {
     await gotoMockDashboard(page);

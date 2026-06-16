@@ -126,7 +126,7 @@ import { fetchForEnv } from "../fetchAdapter.js";
 import { buildFastlaneBundle } from "../engine/fastlane.js";
 import { zipStore } from "../engine/zip.js";
 import { mintAscJwt } from "../engine/ascJwt.js";
-import { findAscAppId, applyAscMetadata, AscWriteError } from "../engine/ascWrite.js";
+import { findAscAppId, applyAscMetadata, readAscLocalization, AscWriteError } from "../engine/ascWrite.js";
 import { mintAppJwt, installationToken, GithubAppError } from "../engine/githubApp.js";
 import { openMetadataPr } from "../engine/githubPr.js";
 import type { Env } from "../index.js";
@@ -767,6 +767,76 @@ async function runApp(
 
   // The dashboard reads `id` and navigates to #/runs/:id.
   return { id: runId, status: "awaiting_approval", digest: result.competitors.digest };
+}
+
+type RunAscBody = RunOverrides & { p8?: string; keyId?: string; issuerId?: string; locale?: string };
+
+/**
+ * POST /apps/:id/run-asc — a run that READS the live subtitle/keywords from App
+ * Store Connect first, so the optimizer IMPROVES them instead of omitting them
+ * (the #30 Mode-A path). The user's `.p8` + key/issuer id arrive in THIS request,
+ * are used to mint a short-lived JWT and read the localization, and are NEVER
+ * persisted — same ephemeral-credential posture as /asc/verify and /asc/push.
+ * Without this route, a normal run stays honest-but-conservative (iTunes-only,
+ * subtitle/keywords untouched).
+ */
+async function runAppWithAsc(
+  req: Request,
+  env: Env,
+  userId: string,
+  appId: string,
+): Promise<unknown> {
+  const app = await requireOwnedApp(env, appId, userId);
+  const body = (await req.json().catch(() => ({}))) as RunAscBody;
+  if (!body.p8 || !body.keyId || !body.issuerId) {
+    throw new HttpError(400, "p8, keyId, and issuerId are required");
+  }
+  const locale = body.locale?.trim() || "en-US";
+
+  // Mint the ephemeral ASC token + read the current live copy.
+  let token: string;
+  try {
+    token = await mintAscJwt({ p8: body.p8, keyId: body.keyId, issuerId: body.issuerId });
+  } catch (e) {
+    throw new HttpError(400, e instanceof Error ? e.message : "invalid credentials");
+  }
+  let liveSubtitle: string | undefined;
+  let liveKeywords: string | undefined;
+  let liveName: string | undefined;
+  try {
+    const ascAppId = await findAscAppId(fetch, token, app.bundle_id);
+    const live = await readAscLocalization(fetch, { token, appId: ascAppId, locale });
+    liveSubtitle = live.subtitle;
+    liveKeywords = live.keywords;
+    liveName = live.name;
+  } catch (e) {
+    // A read failure shouldn't strand the user — fall back to an honest iTunes-only
+    // run (subtitle/keywords omitted) and surface the reason.
+    if (e instanceof AscWriteError) throw new HttpError(400, `App Store Connect read failed: ${e.message}`);
+    throw e;
+  }
+
+  const previous = await getLatestCompetitorMap(env.DB, appId);
+  const overrides: RunOverrides = { ascMetadataRead: true };
+  if (body.keywords) overrides.keywords = body.keywords;
+  if (body.competitors) overrides.competitors = body.competitors;
+  // baseCopy carries the LIVE values read from ASC (the optimizer's floor).
+  overrides.baseCopy = {
+    ...(liveName !== undefined ? { name: liveName } : {}),
+    ...(liveSubtitle !== undefined ? { subtitle: liveSubtitle } : {}),
+    ...(liveKeywords !== undefined ? { keywords: liveKeywords } : {}),
+    ...(body.baseCopy ?? {}),
+  };
+
+  const input = buildAppInput(app, overrides, previous);
+  const result = await runAgent(fetchForEnv(env), input);
+  const runId = await persistRun(env.DB, {
+    appId: app.id,
+    status: "awaiting_approval",
+    result,
+    trigger: { source: "manual", reasons: ["manual run requested (App Store Connect read)"] },
+  });
+  return { id: runId, status: "awaiting_approval", digest: result.competitors.digest, ascRead: true };
 }
 
 /**
@@ -1491,6 +1561,9 @@ export async function handleApi(req: Request, env: Env): Promise<Response> {
       }
       if (seg.length === 3 && seg[1] && seg[2] === "run" && method === "POST") {
         return json(await runApp(req, env, user.id, seg[1]), 201, origin);
+      }
+      if (seg.length === 3 && seg[1] && seg[2] === "run-asc" && method === "POST") {
+        return json(await runAppWithAsc(req, env, user.id, seg[1]), 201, origin);
       }
       if (seg.length === 3 && seg[1] && seg[2] === "ranks" && method === "GET") {
         return json(await appRanks(env, user.id, seg[1], url), 200, origin);

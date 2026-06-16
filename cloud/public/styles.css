@@ -385,6 +385,18 @@ table.kw .score { font-family: var(--mono); font-weight: 700; color: var(--ink);
 .rawcmds > summary:hover { color: var(--ink); }
 .rawcmds .cmd { margin-top: 10px; }
 
+/* ── opt-in "run with App Store Connect" panel ───────────────── */
+.asc-run { margin: 0 0 14px; padding: 12px 14px; border: 1px solid var(--line-soft); border-radius: 11px; background: rgba(255,255,255,0.015); }
+.asc-run > summary {
+  cursor: pointer; color: var(--dim); font-size: 13px; font-weight: 600;
+  list-style: none; display: inline-flex; align-items: center; gap: 7px;
+}
+.asc-run > summary::-webkit-details-marker { display: none; }
+.asc-run > summary::before { content: "▸"; color: var(--faint); transition: transform .15s; }
+.asc-run[open] > summary::before { transform: rotate(90deg); }
+.asc-run[open] > summary { margin-bottom: 10px; }
+.asc-run > summary:hover { color: var(--ink); }
+
 /* ── commands box (the landing terminal) ─────────────────────── */
 .cmds { display: grid; gap: 10px; }
 .cmd {

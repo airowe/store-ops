@@ -338,7 +338,8 @@
     var runBtn = el("button", { class: "btn primary", onclick: function () { triggerRun(app.id, runBtn); } }, ["▶ Run agent now"]);
     c.appendChild(el("div", { class: "card" }, [
       el("h3", {}, ["Agent runs"]),
-      el("div", { class: "btn-row", style: "margin-bottom:14px" }, [runBtn, el("span", { class: "faint", style: "align-self:center;font-size:12.5px" }, ["Same code path the weekly cron uses."])]),
+      el("div", { class: "btn-row", style: "margin-bottom:14px" }, [runBtn, el("span", { class: "faint", style: "align-self:center;font-size:12.5px" }, ["Reads ranks + your live listing. Without an App Store Connect key, it leaves subtitle & keywords untouched."]),]),
+      ascRunPanel(app.id),
       runList(runs),
     ]));
 
@@ -478,6 +479,38 @@
     api("POST", "/apps/" + appId + "/run")
       .then(function (r) { toast("Agent finished — review the proposal."); go("#/runs/" + r.id); })
       .catch(function (e) { btn.disabled = false; btn.textContent = "▶ Run agent now"; toast(e.message || "Failed"); });
+  }
+
+  // Opt-in: run with an App Store Connect key so the agent READS your live
+  // subtitle + keywords and improves them (instead of leaving them untouched).
+  // The .p8 is sent once for this run and never stored (same as the push path).
+  function ascRunPanel(appId) {
+    var det = el("details", { class: "asc-run" });
+    det.appendChild(el("summary", {}, ["⚙ Run with App Store Connect — improves your subtitle & keywords"]));
+    det.appendChild(el("div", { class: "faint", style: "font-size:12.5px;margin:6px 0 10px" }, [
+      "ShipASO can't see your subtitle/keywords from public data. Provide a read key and the agent reads them, then proposes improvements. ",
+      el("b", { style: "color:var(--dim)" }, ["Your .p8 is used once for this run and never stored."]),
+    ]));
+    var issuer = el("input", { class: "txt mono", type: "text", placeholder: "Issuer ID (UUID)", autocomplete: "off", spellcheck: "false" });
+    var keyId = el("input", { class: "txt mono", type: "text", placeholder: "Key ID (e.g. ABC123DEFG)", autocomplete: "off", spellcheck: "false" });
+    var p8 = el("textarea", { class: "txt mono", rows: "4", placeholder: "-----BEGIN PRIVATE KEY-----\n…paste your .p8 contents…\n-----END PRIVATE KEY-----", autocomplete: "off", spellcheck: "false" });
+    det.appendChild(el("label", { class: "fld" }, [el("span", { class: "lab" }, ["Issuer ID"]), issuer]));
+    det.appendChild(el("label", { class: "fld" }, [el("span", { class: "lab" }, ["Key ID"]), keyId]));
+    det.appendChild(el("label", { class: "fld" }, [el("span", { class: "lab" }, [".p8 private key"]), p8]));
+    var btn = el("button", { class: "btn primary", onclick: function () {
+      var creds = { issuerId: issuer.value.trim(), keyId: keyId.value.trim(), p8: p8.value };
+      if (!creds.issuerId || !creds.keyId || !creds.p8.trim()) { toast("Issuer ID, Key ID, and .p8 are all required."); return; }
+      triggerRunAsc(appId, btn, creds);
+    } }, ["▶ Run with ASC read"]);
+    det.appendChild(el("div", { class: "btn-row", style: "margin-top:4px" }, [btn]));
+    return det;
+  }
+
+  function triggerRunAsc(appId, btn, creds) {
+    btn.disabled = true; btn.innerHTML = '<span class="spin"></span> Reading your listing & running…';
+    api("POST", "/apps/" + appId + "/run-asc", creds)
+      .then(function (r) { toast("Read your live listing — review the proposal."); go("#/runs/" + r.id); })
+      .catch(function (e) { btn.disabled = false; btn.textContent = "▶ Run with ASC read"; toast(e.message || "Failed"); });
   }
 
   /* ════════════════════ VIEW: run detail (the money screen) ════════════════ */

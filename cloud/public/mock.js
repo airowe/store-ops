@@ -95,7 +95,7 @@
   }
 
   // ── run the agent loop for an app, produce the full AgentResult shape ─────
-  function runAgentMock(app) {
+  function runAgentMock(app, ascRead) {
     var seedTerms = app.keywords && app.keywords.length ? app.keywords : defaultKeywords(app.name);
     var kwInputs = seedTerms.map(seedKw);
     var reasoning = bucketize(kwInputs);
@@ -115,9 +115,11 @@
     var longtail = reasoning.filter(function (k) { return k.bucket === "Long-tail"; }).map(function (k) { return k.keyword; });
 
     var name = cap((app.name + " · " + title(primary ? primary.keyword : "")).trim(), CHAR_LIMITS.name);
-    var subtitle = cap(title(secondary ? secondary.keyword : "Fast, private, on your terms"), CHAR_LIMITS.subtitle);
+    // #30: only propose subtitle/keywords when an ASC read happened (we can see
+    // the live values). Without it, leave them empty — never a blind overwrite.
+    var subtitle = ascRead ? cap(title(secondary ? secondary.keyword : "Fast, private, on your terms"), CHAR_LIMITS.subtitle) : "";
     var blocked = (name + " " + subtitle).toLowerCase().split(/\W+/).filter(Boolean);
-    var keywords = buildKeywordField(longtail, blocked);
+    var keywords = ascRead ? buildKeywordField(longtail, blocked) : "";
     var promo = cap("New: " + (primary ? title(primary.keyword) : "smarter") + " just got faster. Updated weekly by an autonomous agent.", CHAR_LIMITS.promo);
 
     var checks = [fieldCheck("name", name), fieldCheck("subtitle", subtitle), fieldCheck("keywords", keywords), fieldCheck("promo", promo)];
@@ -343,11 +345,17 @@
       return json(200, { apps: list });
     }
 
-    // POST /apps/:id/run — trigger the loop
-    if (method === "POST" && (m = path.match(/^\/apps\/([^/]+)\/run$/))) {
+    // POST /apps/:id/run  and  /apps/:id/run-asc — trigger the loop. The -asc
+    // variant requires (and never stores) a .p8 + key/issuer id, and reads the
+    // app's live subtitle/keywords so the proposal improves them (#30 Mode A).
+    if (method === "POST" && (m = path.match(/^\/apps\/([^/]+)\/run(-asc)?$/))) {
       var app = db.apps[m[1]];
       if (!app) return json(404, { error: "app not found" });
-      var result = runAgentMock(app);
+      var ascRead = m[2] === "-asc";
+      if (ascRead && !(body && body.p8 && body.keyId && body.issuerId)) {
+        return json(400, { error: "p8, keyId, and issuerId are required" });
+      }
+      var result = runAgentMock(app, ascRead);
       app._prevCompetitors = result._listingsSnapshot;
       var runId = uid();
       var run = {

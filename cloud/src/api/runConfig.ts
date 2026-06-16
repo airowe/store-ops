@@ -14,7 +14,10 @@ import type { AppRow } from "../d1.js";
 export type RunOverrides = {
   keywords?: KeywordInput[];
   competitors?: string[];
-  baseCopy?: { name?: string; subtitle?: string; promo?: string; description?: string };
+  baseCopy?: { name?: string; subtitle?: string; keywords?: string; promo?: string; description?: string };
+  /** True when baseCopy's subtitle/keywords were READ from App Store Connect — lets
+   *  the optimizer improve them instead of omitting them (the #30 Mode-A path). */
+  ascMetadataRead?: boolean;
 };
 
 // Words that are never useful keyword seeds.
@@ -136,5 +139,6 @@ export function buildAppInput(
     country: app.country,
   };
   if (overrides.baseCopy !== undefined) input.baseCopy = overrides.baseCopy;
+  if (overrides.ascMetadataRead) input.ascMetadataRead = true;
   return input;
 }
