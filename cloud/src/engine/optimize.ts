@@ -150,8 +150,15 @@ export type ProposedCopy = CopyFields & { validation: CopyValidation };
  */
 export function optimizeCopy(
   scored: ScoredKeyword[],
-  base: { name: string; subtitle: string; promo?: string; description?: string },
+  base: { name: string; subtitle?: string; keywords?: string; promo?: string; description?: string },
+  opts: { canWriteSubtitleKeywords?: boolean } = {},
 ): ProposedCopy {
+  // #30: only propose subtitle/keywords when we could actually READ the live
+  // values (ASC-connected). The public iTunes API can't return them, so without
+  // a read we'd be overwriting blind — which downgraded a real listing (Heathen).
+  // When we can't read them, we leave them out entirely rather than guess.
+  const canWriteSubKw = opts.canWriteSubtitleKeywords ?? true;
+
   const primary = scored.filter((k) => k.bucket === "Primary").map((k) => k.keyword);
   const secondary = scored.filter((k) => k.bucket === "Secondary").map((k) => k.keyword);
   const longTail = scored.filter((k) => k.bucket === "Long-tail").map((k) => k.keyword);
@@ -159,11 +166,22 @@ export function optimizeCopy(
   // Keep the base copy as the spine; the anchor terms inform it but we don't
   // blindly overwrite human copy — we ensure it fits and surface the anchors.
   const name = fitToLimit(base.name || (primary[0] ?? ""), "name");
-  const subtitle = fitToLimit(base.subtitle || (secondary[0] ?? ""), "subtitle");
-  const keywords = buildKeywordField([...longTail, ...secondary, ...primary], {
-    name,
-    subtitle,
-  });
+
+  let subtitle = "";
+  let keywords = "";
+  if (canWriteSubKw) {
+    // Existing subtitle wins (improve, don't replace); fall back to a term only
+    // when the live subtitle is genuinely empty.
+    subtitle = fitToLimit(base.subtitle || (secondary[0] ?? ""), "subtitle");
+    // The live keyword field is a FLOOR: pack its existing terms FIRST (greedy
+    // packing keeps them), then append new long-tail/secondary/primary terms.
+    // A blank live field just means we build fresh from the scored terms.
+    const existing = (base.keywords ?? "").split(",").map((t) => t.trim()).filter(Boolean);
+    keywords = buildKeywordField([...existing, ...longTail, ...secondary, ...primary], {
+      name,
+      subtitle,
+    });
+  }
 
   const fields: CopyFields = {
     name,

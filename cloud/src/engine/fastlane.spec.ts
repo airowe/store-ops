@@ -20,6 +20,26 @@ function asMap(files: { path: string; content: string }[]) {
   return Object.fromEntries(files.map((f) => [f.path, f.content]));
 }
 
+describe("buildFastlaneBundle — empty fields are NOT written (the #29 fix)", () => {
+  it("omits a metadata file for an empty field (so deliver can't WIPE the live value)", () => {
+    // #30 leaves subtitle/keywords empty when ASC wasn't read — the handoff must
+    // then NOT emit subtitle.txt/keywords.txt, or `fastlane deliver` would blank
+    // the live subtitle/keyword field on App Store Connect.
+    const noSubKw: CopyFields = { name: "Heathen", subtitle: "", keywords: "", description: "A meditation app." };
+    const m = asMap(buildFastlaneBundle(noSubKw).files);
+    expect("fastlane/metadata/en-US/subtitle.txt" in m).toBe(false);
+    expect("fastlane/metadata/en-US/keywords.txt" in m).toBe(false);
+    // non-empty fields are still written
+    expect(m["fastlane/metadata/en-US/name.txt"]).toBe("Heathen");
+    expect(m["fastlane/metadata/en-US/description.txt"]).toBe("A meditation app.");
+  });
+
+  it("the bundle README warns that committing it overwrites existing metadata", () => {
+    const readme = fastlaneReadme("en-US");
+    expect(readme.toLowerCase()).toContain("overwrite");
+  });
+});
+
 describe("buildFastlaneBundle — fastlane/metadata tree from proposed copy", () => {
   it("writes the App Store deliver files under the given locale", () => {
     const m = asMap(buildFastlaneBundle(fullCopy, { locale: "en-US" }).files);

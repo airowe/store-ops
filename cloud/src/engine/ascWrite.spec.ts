@@ -4,9 +4,11 @@ import {
   buildLocalizationPatch,
   pickLocalization,
   applyAscMetadata,
+  readAscLocalization,
   findAscAppId,
   AscWriteError,
   EDITABLE_STATES,
+  type FetchLike,
 } from "./ascWrite.js";
 import type { CopyFields } from "./optimize.js";
 
@@ -50,6 +52,73 @@ describe("pickLocalization", () => {
 
   it("throws when the locale is absent", () => {
     expect(() => pickLocalization([loc("a", "de-DE")], "en-US")).toThrow(AscWriteError);
+  });
+
+  it("preserves the live subtitle + keywords attributes on the picked localization", () => {
+    const rich = {
+      id: "b",
+      attributes: { locale: "en-US", subtitle: "Stoic calm for atheists", keywords: "stoic,seneca,aurelius" },
+    };
+    const l = pickLocalization([rich], "en-US");
+    expect(l.attributes?.subtitle).toBe("Stoic calm for atheists");
+    expect(l.attributes?.keywords).toBe("stoic,seneca,aurelius");
+  });
+});
+
+// ── readAscLocalization: pull the CURRENT live copy so we IMPROVE, not replace ──
+describe("readAscLocalization — reads live subtitle/keywords (the #30 fix)", () => {
+  function mockFetch(routes: Record<string, unknown>): FetchLike {
+    return (async (url: string) => {
+      const key = Object.keys(routes).find((k) => url.includes(k));
+      return {
+        ok: true,
+        status: 200,
+        json: async () => routes[key ?? ""] ?? {},
+      } as unknown as Response;
+    }) as FetchLike;
+  }
+
+  const routes = {
+    "/appStoreVersions?": { data: [{ id: "V1", attributes: { appStoreState: "PREPARE_FOR_SUBMISSION" } }] },
+    "/appStoreVersionLocalizations?": {
+      data: [
+        {
+          id: "L1",
+          attributes: {
+            locale: "en-US",
+            name: "Heathen - Secular Meditation",
+            subtitle: "Stoic calm for atheists",
+            keywords: "mindfulness,journal,affirmation,anxiety,sleep,focus,philosophy,aurelius,seneca,agnostic,gratitude",
+            promotionalText: "New programs.",
+            description: "A secular meditation app.",
+          },
+        },
+      ],
+    },
+  };
+
+  it("returns the live subtitle + keywords (+ name/promo/description) for the editable version's locale", async () => {
+    const live = await readAscLocalization(mockFetch(routes), {
+      token: "JWT",
+      appId: "APP1",
+      locale: "en-US",
+    });
+    expect(live.subtitle).toBe("Stoic calm for atheists");
+    expect(live.keywords).toContain("aurelius");
+    expect(live.keywords).toContain("agnostic");
+    expect(live.name).toBe("Heathen - Secular Meditation");
+    expect(live.promo).toBe("New programs.");
+    expect(live.description).toBe("A secular meditation app.");
+  });
+
+  it("returns undefined fields when ASC omits them (a sparse listing)", async () => {
+    const sparse = {
+      "/appStoreVersions?": { data: [{ id: "V1", attributes: { appStoreState: "PREPARE_FOR_SUBMISSION" } }] },
+      "/appStoreVersionLocalizations?": { data: [{ id: "L1", attributes: { locale: "en-US" } }] },
+    };
+    const live = await readAscLocalization(mockFetch(sparse), { token: "JWT", appId: "APP1", locale: "en-US" });
+    expect(live.subtitle).toBeUndefined();
+    expect(live.keywords).toBeUndefined();
   });
 });
 

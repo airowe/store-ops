@@ -43,7 +43,14 @@ export type AppInput = {
   /** previous competitor snapshot (key → watched fields), for diffing. */
   previousCompetitors?: Record<string, Record<string, string>>;
   /** base copy spine to optimize around (current live listing copy). */
-  baseCopy?: { name?: string; subtitle?: string; promo?: string; description?: string };
+  baseCopy?: { name?: string; subtitle?: string; keywords?: string; promo?: string; description?: string };
+  /**
+   * True ONLY when subtitle + keywords in baseCopy were READ from App Store
+   * Connect (the user's key). The public iTunes API can't return those fields,
+   * so without an ASC read we must NOT propose subtitle/keyword overwrites —
+   * we'd be guessing blind and could downgrade a good listing (#30).
+   */
+  ascMetadataRead?: boolean;
   country?: string;
 };
 
@@ -190,12 +197,18 @@ export async function runAgent(fetchFn: FetchFn, input: AppInput): Promise<Agent
   // Prefer an explicit baseCopy, else fall back to the live listing so a
   // connect-by-name proposal carries real copy instead of blanks (issue #12).
   const description = input.baseCopy?.description ?? auditResult.liveDescription;
-  const proposedCopy = optimizeCopy(reasoning, {
-    name: input.baseCopy?.name ?? auditResult.liveName,
-    subtitle: input.baseCopy?.subtitle ?? "",
-    ...(input.baseCopy?.promo !== undefined ? { promo: input.baseCopy.promo } : {}),
-    ...(description !== undefined ? { description } : {}),
-  });
+  const proposedCopy = optimizeCopy(
+    reasoning,
+    {
+      name: input.baseCopy?.name ?? auditResult.liveName,
+      subtitle: input.baseCopy?.subtitle ?? "",
+      ...(input.baseCopy?.keywords !== undefined ? { keywords: input.baseCopy.keywords } : {}),
+      ...(input.baseCopy?.promo !== undefined ? { promo: input.baseCopy.promo } : {}),
+      ...(description !== undefined ? { description } : {}),
+    },
+    // Only allow subtitle/keyword proposals when we actually read them from ASC.
+    { canWriteSubtitleKeywords: input.ascMetadataRead === true },
+  );
 
   // 6. PREPARE (do not execute) the push command handoff
   const pushCommands = buildPushCommands(input.bundleId, proposedCopy);

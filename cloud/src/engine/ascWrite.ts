@@ -30,7 +30,28 @@ export const EDITABLE_STATES = [
 ] as const;
 
 type Version = { id: string; attributes?: { appStoreState?: string } };
-type Localization = { id: string; attributes?: { locale?: string } };
+type Localization = {
+  id: string;
+  attributes?: {
+    locale?: string;
+    // The live editable values — present in the SAME response the write path
+    // already fetches. We read them so the optimizer can IMPROVE, not replace.
+    name?: string;
+    subtitle?: string;
+    keywords?: string;
+    promotionalText?: string;
+    description?: string;
+  };
+};
+
+/** The current live copy read back from App Store Connect, shaped like CopyFields. */
+export type LiveListingCopy = {
+  name?: string | undefined;
+  subtitle?: string | undefined;
+  keywords?: string | undefined;
+  promo?: string | undefined;
+  description?: string | undefined;
+};
 
 /** Pick the version we're allowed to edit. Throws if none is in an editable state. */
 export function pickEditableVersion(versions: Version[]): Version {
@@ -97,7 +118,7 @@ export function buildLocalizationPatch(localizationId: string, copy: CopyFields)
 
 const ASC_BASE = "https://api.appstoreconnect.apple.com/v1";
 
-type FetchLike = (url: string, init?: RequestInit) => Promise<Response>;
+export type FetchLike = (url: string, init?: RequestInit) => Promise<Response>;
 
 export type ApplyAscResult = {
   ok: true;
@@ -181,6 +202,46 @@ export async function applyAscMetadata(
     versionId: version.id,
     localizationId: localization.id,
     fieldsPushed: Object.keys(patch.data.attributes),
+  };
+}
+
+/**
+ * Read the CURRENT live copy from App Store Connect for the editable version's
+ * locale — the #30 fix. ShipASO can't see subtitle/keywords via the public iTunes
+ * API, so without this it generated them blind and could regress a good listing.
+ * This pulls them from the same version → localization read the write path does,
+ * so the optimizer can treat the live values as a baseline to IMPROVE.
+ */
+export async function readAscLocalization(
+  fetchFn: FetchLike,
+  opts: { token: string; appId: string; locale: string },
+): Promise<LiveListingCopy> {
+  const auth = { authorization: `Bearer ${opts.token}` };
+
+  const versionsRes = await fetchFn(
+    `${ASC_BASE}/apps/${encodeURIComponent(opts.appId)}/appStoreVersions?limit=50`,
+    { headers: auth },
+  );
+  if (!versionsRes.ok) throw await ascError(versionsRes, "list app store versions");
+  const versions = (await versionsRes.json().catch(() => ({}))) as { data?: Version[] };
+  const version = pickEditableVersion(versions.data ?? []);
+
+  const locsRes = await fetchFn(
+    `${ASC_BASE}/appStoreVersions/${version.id}/appStoreVersionLocalizations?limit=50`,
+    { headers: auth },
+  );
+  if (!locsRes.ok) throw await ascError(locsRes, "list version localizations");
+  const locs = (await locsRes.json().catch(() => ({}))) as { data?: Localization[] };
+  const localization = pickLocalization(locs.data ?? [], opts.locale);
+
+  const a = localization.attributes ?? {};
+  // map ASC attribute names → our CopyFields shape (promotionalText → promo)
+  return {
+    name: a.name,
+    subtitle: a.subtitle,
+    keywords: a.keywords,
+    promo: a.promotionalText,
+    description: a.description,
   };
 }
 
