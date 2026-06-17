@@ -44,6 +44,10 @@ export async function seedAppWithRun(
     async ({ name, bundleId, keywords }) => {
       const M = (window as any).STORE_OPS_MOCK;
       const EM = "demo@store-ops.dev";
+      // Seeding is a test fixture, not a paywall scenario — lift the partition to
+      // the top tier so seeding N apps never trips the free-tier connect gate
+      // (#27). Tests that exercise the 402 paywall set the tier explicitly.
+      await M.handle("POST", "/_tier", { tier: "fleet" }, EM);
       const conn = await M.handle("POST", "/apps", { bundle_id: bundleId, name, keywords }, EM);
       const id = (await conn.json()).id as string;
       await M.handle("POST", `/apps/${id}/run`, {}, EM);
@@ -51,6 +55,18 @@ export async function seedAppWithRun(
     },
     { name, bundleId, keywords },
   );
+}
+
+/**
+ * Set the mock backend's billing tier for the demo partition (drives the #27
+ * tier-limit paywall deterministically). The mock mirrors src/billing.ts:
+ * free/launch = 1 app, autopilot = 3, fleet = 50.
+ */
+export async function setMockTier(page: Page, tier: string): Promise<void> {
+  await page.evaluate(async (t) => {
+    const M = (window as any).STORE_OPS_MOCK;
+    await M.handle("POST", "/_tier", { tier: t }, "demo@store-ops.dev");
+  }, tier);
 }
 
 /** Read the rank-movement card's rows as {keyword, prev, cur, chip} for assertions. */

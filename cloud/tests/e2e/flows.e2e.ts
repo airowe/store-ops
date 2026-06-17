@@ -1,5 +1,5 @@
 import { test, expect } from "@playwright/test";
-import { gotoMockDashboard, seedAppWithRun } from "./helpers.js";
+import { gotoMockDashboard, seedAppWithRun, setMockTier } from "./helpers.js";
 
 /**
  * Additional dashboard flows: the disconnect two-click confirm, the reject path
@@ -186,6 +186,49 @@ test.describe("dashboard states", () => {
     await expect(page.locator(".appcard")).toHaveCount(2);
     await expect(page.locator(".appcard", { hasText: "Calm" })).toBeVisible();
     await expect(page.locator(".appcard", { hasText: "Headspace" })).toBeVisible();
+  });
+});
+
+test.describe("connect — 402 tier-limit paywall (#27)", () => {
+  test("connecting past the plan's app limit shows a visible upgrade modal, not a silent fail", async ({
+    page,
+  }) => {
+    await gotoMockDashboard(page);
+    // Seed one app, then pin the partition to the free tier (1 app max) so the
+    // NEXT connect attempt trips the 402 tier gate. (seedAppWithRun lifts the
+    // tier to fleet to seed; we drop it back to free here for the paywall.)
+    await seedAppWithRun(page, { name: "Calm", bundleId: "com.calm.calmapp" });
+    await setMockTier(page, "free");
+    await page.evaluate(() => { location.hash = "#/_"; location.hash = "#/"; });
+    await expect(page.locator(".appcard", { hasText: "Calm" })).toBeVisible();
+
+    // Attempt to connect a SECOND app via the search funnel. A bundle id resolves
+    // to a single candidate, which auto-connects → the mock returns 402.
+    const search = page.getByPlaceholder(/app name, app store .* link, or bundle id/i);
+    await search.fill("com.getsomeheadspace.headspace");
+    await page.getByRole("button", { name: /^search$/i }).click();
+
+    // The tier-limit modal is visible and names the plan + the limit + an upgrade CTA.
+    const modal = page.locator(".tier-limit-modal");
+    await expect(modal).toBeVisible({ timeout: 10_000 });
+    await expect(modal.getByRole("heading", { name: /upgrade to connect more/i })).toBeVisible();
+    await expect(modal).toContainText(/free plan/i);
+    await expect(modal).toContainText(/1 app/i);
+    const cta = modal.getByRole("button", { name: /upgrade/i });
+    await expect(cta).toBeVisible();
+
+    // It did NOT navigate away from the dashboard, and did NOT silently connect a 2nd app.
+    await expect(page).toHaveURL(/#\/$/);
+    const appCount = await page.evaluate(async () => {
+      const M = (window as any).STORE_OPS_MOCK;
+      const r = await (await M.handle("GET", "/apps", null, "demo@store-ops.dev")).json();
+      return r.apps.length as number;
+    });
+    expect(appCount).toBe(1);
+
+    // Dismissing the modal removes it from the page.
+    await modal.getByRole("button", { name: /got it/i }).click();
+    await expect(page.locator(".tier-limit-modal")).toHaveCount(0);
   });
 });
 

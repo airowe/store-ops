@@ -124,6 +124,55 @@
   }
   function loading(msg) { clear(root()); root().appendChild(el("div", { class: "empty" }, [el("div", { class: "spin" }), " " + (msg || "Loading…")])); }
 
+  // ── tier-limit paywall (#27) ────────────────────────────────────────────────
+  // A 402 from POST /apps means the user hit their plan's connected-app cap. The
+  // backend sends a friendly message ("your free plan allows 1 connected app.
+  // Upgrade to connect more."); we parse the tier + limit out of it (the live
+  // Worker only ships `error`; the mock also includes structured tier/limit) and
+  // render a prominent, blocking upsell dialog instead of a silent toast.
+  function parseTierLimit(e) {
+    var data = (e && e.data) || {};
+    var msg = (e && e.message) || "";
+    var tier = data.tier;
+    var limit = data.limit;
+    if (tier == null) { var mt = msg.match(/your\s+(\w+)\s+plan/i); if (mt) tier = mt[1]; }
+    if (limit == null) { var ml = msg.match(/allows\s+(\d+)\s+connected app/i); if (ml) limit = parseInt(ml[1], 10); }
+    return { tier: tier || "current", limit: (limit != null ? limit : null) };
+  }
+
+  function showTierLimitModal(e) {
+    // Only ever one open at a time.
+    var prior = document.querySelector(".tier-limit-modal");
+    if (prior) prior.remove();
+
+    var info = parseTierLimit(e);
+    var appsLabel = info.limit != null ? (info.limit + " app" + (info.limit === 1 ? "" : "s") + " max") : "your plan's limit";
+    var body = "You're on the " + info.tier + " plan — " + appsLabel + ". Upgrade your plan to connect additional apps.";
+
+    var overlay = el("div", { class: "tier-limit-modal", role: "dialog", "aria-modal": "true", "aria-label": "Upgrade to connect more" });
+    function dismiss() { overlay.remove(); document.removeEventListener("keydown", onKey); }
+    function onKey(ev) { if (ev.key === "Escape") dismiss(); }
+    document.addEventListener("keydown", onKey);
+    overlay.addEventListener("click", function (ev) { if (ev.target === overlay) dismiss(); });
+
+    var upgradeBtn = el("button", { class: "btn primary", onclick: function () {
+      // Billing/checkout isn't wired into the SPA yet — route to the billing hash
+      // (a no-op placeholder today) and dismiss. Live checkout slots in here later.
+      dismiss();
+      go("#/billing");
+    } }, ["Upgrade plan"]);
+    var dismissBtn = el("button", { class: "btn ghost", onclick: dismiss }, ["Got it"]);
+
+    overlay.appendChild(el("div", { class: "tier-limit-card card" }, [
+      el("div", { class: "tlm-badge" }, ["⚡"]),
+      el("h2", { style: "margin:8px 0 6px" }, ["Upgrade to connect more"]),
+      el("p", { class: "tlm-body" }, [body]),
+      el("div", { class: "btn-row", style: "margin-top:16px;justify-content:flex-end" }, [dismissBtn, upgradeBtn]),
+    ]));
+    document.body.appendChild(overlay);
+    upgradeBtn.focus();
+  }
+
   function setEnvPill() {
     var p = document.getElementById("envpill");
     if (!p) return;
@@ -215,6 +264,9 @@
         })
         .catch(function (e) {
           submitBtn.disabled = false; submitBtn.textContent = "Search";
+          // A 402 is the tier-limit paywall — surface it loudly (a friendly upsell
+          // dialog), not as a below-the-fold toast that's easy to miss (#27).
+          if (e && e.status === 402) { showTierLimitModal(e); return; }
           toast(e.message || "Failed");
         });
     }

@@ -24,6 +24,18 @@
   var KEYWORD_WEIGHTS = { volume: 0.4, difficulty: 0.3, relevance: 0.3 };
   var BUCKET_TO_FIELD = { Primary: "name", Secondary: "subtitle", "Long-tail": "keywords", Aspirational: null };
 
+  // Per-tier connected-app limit. MUST mirror src/billing.ts appLimitForTier() so
+  // the offline backend trips the SAME 402 paywall the real Worker enforces.
+  function appLimitForTier(tier) {
+    switch (tier) {
+      case "launch": return 1;
+      case "autopilot": return 3;
+      case "fleet": return 50;
+      case "free":
+      default: return 1;
+    }
+  }
+
   function uid() { return "x" + Math.random().toString(36).slice(2, 10); }
   function nowISO() { return new Date().toISOString(); }
 
@@ -35,7 +47,9 @@
   function save(db) { localStorage.setItem(KEY, JSON.stringify(db)); }
   function dbFor(email) {
     var all = load();
-    if (!all[email]) all[email] = { apps: {}, runs: {} };
+    if (!all[email]) all[email] = { apps: {}, runs: {}, tier: "free" };
+    // Back-compat: partitions persisted before tier tracking default to "free".
+    if (!all[email].tier) all[email].tier = "free";
     return { all: all, db: all[email], commit: function () { save(all); } };
   }
 
@@ -343,8 +357,35 @@
         runs: [], latestRunSummary: null, rankSummary: null,
       };
       if (!app.bundleId) return json(400, { error: "bundle_id required" });
+
+      // Tier gate (mirrors src/api/index.ts): enforce the per-tier connected-app
+      // limit BEFORE creating. Re-connecting a bundle the user already owns is
+      // always allowed (no new slot). New connections past the limit → 402.
+      var owns = Object.keys(db.apps).some(function (k) { return db.apps[k].bundleId === app.bundleId; });
+      if (!owns) {
+        var tier = db.tier || "free";
+        var limit = appLimitForTier(tier);
+        var count = Object.keys(db.apps).length;
+        if (count >= limit) {
+          return json(402, {
+            error: "your " + tier + " plan allows " + limit + " connected app" +
+              (limit === 1 ? "" : "s") + ". Upgrade to connect more.",
+            tier: tier,
+            limit: limit,
+          });
+        }
+      }
+
       db.apps[id] = app; ctx.commit();
       return json(201, { id: id });
+    }
+
+    // POST /_tier — TEST-ONLY: set the partition's billing tier so E2E can drive
+    // the tier-gate paywall deterministically. Not a real Worker route.
+    if (method === "POST" && path === "/_tier") {
+      db.tier = (body && body.tier) || "free";
+      ctx.commit();
+      return json(200, { tier: db.tier });
     }
 
     // GET /apps — list apps + latest run status
