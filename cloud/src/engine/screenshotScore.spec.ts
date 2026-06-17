@@ -37,7 +37,7 @@ describe("screenshot grading", () => {
   it("flags a thin set and scores it below a fuller set", () => {
     const few = score("x", listing(2));
     expect(few.findings.some((f) => f.includes("Only 2"))).toBe(true);
-    expect(few.score).toBeLessThan(score("x", listing(6)).score);
+    expect(few.score!).toBeLessThan(score("x", listing(6)).score!);
   });
 
   it("grades a full set well (A or B, >=70)", () => {
@@ -47,17 +47,17 @@ describe("screenshot grading", () => {
   });
 
   it("awards points for an iPad set", () => {
-    expect(score("x", listing(6, 5)).score).toBeGreaterThan(score("x", listing(6, 0)).score);
+    expect(score("x", listing(6, 5)).score!).toBeGreaterThan(score("x", listing(6, 0)).score!);
   });
 
   it("scores a tall ratio higher than a wide one", () => {
-    expect(score("x", listing(6, 0, TALL)).score).toBeGreaterThan(
-      score("x", listing(6, 0, WIDE)).score,
+    expect(score("x", listing(6, 0, TALL)).score!).toBeGreaterThan(
+      score("x", listing(6, 0, WIDE)).score!,
     );
   });
 
   it("caps the score at 100", () => {
-    expect(score("x", listing(10, 10, TALL)).score).toBeLessThanOrEqual(100);
+    expect(score("x", listing(10, 10, TALL)).score!).toBeLessThanOrEqual(100);
   });
 
   it.each([
@@ -66,5 +66,32 @@ describe("screenshot grading", () => {
   ])("count=%i yields grade %s for a tall iPad-backed set", (n, grade) => {
     const res = score("x", listing(n, n, TALL));
     expect(res.grade).toBe(grade);
+  });
+});
+
+// #41: the public iTunes API cannot reliably report screenshots — an empty set
+// from it means UNKNOWN, not zero. We must never assert "grade F / can't convert"
+// off data that can't see the screenshots.
+describe("screenshot grading — unreadable data is unknown, not zero (#41)", () => {
+  it("grades an empty set from unreliable data as UNKNOWN, not F", () => {
+    const res = score("x", { screenshotUrls: [], ipadScreenshotUrls: [], dataReliable: false });
+    expect(res.grade).toBe("?");
+    expect(res.score).toBeNull();
+    // Honest finding — no "can't convert", no "No iPhone screenshots".
+    expect(res.findings.some((f) => /No iPhone screenshots/.test(f))).toBe(false);
+    expect(res.findings.some((f) => /can't convert/.test(f))).toBe(false);
+    expect(res.findings.some((f) => /couldn't read|App Store Connect/i.test(f))).toBe(true);
+  });
+
+  it("still grades a real screenshot set even when data is unreliable", () => {
+    // If the unreliable source DID return shots, score them normally (they're real).
+    const res = score("x", { screenshotUrls: Array.from({ length: 6 }, () => TALL), ipadScreenshotUrls: [], dataReliable: false });
+    expect(res.grade).not.toBe("?");
+    expect(res.score).toBeGreaterThanOrEqual(50);
+  });
+
+  it("keeps the hard F for a genuinely-empty set when data IS reliable", () => {
+    const res = score("x", { screenshotUrls: [], ipadScreenshotUrls: [], dataReliable: true });
+    expect(res.grade).toBe("F");
   });
 });

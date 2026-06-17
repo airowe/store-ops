@@ -115,6 +115,10 @@ async function audit(fetchFn: FetchFn, input: AppInput): Promise<Audit> {
       screenshots = scoreScreenshots(input.app, {
         screenshotUrls: r.screenshotUrls ?? [],
         ipadScreenshotUrls: r.ipadScreenshotUrls ?? [],
+        // #41: this is the public iTunes API — it frequently omits screenshots
+        // for apps that have them. An empty set here is UNKNOWN, not zero, so we
+        // never assert a false "grade F / can't convert".
+        dataReliable: false,
       });
     }
   } catch {

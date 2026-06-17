@@ -19,15 +19,24 @@ const { MAX_SLOTS, GOOD_MIN, KEY_SLOTS, TALL_RATIO } = SCREENSHOT;
 export type Listing = {
   screenshotUrls?: string[] | null;
   ipadScreenshotUrls?: string[] | null;
+  /**
+   * Whether the screenshot data source is trustworthy for absence (#41). The
+   * public iTunes Search API frequently returns NO screenshots for apps that
+   * actually have them, so an empty set from it means UNKNOWN, not zero. Pass
+   * `false` for public-API data: an empty set then grades "?" (unknown) instead
+   * of a false "grade F / can't convert". Defaults to `true` (legacy behavior).
+   */
+  dataReliable?: boolean;
 };
 
-export type Grade = "A" | "B" | "C" | "D" | "F";
+// "?" = unknown: we couldn't read the screenshots from a trustworthy source.
+export type Grade = "A" | "B" | "C" | "D" | "F" | "?";
 
 export type ShotScore = {
   app: string;
   iphoneCount: number;
   ipadCount: number;
-  score: number; // 0–100
+  score: number | null; // 0–100, or null when grade is "?" (unknown/unreadable)
   grade: Grade;
   findings: string[];
   aspectHint: string;
@@ -62,6 +71,25 @@ export function score(app: string, listing: Listing): ShotScore {
   const ipad = listing.ipadScreenshotUrls ?? [];
   const findings: string[] = [];
   let pts = 0;
+
+  // #41: an empty set from an UNRELIABLE source (the public iTunes API) is
+  // UNKNOWN, not zero — never assert a false "grade F / can't convert". Only
+  // when the source returned NO iPhone shots do we fall back to unknown; if it
+  // returned real shots, score them normally below (they're trustworthy).
+  if (iphone.length === 0 && listing.dataReliable === false) {
+    return {
+      app,
+      iphoneCount: 0,
+      ipadCount: ipad.length,
+      score: null,
+      grade: "?",
+      findings: [
+        "ℹ Couldn't read your screenshots from public App Store data — this is often incomplete. " +
+          "Connect App Store Connect to audit your real screenshot set.",
+      ],
+      aspectHint: "",
+    };
+  }
 
   // count — the biggest lever (up to 50)
   const n = iphone.length;

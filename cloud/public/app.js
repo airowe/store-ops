@@ -192,7 +192,7 @@
   function rankText(r) { return r == null ? "—" : "#" + r; }
   // Plain-English meaning of an audit grade (matches the engine's A≥85…F bands).
   function gradeMeaning(g) {
-    return ({ A: "excellent — your listing is dialed in", B: "good, with room to sharpen", C: "average — a few clear wins available", D: "weak — leaving installs on the table", F: "needs work — big opportunity here" })[g] || "";
+    return ({ A: "excellent — your listing is dialed in", B: "good, with room to sharpen", C: "average — a few clear wins available", D: "weak — leaving installs on the table", F: "needs work — big opportunity here", "?": "couldn't read your screenshots from public data — connect App Store Connect to grade them" })[g] || "";
   }
 
   // ── motion: tween an element's text from one rank number to another ──────────
@@ -700,7 +700,12 @@
   function reasoningCard(R) {
     var steps = [];
     var au = R.audit || {}, sc = au.screenshots;
-    if (sc) steps.push({ cls: sc.grade <= "B" ? "ok" : "warn", ico: sc.grade, t: "Audited the live listing", d: "Screenshots score " + sc.score + "/100 (grade " + sc.grade + "): " + (sc.findings && sc.findings[0] ? sc.findings[0] : "") });
+    if (sc && sc.grade === "?") {
+      // #41: screenshots unreadable from public data — honest, not a false F.
+      steps.push({ cls: "", ico: "?", t: "Audited the live listing", d: (sc.findings && sc.findings[0]) ? sc.findings[0] : "Couldn't read your screenshots from public App Store data." });
+    } else if (sc) {
+      steps.push({ cls: sc.grade <= "B" ? "ok" : "warn", ico: sc.grade, t: "Audited the live listing", d: "Screenshots score " + sc.score + "/100 (grade " + sc.grade + "): " + (sc.findings && sc.findings[0] ? sc.findings[0] : "") });
+    }
     var ranks = R.ranks || [];
     var top10 = ranks.filter(function (r) { return r.rank && r.rank <= 10; }).length;
     var none = ranks.filter(function (r) { return r.rank == null; }).length;
