@@ -124,6 +124,11 @@ test.describe("dashboard funnel (mock backend)", () => {
     await expect(page.getByText(/Hand the metadata to your build pipeline/i)).toBeVisible({
       timeout: 10_000,
     });
+
+    // Honest status: the badge must NOT claim "Shipped" (nothing pushed to Apple
+    // yet — approval only reveals the commands). It reads "ready to push".
+    await expect(page.getByText(/ready to push/i).first()).toBeVisible();
+    await expect(page.getByText(/^Shipped$/)).toHaveCount(0);
   });
 
   test("prefers-reduced-motion: the movement card renders fully (no stuck/invisible elements)", async ({

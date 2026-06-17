@@ -184,7 +184,10 @@
 
   // ── status helpers ──────────────────────────────────────────────────────────
   function statusBadge(s) { return el("span", { class: "badge " + s }, [labelFor(s)]); }
-  function labelFor(s) { return ({ detected: "Detected", researching: "Researching", awaiting_approval: "Awaiting approval", approved: "Approved", rejected: "Rejected", shipped: "Shipped" })[s] || s; }
+  // NOTE: the `shipped` enum is set on APPROVAL, before any push to App Store
+  // Connect — so the label must NOT claim "Shipped" (nothing has reached Apple
+  // yet). It reads "Approved · ready to push" until a real verified push exists.
+  function labelFor(s) { return ({ detected: "Detected", researching: "Researching", awaiting_approval: "Awaiting approval", approved: "Approved · ready to push", rejected: "Rejected", shipped: "Approved · ready to push" })[s] || s; }
   function rankClass(r) { return r == null ? "none" : r <= 10 ? "good" : r <= 50 ? "mid" : ""; }
   function rankText(r) { return r == null ? "—" : "#" + r; }
   // Plain-English meaning of an audit grade (matches the engine's A≥85…F bands).
