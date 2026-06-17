@@ -276,6 +276,74 @@ test.describe("run page — PR-style diff (current → proposed)", () => {
   });
 });
 
+test.describe("run page — export as agent prompt (#35)", () => {
+  test("Copy as agent prompt builds a clipboard string with the proposed values and exact fastlane field names", async ({
+    page,
+    context,
+  }) => {
+    // Clipboard reads/writes need an explicit grant in Chromium.
+    await context.grantPermissions(["clipboard-read", "clipboard-write"]);
+
+    await gotoMockDashboard(page);
+    const id = await seedAppWithRun(page);
+
+    // Pull the run id + the proposed copy the run carries, so the assertions
+    // check the EXACT values the prompt should contain (no magic literals).
+    const { runId, proposed } = await page.evaluate(async (appId) => {
+      const M = (window as any).STORE_OPS_MOCK;
+      const detail = await (await M.handle("GET", `/apps/${appId}`, null, "demo@store-ops.dev")).json();
+      const rId = detail.runs[0].id as string;
+      const run = await (await M.handle("GET", `/runs/${rId}`, null, "demo@store-ops.dev")).json();
+      return { runId: rId, proposed: run.result.proposedCopy };
+    }, id);
+
+    await page.goto(`/index.html#/runs/${runId}`);
+
+    // The handoff (with the export button) only appears after approval.
+    await page.getByRole("button", { name: /approve & reveal commands/i }).click();
+
+    const copyBtn = page.getByRole("button", { name: /copy as agent prompt/i });
+    await expect(copyBtn).toBeVisible({ timeout: 10_000 });
+    await copyBtn.click();
+
+    // Toast confirms the copy went through.
+    await expect(page.locator("#toast")).toContainText(/copied/i);
+
+    const clip = await page.evaluate(() => navigator.clipboard.readText());
+
+    // The instruction header the agent acts on.
+    expect(clip).toContain("Update my fastlane metadata files accordingly");
+    expect(clip).toContain("change nothing not listed");
+
+    // Exact fastlane / ASC field names (the source of truth in fastlane.ts):
+    // every field the run actually proposed must surface under its real file name.
+    const fastlaneFile: Record<string, string> = {
+      name: "name.txt",
+      subtitle: "subtitle.txt",
+      keywords: "keywords.txt",
+      promo: "promotional_text.txt",
+      description: "description.txt",
+    };
+    // The name is always proposed.
+    expect(proposed.name.length).toBeGreaterThan(0);
+    expect(clip).toContain("name.txt");
+
+    // Every NON-empty proposed value (and its exact fastlane file name) must be in
+    // the prompt; every empty one (e.g. subtitle/keywords on a no-ASC run, #30) is
+    // omitted — its file name never appears (the listing uses human labels, not
+    // file names, so a .txt name only ever comes from a proposed field).
+    (["name", "subtitle", "keywords", "promo", "description"] as const).forEach((k) => {
+      const v = (proposed as Record<string, string>)[k];
+      if (v && v.trim() !== "") {
+        expect(clip).toContain(v);
+        expect(clip).toContain(fastlaneFile[k]);
+      } else {
+        expect(clip).not.toContain(fastlaneFile[k]);
+      }
+    });
+  });
+});
+
 test.describe("dashboard states", () => {
   test("empty dashboard shows the connect form when no apps exist", async ({ page }) => {
     await gotoMockDashboard(page);

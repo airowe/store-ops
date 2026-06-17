@@ -859,7 +859,7 @@
       // approved or shipped → reveal the handoff
       card.appendChild(el("p", { class: "muted", style: "margin-top:0" }, ["Approved. Hand the metadata to your build pipeline (recommended) — that path is credential-free. Or upload straight to App Store Connect below; ShipASO uses your key once and never stores it."]));
       card.appendChild(ascPushCta(run.id));
-      card.appendChild(commandsBox(R.pushCommands || [], run.id, R.proposedCopy || {}));
+      card.appendChild(commandsBox(R.pushCommands || [], run.id, R.proposedCopy || {}, R.currentCopy || {}));
     }
     return card;
   }
@@ -868,7 +868,7 @@
     return el("div", { class: "locked", style: "margin-top:14px" }, [el("span", { class: "lock" }, ["🔒"]), "Generated push commands are hidden until you approve."]);
   }
 
-  function commandsBox(cmds, runId, copy) {
+  function commandsBox(cmds, runId, copy, current) {
     var wrap = el("div", { class: "cmds", style: "margin-top:14px" });
 
     // ── primary handoff: Fastlane metadata that drops into their pipeline ──
@@ -885,6 +885,11 @@
     ]));
     handoff.appendChild(el("p", { class: "faint", style: "font-size:12.5px;margin:10px 0 0" }, [
       "Commit the tree (or merge the PR), then your pipeline pushes it. This path needs no credentials from you.",
+    ]));
+    // ── export the proposal as a ready-to-paste prompt for a coding agent ──
+    handoff.appendChild(el("div", { class: "btn-row", style: "margin-top:12px;align-items:center;gap:12px;flex-wrap:wrap" }, [
+      el("button", { class: "btn ghost", onclick: function () { copyText(buildAgentPrompt(current || {}, copy || {}), "Agent prompt copied"); } }, ["⚙ Copy as agent prompt"]),
+      el("span", { class: "faint", style: "font-size:12px" }, ["paste into Claude Code / Cursor to update your fastlane files"]),
     ]));
     wrap.appendChild(handoff);
     // hide the PR button unless the GitHub App is configured for this deployment
@@ -1115,6 +1120,70 @@
     add(android + "/short_description.txt", copy.subtitle);
     add(android + "/full_description.txt", copy.description);
     return files;
+  }
+
+  // Format the approved proposal as a ready-to-paste prompt for a coding agent
+  // (Claude Code, Cursor, etc.). It lists the current listing, the proposed
+  // values keyed by their EXACT fastlane/ASC field names (same mapping as
+  // buildFastlaneFiles — fastlane.ts is the source of truth), and a tight
+  // instruction so the agent only touches what we list. Pure, deterministic
+  // formatting over CopyFields — no credentials, no network, nothing persisted.
+  function buildAgentPrompt(current, proposed, locale) {
+    current = current || {};
+    proposed = proposed || {};
+    locale = locale || "en-US";
+
+    // field key → { label, fastlane path(s) }. Order mirrors fastlane.ts.
+    var FIELDS = [
+      { key: "name", label: "App name", ios: "name.txt", android: "title.txt" },
+      { key: "subtitle", label: "Subtitle", ios: "subtitle.txt", android: "short_description.txt" },
+      { key: "keywords", label: "Keywords", ios: "keywords.txt", android: null },
+      { key: "promo", label: "Promotional text", ios: "promotional_text.txt", android: null },
+      { key: "description", label: "Description", ios: "description.txt", android: "full_description.txt" },
+    ];
+    var isSet = function (v) { return v !== undefined && v !== null && String(v).trim() !== ""; };
+    var iosDir = "fastlane/metadata/" + locale;
+    var androidDir = "fastlane/metadata/android/" + locale;
+
+    var lines = [];
+    lines.push("Update my fastlane metadata files accordingly; change nothing not listed.");
+    lines.push("");
+    lines.push("These are App Store / Google Play listing fields. For each field below, write the");
+    lines.push("PROPOSED value verbatim into the named fastlane file (overwrite its contents). Do not");
+    lines.push("touch any file not named here. Do not reformat, trim, or re-wrap the values.");
+    lines.push("");
+
+    // ── current listing ──
+    lines.push("## Current listing");
+    FIELDS.forEach(function (f) {
+      var cur = isSet(current[f.key]) ? String(current[f.key]) : "(empty)";
+      lines.push("- " + f.label + ": " + cur);
+    });
+    lines.push("");
+
+    // ── proposed changes, keyed by exact field names ──
+    lines.push("## Proposed metadata (only these fields change)");
+    var changed = 0;
+    FIELDS.forEach(function (f) {
+      if (!isSet(proposed[f.key])) return; // a field we didn't propose → leave it alone (#30/#29)
+      changed++;
+      var paths = [iosDir + "/" + f.ios];
+      if (f.android) paths.push(androidDir + "/" + f.android);
+      lines.push("");
+      lines.push("### " + f.label);
+      lines.push("- fastlane file" + (paths.length > 1 ? "s" : "") + ": " + paths.join(", "));
+      lines.push("- value:");
+      lines.push(String(proposed[f.key]));
+    });
+    if (changed === 0) {
+      lines.push("");
+      lines.push("(No fields proposed — nothing to change.)");
+    }
+    lines.push("");
+    lines.push("Note: the keywords field (App Store Connect \"Keywords\") is a single");
+    lines.push("comma-separated list with NO spaces after commas — keep it exactly as given.");
+
+    return lines.join("\n");
   }
 
   function decide(runId, action, card) {
