@@ -274,6 +274,63 @@ test.describe("run page — PR-style diff (current → proposed)", () => {
     // The field-change tag (added/changed/unchanged) is present on each row.
     await expect(page.locator(".diffrow .dtag").first()).toBeVisible();
   });
+
+  test("the proposed side of a changed row carries an animated text-reveal layer", async ({ page }) => {
+    await gotoMockDashboard(page);
+    const id = await seedAppWithRun(page);
+    const runId = await page.evaluate(async (appId) => {
+      const M = (window as any).STORE_OPS_MOCK;
+      const detail = await (await M.handle("GET", `/apps/${appId}`, null, "demo@store-ops.dev")).json();
+      return detail.runs[0].id as string;
+    }, id);
+    await page.goto(`/index.html#/runs/${runId}`);
+
+    // The animation is additive: with motion ALLOWED, the proposed value of a
+    // changed row runs a named text-reveal keyframe animation (layered on the
+    // static diff). It is staggered per-row via an --i CSS variable.
+    const dval = page.locator(".diffrow.is-changed .diffside.now .dval").first();
+    await expect(dval).toBeVisible();
+    const animName = await dval.evaluate((node) => getComputedStyle(node).animationName);
+    expect(animName).toBe("textReveal");
+    const stagger = await page
+      .locator(".diffrow.is-changed")
+      .first()
+      .evaluate((node) => getComputedStyle(node).getPropertyValue("--i").trim());
+    expect(stagger).not.toBe("");
+  });
+
+  test("prefers-reduced-motion: the diff renders fully with the text-reveal animation disabled", async ({
+    browser,
+  }) => {
+    const context = await browser.newContext({ reducedMotion: "reduce" });
+    const page = await context.newPage();
+    await gotoMockDashboard(page);
+    const id = await seedAppWithRun(page);
+    const runId = await page.evaluate(async (appId) => {
+      const M = (window as any).STORE_OPS_MOCK;
+      const detail = await (await M.handle("GET", `/apps/${appId}`, null, "demo@store-ops.dev")).json();
+      return detail.runs[0].id as string;
+    }, id);
+    await page.goto(`/index.html#/runs/${runId}`);
+
+    // The diff card still leads with the "Proposed changes" header.
+    await expect(page.getByRole("heading", { name: /proposed changes/i })).toBeVisible();
+
+    // The animated layer applies to the proposed side of changed rows. With motion
+    // reduced, those values must be fully visible (opacity:1, not stuck at the
+    // animation's 0 start) and carry their real text — the static diff is the
+    // source of truth, the animation is purely additive.
+    const dvals = page.locator(".diffrow.is-changed .diffside.now .dval");
+    const count = await dvals.count();
+    expect(count).toBeGreaterThan(0);
+    for (let i = 0; i < count; i++) {
+      const opacity = await dvals.nth(i).evaluate((node) => getComputedStyle(node).opacity);
+      expect(opacity).toBe("1");
+      const text = await dvals.nth(i).textContent();
+      expect(text?.trim()).toBeTruthy();
+    }
+    await context.close();
+  });
 });
 
 test.describe("run page — export as agent prompt (#35)", () => {

@@ -729,6 +729,9 @@
   // per field, with char counts. Built for developers — reads like a code review.
   function diffCard(current, proposed) {
     var order = [["name", "App name"], ["subtitle", "Subtitle"], ["keywords", "Keyword field"], ["promo", "Promotional text"]];
+    // Stagger index for the text-reveal animation — counts only changed rows so
+    // the proposed values ease in one after another (CSS reads it as --i).
+    var revealIndex = 0;
     var rows = order.map(function (o) {
       var field = o[0], label = o[1];
       var was = current[field], now = proposed[field];
@@ -751,7 +754,9 @@
         ]);
       }
 
-      return el("div", { class: "diffrow" + (changed ? " is-changed" : " is-same") }, [
+      var rowAttrs = { class: "diffrow" + (changed ? " is-changed" : " is-same") };
+      if (changed) rowAttrs.style = "--i:" + revealIndex++;
+      return el("div", rowAttrs, [
         el("div", { class: "dfield" }, [
           el("span", { class: "fname" }, [label]),
           el("span", { class: "dtag " + (changed ? (emptyWas ? "added" : "modified") : "unchanged") },
