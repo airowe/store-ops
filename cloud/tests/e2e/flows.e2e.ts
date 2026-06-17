@@ -66,6 +66,12 @@ test.describe("approval gate — reject path", () => {
     // Rejected state shown; the "approved" hand-off copy must NOT appear.
     await expect(page.getByText(/you rejected this proposal/i)).toBeVisible({ timeout: 10_000 });
     await expect(page.getByText(/Hand the metadata to your build pipeline/i)).toHaveCount(0);
+
+    // The rejected screen offers a re-run affordance that routes back to the app.
+    const rerun = page.getByRole("button", { name: /run the agent again/i });
+    await expect(rerun).toBeVisible();
+    await rerun.click();
+    await expect(page).toHaveURL(new RegExp(`#/apps/${id}$`));
   });
 });
 

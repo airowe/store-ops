@@ -854,12 +854,16 @@
 
     if (run.status === "awaiting_approval" || run.status === "detected" || run.status === "researching") {
       card.appendChild(el("p", { class: "muted", style: "margin-top:0" }, ["The push is the one irreversible step. The agent stopped here and is waiting on you."]));
-      var approve = el("button", { class: "btn ok", onclick: function () { decide(run.id, "approve", card); } }, ["✓ Approve & reveal commands"]);
-      var reject = el("button", { class: "btn bad", onclick: function () { decide(run.id, "reject", card); } }, ["✕ Reject"]);
+      var approve = el("button", { class: "btn ok", onclick: function () { decide(run.id, "approve", card, approve); } }, ["✓ Approve & reveal commands"]);
+      var reject = el("button", { class: "btn bad", onclick: function () { decide(run.id, "reject", card, reject); } }, ["✕ Reject"]);
       card.appendChild(el("div", { class: "btn-row" }, [approve, reject]));
       card.appendChild(commandsLocked());
     } else if (run.status === "rejected") {
-      card.appendChild(el("div", { class: "locked" }, [el("span", { class: "lock" }, ["✕"]), "You rejected this proposal. Nothing was pushed. The agent will re-draft on the next data threshold or manual run."]));
+      card.appendChild(el("div", { class: "locked" }, [el("span", { class: "lock" }, ["✕"]), "You rejected this proposal. Nothing was pushed."]));
+      // Let them re-run immediately from here — no need to navigate back to the app.
+      card.appendChild(el("div", { class: "btn-row", style: "margin-top:12px" }, [
+        el("button", { class: "btn primary", onclick: function () { go("#/apps/" + run.app_id); } }, ["▶ Run the agent again"]),
+      ]));
     } else {
       // approved or shipped → reveal the handoff
       card.appendChild(el("p", { class: "muted", style: "margin-top:0" }, ["Approved. Hand the metadata to your build pipeline (recommended) — that path is credential-free. Or upload straight to App Store Connect below; ShipASO uses your key once and never stores it."]));
@@ -1191,11 +1195,15 @@
     return lines.join("\n");
   }
 
-  function decide(runId, action, card) {
+  function decide(runId, action, card, clicked) {
+    // Disable both buttons, but show in-flight feedback on the one clicked so the
+    // action never reads as a frozen UI (the busy-cursor-with-no-activity bug).
     var btns = card.querySelectorAll("button"); btns.forEach(function (b) { b.disabled = true; });
+    var label = clicked && clicked.textContent;
+    if (clicked) clicked.innerHTML = '<span class="spin"></span> ' + (action === "approve" ? "Approving…" : "Rejecting…");
     api("POST", "/runs/" + runId + "/" + action)
       .then(function () { toast(action === "approve" ? "Approved — commands revealed." : "Rejected — nothing pushed."); route(); })
-      .catch(function (e) { btns.forEach(function (b) { b.disabled = false; }); toast(e.message || "Failed"); });
+      .catch(function (e) { btns.forEach(function (b) { b.disabled = false; }); if (clicked && label) clicked.textContent = label; toast(e.message || "Failed"); });
   }
 
   /* ════════════════════════ rank sparkline (inline SVG) ════════════════════ */
