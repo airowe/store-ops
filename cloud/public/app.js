@@ -831,7 +831,8 @@
       card.appendChild(el("div", { class: "locked" }, [el("span", { class: "lock" }, ["✕"]), "You rejected this proposal. Nothing was pushed. The agent will re-draft on the next data threshold or manual run."]));
     } else {
       // approved or shipped → reveal the handoff
-      card.appendChild(el("p", { class: "muted", style: "margin-top:0" }, ["Approved. Hand the metadata to your build pipeline (recommended) — that path is credential-free. Or verify your App Store Connect key directly below; ShipASO uses it once and never stores it."]));
+      card.appendChild(el("p", { class: "muted", style: "margin-top:0" }, ["Approved. Hand the metadata to your build pipeline (recommended) — that path is credential-free. Or upload straight to App Store Connect below; ShipASO uses your key once and never stores it."]));
+      card.appendChild(ascPushCta(run.id));
       card.appendChild(commandsBox(R.pushCommands || [], run.id, R.proposedCopy || {}));
     }
     return card;
@@ -885,6 +886,35 @@
     // ── opt-in: verify App Store Connect credentials (the .p8 path) ──
     wrap.appendChild(ascVerifyPanel(runId));
     return wrap;
+  }
+
+  // Post-approval "Upload to App Store Connect" CTA. This surfaces the existing
+  // push path (pushAsc → POST /runs/:id/asc/push) as a clear, prominent action
+  // at the approval moment. No key was stored for the run, so we prompt for the
+  // .p8 / keyId / issuerId here — they're ephemeral (held only in these DOM
+  // inputs, sent once on click, and NEVER persisted). The credential-free
+  // Fastlane handoff below remains the recommended default for most teams.
+  function ascPushCta(runId) {
+    var sec = el("div", { class: "handoff asc-cta", style: "margin-top:14px;border-color:var(--brand-dim)" });
+    sec.appendChild(el("div", { class: "handoff-h" }, [
+      el("span", { class: "store-tag appstore" }, ["App Store Connect"]),
+      el("span", { class: "desc" }, ["Upload the approved metadata straight to your editable App Store version. Enter your API key once — it's used for this push and never stored."]),
+    ]));
+    var issuer = el("input", { class: "txt mono", type: "text", placeholder: "Issuer ID (e.g. 57246542-96fe-…)", autocomplete: "off", spellcheck: "false" });
+    var keyId = el("input", { class: "txt mono", type: "text", placeholder: "Key ID (e.g. ABC123DEFG)", autocomplete: "off", spellcheck: "false" });
+    var p8 = el("textarea", { class: "txt mono", rows: "4", placeholder: "-----BEGIN PRIVATE KEY-----\n…paste your .p8 contents…\n-----END PRIVATE KEY-----", autocomplete: "off", spellcheck: "false" });
+    var status = el("span", { class: "faint", style: "font-size:12.5px" }, []);
+    var creds = function () { return { issuerId: issuer.value, keyId: keyId.value, p8: p8.value }; };
+    var pushBtn = el("button", { class: "btn primary", onclick: function () { pushAsc(runId, creds(), pushBtn, status); } }, ["↥ Upload to App Store Connect"]);
+    sec.appendChild(el("label", { class: "fld", style: "margin-top:12px" }, [el("span", { class: "lab" }, ["Issuer ID"]), issuer]));
+    sec.appendChild(el("label", { class: "fld" }, [el("span", { class: "lab" }, ["Key ID"]), keyId]));
+    sec.appendChild(el("label", { class: "fld" }, [el("span", { class: "lab" }, [".p8 private key"]), p8]));
+    sec.appendChild(el("div", { class: "btn-row", style: "margin-top:12px;align-items:center;gap:12px;flex-wrap:wrap" }, [pushBtn, status]));
+    sec.appendChild(el("p", { class: "faint", style: "font-size:12px;margin:10px 0 0" }, [
+      el("b", { style: "color:var(--warn)" }, ["This writes to your live App Store version"]),
+      " (the editable one in App Store Connect). Your .p8 is used once and never stored.",
+    ]));
+    return sec;
   }
 
   // Opt-in App Store Connect credential check. Collapsed by default — the

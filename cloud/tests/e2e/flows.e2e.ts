@@ -69,6 +69,42 @@ test.describe("approval gate — reject path", () => {
   });
 });
 
+test.describe("approval gate — Upload to App Store Connect CTA (#32)", () => {
+  test("the upload CTA is hidden pre-approval and appears with a credential form after approval", async ({
+    page,
+  }) => {
+    await gotoMockDashboard(page);
+    const id = await seedAppWithRun(page);
+    const runId = await page.evaluate(async (appId) => {
+      const M = (window as any).STORE_OPS_MOCK;
+      const detail = await (await M.handle("GET", `/apps/${appId}`, null, "demo@store-ops.dev")).json();
+      return detail.runs[0].id as string;
+    }, id);
+    await page.goto(`/index.html#/runs/${runId}`);
+
+    await expect(page.getByRole("heading", { name: /approval gate/i })).toBeVisible();
+
+    // PRE-APPROVAL: the upload CTA must not be present yet (commands are locked).
+    await expect(
+      page.getByRole("button", { name: /upload to app store connect/i }),
+    ).toHaveCount(0);
+
+    // APPROVE → reveal the handoff.
+    await page.getByRole("button", { name: /approve & reveal commands/i }).click();
+
+    // POST-APPROVAL: the upload CTA is now a prominent, visible action.
+    await expect(
+      page.getByRole("button", { name: /upload to app store connect/i }),
+    ).toBeVisible({ timeout: 10_000 });
+
+    // The ephemeral credential form is surfaced inline (issuer / key id / .p8).
+    const cta = page.locator(".asc-cta");
+    await expect(cta.getByPlaceholder(/issuer id/i)).toBeVisible();
+    await expect(cta.getByPlaceholder(/key id/i)).toBeVisible();
+    await expect(cta.getByPlaceholder(/begin private key/i)).toBeVisible();
+  });
+});
+
 test.describe("connect picker pagination (Show more)", () => {
   test("an ambiguous search shows a page of results and 'Show more' loads the next page", async ({
     page,
