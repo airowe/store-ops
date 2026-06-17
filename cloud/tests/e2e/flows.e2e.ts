@@ -197,6 +197,63 @@ test.describe("run with App Store Connect (#30 Mode A)", () => {
   });
 });
 
+test.describe("File upload: .p8 (#33)", () => {
+  test("uploading a .p8 file populates the run-panel textarea and auto-fills Key ID", async ({
+    page,
+  }) => {
+    await gotoMockDashboard(page);
+    const id = await seedAppWithRun(page);
+    await page.goto(`/index.html#/apps/${id}`);
+
+    // Expand the opt-in ASC run panel.
+    await page.getByText(/run with app store connect/i).click();
+    await expect(page.getByRole("button", { name: /run with asc read/i })).toBeVisible();
+
+    const p8Body = "-----BEGIN PRIVATE KEY-----\nMOCKP8CONTENTS\n-----END PRIVATE KEY-----";
+    // setInputFiles with an in-memory buffer (no temp file on disk).
+    await page.locator('input[type="file"][accept=".p8"]').setInputFiles({
+      name: "AuthKey_ABC123DEFG.p8",
+      mimeType: "application/x-pem-file",
+      buffer: Buffer.from(p8Body),
+    });
+
+    // The textarea is populated client-side from the file (paste remains a fallback).
+    await expect(page.getByPlaceholder(/begin private key/i)).toHaveValue(p8Body);
+    // Key ID is auto-filled from the AuthKey_<KEYID>.p8 filename.
+    await expect(page.getByPlaceholder(/key id/i)).toHaveValue("ABC123DEFG");
+  });
+
+  test("uploading a .p8 file populates the verify-panel textarea on the run page", async ({
+    page,
+  }) => {
+    await gotoMockDashboard(page);
+    const id = await seedAppWithRun(page);
+    const runId = await page.evaluate(async (appId) => {
+      const M = (window as any).STORE_OPS_MOCK;
+      const detail = await (await M.handle("GET", `/apps/${appId}`, null, "demo@store-ops.dev")).json();
+      return detail.runs[0].id as string;
+    }, id);
+    await page.goto(`/index.html#/runs/${runId}`);
+
+    // The verify/push panel only renders after approval — approve to reveal it.
+    await page.getByRole("button", { name: /approve & reveal commands/i }).click();
+
+    // Expand the advanced "connect App Store Connect directly" panel.
+    await page.getByText(/connect app store connect directly/i).click();
+    await expect(page.getByRole("button", { name: /verify credential/i })).toBeVisible();
+
+    const p8Body = "-----BEGIN PRIVATE KEY-----\nVERIFYMOCK\n-----END PRIVATE KEY-----";
+    await page.locator('.asc-verify input[type="file"][accept=".p8"]').setInputFiles({
+      name: "AuthKey_XYZ789QRS.p8",
+      mimeType: "application/x-pem-file",
+      buffer: Buffer.from(p8Body),
+    });
+
+    await expect(page.locator(".asc-verify").getByPlaceholder(/begin private key/i)).toHaveValue(p8Body);
+    await expect(page.locator(".asc-verify").getByPlaceholder(/key id/i)).toHaveValue("XYZ789QRS");
+  });
+});
+
 test.describe("run page — PR-style diff (current → proposed)", () => {
   test("the run page leads with a diff card showing current and proposed values", async ({ page }) => {
     await gotoMockDashboard(page);

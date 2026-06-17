@@ -588,6 +588,31 @@
       .catch(function (e) { btn.disabled = false; btn.textContent = "▶ Run agent now"; toast(e.message || "Failed"); route(); });
   }
 
+  // Read a .p8 file client-side and fill the textarea (paste stays a fallback).
+  // The file is read in-memory via FileReader, never uploaded and never logged.
+  // If the filename matches AuthKey_<KEYID>.p8, the Key ID field is auto-filled.
+  function p8FileInput(p8TextArea, keyIdInput) {
+    var input = el("input", { type: "file", accept: ".p8", class: "p8-file" });
+    input.addEventListener("change", function () {
+      var file = input.files && input.files[0];
+      if (!file) return;
+      var reader = new FileReader();
+      reader.onload = function () {
+        // Never log the contents — only assign to the in-memory field.
+        p8TextArea.value = String(reader.result || "");
+        var m = /^AuthKey_([A-Za-z0-9]+)\.p8$/i.exec(file.name);
+        if (m && keyIdInput && !keyIdInput.value.trim()) keyIdInput.value = m[1];
+        toast("Loaded .p8 — used once, never stored.");
+      };
+      reader.onerror = function () { toast("Couldn't read that file — paste the .p8 instead."); };
+      reader.readAsText(file);
+    });
+    return el("label", { class: "fld" }, [
+      el("span", { class: "lab" }, ["Or upload .p8 file"]),
+      input,
+    ]);
+  }
+
   // PRIMARY run: read with an App Store Connect key so the agent READS your live
   // subtitle + keywords and improves them. The .p8 is sent once for this run and
   // never stored (same as the push path). The blind "Run agent now" pass — which
@@ -605,6 +630,7 @@
     panel.appendChild(el("label", { class: "fld" }, [el("span", { class: "lab" }, ["Issuer ID"]), issuer]));
     panel.appendChild(el("label", { class: "fld" }, [el("span", { class: "lab" }, ["Key ID"]), keyId]));
     panel.appendChild(el("label", { class: "fld" }, [el("span", { class: "lab" }, [".p8 private key"]), p8]));
+    panel.appendChild(p8FileInput(p8, keyId));
     var ascBtn = el("button", { class: "btn primary", onclick: function () {
       var creds = { issuerId: issuer.value.trim(), keyId: keyId.value.trim(), p8: p8.value };
       if (!creds.issuerId || !creds.keyId || !creds.p8.trim()) { toast("Issuer ID, Key ID, and .p8 are all required."); return; }
@@ -938,6 +964,7 @@
     det.appendChild(el("label", { class: "fld" }, [el("span", { class: "lab" }, ["Issuer ID"]), issuer]));
     det.appendChild(el("label", { class: "fld" }, [el("span", { class: "lab" }, ["Key ID"]), keyId]));
     det.appendChild(el("label", { class: "fld" }, [el("span", { class: "lab" }, [".p8 private key"]), p8]));
+    det.appendChild(p8FileInput(p8, keyId));
     det.appendChild(el("div", { class: "btn-row", style: "align-items:center;gap:12px;flex-wrap:wrap" }, [btn, pushBtn, status]));
     det.appendChild(el("p", { class: "faint", style: "font-size:12px;margin:10px 0 0" }, [
       el("b", { style: "color:var(--warn)" }, ["Push writes to your live App Store version"]),
