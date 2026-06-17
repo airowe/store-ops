@@ -205,8 +205,7 @@ test.describe("File upload: .p8 (#33)", () => {
     const id = await seedAppWithRun(page);
     await page.goto(`/index.html#/apps/${id}`);
 
-    // Expand the opt-in ASC run panel.
-    await page.getByText(/run with app store connect/i).click();
+    // The ASC run panel is now the primary surface (no expand needed since #31).
     await expect(page.getByRole("button", { name: /run with asc read/i })).toBeVisible();
 
     const p8Body = "-----BEGIN PRIVATE KEY-----\nMOCKP8CONTENTS\n-----END PRIVATE KEY-----";
