@@ -225,6 +225,7 @@ async function runView(env: Env, runId: string) {
       ranks: trace.ranks,
       competitors: trace.competitors,
       reasoning: trace.reasoning,
+      currentCopy: trace.currentCopy,
       proposedCopy: trace.proposedCopy,
       // approval gate: commands withheld until the human approves.
       pushCommands: approved ? trace.pushCommands : [],

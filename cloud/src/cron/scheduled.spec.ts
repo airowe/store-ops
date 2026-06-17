@@ -14,6 +14,7 @@ function makeResult(over: Partial<AgentResult>): AgentResult {
     ranks: [],
     competitors: { listings: [], changes: [], digest: "no changes" },
     reasoning: [],
+    currentCopy: {},
     proposedCopy: {
       name: "n",
       subtitle: "s",

@@ -56,3 +56,26 @@ describe("runAgent — live listing seeds the proposal (issue #12)", () => {
     expect(r.proposedCopy.description).toBeUndefined();
   });
 });
+
+// The run page renders a PR-style diff (current → proposed), so the result must
+// carry the CURRENT copy it diffed against — the same floor the optimizer used.
+describe("runAgent — currentCopy carries the 'before' for the diff", () => {
+  it("reflects the live listing values when no baseCopy override", async () => {
+    const fetchFn = stubFetch({ trackName: "Acme — Habit Tracker", description: "Live desc." });
+    const r = await runAgent(fetchFn as never, baseInput());
+    expect(r.currentCopy.name).toContain("Acme");
+    expect(r.currentCopy.description).toBe("Live desc.");
+  });
+
+  it("reflects an explicit baseCopy (the live subtitle/keywords read from ASC)", async () => {
+    const fetchFn = stubFetch({ trackName: "Live Name", description: "live desc" });
+    const input = {
+      ...baseInput(),
+      ascMetadataRead: true,
+      baseCopy: { name: "Heathen", subtitle: "Stoic calm for atheists", keywords: "mindfulness,stoic", description: "d" },
+    };
+    const r = await runAgent(fetchFn as never, input);
+    expect(r.currentCopy.subtitle).toBe("Stoic calm for atheists");
+    expect(r.currentCopy.keywords).toBe("mindfulness,stoic");
+  });
+});

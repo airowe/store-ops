@@ -103,6 +103,8 @@ export type ReasoningTrace = {
     changes: Change[];
   };
   reasoning: ScoredKeyword[];
+  /** the CURRENT copy the proposal diffs against (the run-page 'before'). */
+  currentCopy: AgentResult["currentCopy"];
   /** full proposed copy WITH validation (pass + per-field checks). */
   proposedCopy: ProposedCopy;
   pushCommands: AgentResult["pushCommands"];
@@ -381,6 +383,7 @@ export async function persistRun(
     ranks: result.ranks,
     competitors: { digest: result.competitors.digest, changes: result.competitors.changes },
     reasoning: result.reasoning,
+    currentCopy: result.currentCopy,
     proposedCopy: result.proposedCopy,
     pushCommands: result.pushCommands,
     trigger: args.trigger,

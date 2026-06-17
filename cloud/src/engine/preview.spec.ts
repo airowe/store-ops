@@ -20,6 +20,7 @@ function makeResult(over: Partial<AgentResult> = {}): AgentResult {
       { keyword: "meditation", volume: 70, difficulty: 30, relevance: 90, score: 82, bucket: "Primary" } as never,
       { keyword: "sleep", volume: 60, difficulty: 40, relevance: 80, score: 70, bucket: "Secondary" } as never,
     ],
+    currentCopy: {},
     proposedCopy: { name: "Calm", subtitle: "Sleep & meditation", keywords: "sleep,meditation", validation: { pass: true, checks: [] } } as never,
     pushCommands: [],
     ...over,

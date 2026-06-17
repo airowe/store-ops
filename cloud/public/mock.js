@@ -125,6 +125,14 @@
     var checks = [fieldCheck("name", name), fieldCheck("subtitle", subtitle), fieldCheck("keywords", keywords), fieldCheck("promo", promo)];
     var proposedCopy = { name: name, subtitle: subtitle, keywords: keywords, promo: promo, validation: { pass: checks.every(function (c) { return c.ok; }), checks: checks } };
 
+    // currentCopy: the "before" the run page diffs against. With an ASC read we
+    // know the live subtitle/keywords; without it they're unknown (omit them).
+    var currentCopy = { name: app.name };
+    if (ascRead) {
+      currentCopy.subtitle = app._liveSubtitle || cap(title(secondary ? secondary.keyword : "Your daily companion"), CHAR_LIMITS.subtitle);
+      currentCopy.keywords = app._liveKeywords || (longtail.slice(0, 4).join(","));
+    }
+
     // competitor read
     var compNames = app.competitors && app.competitors.length ? app.competitors : defaultCompetitors(app.name);
     var prev = app._prevCompetitors || {};
@@ -164,6 +172,7 @@
       ranks: ranks,
       competitors: { listings: listings, changes: changes, digest: digest },
       reasoning: reasoning,
+      currentCopy: currentCopy,
       proposedCopy: proposedCopy,
       pushCommands: pushCommands,
       _listingsSnapshot: listings.reduce(function (m, l) { m[l.key] = { version: l.version }; return m; }, {}),

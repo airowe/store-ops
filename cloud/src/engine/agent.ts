@@ -69,6 +69,10 @@ export type AgentResult = {
   ranks: Rank[];
   competitors: { listings: CompetitorListing[]; changes: ReturnType<typeof diff>; digest: string };
   reasoning: ScoredKeyword[];
+  /** The CURRENT listing copy the optimizer diffed against (the 'before' for the
+   *  run-page PR-style diff). Same floor optimizeCopy received — live values when
+   *  read from ASC, else the public listing. Fields absent when unknown. */
+  currentCopy: { name?: string; subtitle?: string; keywords?: string; promo?: string; description?: string };
   proposedCopy: ProposedCopy;
   /** generated, NON-executed store push commands (asc / gplay) for handoff. */
   pushCommands: PushCommand[];
@@ -197,6 +201,20 @@ export async function runAgent(fetchFn: FetchFn, input: AppInput): Promise<Agent
   // Prefer an explicit baseCopy, else fall back to the live listing so a
   // connect-by-name proposal carries real copy instead of blanks (issue #12).
   const description = input.baseCopy?.description ?? auditResult.liveDescription;
+  // The CURRENT copy: exactly what the optimizer treats as its floor. Captured so
+  // the run page can render a current → proposed diff. Only include subtitle/
+  // keywords when we actually READ them from ASC (else they're unknown, not empty).
+  const currentCopy: AgentResult["currentCopy"] = {
+    ...(input.baseCopy?.name ?? auditResult.liveName ? { name: input.baseCopy?.name ?? auditResult.liveName } : {}),
+    ...(input.ascMetadataRead === true
+      ? {
+          ...(input.baseCopy?.subtitle !== undefined ? { subtitle: input.baseCopy.subtitle } : {}),
+          ...(input.baseCopy?.keywords !== undefined ? { keywords: input.baseCopy.keywords } : {}),
+        }
+      : {}),
+    ...(input.baseCopy?.promo !== undefined ? { promo: input.baseCopy.promo } : {}),
+    ...(description !== undefined ? { description } : {}),
+  };
   const proposedCopy = optimizeCopy(
     reasoning,
     {
@@ -218,6 +236,7 @@ export async function runAgent(fetchFn: FetchFn, input: AppInput): Promise<Agent
     ranks,
     competitors: { listings, changes, digest: digestLine(changes) },
     reasoning,
+    currentCopy,
     proposedCopy,
     pushCommands,
   };

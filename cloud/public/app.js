@@ -474,11 +474,66 @@
     return box;
   }
 
+  // A full-view interstitial shown WHILE a run is in flight, so the wait reads as
+  // progress (the agent is doing real work) instead of a frozen button. The steps
+  // advance on a timer purely for feel; settle() jumps to done when the API
+  // returns. Returns { settle } so the caller can finish it on success/failure.
+  function runInterstitial(steps) {
+    var c = root(); clear(c);
+    var bar = el("i", { style: "width:6%" });
+    var stepList = el("div", { class: "run-steps" });
+    var nodes = steps.map(function (s, i) {
+      var n = el("div", { class: "run-step", style: "--i:" + i }, [
+        el("span", { class: "rs-ico" }, ["○"]),
+        el("span", { class: "rs-t" }, [s]),
+      ]);
+      stepList.appendChild(n);
+      return n;
+    });
+    c.appendChild(el("div", { class: "run-loading card" }, [
+      el("div", { class: "rl-head" }, [el("span", { class: "spin" }), el("b", {}, ["Running the ASO loop on real data…"])]),
+      el("div", { class: "rl-bar" }, [bar]),
+      stepList,
+      el("div", { class: "faint", style: "font-size:12.5px;margin-top:12px" }, ["This usually takes 10–30 seconds — it's auditing, rank-checking, and scoring keywords live."]),
+    ]));
+
+    var i = 0, done = false;
+    function activate(n) {
+      if (n > 0 && nodes[n - 1]) { nodes[n - 1].classList.remove("active"); nodes[n - 1].classList.add("done"); nodes[n - 1].firstChild.textContent = "✓"; }
+      if (nodes[n]) { nodes[n].classList.add("active"); nodes[n].firstChild.textContent = "◔"; }
+      var pct = Math.min(92, 6 + Math.round((n / steps.length) * 86));
+      bar.style.width = pct + "%";
+    }
+    activate(0);
+    var timer = setInterval(function () {
+      if (done) return;
+      if (i < steps.length - 1) { i++; activate(i); }
+    }, 2600);
+
+    return {
+      settle: function () {
+        done = true; clearInterval(timer);
+        nodes.forEach(function (n) { n.classList.remove("active"); n.classList.add("done"); n.firstChild.textContent = "✓"; });
+        bar.style.width = "100%";
+      },
+    };
+  }
+
+  var RUN_STEPS = [
+    "Auditing the live listing & screenshots",
+    "Checking organic rank across keywords",
+    "Reading competitor listings",
+    "Scoring & bucketing keywords",
+    "Drafting copy within Apple's char limits",
+    "Preparing the change for your review",
+  ];
+
   function triggerRun(appId, btn) {
     btn.disabled = true; btn.innerHTML = '<span class="spin"></span> Agent running…';
+    var inter = runInterstitial(RUN_STEPS);
     api("POST", "/apps/" + appId + "/run")
-      .then(function (r) { toast("Agent finished — review the proposal."); go("#/runs/" + r.id); })
-      .catch(function (e) { btn.disabled = false; btn.textContent = "▶ Run agent now"; toast(e.message || "Failed"); });
+      .then(function (r) { inter.settle(); toast("Agent finished — review the proposal."); go("#/runs/" + r.id); })
+      .catch(function (e) { btn.disabled = false; btn.textContent = "▶ Run agent now"; toast(e.message || "Failed"); route(); });
   }
 
   // Opt-in: run with an App Store Connect key so the agent READS your live
@@ -508,9 +563,10 @@
 
   function triggerRunAsc(appId, btn, creds) {
     btn.disabled = true; btn.innerHTML = '<span class="spin"></span> Reading your listing & running…';
+    var inter = runInterstitial(["Reading your live subtitle & keywords from App Store Connect"].concat(RUN_STEPS.slice(1)));
     api("POST", "/apps/" + appId + "/run-asc", creds)
-      .then(function (r) { toast("Read your live listing — review the proposal."); go("#/runs/" + r.id); })
-      .catch(function (e) { btn.disabled = false; btn.textContent = "▶ Run with ASC read"; toast(e.message || "Failed"); });
+      .then(function (r) { inter.settle(); toast("Read your live listing — review the proposal."); go("#/runs/" + r.id); })
+      .catch(function (e) { btn.disabled = false; btn.textContent = "▶ Run with ASC read"; toast(e.message || "Failed"); route(); });
   }
 
   /* ════════════════════ VIEW: run detail (the money screen) ════════════════ */
@@ -528,11 +584,11 @@
     ]));
     c.appendChild(el("p", { class: "lead" }, ["The agent ran the full ASO loop on real data and prepared the change below. Read its reasoning, then approve or reject. Approving reveals the exact commands — we never run them for you."]));
 
-    // 1) PLAIN-ENGLISH REASONING (what makes this read as an agent)
-    c.appendChild(reasoningCard(R));
+    // 1) THE DIFF — lead with current → proposed, like a PR review (devs).
+    c.appendChild(diffCard(R.currentCopy || {}, R.proposedCopy || {}));
 
-    // 2) PROPOSED COPY with char counts
-    c.appendChild(copyCard(R.proposedCopy || {}));
+    // 2) PLAIN-ENGLISH REASONING (what makes this read as an agent)
+    c.appendChild(reasoningCard(R));
 
     // 3) two-column: competitor read + ranks
     c.appendChild(el("div", { class: "split" }, [competitorCard(R.competitors || {}), rankCard(R.ranks || [])]));
@@ -575,29 +631,65 @@
     return el("div", { class: "card" }, [el("h3", {}, ["What the agent did"]), list]);
   }
 
-  function copyCard(copy) {
-    var checks = (copy.validation && copy.validation.checks) || [];
-    var byField = {}; checks.forEach(function (c) { byField[c.field] = c; });
+  // PR-style diff: the live store value (before) → the proposed value (after),
+  // per field, with char counts. Built for developers — reads like a code review.
+  function diffCard(current, proposed) {
     var order = [["name", "App name"], ["subtitle", "Subtitle"], ["keywords", "Keyword field"], ["promo", "Promotional text"]];
-    var rows = order.filter(function (o) { return copy[o[0]] != null; }).map(function (o) {
-      var field = o[0], label = o[1], val = copy[field], limit = LIMITS[field], count = val.length;
-      var pct = Math.min(100, Math.round((count / limit) * 100));
-      var barCls = count > limit ? "warn" : pct >= 90 ? "full" : "";
-      return el("div", { class: "copyfield" }, [
-        el("div", { class: "hdr" }, [
+    var rows = order.map(function (o) {
+      var field = o[0], label = o[1];
+      var was = current[field], now = proposed[field];
+      // Skip fields the proposal didn't touch AND we have no 'before' for.
+      if ((now == null || now === "") && (was == null || was === "")) return null;
+      var limit = LIMITS[field];
+      var changed = (was || "") !== (now || "");
+      var emptyWas = was == null || was === "";
+      var emptyNow = now == null || now === "";
+
+      function side(kind, val, isEmpty) {
+        var count = (val || "").length;
+        var pct = Math.min(100, Math.round((count / limit) * 100));
+        var barCls = count > limit ? "warn" : pct >= 90 ? "full" : "";
+        return el("div", { class: "diffside " + kind }, [
+          el("div", { class: "dlabel" }, [kind === "was" ? "Current" : "Proposed",
+            el("span", { class: "charcount", style: count > limit ? "color:var(--bad)" : "" }, [count + "/" + limit])]),
+          el("div", { class: "dval" }, [isEmpty ? el("span", { class: "faint" }, [kind === "was" ? "(not set)" : "(left unchanged)"]) : val]),
+          el("div", { class: "charbar " + barCls }, [el("i", { style: "width:" + pct + "%" })]),
+        ]);
+      }
+
+      return el("div", { class: "diffrow" + (changed ? " is-changed" : " is-same") }, [
+        el("div", { class: "dfield" }, [
           el("span", { class: "fname" }, [label]),
-          el("span", { class: "charcount", style: count > limit ? "color:var(--bad)" : "" }, [count + "/" + limit]),
+          el("span", { class: "dtag " + (changed ? (emptyWas ? "added" : "modified") : "unchanged") },
+            [changed ? (emptyWas ? "added" : "changed") : "unchanged"]),
         ]),
-        el("div", { class: "val" }, [val || el("span", { class: "faint" }, ["(empty)"])]),
-        el("div", { class: "charbar " + barCls }, [el("i", { style: "width:" + pct + "%" })]),
+        el("div", { class: "diffcols" }, [
+          side("was", was, emptyWas),
+          el("div", { class: "darrow" }, ["→"]),
+          side("now", now, emptyNow),
+        ]),
       ]);
-    });
+    }).filter(Boolean);
+
+    if (!rows.length) rows = [el("div", { class: "faint" }, ["No copy changes proposed."])];
+
+    var changedCount = order.filter(function (o) {
+      var was = current[o[0]], now = proposed[o[0]];
+      return (now != null && now !== "") && ((was || "") !== (now || ""));
+    }).length;
+
     return el("div", { class: "card" }, [
-      el("h3", {}, ["Proposed copy"]),
-      el("div", {}, rows),
+      el("div", { class: "diffhead" }, [
+        el("h3", { style: "margin:0" }, ["Proposed changes"]),
+        el("span", { class: "diffsummary" }, [changedCount + " field" + (changedCount === 1 ? "" : "s") + " changed"]),
+      ]),
+      el("p", { class: "faint", style: "margin:4px 0 14px;font-size:13px" },
+        ["Your live listing on the left, the agent's proposal on the right. Review it like a PR — then approve below."]),
+      el("div", { class: "difflist" }, rows),
       el("div", { class: "faint", style: "font-size:12px;margin-top:10px" }, ["Keyword field is comma-joined with no spaces and shares no words with the title/subtitle — Apple's rules, enforced in code."]),
     ]);
   }
+
 
   function competitorCard(comp) {
     var changes = comp.changes || [];

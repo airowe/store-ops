@@ -145,6 +145,28 @@ test.describe("run with App Store Connect (#30 Mode A)", () => {
   });
 });
 
+test.describe("run page — PR-style diff (current → proposed)", () => {
+  test("the run page leads with a diff card showing current and proposed values", async ({ page }) => {
+    await gotoMockDashboard(page);
+    const id = await seedAppWithRun(page);
+    const runId = await page.evaluate(async (appId) => {
+      const M = (window as any).STORE_OPS_MOCK;
+      const detail = await (await M.handle("GET", `/apps/${appId}`, null, "demo@store-ops.dev")).json();
+      return detail.runs[0].id as string;
+    }, id);
+    await page.goto(`/index.html#/runs/${runId}`);
+
+    // The diff card is the lead: a "Proposed changes" header with Current/Proposed columns.
+    await expect(page.getByRole("heading", { name: /proposed changes/i })).toBeVisible();
+    const diff = page.locator(".diffrow").first();
+    await expect(diff).toBeVisible();
+    await expect(diff.getByText(/current/i)).toBeVisible();
+    await expect(diff.getByText(/proposed/i)).toBeVisible();
+    // The field-change tag (added/changed/unchanged) is present on each row.
+    await expect(page.locator(".diffrow .dtag").first()).toBeVisible();
+  });
+});
+
 test.describe("dashboard states", () => {
   test("empty dashboard shows the connect form when no apps exist", async ({ page }) => {
     await gotoMockDashboard(page);
