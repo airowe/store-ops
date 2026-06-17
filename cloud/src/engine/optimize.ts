@@ -21,6 +21,21 @@ export type CopyFields = {
   description?: string;
 };
 
+/**
+ * Visibility into the authoring decisions the optimizer made — surfaced so
+ * callers (and the run page) can SEE what happened rather than silently
+ * degrading a thin proposal (#28).
+ *   • `subtitleMode` — whether the subtitle was authored from scratch
+ *     ("composed") or kept because the live value was already strong
+ *     ("preserved").
+ *   • `droppedKeywords` — gap terms that could NOT be placed for space even
+ *     after displacing redundant existing terms. Never a silent no-op (#37.2).
+ */
+export type OptimizationNotes = {
+  subtitleMode?: "composed" | "preserved";
+  droppedKeywords?: string;
+};
+
 export type FieldCheck = {
   field: StoreField;
   value: string;
@@ -141,7 +156,60 @@ function fitToLimit(value: string, field: StoreField): string {
   return lastSpace > limit * 0.6 ? cut.slice(0, lastSpace).trimEnd() : cut.trimEnd();
 }
 
-export type ProposedCopy = CopyFields & { validation: CopyValidation };
+/** Sentence-case a single word (leave acronyms/casing of the rest intact). */
+function sentenceCase(s: string): string {
+  return s.length ? s[0]!.toUpperCase() + s.slice(1) : s;
+}
+
+/**
+ * Compose a natural ≤30-char subtitle phrase from ordered candidate terms
+ * (highest-value first). Deterministic — pure function of its input:
+ *   • de-dupes by word so "calm" + "calm focus" don't repeat "calm",
+ *   • greedily appends whole terms while they fit the budget (never truncates
+ *     mid-term, never emits over-limit),
+ *   • sentence-cases the lead word and lowercases the rest for a readable phrase,
+ *   • emits NO trailing punctuation/whitespace.
+ * A SINGLE usable term still yields that term (a one-word phrase) — the caller
+ * decides whether one word is "weak"; this function just authors from what it
+ * is given. Returns "" when there is nothing usable.
+ */
+export function composeSubtitle(terms: string[]): string {
+  const limit = CHAR_LIMITS.subtitle;
+  const usedWords = new Set<string>();
+  const parts: string[] = [];
+  for (const raw of terms) {
+    const term = raw.trim().toLowerCase().replace(/\s+/g, " ");
+    if (!term) continue;
+    const termWords = term.split(" ");
+    // skip a term whose words are already all present (no new signal)
+    if (termWords.every((w) => usedWords.has(w))) continue;
+    const next = parts.length ? `${parts.join(" ")} ${term}` : term;
+    if (next.length > limit) continue; // try the next (possibly shorter) term
+    parts.push(term);
+    for (const w of termWords) usedWords.add(w);
+  }
+  if (!parts.length) return "";
+  const phrase = parts.join(" ");
+  return sentenceCase(phrase);
+}
+
+/**
+ * A live subtitle is STRONG (preserve it — #30 no-regression) when it carries
+ * real authored signal: a multi-word phrase. An empty value or a single bare
+ * keyword is WEAK → author from scratch (#38/#37.1). A human-authored two-word
+ * phrase ("Calm mind") is strong regardless of length — never regress it.
+ */
+function isStrongSubtitle(value: string): boolean {
+  const trimmed = value.trim();
+  if (!trimmed) return false;
+  const wordCount = trimmed.split(/\s+/).filter(Boolean).length;
+  return wordCount >= 2;
+}
+
+export type ProposedCopy = CopyFields & {
+  validation: CopyValidation;
+  optimization?: OptimizationNotes;
+};
 
 /**
  * Assemble a proposed listing from bucketed keywords + a base listing.
@@ -169,18 +237,68 @@ export function optimizeCopy(
 
   let subtitle = "";
   let keywords = "";
+  const notes: OptimizationNotes = {};
   if (canWriteSubKw) {
-    // Existing subtitle wins (improve, don't replace); fall back to a term only
-    // when the live subtitle is genuinely empty.
-    subtitle = fitToLimit(base.subtitle || (secondary[0] ?? ""), "subtitle");
-    // The live keyword field is a FLOOR: pack its existing terms FIRST (greedy
-    // packing keeps them), then append new long-tail/secondary/primary terms.
-    // A blank live field just means we build fresh from the scored terms.
+    // COMPOSE vs EDIT (#38/#37.1/#37.3):
+    //   • a STRONG live subtitle (multi-word, meaningful length) is PRESERVED —
+    //     never regressed (the #30 guarantee);
+    //   • an EMPTY or WEAK (single-word / too-short) value is AUTHORED from
+    //     scratch — a natural multi-word phrase composed from the top scored
+    //     terms + the brand name, NOT a lone bare keyword.
+    const liveSubtitle = (base.subtitle ?? "").trim();
+    if (isStrongSubtitle(liveSubtitle)) {
+      subtitle = fitToLimit(liveSubtitle, "subtitle");
+      notes.subtitleMode = "preserved";
+    } else {
+      // Author from the highest-value distinct terms; the brand name is a weak
+      // tail cue so the phrase still reads naturally if room remains.
+      const composed = composeSubtitle([...secondary, ...primary, ...longTail, name]);
+      subtitle = fitToLimit(composed, "subtitle");
+      notes.subtitleMode = "composed";
+    }
+
+    // Keyword field — the live field is a FLOOR (#30, non-negotiable): every
+    // UNIQUE live term that fits is preserved. But the floor must NOT silently
+    // STARVE new gap terms (#37.2). Strategy:
+    //   1. Drop REDUNDANT existing terms — live terms whose signal a higher-value
+    //      scored term already carries (same words) — to free space without
+    //      losing any unique niche signal.
+    //   2. Pack the (de-redundant) live floor FIRST so unique niche terms are
+    //      never regressed.
+    //   3. Append NEW gap terms into whatever room remains.
+    //   4. SURFACE any gap term still unplaced as `droppedKeywords` — never a
+    //      silent no-op.
     const existing = (base.keywords ?? "").split(",").map((t) => t.trim()).filter(Boolean);
-    keywords = buildKeywordField([...existing, ...longTail, ...secondary, ...primary], {
-      name,
-      subtitle,
+    const existingSet = new Set(existing.map((t) => t.toLowerCase()));
+    const scoredTerms = [...longTail, ...secondary, ...primary];
+    const gapTerms = scoredTerms.filter((t) => !existingSet.has(t.trim().toLowerCase()));
+
+    // A live term is REDUNDANT if every one of its words is already supplied by a
+    // gap term — those are the only existing terms we'll let gap terms displace.
+    const gapWords = new Set<string>();
+    for (const g of gapTerms) for (const w of words(g)) gapWords.add(w);
+    const nonRedundantExisting = existing.filter((t) => {
+      const tw = [...words(t)];
+      return tw.length === 0 || !tw.every((w) => gapWords.has(w));
     });
+
+    // Floor first (unique niche signal preserved), then gap terms fill the rest.
+    keywords = buildKeywordField([...nonRedundantExisting, ...gapTerms], { name, subtitle });
+
+    // Surface any gap term that could not be placed for SPACE (not a
+    // title/subtitle collision, which is a rule exclusion, not starvation).
+    const placed = new Set(splitKeywordField(keywords).map((t) => t.toLowerCase()));
+    const bannedKw = new Set([...words(name), ...words(subtitle)]);
+    const dropped: string[] = [];
+    const droppedSeen = new Set<string>();
+    for (const t of gapTerms) {
+      const lc = t.trim().toLowerCase();
+      if (!lc || placed.has(lc) || droppedSeen.has(lc)) continue;
+      if ([...words(lc)].some((w) => bannedKw.has(w))) continue;
+      droppedSeen.add(lc);
+      dropped.push(lc);
+    }
+    if (dropped.length) notes.droppedKeywords = dropped.join(",");
   }
 
   const fields: CopyFields = {
@@ -193,5 +311,10 @@ export function optimizeCopy(
       : {}),
   };
 
-  return { ...fields, validation: validateCopy(fields) };
+  const hasNotes = notes.subtitleMode !== undefined || notes.droppedKeywords !== undefined;
+  return {
+    ...fields,
+    validation: validateCopy(fields),
+    ...(hasNotes ? { optimization: notes } : {}),
+  };
 }
