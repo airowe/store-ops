@@ -135,7 +135,7 @@ export function buildLocalizationPatch(localizationId: string, copy: CopyFields)
 
 // ── HTTP orchestration (thin glue over the pure builders above) ──────────────
 
-const ASC_BASE = "https://api.appstoreconnect.apple.com/v1";
+export const ASC_BASE = "https://api.appstoreconnect.apple.com/v1";
 
 export type FetchLike = (url: string, init?: RequestInit) => Promise<Response>;
 
@@ -266,7 +266,7 @@ export async function readAscLocalization(
 }
 
 /** Turn a non-OK ASC response into a token-free AscWriteError. */
-async function ascError(res: Response, step: string): Promise<AscWriteError> {
+export async function ascError(res: Response, step: string): Promise<AscWriteError> {
   let detail = "";
   try {
     const body = (await res.json()) as { errors?: { detail?: string; title?: string }[] };
