@@ -67,3 +67,18 @@ export {
   classifyQuery,
   resolveAppQuery,
 } from "./resolveApp.js";
+export {
+  type InAppPurchase,
+  type AppPricing,
+  mapInAppPurchase,
+  resolvePriceSchedule,
+  readAscPricingAndIAP,
+} from "./ascRead.js";
+export {
+  type VersionState,
+  type AscVersionStateResult,
+  readAscVersionState,
+  type AscAgeRatingResult,
+  readAscAgeRating,
+  mapAgeRatingDeclaration,
+} from "./ascWrite.js";
