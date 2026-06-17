@@ -96,15 +96,31 @@ test.describe("connect picker pagination (Show more)", () => {
 });
 
 test.describe("run with App Store Connect (#30 Mode A)", () => {
-  test("the ASC-run panel requires creds, then runs a read-and-improve pass", async ({ page }) => {
+  test("the ASC-run panel is the primary CTA, requires creds, then runs a read-and-improve pass", async ({ page }) => {
     await gotoMockDashboard(page);
     const id = await seedAppWithRun(page);
     await page.goto(`/index.html#/apps/${id}`);
 
-    // Expand the opt-in ASC panel.
-    await page.getByText(/run with app store connect/i).click();
+    // The ASC read-and-improve run is the PRIMARY CTA — its form is always
+    // visible (no <details> to expand) and its run button is the primary button.
     const runBtn = page.getByRole("button", { name: /run with asc read/i });
     await expect(runBtn).toBeVisible();
+    await expect(runBtn).toHaveClass(/primary/);
+    await expect(page.getByPlaceholder(/issuer id/i)).toBeVisible();
+
+    // The blind "Run agent now" run is demoted behind an opt-out checkbox and is
+    // hidden until the visitor admits they have no ASC key.
+    const noKey = page.getByRole("checkbox", { name: /don.t have an asc key/i });
+    await expect(noKey).toBeVisible();
+    const blindBtn = page.getByRole("button", { name: /run agent now/i });
+    await expect(blindBtn).toBeHidden();
+
+    // Toggling the opt-out reveals the blind run button…
+    await noKey.check();
+    await expect(blindBtn).toBeVisible();
+    // …and un-toggling hides it again.
+    await noKey.uncheck();
+    await expect(blindBtn).toBeHidden();
 
     // Clicking with empty creds must NOT navigate (validation guard).
     await runBtn.click();

@@ -386,11 +386,11 @@
       el("div", { class: "faint", style: "font-size:12px;margin-top:8px" }, ["Lower is better. 8-week organic position from the iTunes Search API."]),
     ]));
 
-    // run an agent loop on demand
-    var runBtn = el("button", { class: "btn primary", onclick: function () { triggerRun(app.id, runBtn); } }, ["▶ Run agent now"]);
+    // run an agent loop on demand — the App Store Connect read-and-improve pass
+    // is the primary CTA; the blind run is demoted to an opt-out inside ascRunPanel.
     c.appendChild(el("div", { class: "card" }, [
       el("h3", {}, ["Agent runs"]),
-      el("div", { class: "btn-row", style: "margin-bottom:14px" }, [runBtn, el("span", { class: "faint", style: "align-self:center;font-size:12.5px" }, ["Reads ranks + your live listing. Without an App Store Connect key, it leaves subtitle & keywords untouched."]),]),
+      el("p", { class: "faint", style: "font-size:12.5px;margin:0 0 14px" }, ["Reads ranks + your live listing. With an App Store Connect key, the agent improves your subtitle & keywords. Without one, it leaves them untouched."]),
       ascRunPanel(app.id),
       runList(runs),
     ]));
@@ -588,29 +588,45 @@
       .catch(function (e) { btn.disabled = false; btn.textContent = "▶ Run agent now"; toast(e.message || "Failed"); route(); });
   }
 
-  // Opt-in: run with an App Store Connect key so the agent READS your live
-  // subtitle + keywords and improves them (instead of leaving them untouched).
-  // The .p8 is sent once for this run and never stored (same as the push path).
+  // PRIMARY run: read with an App Store Connect key so the agent READS your live
+  // subtitle + keywords and improves them. The .p8 is sent once for this run and
+  // never stored (same as the push path). The blind "Run agent now" pass — which
+  // leaves subtitle/keywords untouched — is demoted to an opt-out checkbox: it
+  // only appears once the visitor admits they have no ASC key.
   function ascRunPanel(appId) {
-    var det = el("details", { class: "asc-run" });
-    det.appendChild(el("summary", {}, ["⚙ Run with App Store Connect — improves your subtitle & keywords"]));
-    det.appendChild(el("div", { class: "faint", style: "font-size:12.5px;margin:6px 0 10px" }, [
+    var panel = el("div", { class: "asc-run-panel" });
+    panel.appendChild(el("div", { class: "faint", style: "font-size:12.5px;margin:0 0 12px" }, [
       "ShipASO can't see your subtitle/keywords from public data. Provide a read key and the agent reads them, then proposes improvements. ",
       el("b", { style: "color:var(--dim)" }, ["Your .p8 is used once for this run and never stored."]),
     ]));
     var issuer = el("input", { class: "txt mono", type: "text", placeholder: "Issuer ID (UUID)", autocomplete: "off", spellcheck: "false" });
     var keyId = el("input", { class: "txt mono", type: "text", placeholder: "Key ID (e.g. ABC123DEFG)", autocomplete: "off", spellcheck: "false" });
     var p8 = el("textarea", { class: "txt mono", rows: "4", placeholder: "-----BEGIN PRIVATE KEY-----\n…paste your .p8 contents…\n-----END PRIVATE KEY-----", autocomplete: "off", spellcheck: "false" });
-    det.appendChild(el("label", { class: "fld" }, [el("span", { class: "lab" }, ["Issuer ID"]), issuer]));
-    det.appendChild(el("label", { class: "fld" }, [el("span", { class: "lab" }, ["Key ID"]), keyId]));
-    det.appendChild(el("label", { class: "fld" }, [el("span", { class: "lab" }, [".p8 private key"]), p8]));
-    var btn = el("button", { class: "btn primary", onclick: function () {
+    panel.appendChild(el("label", { class: "fld" }, [el("span", { class: "lab" }, ["Issuer ID"]), issuer]));
+    panel.appendChild(el("label", { class: "fld" }, [el("span", { class: "lab" }, ["Key ID"]), keyId]));
+    panel.appendChild(el("label", { class: "fld" }, [el("span", { class: "lab" }, [".p8 private key"]), p8]));
+    var ascBtn = el("button", { class: "btn primary", onclick: function () {
       var creds = { issuerId: issuer.value.trim(), keyId: keyId.value.trim(), p8: p8.value };
       if (!creds.issuerId || !creds.keyId || !creds.p8.trim()) { toast("Issuer ID, Key ID, and .p8 are all required."); return; }
-      triggerRunAsc(appId, btn, creds);
+      triggerRunAsc(appId, ascBtn, creds);
     } }, ["▶ Run with ASC read"]);
-    det.appendChild(el("div", { class: "btn-row", style: "margin-top:4px" }, [btn]));
-    return det;
+    panel.appendChild(el("div", { class: "btn-row", style: "margin-top:4px" }, [ascBtn]));
+
+    // Opt-out: no ASC key → reveal the blind run (leaves subtitle/keywords as-is).
+    var cbId = "no-asc-key-" + appId;
+    var noKey = el("input", { type: "checkbox", id: cbId });
+    panel.appendChild(el("div", { class: "checkbox-row" }, [
+      noKey,
+      el("label", { "for": cbId }, ["I don't have an ASC key — run name/description only"]),
+    ]));
+    var blindBtn = el("button", { class: "btn", onclick: function () { triggerRun(appId, blindBtn); } }, ["▶ Run agent now"]);
+    var blindRow = el("div", { class: "btn-row blind-run", style: "display:none" }, [
+      blindBtn,
+      el("span", { class: "faint", style: "align-self:center;font-size:12px" }, ["Without a key, the agent leaves your subtitle & keywords untouched."]),
+    ]);
+    noKey.addEventListener("change", function () { blindRow.style.display = noKey.checked ? "" : "none"; });
+    panel.appendChild(blindRow);
+    return panel;
   }
 
   function triggerRunAsc(appId, btn, creds) {
