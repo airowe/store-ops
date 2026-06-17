@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   pickEditableVersion,
+  pickReadableVersion,
   buildLocalizationPatch,
   pickLocalization,
   applyAscMetadata,
@@ -119,6 +120,51 @@ describe("readAscLocalization — reads live subtitle/keywords (the #30 fix)", (
     const live = await readAscLocalization(mockFetch(sparse), { token: "JWT", appId: "APP1", locale: "en-US" });
     expect(live.subtitle).toBeUndefined();
     expect(live.keywords).toBeUndefined();
+  });
+
+  // An app with NO editable (draft) version — only a live, published one. Reading
+  // must still work (Apple lets you read published metadata); only WRITING needs a
+  // draft. This is the fallback that unblocked the Heathen pass: a live-only app
+  // should still get an improvable proposal.
+  it("falls back to the live (READY_FOR_SALE) version when there is no editable one", async () => {
+    const liveOnly = {
+      "/appStoreVersions?": { data: [{ id: "VLIVE", attributes: { appStoreState: "READY_FOR_SALE" } }] },
+      "/appStoreVersionLocalizations?": {
+        data: [
+          {
+            id: "LLIVE",
+            attributes: { locale: "en-US", subtitle: "Stoic calm for atheists", keywords: "mindfulness,stoic" },
+          },
+        ],
+      },
+    };
+    const live = await readAscLocalization(mockFetch(liveOnly), { token: "JWT", appId: "APP1", locale: "en-US" });
+    expect(live.subtitle).toBe("Stoic calm for atheists");
+    expect(live.keywords).toBe("mindfulness,stoic");
+  });
+
+  it("throws only when there are NO versions at all", async () => {
+    const none = { "/appStoreVersions?": { data: [] } };
+    await expect(readAscLocalization(mockFetch(none), { token: "JWT", appId: "APP1", locale: "en-US" })).rejects.toThrow();
+  });
+});
+
+// ── pickReadableVersion: editable preferred, but ANY version is readable ──
+describe("pickReadableVersion", () => {
+  const ver = (id: string, s: string) => ({ id, attributes: { appStoreState: s } });
+
+  it("prefers an editable version when one exists", () => {
+    const v = pickReadableVersion([ver("LIVE", "READY_FOR_SALE"), ver("DRAFT", "PREPARE_FOR_SUBMISSION")]);
+    expect(v.id).toBe("DRAFT");
+  });
+
+  it("falls back to the live version when none is editable", () => {
+    const v = pickReadableVersion([ver("LIVE", "READY_FOR_SALE")]);
+    expect(v.id).toBe("LIVE");
+  });
+
+  it("throws only on an empty version list", () => {
+    expect(() => pickReadableVersion([])).toThrow(AscWriteError);
   });
 });
 

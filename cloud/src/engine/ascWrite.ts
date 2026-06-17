@@ -67,6 +67,25 @@ export function pickEditableVersion(versions: Version[]): Version {
   return editable;
 }
 
+/**
+ * Pick a version to READ metadata from. Prefers an editable (draft) version, but
+ * falls back to ANY version — including a live READY_FOR_SALE one — because Apple
+ * lets you read published metadata even with no draft in progress. Only WRITING
+ * needs an editable version; reading should never be blocked by its absence.
+ * Throws only when the app has no versions at all.
+ */
+export function pickReadableVersion(versions: Version[]): Version {
+  const editable = versions.find(
+    (v) => v.attributes?.appStoreState && (EDITABLE_STATES as readonly string[]).includes(v.attributes.appStoreState),
+  );
+  if (editable) return editable;
+  const any = versions[0];
+  if (!any) {
+    throw new AscWriteError("No App Store version found for this app.");
+  }
+  return any;
+}
+
 /** Pick the localization matching the locale. Throws if absent. */
 export function pickLocalization(localizations: Localization[], locale: string): Localization {
   const match = localizations.find((l) => l.attributes?.locale === locale);
@@ -224,7 +243,8 @@ export async function readAscLocalization(
   );
   if (!versionsRes.ok) throw await ascError(versionsRes, "list app store versions");
   const versions = (await versionsRes.json().catch(() => ({}))) as { data?: Version[] };
-  const version = pickEditableVersion(versions.data ?? []);
+  // Reading is allowed on a live version — only writing needs an editable one.
+  const version = pickReadableVersion(versions.data ?? []);
 
   const locsRes = await fetchFn(
     `${ASC_BASE}/appStoreVersions/${version.id}/appStoreVersionLocalizations?limit=50`,
