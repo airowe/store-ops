@@ -28,6 +28,22 @@ export function fixesFor(findingIds: string[]): FixSuggestion[];
   added, a disclosure field is required.
 - Tool list is data (a const map), trivially editable. No external calls.
 
+### Anchor recommendation: ParthJadhav/app-store-screenshots
+For the screenshot findings, the lead curated tool is
+**[ParthJadhav/app-store-screenshots](https://github.com/ParthJadhav/app-store-screenshots)**
+— an MIT, 5.8k-star Claude/Cursor *skill* (`npx skills add ParthJadhav/app-store-screenshots`)
+that scaffolds a full Next.js screenshot editor (device frames, connected canvas,
+store-ready export bundles for iOS/iPad/Android/feature graphics, locales). It's a
+near-perfect fit because:
+- **Same install motion as ShipASO** (agent-native skill, Claude/Cursor/Windsurf).
+- **MIT + actively maintained + proven** (its output was accepted on the App Store).
+- **Complementary, not competing**: it handles *production*; ShipASO's brief (PRD 02)
+  handles *what to put in the shots* (the keyword/audit context it can't see).
+The Fix-this panel pitches it as: "Generate your shot deck with this skill — and
+paste in your ShipASO screenshot brief as the visual direction." This is the
+cleanest validation of the Phase-A thesis: we don't make the screenshot, we tell
+you what to make.
+
 ## UI
 - Each visual finding row gets a "Fix this →" toggle revealing:
   - the **steps** (e.g. "1. Lead with your strongest value prop. 2. Show the app
