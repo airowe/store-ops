@@ -338,6 +338,110 @@ test.describe("run page — PR-style diff (current → proposed)", () => {
   });
 });
 
+test.describe("run page — Listing audit card (ASC findings, PRD 03)", () => {
+  async function latestRunId(page: import("@playwright/test").Page, appId: string): Promise<string> {
+    return await page.evaluate(async (id) => {
+      const M = (window as any).STORE_OPS_MOCK;
+      const detail = await (await M.handle("GET", `/apps/${id}`, null, "demo@store-ops.dev")).json();
+      return detail.runs[0].id as string;
+    }, appId);
+  }
+
+  test("the audit card leads above the diff, with prioritized rows, severities, fixes and impact chips", async ({
+    page,
+  }) => {
+    await gotoMockDashboard(page);
+    const id = await seedAppWithRun(page);
+    const runId = await latestRunId(page, id);
+    await page.goto(`/index.html#/runs/${runId}`);
+
+    // The card renders with its header + a one-line summary.
+    const card = page.locator(".audit-card");
+    await expect(card).toBeVisible();
+    await expect(card.getByRole("heading", { name: /listing audit/i })).toBeVisible();
+    await expect(card.locator(".audit-summary")).toBeVisible();
+
+    // It sits ABOVE the diff card (audit → proposed changes → reasoning).
+    const auditTop = await card.evaluate((n) => n.getBoundingClientRect().top);
+    const diffTop = await page.locator(".card").filter({ has: page.getByRole("heading", { name: /proposed changes/i }) }).evaluate((n) => n.getBoundingClientRect().top);
+    expect(auditTop).toBeLessThan(diffTop);
+
+    // Multiple finding rows, each with a severity icon, title, detail and a "→ Fix:" line.
+    const findings = card.locator(".finding");
+    expect(await findings.count()).toBeGreaterThan(1);
+    const first = findings.first();
+    await expect(first.locator(".finding-ico")).toBeVisible();
+    await expect(first.locator(".finding-title")).toBeVisible();
+    await expect(card.locator(".finding-fix").first()).toContainText(/fix/i);
+
+    // Impact chips label which lever each finding pulls — both ranking and conversion appear.
+    const chips = card.locator(".impact-chip");
+    expect(await chips.count()).toBeGreaterThan(1);
+    await expect(card.locator(".impact-chip.rank").first()).toBeVisible();
+    await expect(card.locator(".impact-chip.conv").first()).toBeVisible();
+  });
+
+  test("a critical finding renders in the --bad (critical) treatment", async ({ page }) => {
+    await gotoMockDashboard(page);
+    const id = await seedAppWithRun(page);
+    const runId = await latestRunId(page, id);
+    await page.goto(`/index.html#/runs/${runId}`);
+
+    const crit = page.locator(".audit-card .finding.critical").first();
+    await expect(crit).toBeVisible();
+    const color = await crit
+      .locator(".finding-ico")
+      .evaluate((node) => getComputedStyle(node).color);
+    // --bad is #f87171 → rgb(248, 113, 113).
+    expect(color).toBe("rgb(248, 113, 113)");
+  });
+
+  test("prefers-reduced-motion: the audit card renders fully with no stuck rows", async ({
+    browser,
+  }) => {
+    const context = await browser.newContext({ reducedMotion: "reduce" });
+    const page = await context.newPage();
+    await gotoMockDashboard(page);
+    const id = await seedAppWithRun(page);
+    const runId = await latestRunId(page, id);
+    await page.goto(`/index.html#/runs/${runId}`);
+
+    await expect(page.getByRole("heading", { name: /listing audit/i })).toBeVisible();
+    const rows = page.locator(".audit-card .finding");
+    const count = await rows.count();
+    expect(count).toBeGreaterThan(0);
+    for (let i = 0; i < count; i++) {
+      const opacity = await rows.nth(i).evaluate((node) => getComputedStyle(node).opacity);
+      expect(opacity).toBe("1");
+      const text = await rows.nth(i).locator(".finding-title").textContent();
+      expect(text?.trim()).toBeTruthy();
+    }
+    await context.close();
+  });
+
+  test("the no-findings state shows the green 'great shape' message", async ({ page }) => {
+    await gotoMockDashboard(page);
+    const id = await seedAppWithRun(page);
+    const runId = await latestRunId(page, id);
+    // Force the persisted run to have an empty findings array (the rare great-listing case).
+    await page.evaluate((rid) => {
+      const KEY = "store-ops:mockdb:v1";
+      const all = JSON.parse(localStorage.getItem(KEY) || "{}");
+      const db = all["demo@store-ops.dev"];
+      db.runs[rid].result.findings = [];
+      db.runs[rid].result.findingsSummary = { total: 0, critical: 0, warn: 0, good: 0, info: 0, label: "No fixes found" };
+      localStorage.setItem(KEY, JSON.stringify(all));
+    }, runId);
+    await page.goto(`/index.html#/runs/${runId}`);
+
+    const great = page.locator(".audit-card .audit-empty");
+    await expect(great).toBeVisible();
+    await expect(great).toContainText(/great shape/i);
+    // Empty state is the signal-green honest state, not a finding row.
+    expect(await page.locator(".audit-card .finding").count()).toBe(0);
+  });
+});
+
 test.describe("run page — export as agent prompt (#35)", () => {
   test("Copy as agent prompt builds a clipboard string with the proposed values and exact fastlane field names", async ({
     page,

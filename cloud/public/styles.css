@@ -332,6 +332,67 @@ input.mono { font-family: var(--mono); }
 .reasoning b { color: var(--ink); font-weight: 600; }
 .reasoning .step span { color: var(--dim); }
 
+/* ── listing audit card (ASC findings, PRD 03) ───────────────── */
+.audit-head { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 14px; }
+.audit-summary {
+  font-family: var(--mono); font-size: 12px; color: var(--dim);
+  padding: 3px 10px; border-radius: 999px; background: var(--line-soft); border: 1px solid var(--line);
+}
+.grade-chip {
+  margin-left: auto; font-family: var(--mono); font-size: 11.5px; font-weight: 700;
+  padding: 3px 9px; border-radius: 999px; border: 1px solid transparent; white-space: nowrap;
+}
+.grade-chip.good    { color: var(--signal); background: var(--signal-glow); border-color: var(--signal-dim); }
+.grade-chip.warn    { color: var(--warn); background: rgba(251,191,36,.12); border-color: rgba(251,191,36,.4); }
+.grade-chip.bad     { color: var(--bad); background: rgba(248,113,113,.12); border-color: rgba(248,113,113,.4); }
+.grade-chip.neutral { color: var(--faint); background: var(--line-soft); border-color: var(--line); }
+
+.findings { display: flex; flex-direction: column; }
+.finding {
+  display: flex; gap: 12px; padding: 13px 0; border-bottom: 1px solid var(--line-soft);
+}
+.finding:last-child { border-bottom: 0; }
+.finding-ico {
+  flex: none; width: 24px; height: 24px; border-radius: 7px;
+  display: grid; place-items: center; font-size: 13px; font-weight: 700;
+  /* default (info): neutral brand-blue */
+  color: var(--brand); background: rgba(91,140,255,.14);
+}
+.finding.critical .finding-ico { color: var(--bad);    background: rgba(248,113,113,.14); }
+.finding.warn     .finding-ico { color: var(--warn);   background: rgba(251,191,36,.14); }
+.finding.good     .finding-ico { color: var(--signal); background: var(--signal-glow); }
+.finding-body { flex: 1; min-width: 0; }
+.finding-title { font-weight: 600; color: var(--ink); }
+.finding.critical .finding-title { color: var(--bad); }
+.finding-detail { color: var(--dim); font-size: 13.5px; margin-top: 2px; }
+.finding-fix { color: var(--faint); font-size: 13px; margin-top: 4px; }
+.finding-fix .fix-label { color: var(--signal); font-weight: 600; }
+.finding-meta { display: flex; align-items: center; gap: 8px; margin-top: 8px; flex-wrap: wrap; }
+.impact-chip {
+  display: inline-block; font-family: var(--mono); font-size: 11px; font-weight: 600;
+  letter-spacing: .02em; padding: 2px 8px; border-radius: 999px;
+  border: 1px solid transparent; white-space: nowrap;
+}
+.impact-chip.rank    { color: var(--brand); background: rgba(91,140,255,.12); border-color: rgba(91,140,255,.4); }
+.impact-chip.conv    { color: var(--signal); background: var(--signal-glow); border-color: var(--signal-dim); }
+.impact-chip.neutral { color: var(--dim); background: var(--line-soft); border-color: var(--line); }
+.finding-evidence {
+  font-family: var(--mono); font-size: 11px; color: var(--faint);
+  padding: 2px 7px; border-radius: 5px; background: var(--line-soft);
+}
+/* honest "great shape" empty state */
+.audit-empty {
+  display: flex; gap: 12px; align-items: center;
+  padding: 16px; border-radius: 10px;
+  background: var(--signal-glow); border: 1px solid var(--signal-dim);
+}
+.audit-empty b { color: var(--ink); }
+.audit-empty-ico {
+  flex: none; width: 28px; height: 28px; border-radius: 8px;
+  display: grid; place-items: center; font-weight: 700;
+  color: var(--signal); background: rgba(52,211,153,.18);
+}
+
 /* ── keyword table ───────────────────────────────────────────── */
 table.kw { width: 100%; border-collapse: collapse; font-size: 13px; }
 table.kw th { text-align: left; font-family: var(--mono); color: var(--faint); font-weight: 700; font-size: 11px; text-transform: uppercase; letter-spacing: .05em; padding: 6px 8px; border-bottom: 1px solid var(--line); }

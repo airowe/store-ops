@@ -681,7 +681,11 @@
     ]));
     c.appendChild(el("p", { class: "lead" }, ["The agent ran the full ASO loop on real data and prepared the change below. Read its reasoning, then approve or reject. Approving reveals the exact commands — we never run them for you."]));
 
-    // 1) THE DIFF — lead with current → proposed, like a PR review (devs).
+    // 1) THE LISTING AUDIT — the findings, instructive first. Explains *why* the
+    //    proposed changes below, so it reads first: audit → diff → reasoning → gate.
+    c.appendChild(listingAuditCard(R));
+
+    // 2) THE DIFF — lead with current → proposed, like a PR review (devs).
     c.appendChild(diffCard(R.currentCopy || {}, R.proposedCopy || {}));
 
     // 2) PLAIN-ENGLISH REASONING (what makes this read as an agent)
@@ -695,6 +699,80 @@
 
     // 5) THE APPROVAL GATE + commands
     c.appendChild(gateCard(run, R));
+  }
+
+  // The "Listing audit" card: the engine's findings, prioritized (biggest wins
+  // first, as returned), each labeled by impact lane with a concrete fix. Findings
+  // ONLY — never raw ASC data. Empty list → an honest green "great shape" state.
+  var SEV_META = {
+    critical: { ico: "✗", label: "Critical" },
+    warn:     { ico: "⚠", label: "Warning" },
+    good:     { ico: "✓", label: "Good" },
+    info:     { ico: "ℹ", label: "Info" },
+  };
+  // impact lane → { chip class, label }. ranking/conversion are the two levers we
+  // surface explicitly; trust/completeness share a neutral chip.
+  var IMPACT_META = {
+    ranking:      { cls: "rank", label: "Ranking" },
+    conversion:   { cls: "conv", label: "Conversion" },
+    trust:        { cls: "neutral", label: "Trust" },
+    completeness: { cls: "neutral", label: "Completeness" },
+  };
+
+  function gradeChip(R) {
+    var sc = (R.audit && R.audit.screenshots) || null;
+    if (!sc || !sc.grade) return null;
+    var g = sc.grade;
+    var cls = g === "?" ? "neutral" : (g <= "B" ? "good" : g === "C" ? "warn" : "bad");
+    return el("span", { class: "grade-chip " + cls, title: "Screenshot grade" },
+      [g === "?" ? "Shots: ?" : "Shots: " + g]);
+  }
+
+  function listingAuditCard(R) {
+    var findings = R.findings || [];
+    var summary = R.findingsSummary || null;
+
+    var head = el("div", { class: "audit-head" }, [
+      el("h3", { style: "margin:0" }, ["Listing audit"]),
+      el("span", { class: "audit-summary" }, [summary ? summary.label : (findings.length + " finding" + (findings.length === 1 ? "" : "s"))]),
+    ]);
+    var gc = gradeChip(R);
+    if (gc) head.appendChild(gc);
+
+    var body;
+    if (!findings.length) {
+      // Honest green state — a great listing, not a blank card.
+      body = el("div", { class: "audit-empty" }, [
+        el("span", { class: "audit-empty-ico" }, ["✓"]),
+        el("div", {}, [
+          el("b", {}, ["Your listing is in great shape — no fixes found"]),
+          el("br"),
+          el("span", { class: "faint" }, ["We audited every surface and found nothing to fix. Keep shipping."]),
+        ]),
+      ]);
+    } else {
+      body = el("div", { class: "findings" });
+      findings.forEach(function (fnd, i) {
+        var sev = SEV_META[fnd.severity] || SEV_META.info;
+        var imp = IMPACT_META[fnd.impact] || IMPACT_META.completeness;
+        var meta = el("div", { class: "finding-meta" }, [
+          el("span", { class: "impact-chip " + imp.cls }, [imp.label]),
+        ]);
+        if (fnd.evidence) meta.appendChild(el("span", { class: "finding-evidence" }, [fnd.evidence]));
+        var rows = [
+          el("div", { class: "finding-title" }, [fnd.title]),
+        ];
+        if (fnd.detail) rows.push(el("div", { class: "finding-detail" }, [fnd.detail]));
+        if (fnd.fix) rows.push(el("div", { class: "finding-fix" }, [el("span", { class: "fix-label" }, ["→ Fix:"]), " " + fnd.fix]));
+        rows.push(meta);
+        body.appendChild(el("div", { class: "finding flip-in " + fnd.severity, style: "--i:" + i }, [
+          el("div", { class: "finding-ico", title: sev.label }, [sev.ico]),
+          el("div", { class: "finding-body" }, rows),
+        ]));
+      });
+    }
+
+    return el("div", { class: "card audit-card" }, [head, body]);
   }
 
   function reasoningCard(R) {
