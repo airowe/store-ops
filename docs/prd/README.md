@@ -31,6 +31,9 @@ fancy tier before the basic one converts. Bias all effort toward Phase 0 → 1.
 - [`phase-3-expand.md`](./phase-3-expand.md) — fleet/agency + second channel
 - [`phase-4-moat.md`](./phase-4-moat.md) — data resilience + production hardening
 - [`mcp-server.md`](./mcp-server.md) — hosted MCP server *(deferred; Phase-3 channel)*
+- [`asc-findings/`](./asc-findings/00-overview.md) — turn the captured ASC data
+  into scored, actionable audit findings (6-PRD suite: engine → run integration →
+  run-page UI → dashboard/unlock → rule catalog)
 
 ## Competitive
 
