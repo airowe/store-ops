@@ -38,6 +38,9 @@ fancy tier before the basic one converts. Bias all effort toward Phase 0 → 1.
   captured ASC + rank + competitor data into ranking *moves* (6-PRD suite:
   keyword gap, rank attribution, coverage score, localization, war room,
   opportunity score)
+- [`visual-assets/`](./visual-assets/00-overview.md) — help users improve
+  screenshots/videos: link-out + ASO-aware brief now (Phase A), in-product
+  generation deferred to #26 (Phase B)
 
 ## Competitive
 
