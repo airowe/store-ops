@@ -129,6 +129,8 @@ import { mintAscJwt } from "../engine/ascJwt.js";
 import { findAscAppId, applyAscMetadata, readAscLocalization, AscWriteError } from "../engine/ascWrite.js";
 import { readAscSnapshot, ascScreenshotsToListing, type AscSnapshot } from "../engine/ascRead.js";
 import { score as scoreScreenshots } from "../engine/screenshotScore.js";
+import { auditFindings, summarizeFindings } from "../engine/auditFindings.js";
+import { buildAscContext } from "../engine/ascContext.js";
 import { mintAppJwt, installationToken, GithubAppError } from "../engine/githubApp.js";
 import { openMetadataPr } from "../engine/githubPr.js";
 import type { Env } from "../index.js";
@@ -222,16 +224,39 @@ async function runView(env: Env, runId: string) {
       ? { decision: approval.decision, decided_at: approval.decided_at }
       : null,
     trigger: trace.trigger,
-    result: {
-      audit: trace.audit,
-      ranks: trace.ranks,
-      competitors: trace.competitors,
-      reasoning: trace.reasoning,
-      currentCopy: trace.currentCopy,
-      proposedCopy: trace.proposedCopy,
-      // approval gate: commands withheld until the human approves.
-      pushCommands: approved ? trace.pushCommands : [],
-    },
+    result: serializeRunResult(trace, approved),
+  };
+}
+
+/**
+ * The run-page `result` block — the privacy boundary in code form (PRD 02). Pure
+ * + network-free so the boundary (findings/summary/ascContext present; raw ASC
+ * data ABSENT) is unit-testable. Returns ONLY curated copy + counts:
+ *  - `findings` — the engine's sorted `Finding[]` (curated copy, safe).
+ *  - `findingsSummary` — counts for the card header/badge.
+ *  - `ascContext` — the slim PII-safe display context, when the run read ASC.
+ * The raw `ascSnapshot` is never on the trace, so it can't leak here. The
+ * approval gate still withholds `pushCommands` until the human approves.
+ */
+export function serializeRunResult(trace: ReasoningTrace, approved: boolean) {
+  // Older traces (persisted before PRD 02) carry no findings — default to an
+  // empty array so the response shape is always present and stable.
+  const findings = trace.findings ?? [];
+  return {
+    audit: trace.audit,
+    ranks: trace.ranks,
+    competitors: trace.competitors,
+    reasoning: trace.reasoning,
+    currentCopy: trace.currentCopy,
+    proposedCopy: trace.proposedCopy,
+    // approval gate: commands withheld until the human approves.
+    pushCommands: approved ? trace.pushCommands : [],
+    // Findings + summary + slim context. Curated copy + counts only — never the
+    // raw `ascSnapshot` (it was never written to the trace). The findings array
+    // is sorted by the engine; summary feeds the card header.
+    findings,
+    findingsSummary: summarizeFindings(findings),
+    ...(trace.ascContext !== undefined ? { ascContext: trace.ascContext } : {}),
   };
 }
 
@@ -761,6 +786,15 @@ async function runApp(
 
   const input = buildAppInput(app, overrides, previous);
   const result = await runAgent(fetchForEnv(env), input);
+  // No-key run: compute the thin (public-only) findings set + the `asc_unlock`
+  // CTA. EVERY run carries findings, ASC or not (PRD 02). No snapshot ⇒ no
+  // ascContext — only the ASC-read path has one.
+  result.findings = auditFindings({
+    audit: result.audit,
+    ranks: result.ranks,
+    appName: app.name,
+    hasAscKey: false,
+  });
   const runId = await persistRun(env.DB, {
     appId: app.id,
     status: "awaiting_approval",
@@ -848,7 +882,22 @@ async function runAppWithAsc(
   if (ascListing) {
     result.audit.screenshots = scoreScreenshots(input.app, ascListing);
   }
-  // Attach the full ASC snapshot to the result so the run carries the rich data.
+  // Mode-A run: compute the FULL findings set from the already-read snapshot
+  // (no new ASC calls) + the screenshot re-score above, plus the slim PII-safe
+  // ascContext. The raw snapshot stays server-side; ONLY findings + ascContext
+  // reach the client (PRD 02 privacy boundary).
+  result.findings = auditFindings({
+    snapshot: ascSnapshot,
+    audit: result.audit,
+    ranks: result.ranks,
+    appName: app.name,
+    hasAscKey: true,
+  });
+  const ascContext = buildAscContext(ascSnapshot);
+  if (ascContext !== undefined) result.ascContext = ascContext;
+  // Attach the full ASC snapshot to the result so the run carries the rich data
+  // SERVER-SIDE only — persistRun deliberately does NOT copy it onto the trace,
+  // so it never reaches the client (the snapshot stays for future server use).
   const resultWithSnapshot = ascSnapshot ? { ...result, ascSnapshot } : result;
   const runId = await persistRun(env.DB, {
     appId: app.id,

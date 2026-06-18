@@ -12,7 +12,9 @@
  */
 import type {
   AgentResult,
+  AscContext,
   Change,
+  Finding,
   ProposedCopy,
   Rank,
   ScoredKeyword,
@@ -108,6 +110,18 @@ export type ReasoningTrace = {
   /** full proposed copy WITH validation (pass + per-field checks). */
   proposedCopy: ProposedCopy;
   pushCommands: AgentResult["pushCommands"];
+  /**
+   * Scored, prioritized listing findings (PRD 01/02). EVERY run carries them —
+   * the thin public-only set + `asc_unlock` on a no-key run, the full set on a
+   * Mode-A run. Served to the client; safe (curated copy, no raw ASC data).
+   */
+  findings?: Finding[] | undefined;
+  /**
+   * The slim, PII-safe display context for the findings card (category, counts,
+   * version state) — present only on a Mode-A run. The full `ascSnapshot` is
+   * deliberately NOT stored on the trace: it stays out of the client-served JSON.
+   */
+  ascContext?: AscContext | undefined;
   /** why this run was opened (cron threshold reasons, or "manual"/"connect"). */
   trigger: { source: "manual" | "cron" | "connect"; reasons: string[] };
 };
@@ -386,6 +400,11 @@ export async function persistRun(
     currentCopy: result.currentCopy,
     proposedCopy: result.proposedCopy,
     pushCommands: result.pushCommands,
+    // Findings/ascContext ride along when the run path computed them. We copy
+    // ONLY the slim ascContext — never the raw `ascSnapshot` (it's omitted here
+    // on purpose so it can't reach the client via the trace).
+    ...(result.findings !== undefined ? { findings: result.findings } : {}),
+    ...(result.ascContext !== undefined ? { ascContext: result.ascContext } : {}),
     trigger: args.trigger,
   };
 

@@ -31,6 +31,8 @@ import { bucketize, type KeywordInput, type ScoredKeyword } from "./keywords.js"
 import { optimizeCopy, type ProposedCopy } from "./optimize.js";
 import { type Rank, ranksFor } from "./rankCheck.js";
 import { score as scoreScreenshots, type ShotScore } from "./screenshotScore.js";
+import type { Finding } from "./auditFindings.js";
+import type { AscContext } from "./ascContext.js";
 
 /** Everything the agent needs to run one app's loop. Pure data in. */
 export type AppInput = {
@@ -76,6 +78,18 @@ export type AgentResult = {
   proposedCopy: ProposedCopy;
   /** generated, NON-executed store push commands (asc / gplay) for handoff. */
   pushCommands: PushCommand[];
+  /**
+   * Scored, prioritized listing findings (PRD 01/02). Computed in the API run
+   * path from the audit + the already-read ASC snapshot, then persisted on the
+   * trace. Optional so callers that don't compute them (older paths) stay valid.
+   */
+  findings?: Finding[] | undefined;
+  /**
+   * The slim, PII-safe display context a findings card references (category,
+   * counts, version state). Present only on a Mode-A (ASC) run. The raw snapshot
+   * stays server-side; THIS is the only ASC-derived context that reaches clients.
+   */
+  ascContext?: AscContext | undefined;
 };
 
 export type PushCommand = {
