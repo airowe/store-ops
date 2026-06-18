@@ -166,12 +166,23 @@
     document.addEventListener("keydown", onKey);
     overlay.addEventListener("click", function (ev) { if (ev.target === overlay) dismiss(); });
 
+    // The next tier up from where they are (free→launch→autopilot→fleet).
+    var NEXT_TIER = { current: "launch", free: "launch", launch: "autopilot", autopilot: "fleet", fleet: "fleet" };
+    var targetTier = NEXT_TIER[info.tier] || "launch";
     var upgradeBtn = el("button", { class: "btn primary", onclick: function () {
-      // Billing/checkout isn't wired into the SPA yet — route to the billing hash
-      // (a no-op placeholder today) and dismiss. Live checkout slots in here later.
-      dismiss();
-      go("#/billing");
-    } }, ["Upgrade plan"]);
+      // Mint a real Stripe Checkout Session and send the browser there. On failure
+      // we keep the modal open with an inline message — never a silent dead end.
+      upgradeBtn.disabled = true; upgradeBtn.innerHTML = '<span class="spin"></span> Opening checkout…';
+      api("POST", "/billing/checkout", { tier: targetTier })
+        .then(function (r) {
+          if (r && r.url) { window.location.href = r.url; }
+          else { throw new Error("no checkout url"); }
+        })
+        .catch(function (err) {
+          upgradeBtn.disabled = false; upgradeBtn.textContent = "Upgrade plan";
+          toast(err.message === "no checkout url" ? "Couldn't open checkout — try again." : (err.message || "Couldn't open checkout — try again."));
+        });
+    } }, ["Upgrade to " + targetTier]);
     var dismissBtn = el("button", { class: "btn ghost", onclick: dismiss }, ["Got it"]);
 
     overlay.appendChild(el("div", { class: "tier-limit-card card" }, [
@@ -634,6 +645,20 @@
         nodes.forEach(function (n) { n.classList.remove("active"); n.classList.add("done"); n.firstChild.textContent = "✓"; });
         bar.style.width = "100%";
       },
+      // On failure, replace the loader with a recoverable error card (retry / back)
+      // — never strand the user on a frozen progress screen or dump them silently.
+      fail: function (message, onRetry, backHash) {
+        done = true; clearInterval(timer);
+        var card = root(); clear(card);
+        card.appendChild(el("div", { class: "run-loading card" }, [
+          el("div", { class: "rl-head" }, [el("span", { style: "color:var(--bad);font-size:18px" }, ["✗"]), el("b", {}, ["The run didn't finish"])]),
+          el("div", { class: "faint", style: "margin:8px 0 16px" }, [message || "Something went wrong running the agent."]),
+          el("div", { class: "btn-row" }, [
+            el("button", { class: "btn primary", onclick: function () { if (onRetry) onRetry(); } }, ["↻ Try again"]),
+            el("button", { class: "btn ghost", onclick: function () { go(backHash || "#/"); } }, ["← Back"]),
+          ]),
+        ]));
+      },
     };
   }
 
@@ -651,7 +676,7 @@
     var inter = runInterstitial(RUN_STEPS);
     api("POST", "/apps/" + appId + "/run")
       .then(function (r) { inter.settle(); toast("Agent finished — review the proposal."); go("#/runs/" + r.id); })
-      .catch(function (e) { btn.disabled = false; btn.textContent = "▶ Run agent now"; toast(e.message || "Failed"); route(); });
+      .catch(function (e) { btn.disabled = false; btn.textContent = "▶ Run agent now"; inter.fail(e.message || "The agent run failed.", function () { triggerRun(appId, btn); }, "#/apps/" + appId); });
   }
 
   // Read a .p8 file client-side and fill the textarea (paste stays a fallback).
@@ -726,7 +751,7 @@
     var inter = runInterstitial(["Reading your live subtitle & keywords from App Store Connect"].concat(RUN_STEPS.slice(1)));
     api("POST", "/apps/" + appId + "/run-asc", creds)
       .then(function (r) { inter.settle(); toast("Read your live listing — review the proposal."); go("#/runs/" + r.id); })
-      .catch(function (e) { btn.disabled = false; btn.textContent = "▶ Run with ASC read"; toast(e.message || "Failed"); route(); });
+      .catch(function (e) { btn.disabled = false; btn.textContent = "▶ Run with ASC read"; inter.fail(e.message || "The App Store Connect run failed.", function () { triggerRunAsc(appId, btn, creds); }, "#/apps/" + appId); });
   }
 
   /* ════════════════════ VIEW: run detail (the money screen) ════════════════ */
@@ -842,6 +867,33 @@
     ]);
   }
 
+  // A finding's "fix path" — so no finding is a dead end. Returns DOM children
+  // (links/notes) for findings that have an actionable external path, or null.
+  // Curated, honest: real tools we'd recommend + the exact App Store Connect spot.
+  function fixLinkFor(id) {
+    var ASC = "https://appstoreconnect.apple.com";
+    var SHOTS_SKILL = "https://github.com/ParthJadhav/app-store-screenshots";
+    var map = {
+      screenshots_grade_low: [
+        el("a", { href: SHOTS_SKILL, target: "_blank", rel: "noopener" }, ["Generate a better shot deck →"]),
+        el("span", { class: "faint" }, [" (free MIT skill) · or edit in "]),
+        el("a", { href: ASC, target: "_blank", rel: "noopener" }, ["App Store Connect"]),
+      ],
+      screenshots_thin: [
+        el("a", { href: SHOTS_SKILL, target: "_blank", rel: "noopener" }, ["Build more screenshots →"]),
+        el("span", { class: "faint" }, [" (free MIT skill)"]),
+      ],
+      screenshots_no_ipad: [el("a", { href: ASC, target: "_blank", rel: "noopener" }, ["Add iPad screenshots in App Store Connect →"])],
+      preview_missing: [el("a", { href: ASC, target: "_blank", rel: "noopener" }, ["Add a preview video in App Store Connect →"])],
+      preview_thin_coverage: [el("a", { href: ASC, target: "_blank", rel: "noopener" }, ["Add device previews in App Store Connect →"])],
+      preview_error_state: [el("a", { href: ASC, target: "_blank", rel: "noopener" }, ["Re-upload your preview in App Store Connect →"])],
+      privacy_policy_missing: [el("a", { href: ASC, target: "_blank", rel: "noopener" }, ["Add a privacy policy URL in App Store Connect →"])],
+      secondary_category_missing: [el("a", { href: ASC, target: "_blank", rel: "noopener" }, ["Set a secondary category in App Store Connect →"])],
+      version_no_draft: [el("a", { href: ASC, target: "_blank", rel: "noopener" }, ["Create a new version in App Store Connect →"])],
+    };
+    return map[id] || null;
+  }
+
   function listingAuditCard(R, appId) {
     var findings = R.findings || [];
     var summary = R.findingsSummary || null;
@@ -878,6 +930,8 @@
         ];
         if (fnd.detail) rows.push(el("div", { class: "finding-detail" }, [fnd.detail]));
         if (fnd.fix) rows.push(el("div", { class: "finding-fix" }, [el("span", { class: "fix-label" }, ["→ Fix:"]), " " + fnd.fix]));
+        var fixLink = fixLinkFor(fnd.id);
+        if (fixLink) rows.push(el("div", { class: "finding-link" }, fixLink));
         rows.push(meta);
         body.appendChild(el("div", { class: "finding flip-in " + fnd.severity, style: "--i:" + i }, [
           el("div", { class: "finding-ico", title: sev.label }, [sev.ico]),
@@ -1020,10 +1074,12 @@
         el("span", { class: "impact-chip " + tier.cls }, [tier.label]),
         el("span", { class: "loc-effort-badge " + r.effort, title: effortTitle }, [effortLabel]),
       ]);
+      // Honest label: a per-locale draft flow doesn't exist yet, so this routes to
+      // the ASC run panel (which runs the full read-and-improve). Say what it does.
       var draftBtn = el("button", {
-        class: "btn small", title: "Draft this locale's metadata with the optimizer",
+        class: "btn small", title: "Run a read-and-improve pass with your App Store Connect key",
         onclick: function () { go("#/apps/" + appId + "?asc=1"); },
-      }, ["Draft " + r.locale + " metadata →"]);
+      }, ["Run with App Store Connect →"]);
 
       body.appendChild(el("div", { class: "loc-rec flip-in", style: "--i:" + i }, [
         el("div", { class: "loc-rec-head" }, [
@@ -1683,7 +1739,14 @@
         var repo = window.prompt("Your GitHub repo (owner/name) — install the ShipASO app on it first:", "");
         if (!repo) { btn.disabled = false; status.textContent = "connect a repo first"; status.style.color = "var(--faint)"; return; }
         var inst = window.prompt("Your ShipASO app installation id (from the app's install URL):", "");
-        await fetch(API_BASE + "/github/connect", { method: "POST", credentials: "include", headers: { "content-type": "application/json" }, body: JSON.stringify({ repo: repo, installation_id: inst }) });
+        if (!inst) { btn.disabled = false; status.textContent = "installation id required"; status.style.color = "var(--faint)"; return; }
+        // Surface a connect failure explicitly — don't fall through to a cryptic PR error.
+        var connectRes = await fetch(API_BASE + "/github/connect", { method: "POST", credentials: "include", headers: { "content-type": "application/json" }, body: JSON.stringify({ repo: repo, installation_id: inst }) });
+        if (!connectRes.ok) {
+          var ce = await connectRes.json().catch(function () { return {}; });
+          status.textContent = "✕ Couldn't connect that repo — " + (ce.error || "check the repo + installation id and try again.");
+          status.style.color = "var(--bad)"; btn.disabled = false; return;
+        }
       }
       status.textContent = "Opening a PR…";
       var res = await fetch(API_BASE + "/runs/" + runId + "/github/pr", { method: "POST", credentials: "include" });

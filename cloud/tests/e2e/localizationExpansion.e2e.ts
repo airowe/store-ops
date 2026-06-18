@@ -58,7 +58,7 @@ test.describe("run page — Expand to more markets card (PRD 04)", () => {
     await expect(card.locator(".loc-rec-note")).toContainText(/heuristic|not live install data/i);
   });
 
-  test('the "Draft this locale\'s metadata" button routes to the ASC run panel', async ({
+  test("the locale CTA honestly routes to the ASC run panel (no fake per-locale draft)", async ({
     page,
   }) => {
     await gotoMockDashboard(page);
@@ -72,7 +72,9 @@ test.describe("run page — Expand to more markets card (PRD 04)", () => {
 
     const card = page.locator(".loc-card");
     await expect(card).toBeVisible();
-    const draftBtn = card.getByRole("button", { name: /draft .* metadata/i }).first();
+    // Honest label: there's no per-locale draft flow yet, so the CTA says what it
+    // does — runs the read-and-improve pass via App Store Connect.
+    const draftBtn = card.getByRole("button", { name: /run with app store connect/i }).first();
     await expect(draftBtn).toBeVisible();
     await draftBtn.click();
 

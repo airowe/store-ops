@@ -396,6 +396,19 @@ test.describe("run page — Listing audit card (ASC findings, PRD 03)", () => {
     expect(color).toBe("rgb(248, 113, 113)");
   });
 
+  test("visual findings are NOT dead ends — each carries an actionable fix link", async ({ page }) => {
+    await gotoMockDashboard(page);
+    const id = await seedAppWithRun(page, { asc: true });
+    const runId = await latestRunId(page, id);
+    await page.goto(`/index.html#/runs/${runId}`);
+
+    // No finding should diagnose-without-a-path: the privacy/category/screenshot
+    // findings all carry a "fix" link (App Store Connect or the screenshots skill).
+    await expect(page.locator(".audit-card .finding-link a").first()).toBeVisible();
+    // At least one links to App Store Connect (the concrete fix destination).
+    await expect(page.locator('.audit-card .finding-link a[href*="appstoreconnect.apple.com"]').first()).toBeVisible();
+  });
+
   test("prefers-reduced-motion: the audit card renders fully with no stuck rows", async ({
     browser,
   }) => {

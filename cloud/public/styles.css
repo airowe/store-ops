@@ -835,3 +835,8 @@ svg.spark .lbl { fill: var(--faint); font-family: var(--mono); font-size: 10px; 
 .war-trend.good { color: var(--signal); }
 .war-trend.bad { color: var(--bad); }
 .war-trend.neutral { color: var(--faint); }
+
+/* finding "fix path" link — so no finding is a dead end */
+.finding-link { margin-top: 6px; font-size: 13px; }
+.finding-link a { color: var(--signal); }
+.finding-link a:hover { text-decoration: underline; }
