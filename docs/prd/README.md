@@ -34,6 +34,10 @@ fancy tier before the basic one converts. Bias all effort toward Phase 0 → 1.
 - [`asc-findings/`](./asc-findings/00-overview.md) — turn the captured ASC data
   into scored, actionable audit findings (6-PRD suite: engine → run integration →
   run-page UI → dashboard/unlock → rule catalog)
+- [`ranking-features/`](./ranking-features/00-overview.md) — features that turn the
+  captured ASC + rank + competitor data into ranking *moves* (6-PRD suite:
+  keyword gap, rank attribution, coverage score, localization, war room,
+  opportunity score)
 
 ## Competitive
 
