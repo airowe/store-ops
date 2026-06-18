@@ -740,6 +740,10 @@
     // 3) two-column: competitor read + ranks
     c.appendChild(el("div", { class: "split" }, [competitorCard(R.competitors || {}), rankCard(R.ranks || [])]));
 
+    // 3b) WHERE TO PUSH NEXT — winnability opportunities (PRD 06). The honest
+    //     ranker: closest+weakest-field terms first, longshots labeled not hidden.
+    c.appendChild(opportunityCard(R.opportunities || []));
+
     // 4) keyword reasoning table
     c.appendChild(keywordCard(R.reasoning || []));
 
@@ -991,6 +995,65 @@
       box.appendChild(el("div", { class: "rankrow" }, children));
     });
     return el("div", { class: "card" }, [el("h3", {}, ["Organic ranks (real iTunes data)"]), box]);
+  }
+
+  // "Where to push next" — the winnability ranker (PRD 06). Top opportunities by
+  // opportunityScore, each with a reachability chip (now/soon/longshot) + why +
+  // driver bars. The "now"/"soon" terms are the optimizer's target set; longshots
+  // are LABELED, never hidden — the honest hedge. Curated copy only (no ASC data).
+  var REACH_META = {
+    now:      { cls: "now",      label: "Now" },
+    soon:     { cls: "soon",     label: "Soon" },
+    longshot: { cls: "longshot", label: "Longshot" },
+  };
+  var DRIVER_META = [
+    { key: "volume", label: "Volume" },
+    { key: "distance", label: "Distance" },
+    { key: "competitorWeakness", label: "Weak field" },
+    { key: "momentum", label: "Momentum" },
+  ];
+
+  function opportunityCard(opportunities) {
+    var head = el("div", { class: "audit-head" }, [
+      el("h3", { style: "margin:0" }, ["Where to push next"]),
+      el("span", { class: "audit-summary" }, ["ranked by winnability, not just volume"]),
+    ]);
+
+    if (!opportunities.length) {
+      return el("div", { class: "card opp-card" }, [head, el("div", { class: "faint", style: "margin-top:10px" }, [
+        "No opportunities scored yet — run the agent to rank your keywords by reachability.",
+      ])]);
+    }
+
+    var list = el("div", { class: "opps" });
+    opportunities.slice(0, 5).forEach(function (o, i) {
+      var reach = REACH_META[o.reachability] || REACH_META.longshot;
+      var bars = el("div", { class: "opp-drivers" });
+      DRIVER_META.forEach(function (d) {
+        var v = Math.round((o.drivers && o.drivers[d.key]) || 0);
+        bars.appendChild(el("div", { class: "opp-driver", title: d.label + ": " + v + "/100" }, [
+          el("span", { class: "opp-driver-label" }, [d.label]),
+          el("span", { class: "opp-bar" }, [el("span", { class: "opp-bar-fill", style: "width:" + v + "%" })]),
+        ]));
+      });
+      list.appendChild(el("div", { class: "opp flip-in", style: "--i:" + i }, [
+        el("div", { class: "opp-rowtop" }, [
+          el("span", { class: "opp-kw" }, [o.keyword]),
+          el("span", { class: "opp-score", title: "Opportunity score (0–100)" }, [String(Math.round(o.opportunityScore))]),
+          el("span", { class: "reach-chip " + reach.cls }, [reach.label]),
+        ]),
+        el("div", { class: "opp-why" }, [o.why || ""]),
+        bars,
+      ]));
+    });
+
+    return el("div", { class: "card opp-card" }, [
+      head,
+      el("div", { class: "faint", style: "font-size:12px;margin:6px 0 12px" }, [
+        "Winnability = volume·0.4 + distance-to-top·0.3 + competitor-weakness·0.2 + momentum·0.1. A heuristic for the most reachable next move — not a guarantee. “Now”/“Soon” terms feed the optimizer's targets.",
+      ]),
+      list,
+    ]);
   }
 
   function keywordCard(reasoning) {

@@ -442,6 +442,72 @@ test.describe("run page — Listing audit card (ASC findings, PRD 03)", () => {
   });
 });
 
+test.describe("run page — Where to push next (rank opportunity score, PRD 06)", () => {
+  async function latestRunId(page: import("@playwright/test").Page, appId: string): Promise<string> {
+    return await page.evaluate(async (id) => {
+      const M = (window as any).STORE_OPS_MOCK;
+      const detail = await (await M.handle("GET", `/apps/${id}`, null, "demo@store-ops.dev")).json();
+      return detail.runs[0].id as string;
+    }, appId);
+  }
+
+  test("renders the panel with ranked opportunities, reachability chips, why text and driver bars", async ({
+    page,
+  }) => {
+    await gotoMockDashboard(page);
+    const id = await seedAppWithRun(page, { asc: true });
+    const runId = await latestRunId(page, id);
+    await page.goto(`/index.html#/runs/${runId}`);
+
+    const card = page.locator(".opp-card");
+    await expect(card).toBeVisible();
+    await expect(card.getByRole("heading", { name: /where to push next/i })).toBeVisible();
+
+    // Multiple opportunity rows, each with a winnability score + a reachability chip.
+    const opps = card.locator(".opp");
+    expect(await opps.count()).toBeGreaterThan(1);
+    await expect(opps.first().locator(".opp-score")).toBeVisible();
+    await expect(opps.first().locator(".reach-chip")).toBeVisible();
+    await expect(opps.first().locator(".opp-why")).not.toBeEmpty();
+    // Four driver bars (volume / distance / weak-field / momentum).
+    expect(await opps.first().locator(".opp-driver").count()).toBe(4);
+
+    // Honesty: opportunities are sorted by score descending (winnability first).
+    const scores = await card.locator(".opp-score").allTextContents();
+    const nums = scores.map((s) => Number(s));
+    for (let i = 1; i < nums.length; i++) expect(nums[i - 1]).toBeGreaterThanOrEqual(nums[i]!);
+  });
+
+  test("the panel ranks by winnability, not raw volume (the longshot is labeled, not hidden)", async ({
+    page,
+  }) => {
+    await gotoMockDashboard(page);
+    const id = await seedAppWithRun(page, { asc: true });
+    const runId = await latestRunId(page, id);
+
+    // Pull the serialized opportunities the run carries — assert the engine's
+    // winnability discipline reached the client (no causal claims; buckets present).
+    const opps = await page.evaluate(async (rid) => {
+      const M = (window as any).STORE_OPS_MOCK;
+      const run = await (await M.handle("GET", `/runs/${rid}`, null, "demo@store-ops.dev")).json();
+      return run.result.opportunities as Array<{ why: string; reachability: string; opportunityScore: number }>;
+    }, runId);
+
+    expect(Array.isArray(opps)).toBe(true);
+    expect(opps.length).toBeGreaterThan(0);
+    for (const o of opps) {
+      expect(["now", "soon", "longshot"]).toContain(o.reachability);
+      // never claim causation in the explanation.
+      expect(o.why.toLowerCase()).not.toMatch(/caused|guaranteed/);
+    }
+
+    await page.goto(`/index.html#/runs/${runId}`);
+    // The dim "Longshot" chip exists when present — labeled honestly, not removed.
+    const hasLongshot = opps.some((o) => o.reachability === "longshot");
+    if (hasLongshot) await expect(page.locator(".reach-chip.longshot").first()).toBeVisible();
+  });
+});
+
 test.describe("run page — export as agent prompt (#35)", () => {
   test("Copy as agent prompt builds a clipboard string with the proposed values and exact fastlane field names", async ({
     page,

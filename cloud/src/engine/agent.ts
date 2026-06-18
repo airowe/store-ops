@@ -33,6 +33,7 @@ import { type Rank, ranksFor } from "./rankCheck.js";
 import { score as scoreScreenshots, type ShotScore } from "./screenshotScore.js";
 import type { Finding } from "./auditFindings.js";
 import type { AscContext } from "./ascContext.js";
+import type { Opportunity } from "./rankOpportunity.js";
 
 /** Everything the agent needs to run one app's loop. Pure data in. */
 export type AppInput = {
@@ -90,6 +91,14 @@ export type AgentResult = {
    * stays server-side; THIS is the only ASC-derived context that reaches clients.
    */
   ascContext?: AscContext | undefined;
+  /**
+   * Winnability-ranked keyword opportunities (PRD 06) — "where to push next."
+   * Computed in the API run path from the ranks + keyword scores (+ competitor
+   * ranks when available), then persisted on the trace and served to the client.
+   * Curated copy only (keyword + score + why + drivers) — no raw ASC data. Optional
+   * so older/other callers stay valid.
+   */
+  opportunities?: Opportunity[] | undefined;
 };
 
 export type PushCommand = {

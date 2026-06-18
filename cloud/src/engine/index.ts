@@ -94,3 +94,11 @@ export {
   scoreFinding,
 } from "./auditFindings.js";
 export { type AscContext, buildAscContext, FORBIDDEN_CONTEXT_KEYS } from "./ascContext.js";
+export {
+  type Opportunity,
+  type OpportunityDrivers,
+  type Reachability,
+  type RankSnapshot,
+  type RankOpportunityInput,
+  rankOpportunities,
+} from "./rankOpportunity.js";

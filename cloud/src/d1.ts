@@ -15,6 +15,7 @@ import type {
   AscContext,
   Change,
   Finding,
+  Opportunity,
   ProposedCopy,
   Rank,
   ScoredKeyword,
@@ -127,6 +128,12 @@ export type ReasoningTrace = {
    * never raw ASC data. Absent on older traces (the badge degrades to none).
    */
   findingsSummary?: FindingsSummary | undefined;
+  /**
+   * Winnability-ranked keyword opportunities (PRD 06) — "where to push next."
+   * Curated copy + drivers only; never raw ASC data. Absent on older traces (the
+   * panel degrades to none). Sorted by opportunityScore desc by the engine.
+   */
+  opportunities?: Opportunity[] | undefined;
   /** why this run was opened (cron threshold reasons, or "manual"/"connect"). */
   trigger: { source: "manual" | "cron" | "connect"; reasons: string[] };
 };
@@ -421,6 +428,7 @@ export async function persistRun(
     // on purpose so it can't reach the client via the trace).
     ...(result.findings !== undefined ? { findings: result.findings } : {}),
     ...(result.ascContext !== undefined ? { ascContext: result.ascContext } : {}),
+    ...(result.opportunities !== undefined ? { opportunities: result.opportunities } : {}),
     trigger: args.trigger,
   };
 

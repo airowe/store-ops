@@ -182,6 +182,23 @@
     var findings = buildFindings(app, sc, ascRead, { category: ascContext.category, cppCount: cppCount });
     var findingsSummary = summarizeFindings(findings);
 
+    // PRD 06: winnability opportunities — "where to push next." Mirrors the pure
+    // rankOpportunities() engine. Deterministic competitor ranks per keyword (from
+    // the same hash) so a far/strong-incumbent term reads as a "longshot" honestly.
+    var keywordScores = {};
+    reasoning.forEach(function (k) { keywordScores[k.keyword] = k.score; });
+    var compRanks = [{ name: compNames[0] || "Rival", ranks: ranks.map(function (r) {
+      var hc = hash(r.keyword + "comp");
+      // strong incumbent on the lead/high-volume term; weaker/deeper elsewhere.
+      var cr = ((keywordScores[r.keyword] || 50) >= 70) ? 1 + (hc % 5) : 30 + (hc % 160);
+      return { keyword: r.keyword, rank: cr, total: 200, checked_at: "2026-01-01 00:00:00" };
+    }) }];
+    var opportunities = rankOpportunities({
+      ranks: ranks.map(function (r) { return { keyword: r.keyword, rank: r.rank, total: r.total, checked_at: "2026-01-15 00:00:00" }; }),
+      keywordScores: keywordScores,
+      competitorRanks: compRanks,
+    });
+
     // push commands (GENERATED, not executed) — mirrors buildPushCommands()
     var esc = function (s) { return "'" + String(s).replace(/'/g, "'\\''") + "'"; };
     var pushCommands = [
@@ -197,6 +214,7 @@
       audit: { app: app.name, bundleId: app.bundleId, screenshots: sc, liveName: app.name },
       findings: findings,
       findingsSummary: findingsSummary,
+      opportunities: opportunities,
       ranks: ranks,
       competitors: { listings: listings, changes: changes, digest: digest },
       reasoning: reasoning,
@@ -326,6 +344,85 @@
     score = Math.min(100, score);
     var grade = score >= 85 ? "A" : score >= 70 ? "B" : score >= 50 ? "C" : score >= 30 ? "D" : "F";
     return { app: app, iphoneCount: iphone, ipadCount: ipad, score: score, grade: grade, findings: findings, aspectHint: "1290x2796" };
+  }
+
+  // ── rank opportunity score (PRD 06) — mirrors src/engine/rankOpportunity.ts ─
+  // Pure: scores keywords by WINNABILITY (volume × distance × competitor-weakness ×
+  // momentum), with a reachability enum that labels (never hides) longshots.
+  var OPP_SCAN_DEPTH = 200;
+  var OPP_WEIGHTS = { volume: 0.4, distance: 0.3, competitorWeakness: 0.2, momentum: 0.1 };
+  function oppClamp(n) { return Math.max(0, Math.min(100, n)); }
+  function oppRound2(n) { return Math.round(n * 100) / 100; }
+
+  function rankOpportunities(input) {
+    var byKw = {};
+    input.ranks.forEach(function (r) {
+      (byKw[r.keyword] = byKw[r.keyword] || []).push(r);
+    });
+    Object.keys(byKw).forEach(function (k) {
+      byKw[k].sort(function (a, b) { return a.checked_at < b.checked_at ? -1 : a.checked_at > b.checked_at ? 1 : 0; });
+    });
+
+    var out = [];
+    Object.keys(byKw).forEach(function (keyword) {
+      var vol = input.keywordScores[keyword];
+      if (vol === undefined) return; // no score → not an opportunity we can rank
+      var rows = byKw[keyword];
+      var rank = rows[rows.length - 1].rank;
+
+      // distance: rank 1 ≈ 99.5, rank 200/null → 0
+      var distance = rank == null ? 0 : oppClamp(((OPP_SCAN_DEPTH - rank) / OPP_SCAN_DEPTH) * 100);
+
+      // competitor weakness: avg competitor rank on this term (none → 100 open field)
+      var crs = [];
+      (input.competitorRanks || []).forEach(function (c) {
+        var g = c.ranks.filter(function (x) { return x.keyword === keyword && x.rank != null; });
+        if (g.length) {
+          var latest = g.reduce(function (a, b) { return a.checked_at >= b.checked_at ? a : b; });
+          crs.push(latest.rank);
+        }
+      });
+      var weakness = crs.length === 0 ? 100 : oppClamp(((crs.reduce(function (a, b) { return a + b; }, 0) / crs.length) - 1) / OPP_SCAN_DEPTH * 100);
+
+      // momentum from the most recent 2 snapshots (gaining 100 / flat-new 50 / losing 0)
+      var momentum = 50;
+      if (rows.length >= 2) {
+        var p = rows[rows.length - 2].rank == null ? OPP_SCAN_DEPTH + 1 : rows[rows.length - 2].rank;
+        var cc = rank == null ? OPP_SCAN_DEPTH + 1 : rank;
+        momentum = cc < p ? 100 : cc > p ? 0 : 50;
+      }
+
+      var drivers = { volume: oppClamp(vol), distance: oppRound2(distance), competitorWeakness: oppRound2(weakness), momentum: momentum };
+      var score = oppRound2(drivers.volume * OPP_WEIGHTS.volume + drivers.distance * OPP_WEIGHTS.distance + drivers.competitorWeakness * OPP_WEIGHTS.competitorWeakness + drivers.momentum * OPP_WEIGHTS.momentum);
+
+      // reachability bucketing — the honest hedge
+      var reach;
+      if (rank != null && rank <= 10) reach = "now";
+      else if (rank != null && rank <= 30 && drivers.distance >= 60 && drivers.competitorWeakness >= 50) reach = "now";
+      else if (drivers.distance >= 60 && drivers.competitorWeakness >= 60) reach = "soon";
+      else if (rank == null && drivers.volume >= 50 && drivers.competitorWeakness >= 50) reach = "soon";
+      else reach = "longshot";
+
+      // correlational why — describes state, never causation
+      var parts = [];
+      if (rank != null && rank <= 10) parts.push("already top 10");
+      else if (rank != null && rank <= 30) parts.push("close to top 10");
+      else if (rank != null) parts.push("currently #" + rank);
+      else parts.push("not yet ranked");
+      if (drivers.competitorWeakness >= 70) parts.push("weak/absent competitors");
+      else if (drivers.competitorWeakness <= 30) parts.push("strong incumbents");
+      if (drivers.momentum === 100) parts.push("gaining");
+      else if (drivers.momentum === 0) parts.push("losing ground");
+      if (drivers.volume >= 60) parts.push("high search volume");
+      var lead = reach === "now" ? "Most winnable next" : reach === "soon" ? "Reachable with a push" : "Longshot";
+
+      out.push({ keyword: keyword, rank: rank, opportunityScore: score, reachability: reach, why: lead + ": " + parts.join(", ") + ".", drivers: drivers });
+    });
+
+    out.sort(function (a, b) {
+      return b.opportunityScore !== a.opportunityScore ? b.opportunityScore - a.opportunityScore : (a.keyword < b.keyword ? -1 : a.keyword > b.keyword ? 1 : 0);
+    });
+    return out;
   }
 
   // ── helpers ──────────────────────────────────────────────────────────────

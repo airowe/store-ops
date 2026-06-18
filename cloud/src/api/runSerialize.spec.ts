@@ -183,6 +183,31 @@ describe("serializeRunResult — legacy trace (pre-PRD 02)", () => {
   });
 });
 
+describe("serializeRunResult — rank opportunities (PRD 06)", () => {
+  it("surfaces the trace's opportunities to the client (curated copy only)", () => {
+    const trace = modeATrace();
+    trace.opportunities = [
+      {
+        keyword: "weather",
+        rank: 3,
+        opportunityScore: 72,
+        reachability: "now",
+        why: "Most winnable next: already top 10.",
+        drivers: { volume: 60, distance: 98, competitorWeakness: 100, momentum: 50 },
+      },
+    ];
+    const result = serializeRunResult(trace, false);
+    expect(result.opportunities).toEqual(trace.opportunities);
+    // Honesty: the why never claims causation.
+    expect(result.opportunities[0]?.why.toLowerCase()).not.toMatch(/caused|guaranteed/);
+  });
+
+  it("defaults opportunities to [] on a trace that has none (older runs)", () => {
+    const result = serializeRunResult(noKeyTrace(), false);
+    expect(result.opportunities).toEqual([]);
+  });
+});
+
 describe("serializeRunResult — approval gate still holds", () => {
   it("withholds pushCommands until approved (unchanged by PRD 02)", () => {
     const trace = modeATrace();

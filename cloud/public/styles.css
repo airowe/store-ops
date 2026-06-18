@@ -393,6 +393,36 @@ input.mono { font-family: var(--mono); }
   color: var(--signal); background: rgba(52,211,153,.18);
 }
 
+/* ── "where to push next": rank opportunity score (PRD 06) ───── */
+.opps { display: flex; flex-direction: column; }
+.opp {
+  padding: 13px 0; border-bottom: 1px solid var(--line-soft);
+}
+.opp:last-child { border-bottom: 0; }
+.opp-rowtop { display: flex; align-items: center; gap: 10px; }
+.opp-kw { font-weight: 600; color: var(--ink); flex: 1; min-width: 0; }
+.opp-score {
+  font-family: var(--mono); font-size: 13px; font-weight: 700; color: var(--ink);
+  padding: 2px 9px; border-radius: 7px; background: var(--line-soft);
+}
+.reach-chip {
+  font-family: var(--mono); font-size: 11px; font-weight: 700;
+  letter-spacing: .02em; padding: 2px 9px; border-radius: 999px;
+  border: 1px solid transparent; white-space: nowrap;
+}
+.reach-chip.now      { color: var(--signal); background: var(--signal-glow); border-color: var(--signal-dim); }
+.reach-chip.soon     { color: var(--warn); background: rgba(251,191,36,.12); border-color: rgba(251,191,36,.4); }
+.reach-chip.longshot { color: var(--faint); background: var(--line-soft); border-color: var(--line); }
+.opp-why { color: var(--dim); font-size: 13px; margin-top: 4px; }
+.opp-drivers { display: grid; grid-template-columns: repeat(2, 1fr); gap: 4px 16px; margin-top: 9px; }
+.opp-driver { display: flex; align-items: center; gap: 8px; }
+.opp-driver-label {
+  font-family: var(--mono); font-size: 10.5px; color: var(--faint);
+  width: 72px; flex: none; text-align: right;
+}
+.opp-bar { flex: 1; height: 6px; border-radius: 999px; background: var(--line-soft); overflow: hidden; }
+.opp-bar-fill { display: block; height: 100%; border-radius: 999px; background: var(--brand); }
+
 /* ── dashboard finding-count badge (PRD 04) ──────────────────── */
 .appcard .row1 { justify-content: space-between; }
 .finding-badge {

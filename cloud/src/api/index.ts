@@ -67,6 +67,7 @@ import {
   type AppCandidate,
   type ProposedCopy,
   lookup,
+  rankOpportunities,
   resolveAppQuery,
   runAgent,
 } from "../engine/index.js";
@@ -257,6 +258,9 @@ export function serializeRunResult(trace: ReasoningTrace, approved: boolean) {
     findings,
     findingsSummary: summarizeFindings(findings),
     ...(trace.ascContext !== undefined ? { ascContext: trace.ascContext } : {}),
+    // Winnability opportunities (PRD 06) — "where to push next." Curated copy +
+    // drivers only; safe to serve. Older traces have none → empty array.
+    opportunities: trace.opportunities ?? [],
   };
 }
 
@@ -275,6 +279,34 @@ function rankSummary(
     top10: ranked.filter((r) => r.rank <= 10).length,
     tracked: ranks.length,
   };
+}
+
+/**
+ * Compute the winnability opportunities (PRD 06) for a finished run. Pure-engine
+ * call: feeds the keyword scores from the run's `reasoning` and the rank history
+ * (prior snapshots + this pass, so momentum reads correctly). No competitor rank
+ * data is wired yet — `rankOpportunities` degrades gracefully (competitorWeakness
+ * defaults to "open field"), keeping the run honest about what it doesn't know.
+ * Mutates `result.opportunities` so it rides onto the persisted trace.
+ */
+async function attachOpportunities(
+  env: Env,
+  appId: string,
+  result: AgentResult,
+): Promise<void> {
+  const keywordScores: Record<string, number> = {};
+  for (const k of result.reasoning) keywordScores[k.keyword] = k.score;
+
+  // Prior snapshots give momentum; the run's current ranks are appended as the
+  // latest snapshot (history may not yet include this pass at compute time).
+  const checkedAt = new Date().toISOString().replace("T", " ").slice(0, 19);
+  const prior = await getRankHistory(env.DB, appId, {});
+  const ranks = [
+    ...prior.map((r) => ({ keyword: r.keyword, rank: r.rank, total: r.total, checked_at: r.checked_at })),
+    ...result.ranks.map((r) => ({ keyword: r.keyword, rank: r.rank, total: r.total, checked_at: checkedAt })),
+  ];
+
+  result.opportunities = rankOpportunities({ ranks, keywordScores });
 }
 
 // ── auth ─────────────────────────────────────────────────────────────────────
@@ -800,6 +832,9 @@ async function runApp(
     appName: app.name,
     hasAscKey: false,
   });
+  // PRD 06: winnability opportunities — "where to push next." Computed from the
+  // run's keyword scores + rank history; no raw ASC data (safe to serve).
+  await attachOpportunities(env, app.id, result);
   const runId = await persistRun(env.DB, {
     appId: app.id,
     status: "awaiting_approval",
@@ -900,6 +935,9 @@ async function runAppWithAsc(
   });
   const ascContext = buildAscContext(ascSnapshot);
   if (ascContext !== undefined) result.ascContext = ascContext;
+  // PRD 06: winnability opportunities — "where to push next." Same pure compute as
+  // the no-key path; serves curated copy + drivers only (no raw ASC data).
+  await attachOpportunities(env, app.id, result);
   // Attach the full ASC snapshot to the result so the run carries the rich data
   // SERVER-SIDE only — persistRun deliberately does NOT copy it onto the trace,
   // so it never reaches the client (the snapshot stays for future server use).
