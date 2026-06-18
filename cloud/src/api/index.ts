@@ -70,7 +70,7 @@ import {
   resolveAppQuery,
   runAgent,
 } from "../engine/index.js";
-import type { ReasoningTrace, AppRow } from "../d1.js";
+import type { ReasoningTrace, AppRow, FindingsSummary } from "../d1.js";
 import { buildPreview } from "../engine/preview.js";
 import {
   countAppsForUser,
@@ -744,12 +744,16 @@ async function listApps(env: Env, userId: string): Promise<unknown> {
     rows.map(async (a) => {
       let latest_run: { id: string; status: string; created_at: string } | null = null;
       let rank_summary: ReturnType<typeof rankSummary> = null;
+      let findings_summary: FindingsSummary | null = null;
       if (a.latest_run_id) {
         const run = await getRun(env.DB, a.latest_run_id);
         if (run) {
           latest_run = { id: run.id, status: run.status, created_at: run.created_at };
           const trace = JSON.parse(run.reasoning_json) as ReasoningTrace;
           rank_summary = rankSummary(trace.ranks);
+          // Findings-only badge data (PRD 04). Present once the engine is wired
+          // into the run path; absent on older traces (the card omits the badge).
+          findings_summary = trace.findingsSummary ?? null;
         }
       }
       return {
@@ -760,6 +764,7 @@ async function listApps(env: Env, userId: string): Promise<unknown> {
         created_at: a.created_at,
         latest_run,
         rank_summary,
+        findings_summary,
       };
     }),
   );

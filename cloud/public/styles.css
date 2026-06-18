@@ -393,6 +393,54 @@ input.mono { font-family: var(--mono); }
   color: var(--signal); background: rgba(52,211,153,.18);
 }
 
+/* ── dashboard finding-count badge (PRD 04) ──────────────────── */
+.appcard .row1 { justify-content: space-between; }
+.finding-badge {
+  margin-left: auto; flex: none;
+  font-family: var(--mono); font-size: 11px; font-weight: 700;
+  padding: 3px 9px; border-radius: 999px;
+  border: 1px solid var(--warn); color: var(--warn);
+  background: rgba(251,191,36,.10);
+  white-space: nowrap;
+}
+.finding-badge.has-critical {
+  border-color: rgba(248,113,113,.5); color: var(--bad); background: rgba(248,113,113,.10);
+}
+.finding-badge.looking-good {
+  border-color: var(--signal-dim); color: var(--signal); background: var(--signal-glow);
+}
+
+/* ── ASC-unlock CTA on a no-key run's audit card (PRD 04) ─────── */
+.asc-unlock {
+  margin-top: 16px; padding: 16px; border-radius: 10px;
+  border: 1px dashed var(--signal-dim); background: var(--signal-glow);
+}
+.asc-unlock-head { display: flex; align-items: center; gap: 8px; }
+.asc-unlock-head b { color: var(--ink); font-size: 15px; }
+.asc-unlock-ico { font-size: 16px; }
+.asc-unlock-copy { color: var(--dim); font-size: 13.5px; margin: 8px 0 10px; }
+.asc-unlock-list {
+  margin: 0 0 12px; padding-left: 18px;
+  color: var(--dim); font-size: 13px; columns: 2; column-gap: 18px;
+}
+.asc-unlock-list li { margin: 2px 0; }
+@media (max-width: 560px) { .asc-unlock-list { columns: 1; } }
+
+/* The primary ASC run panel pulses when reached from the unlock CTA. */
+.asc-run-panel.asc-flash {
+  border-radius: 12px;
+  animation: ascFlash 2.4s ease-out;
+  box-shadow: 0 0 0 0 var(--signal-glow);
+}
+@keyframes ascFlash {
+  0%   { box-shadow: 0 0 0 0 rgba(52,211,153,.45); }
+  18%  { box-shadow: 0 0 0 6px var(--signal-glow); }
+  100% { box-shadow: 0 0 0 0 rgba(52,211,153,0); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .asc-run-panel.asc-flash { animation: none; box-shadow: 0 0 0 3px var(--signal-glow); }
+}
+
 /* ── keyword table ───────────────────────────────────────────── */
 table.kw { width: 100%; border-collapse: collapse; font-size: 13px; }
 table.kw th { text-align: left; font-family: var(--mono); color: var(--faint); font-weight: 700; font-size: 11px; text-transform: uppercase; letter-spacing: .05em; padding: 6px 8px; border-bottom: 1px solid var(--line); }

@@ -98,6 +98,17 @@
   function root() { return document.getElementById("view"); }
   function clear(n) { while (n.firstChild) n.removeChild(n.firstChild); }
   function go(hash) { location.hash = hash; }
+  // Parse a hash query string ("asc=1&x=2") into a plain object. Empty → {}.
+  function parseQuery(q) {
+    var out = {};
+    if (!q) return out;
+    q.split("&").forEach(function (pair) {
+      if (!pair) return;
+      var kv = pair.split("=");
+      out[decodeURIComponent(kv[0])] = kv.length > 1 ? decodeURIComponent(kv[1]) : "";
+    });
+    return out;
+  }
 
   var toastTimer;
   function toast(msg) {
@@ -346,12 +357,31 @@
     ]);
   }
 
+  // Dashboard finding-count badge (PRD 04): advertise value before a run is opened.
+  // Derived purely from the per-app findings_summary (counts only) — never raw data.
+  // No run / no summary → null (the card stays clean). Zero actionable findings →
+  // a green "Looking good"; otherwise "N fixes available" (red tint if any critical).
+  function findingBadge(fs) {
+    if (!fs || fs.total == null) return null;
+    var fixes = (fs.critical || 0) + (fs.warn || 0);
+    if (fixes === 0) {
+      return el("span", { class: "finding-badge looking-good", title: "No actionable fixes found" }, ["✓ Looking good"]);
+    }
+    var label = fixes + " fix" + (fixes === 1 ? "" : "es") + " available";
+    if (fs.critical > 0) label = fs.critical + " critical · " + label;
+    var cls = "finding-badge" + (fs.critical > 0 ? " has-critical" : "");
+    return el("span", { class: cls, title: "Findings from the latest run" }, [label]);
+  }
+
   function appCard(a) {
     var run = a.latest_run, rs = a.rank_summary;
+    var row1 = el("div", { class: "row1" }, [
+      el("span", { class: "name" }, [a.name || a.bundle_id]),
+    ]);
+    var badge = findingBadge(a.findings_summary);
+    if (badge) row1.appendChild(badge);
     var card = el("div", { class: "card appcard", onclick: function () { go("#/apps/" + a.id); } }, [
-      el("div", { class: "row1" }, [
-        el("span", { class: "name" }, [a.name || a.bundle_id]),
-      ]),
+      row1,
       el("div", { class: "bundle" }, [a.bundle_id]),
       el("div", { class: "meta" }, [
         el("div", {}, [el("div", { class: "k" }, ["Latest run"]), el("div", { class: "v", style: "font-size:13px" }, [run ? statusBadge(run.status) : el("span", { class: "faint" }, ["—"])])]),
@@ -363,7 +393,8 @@
   }
 
   /* ════════════════════════ VIEW: app detail ═══════════════════════════════ */
-  async function viewApp(id) {
+  async function viewApp(id, query) {
+    query = query || {};
     loading("Loading app…");
     var data, ranks, deltas;
     try {
@@ -391,15 +422,30 @@
 
     // run an agent loop on demand — the App Store Connect read-and-improve pass
     // is the primary CTA; the blind run is demoted to an opt-out inside ascRunPanel.
+    var ascPanel = ascRunPanel(app.id);
     c.appendChild(el("div", { class: "card" }, [
       el("h3", {}, ["Agent runs"]),
       el("p", { class: "faint", style: "font-size:12.5px;margin:0 0 14px" }, ["Reads ranks + your live listing. With an App Store Connect key, the agent improves your subtitle & keywords. Without one, it leaves them untouched."]),
-      ascRunPanel(app.id),
+      ascPanel,
       runList(runs),
     ]));
 
     // disconnect (irreversible — two-click confirm, no blocking dialog)
     c.appendChild(disconnectRow(app));
+
+    // PRD 04: arrived from a no-key run's unlock CTA → scroll to the primary ASC
+    // run panel and flash it so the user lands on the credential surface to unlock.
+    if (query.asc) flashAscPanel(ascPanel);
+  }
+
+  // Scroll the primary ASC run panel into view and pulse it (the "unlock" reward
+  // landing). Synchronous class add so tests/render see .asc-flash immediately; the
+  // pulse self-clears after the animation. Respects prefers-reduced-motion via CSS.
+  function flashAscPanel(panel) {
+    if (!panel) return;
+    panel.classList.add("asc-flash");
+    if (panel.scrollIntoView) panel.scrollIntoView({ behavior: "smooth", block: "center" });
+    setTimeout(function () { panel.classList.remove("asc-flash"); }, 2400);
   }
 
   // Rank movement card: per-keyword "previous → current" with a count-up tween,
@@ -683,7 +729,7 @@
 
     // 1) THE LISTING AUDIT — the findings, instructive first. Explains *why* the
     //    proposed changes below, so it reads first: audit → diff → reasoning → gate.
-    c.appendChild(listingAuditCard(R));
+    c.appendChild(listingAuditCard(R, run.app_id));
 
     // 2) THE DIFF — lead with current → proposed, like a PR review (devs).
     c.appendChild(diffCard(R.currentCopy || {}, R.proposedCopy || {}));
@@ -728,7 +774,38 @@
       [g === "?" ? "Shots: ?" : "Shots: " + g]);
   }
 
-  function listingAuditCard(R) {
+  // The surfaces a connected ASC key unlocks — listed statically in the CTA so the
+  // user sees exactly what a no-key run is missing (PRD 04). Honest, in-context upsell.
+  var UNLOCK_SURFACES = [
+    "Real screenshot grade",
+    "App preview video coverage",
+    "Privacy policy & category gaps",
+    "Localization & keyword surfaces",
+  ];
+
+  // ASC-unlock CTA built from the asc_unlock finding (PRD 01/04). Reuses the
+  // existing PRIMARY ASC run panel (#31) on the app page — it does NOT build a new
+  // credential surface. Clicking routes to #/apps/:id?asc=1, which scrolls to and
+  // flashes the panel (viewApp honors the ?asc flag).
+  function ascUnlockCta(fnd, appId) {
+    var lis = UNLOCK_SURFACES.map(function (s) { return el("li", {}, [s]); });
+    var btn = el("button", { class: "btn primary", onclick: function () {
+      go("#/apps/" + appId + "?asc=1");
+    } }, ["Connect App Store Connect →"]);
+    return el("div", { class: "asc-unlock" }, [
+      el("div", { class: "asc-unlock-head" }, [
+        el("span", { class: "asc-unlock-ico" }, ["🔓"]),
+        el("b", {}, [fnd.title || "Unlock your full audit"]),
+      ]),
+      el("p", { class: "asc-unlock-copy" }, [
+        "Connect App Store Connect to see screenshots, preview video, privacy policy, category, and localization gaps.",
+      ]),
+      el("ul", { class: "asc-unlock-list" }, lis),
+      el("div", { class: "btn-row", style: "margin-top:4px" }, [btn]),
+    ]);
+  }
+
+  function listingAuditCard(R, appId) {
     var findings = R.findings || [];
     var summary = R.findingsSummary || null;
 
@@ -772,7 +849,13 @@
       });
     }
 
-    return el("div", { class: "card audit-card" }, [head, body]);
+    var children = [head, body];
+    // No-key run → render the unlock CTA below the findings (PRD 04). Driven by the
+    // asc_unlock finding (data hook from PRD 01); absent on key-bearing runs.
+    var unlock = findings.filter(function (f) { return f.id === "asc_unlock"; })[0];
+    if (unlock) children.push(ascUnlockCta(unlock, appId));
+
+    return el("div", { class: "card audit-card" }, children);
   }
 
   function reasoningCard(R) {
@@ -1518,7 +1601,8 @@
     if (API_BASE && session && session.authed === false) return previewView();
     var h = location.hash.replace(/^#/, "") || "/";
     var m;
-    if ((m = h.match(/^\/apps\/([^/]+)$/))) return viewApp(m[1]);
+    // #/apps/:id (optionally ?asc=1 → scroll to + flash the ASC run panel, PRD 04).
+    if ((m = h.match(/^\/apps\/([^/?]+)(?:\?(.*))?$/))) return viewApp(m[1], parseQuery(m[2]));
     if ((m = h.match(/^\/runs\/([^/]+)$/))) return viewRun(m[1]);
     return viewDashboard();
   }

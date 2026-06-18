@@ -122,8 +122,24 @@ export type ReasoningTrace = {
    * deliberately NOT stored on the trace: it stays out of the client-served JSON.
    */
   ascContext?: AscContext | undefined;
+  /**
+   * ASC findings counts for the dashboard badge (PRD 04). Findings-only summary —
+   * never raw ASC data. Absent on older traces (the badge degrades to none).
+   */
+  findingsSummary?: FindingsSummary | undefined;
   /** why this run was opened (cron threshold reasons, or "manual"/"connect"). */
   trigger: { source: "manual" | "cron" | "connect"; reasons: string[] };
+};
+
+/** Slim, counts-only finding summary for the dashboard badge (PRD 04). */
+export type FindingsSummary = {
+  total: number;
+  critical: number;
+  warn: number;
+  good: number;
+  info: number;
+  /** the badge/card one-liner, e.g. "3 fixes available · 1 critical". */
+  label: string;
 };
 
 // ── id helper (Workers have crypto.randomUUID) ───────────────────────────────

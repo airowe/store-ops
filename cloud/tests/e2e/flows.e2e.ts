@@ -532,6 +532,115 @@ test.describe("dashboard states", () => {
   });
 });
 
+test.describe("dashboard — finding-count badge (PRD 04)", () => {
+  test("a findings-bearing app shows the count badge derived from findingsSummary", async ({
+    page,
+  }) => {
+    await gotoMockDashboard(page);
+    await seedAppWithRun(page, { name: "Calm", bundleId: "com.calm.calmapp" });
+    await page.evaluate(() => { location.hash = "#/_"; location.hash = "#/"; });
+
+    const card = page.locator(".appcard", { hasText: "Calm" });
+    const badge = card.locator(".finding-badge");
+    await expect(badge).toBeVisible();
+    // The seeded no-key run carries a critical privacy gap + warnings → "N fixes
+    // available", and the critical pushes the badge into the --bad treatment.
+    await expect(badge).toContainText(/fix(es)? available/i);
+    await expect(badge).toHaveClass(/has-critical/);
+  });
+
+  test("a clean app (no actionable findings) shows the green 'Looking good' badge", async ({
+    page,
+  }) => {
+    await gotoMockDashboard(page);
+    const id = await seedAppWithRun(page, { name: "Calm", bundleId: "com.calm.calmapp" });
+    // Force the latest run + its summary to zero actionable findings (a great listing).
+    await page.evaluate((appId) => {
+      const KEY = "store-ops:mockdb:v1";
+      const all = JSON.parse(localStorage.getItem(KEY) || "{}");
+      const db = all["demo@store-ops.dev"];
+      const app = db.apps[appId];
+      const rid = app.runs[0];
+      db.runs[rid].result.findings = [];
+      db.runs[rid].result.findingsSummary = { total: 0, critical: 0, warn: 0, good: 0, info: 0, label: "No fixes found" };
+      app.findingsSummary = { total: 0, critical: 0, warn: 0, good: 0, info: 0, label: "No fixes found" };
+      localStorage.setItem(KEY, JSON.stringify(all));
+    }, id);
+    await page.evaluate(() => { location.hash = "#/_"; location.hash = "#/"; });
+
+    const badge = page.locator(".appcard", { hasText: "Calm" }).locator(".finding-badge");
+    await expect(badge).toBeVisible();
+    await expect(badge).toContainText(/looking good/i);
+    await expect(badge).toHaveClass(/looking-good/);
+  });
+
+  test("an app with no run yet shows no finding badge", async ({ page }) => {
+    await gotoMockDashboard(page);
+    // Connect without running — the mock's POST /apps seeds the app but no run.
+    await page.evaluate(async () => {
+      const M = (window as any).STORE_OPS_MOCK;
+      const EM = "demo@store-ops.dev";
+      await M.handle("POST", "/_tier", { tier: "fleet" }, EM);
+      await M.handle("POST", "/apps", { bundle_id: "com.norun.app", name: "NoRun", keywords: ["x"] }, EM);
+    });
+    await page.evaluate(() => { location.hash = "#/_"; location.hash = "#/"; });
+
+    const card = page.locator(".appcard", { hasText: "NoRun" });
+    await expect(card).toBeVisible();
+    await expect(card.locator(".finding-badge")).toHaveCount(0);
+  });
+});
+
+test.describe("run page — ASC unlock CTA on a no-key run (PRD 04)", () => {
+  test("the no-key audit card renders the unlock CTA wired to the ASC run panel", async ({
+    page,
+  }) => {
+    await gotoMockDashboard(page);
+    const id = await seedAppWithRun(page, { name: "Calm", bundleId: "com.calm.calmapp" });
+    // The default seed run uses POST /apps/:id/run → a no-key run → carries asc_unlock.
+    const runId = await page.evaluate(async (appId) => {
+      const M = (window as any).STORE_OPS_MOCK;
+      const detail = await (await M.handle("GET", `/apps/${appId}`, null, "demo@store-ops.dev")).json();
+      return detail.runs[0].id as string;
+    }, id);
+    await page.goto(`/index.html#/runs/${runId}`);
+
+    // The unlock CTA lives inside the audit card, below the findings.
+    const cta = page.locator(".audit-card .asc-unlock");
+    await expect(cta).toBeVisible();
+    await expect(cta).toContainText(/unlock your full audit/i);
+    // It lists the surfaces a key unlocks so the user knows what they're missing.
+    await expect(cta).toContainText(/screenshots/i);
+    await expect(cta).toContainText(/preview/i);
+    await expect(cta).toContainText(/privacy policy/i);
+
+    // Clicking it surfaces the existing primary ASC run panel (#31) on the app page —
+    // it does NOT build a new credential surface.
+    await cta.getByRole("button", { name: /connect app store connect/i }).click();
+    await expect(page).toHaveURL(/#\/apps\//);
+    const panel = page.locator(".asc-run-panel");
+    await expect(panel).toBeVisible();
+    // The panel is highlighted/scrolled into focus (the reward framing lands the user here).
+    await expect(panel).toHaveClass(/asc-flash/);
+  });
+
+  test("a key-bearing run does NOT render the unlock CTA", async ({ page }) => {
+    await gotoMockDashboard(page);
+    const id = await seedAppWithRun(page, { name: "Calm", bundleId: "com.calm.calmapp" });
+    // Run WITH an ASC key (the -asc path) → no asc_unlock finding, no CTA.
+    const runId = await page.evaluate(async (appId) => {
+      const M = (window as any).STORE_OPS_MOCK;
+      const EM = "demo@store-ops.dev";
+      const r = await (await M.handle("POST", `/apps/${appId}/run-asc`, { p8: "-----BEGIN PRIVATE KEY-----\nx\n-----END PRIVATE KEY-----", keyId: "ABC123DEFG", issuerId: "00000000-0000-0000-0000-000000000000" }, EM)).json();
+      return r.id as string;
+    }, id);
+    await page.goto(`/index.html#/runs/${runId}`);
+
+    await expect(page.locator(".audit-card")).toBeVisible();
+    await expect(page.locator(".audit-card .asc-unlock")).toHaveCount(0);
+  });
+});
+
 test.describe("connect — 402 tier-limit paywall (#27)", () => {
   test("connecting past the plan's app limit shows a visible upgrade modal, not a silent fail", async ({
     page,

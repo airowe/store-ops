@@ -384,6 +384,8 @@
       created_at: app.created_at,
       latest_run: app.latestRunSummary || null,
       rank_summary: app.rankSummary || null,
+      // findings-only summary for the dashboard badge (PRD 04); null until a run.
+      findings_summary: app.findingsSummary || null,
     };
   }
 
@@ -539,6 +541,8 @@
       var lead = result.ranks[0];
       var hits = result.ranks.filter(function (r) { return r.rank && r.rank <= 10; }).length;
       app.rankSummary = { tracked: result.ranks.length, top10: hits, lead_keyword: lead ? lead.keyword : "", lead_rank: lead ? lead.rank : null };
+      // findings-only summary for the dashboard badge (PRD 04) — counts, no raw data.
+      app.findingsSummary = result.findingsSummary || null;
       ctx.commit();
       return json(200, { id: runId });
     }
