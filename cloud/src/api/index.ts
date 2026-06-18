@@ -127,6 +127,8 @@ import { buildFastlaneBundle } from "../engine/fastlane.js";
 import { zipStore } from "../engine/zip.js";
 import { mintAscJwt } from "../engine/ascJwt.js";
 import { findAscAppId, applyAscMetadata, readAscLocalization, AscWriteError } from "../engine/ascWrite.js";
+import { readAscSnapshot, ascScreenshotsToListing, type AscSnapshot } from "../engine/ascRead.js";
+import { score as scoreScreenshots } from "../engine/screenshotScore.js";
 import { mintAppJwt, installationToken, GithubAppError } from "../engine/githubApp.js";
 import { openMetadataPr } from "../engine/githubPr.js";
 import type { Env } from "../index.js";
@@ -804,12 +806,21 @@ async function runAppWithAsc(
   let liveSubtitle: string | undefined;
   let liveKeywords: string | undefined;
   let liveName: string | undefined;
+  let ascSnapshot: AscSnapshot | undefined;
   try {
     const ascAppId = await findAscAppId(fetch, token, app.bundle_id);
     const live = await readAscLocalization(fetch, { token, appId: ascAppId, locale });
     liveSubtitle = live.subtitle;
     liveKeywords = live.keywords;
     liveName = live.name;
+    // The full pre-launch read: screenshots, previews, appInfo, version state,
+    // pricing/IAPs, age rating, custom pages, all locales. Best-effort — a read
+    // failure here records a per-surface error but never strands the run.
+    try {
+      ascSnapshot = await readAscSnapshot(fetch, { token, appId: ascAppId, locale });
+    } catch {
+      ascSnapshot = undefined;
+    }
   } catch (e) {
     // A read failure shouldn't strand the user — fall back to an honest iTunes-only
     // run (subtitle/keywords omitted) and surface the reason.
@@ -831,10 +842,18 @@ async function runAppWithAsc(
 
   const input = buildAppInput(app, overrides, previous);
   const result = await runAgent(fetchForEnv(env), input);
+  // #44: if we read REAL screenshots from ASC, re-score the audit with them
+  // (dataReliable:true) so the grade is genuine — not the public-iTunes "unknown".
+  const ascListing = ascScreenshotsToListing(ascSnapshot?.screenshots);
+  if (ascListing) {
+    result.audit.screenshots = scoreScreenshots(input.app, ascListing);
+  }
+  // Attach the full ASC snapshot to the result so the run carries the rich data.
+  const resultWithSnapshot = ascSnapshot ? { ...result, ascSnapshot } : result;
   const runId = await persistRun(env.DB, {
     appId: app.id,
     status: "awaiting_approval",
-    result,
+    result: resultWithSnapshot,
     trigger: { source: "manual", reasons: ["manual run requested (App Store Connect read)"] },
   });
   return { id: runId, status: "awaiting_approval", digest: result.competitors.digest, ascRead: true };

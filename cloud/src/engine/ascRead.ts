@@ -24,7 +24,17 @@ import {
   ascError,
   pickLocalization,
   pickReadableVersion,
+  readAscVersionState,
+  readAscAppInfo,
+  readAscAgeRating,
+  readAscCustomProductPages,
+  readAscAllLocales,
   type FetchLike,
+  type AscVersionStateResult,
+  type AppInfoResult,
+  type AscAgeRatingResult,
+  type AscCustomProductPages,
+  type LiveListingCopy,
 } from "./ascWrite.js";
 
 /** A single screenshot asset read from ASC. All fields optional — apps vary. */
@@ -564,3 +574,76 @@ function noteFor(status: number, surface: string): string {
 
 // Re-export for callers that want one import site.
 export { AscWriteError, type FetchLike };
+
+// ── readAscSnapshot: the full pre-launch ASC read ────────────────────────────
+/**
+ * The aggregated ASC read — every reader, in one snapshot, attached to a run so
+ * the audit can surface real data instead of guessing.
+ *
+ * GRACEFUL DEGRADATION: each reader runs independently; one failing (e.g. a key
+ * without pricing scope) records a per-surface error and leaves that slot empty
+ * rather than failing the whole run. Reads only; the token is never persisted,
+ * logged, or returned in the snapshot.
+ */
+export type AscSnapshot = {
+  screenshots?: AscScreenshotSet | undefined;
+  previews?: AscPreviewsResult | undefined;
+  appInfo?: AppInfoResult | undefined;
+  versionState?: AscVersionStateResult | undefined;
+  pricing?: AppPricing | undefined;
+  ageRating?: AscAgeRatingResult | undefined;
+  customProductPages?: AscCustomProductPages | undefined;
+  locales?: LiveListingCopy[] | undefined;
+  /** per-surface read errors (token-free), empty when all reads succeeded. */
+  errors: { surface: string; message: string }[];
+};
+
+export async function readAscSnapshot(
+  fetchFn: FetchLike,
+  opts: { token: string; appId: string; locale?: string },
+): Promise<AscSnapshot> {
+  const errors: { surface: string; message: string }[] = [];
+  // Run a reader, capturing any failure as a token-free error rather than throwing.
+  async function tryRead<T>(surface: string, fn: () => Promise<T>): Promise<T | undefined> {
+    try {
+      return await fn();
+    } catch (e) {
+      errors.push({ surface, message: e instanceof Error ? e.message : "read failed" });
+      return undefined;
+    }
+  }
+
+  const [screenshots, previews, appInfo, versionState, pricing, ageRating, customProductPages, locales] =
+    await Promise.all([
+      tryRead("screenshots", () => readAscScreenshots(fetchFn, opts)),
+      tryRead("previews", () => readAscPreviews(fetchFn, opts)),
+      tryRead("appInfo", () => readAscAppInfo(fetchFn, { token: opts.token, appId: opts.appId })),
+      tryRead("versionState", () => readAscVersionState(fetchFn, { token: opts.token, appId: opts.appId })),
+      tryRead("pricing", () => readAscPricingAndIAP(fetchFn, { token: opts.token, appId: opts.appId })),
+      tryRead("ageRating", () => readAscAgeRating(fetchFn, { token: opts.token, appId: opts.appId })),
+      tryRead("customProductPages", () =>
+        readAscCustomProductPages(fetchFn, { token: opts.token, appId: opts.appId }),
+      ),
+      tryRead("locales", () => readAscAllLocales(fetchFn, { token: opts.token, appId: opts.appId })),
+    ]);
+
+  return { screenshots, previews, appInfo, versionState, pricing, ageRating, customProductPages, locales, errors };
+}
+
+/**
+ * Flatten an ASC screenshot set into the screenshotScore Listing shape, so the
+ * audit can produce a REAL grade (dataReliable: true) from genuine ASC assets
+ * instead of the public-iTunes blind spot (#41/#44). Returns null when there are
+ * no real screenshots to score (caller keeps the public/unknown result).
+ */
+export function ascScreenshotsToListing(
+  set: AscScreenshotSet | undefined,
+): { screenshotUrls: string[]; ipadScreenshotUrls: string[]; dataReliable: true } | null {
+  if (!set) return null;
+  const urls = (sets: AscScreenshotSetPerDevice[]): string[] =>
+    sets.flatMap((d) => d.screenshots.map((s) => s.imageTemplate).filter((u): u is string => !!u));
+  const iphone = urls(set.iphoneScreenshots);
+  const ipad = urls(set.ipadScreenshots);
+  if (iphone.length === 0 && ipad.length === 0) return null;
+  return { screenshotUrls: iphone, ipadScreenshotUrls: ipad, dataReliable: true };
+}

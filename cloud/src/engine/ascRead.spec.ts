@@ -7,6 +7,8 @@ import {
   type AscPreviewsResult,
   readAscPricingAndIAP,
   type AppPricing,
+  readAscSnapshot,
+  ascScreenshotsToListing,
 } from "./ascRead.js";
 import { AscWriteError, type FetchLike } from "./ascWrite.js";
 
@@ -820,5 +822,74 @@ describe("readAscPricingAndIAP — IAPs + pricing with graceful degradation", ()
     const result: AppPricing = await readAscPricingAndIAP(fetchFn, { token: "JWT", appId: "APP1" });
     expect(Array.isArray(result.iaps)).toBe(true);
     expect(typeof result.pricing).toBe("object");
+  });
+});
+
+// ── readAscSnapshot: aggregate all 8 readers, degrade gracefully per-reader ──
+describe("readAscSnapshot — aggregates every ASC reader, one failure never kills the run", () => {
+  // A permissive fetch: returns an empty-but-valid JSON:API body for any URL, so
+  // every reader resolves to its empty/degraded result without throwing.
+  function permissiveFetch(overrides: Record<string, { status?: number; body?: unknown }> = {}): FetchLike {
+    return (async (url: string) => {
+      const hit = Object.keys(overrides).find((k) => url.includes(k));
+      const o = hit ? overrides[hit]! : {};
+      const status = o.status ?? 200;
+      return {
+        ok: status >= 200 && status < 300,
+        status,
+        json: async () => o.body ?? { data: [] },
+      } as unknown as Response;
+    }) as FetchLike;
+  }
+
+  it("returns a snapshot with a slot for every reader", async () => {
+    const snap = await readAscSnapshot(permissiveFetch(), { token: "JWT", appId: "APP1", locale: "en-US" });
+    // Each reader contributed a key (value may be its empty/degraded shape).
+    expect(snap).toHaveProperty("screenshots");
+    expect(snap).toHaveProperty("previews");
+    expect(snap).toHaveProperty("appInfo");
+    expect(snap).toHaveProperty("versionState");
+    expect(snap).toHaveProperty("pricing");
+    expect(snap).toHaveProperty("ageRating");
+    expect(snap).toHaveProperty("customProductPages");
+    expect(snap).toHaveProperty("locales");
+  });
+
+  it("a single reader throwing does not reject the whole snapshot (graceful degrade)", async () => {
+    // Force the versions lookup to 500 for the version-state reader path only is
+    // hard to isolate; instead make ALL endpoints 500 and assert it still resolves.
+    const snap = await readAscSnapshot(permissiveFetch({ "appStoreConnect": { status: 500 } }), {
+      token: "JWT",
+      appId: "APP1",
+      locale: "en-US",
+    });
+    expect(snap).toBeTruthy();
+    // errors are recorded per-reader, not thrown
+    expect(Array.isArray(snap.errors)).toBe(true);
+  });
+
+  it("never includes the token anywhere in the snapshot", async () => {
+    const snap = await readAscSnapshot(permissiveFetch(), { token: "SECRET-JWT", appId: "APP1", locale: "en-US" });
+    expect(JSON.stringify(snap)).not.toContain("SECRET-JWT");
+  });
+});
+
+describe("ascScreenshotsToListing — ASC set → scoreable Listing (real grade)", () => {
+  const shot = (id: string) => ({ id, imageTemplate: `https://asc/${id}.png` });
+  it("flattens per-device sets into screenshotUrls with dataReliable:true", () => {
+    const set = {
+      iphoneScreenshots: [{ device: "APP_IPHONE_67", displayType: "APP_IPHONE_67", count: 2, screenshots: [shot("a"), shot("b")] }],
+      ipadScreenshots: [{ device: "APP_IPAD_PRO_129", count: 1, screenshots: [shot("c")] }],
+      dataReliable: true as const,
+    };
+    const listing = ascScreenshotsToListing(set);
+    expect(listing).not.toBeNull();
+    expect(listing!.screenshotUrls).toHaveLength(2);
+    expect(listing!.ipadScreenshotUrls).toHaveLength(1);
+    expect(listing!.dataReliable).toBe(true);
+  });
+  it("returns null when there are no real screenshots (caller keeps unknown)", () => {
+    expect(ascScreenshotsToListing({ iphoneScreenshots: [], ipadScreenshots: [], dataReliable: true })).toBeNull();
+    expect(ascScreenshotsToListing(undefined)).toBeNull();
   });
 });
