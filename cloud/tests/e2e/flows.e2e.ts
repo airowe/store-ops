@@ -537,13 +537,15 @@ test.describe("dashboard — finding-count badge (PRD 04)", () => {
     page,
   }) => {
     await gotoMockDashboard(page);
-    await seedAppWithRun(page, { name: "Calm", bundleId: "com.calm.calmapp" });
+    // An ASC (keyed) run produces the full findings set incl. the critical privacy
+    // gap — a no-key run can't see appInfo, so it must NOT show critical findings.
+    await seedAppWithRun(page, { name: "Calm", bundleId: "com.calm.calmapp", asc: true });
     await page.evaluate(() => { location.hash = "#/_"; location.hash = "#/"; });
 
     const card = page.locator(".appcard", { hasText: "Calm" });
     const badge = card.locator(".finding-badge");
     await expect(badge).toBeVisible();
-    // The seeded no-key run carries a critical privacy gap + warnings → "N fixes
+    // The keyed run carries a critical privacy gap + warnings → "N fixes
     // available", and the critical pushes the badge into the --bad treatment.
     await expect(badge).toContainText(/fix(es)? available/i);
     await expect(badge).toHaveClass(/has-critical/);
