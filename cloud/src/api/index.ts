@@ -66,9 +66,14 @@ import {
   type AgentResult,
   type AppCandidate,
   type ProposedCopy,
+  type PushInput,
+  type WarRoomRankSnapshot,
+  buildWarRoom,
   lookup,
   rankOpportunities,
+  ranksFor,
   resolveAppQuery,
+  resolveNameToBundle,
   runAgent,
 } from "../engine/index.js";
 import type { ReasoningTrace, AppRow, FindingsSummary } from "../d1.js";
@@ -132,6 +137,8 @@ import { readAscSnapshot, ascScreenshotsToListing, type AscSnapshot } from "../e
 import { score as scoreScreenshots } from "../engine/screenshotScore.js";
 import { auditFindings, summarizeFindings } from "../engine/auditFindings.js";
 import { buildAscContext } from "../engine/ascContext.js";
+import { metadataCoverage } from "../engine/metadataCoverage.js";
+import { recommendLocales } from "../engine/localizationExpansion.js";
 import { mintAppJwt, installationToken, GithubAppError } from "../engine/githubApp.js";
 import { openMetadataPr } from "../engine/githubPr.js";
 import type { Env } from "../index.js";
@@ -261,7 +268,40 @@ export function serializeRunResult(trace: ReasoningTrace, approved: boolean) {
     // Winnability opportunities (PRD 06) — "where to push next." Curated copy +
     // drivers only; safe to serve. Older traces have none → empty array.
     opportunities: trace.opportunities ?? [],
+    // Keyword gaps (PRD 01) — names-only competitor attribution, no raw listing.
+    // Served verbatim so the run page renders the "Keyword opportunities" card.
+    ...(trace.keywordGaps !== undefined ? { keywordGaps: trace.keywordGaps } : {}),
+    // Metadata coverage (PRD 03): budget-efficiency score + itemized waste. Curated
+    // counts + copy only — the privacy boundary holds (no raw ASC pricing/locale/
+    // policy ever rode the trace). Present once a run computed it; omitted otherwise.
+    ...(trace.coverage !== undefined ? { coverage: trace.coverage } : {}),
+    // PRD 04 localization expansion: ROI-sorted locale recommendations (static
+    // heuristic, PII-safe). Present only when the Mode-A run computed them.
+    ...(trace.localizationExpansion !== undefined
+      ? { localizationExpansion: trace.localizationExpansion }
+      : {}),
   };
+}
+
+/**
+ * Compute the metadata coverage report (PRD 03) for a run from its CURRENT copy.
+ * The brand word is the first token of the live/app name — used to flag a brand
+ * repeat in the subtitle (#42) and to keep the brand out of the term analysis.
+ * Pure derivation off copy we already hold; reads no new ASC data.
+ */
+function coverageForRun(
+  currentCopy: { name?: string | undefined; subtitle?: string | undefined; keywords?: string | undefined },
+  appName: string,
+): ReturnType<typeof metadataCoverage> {
+  const brand = (currentCopy.name ?? appName).trim().split(/\s+/)[0] ?? "";
+  return metadataCoverage(
+    {
+      name: currentCopy.name,
+      subtitle: currentCopy.subtitle,
+      keywords: currentCopy.keywords,
+    },
+    brand ? { brand } : {},
+  );
 }
 
 /** Lead rank + top-10 count + tracked count from a stored run's rank trace. */
@@ -835,6 +875,10 @@ async function runApp(
   // PRD 06: winnability opportunities — "where to push next." Computed from the
   // run's keyword scores + rank history; no raw ASC data (safe to serve).
   await attachOpportunities(env, app.id, result);
+  // PRD 03: metadata coverage off the current copy (here typically just the live
+  // name — subtitle/keywords aren't read without a key, so they stay empty). Still
+  // a useful name-budget read; richer once an ASC run fills the other fields.
+  result.coverage = coverageForRun(result.currentCopy, app.name);
   const runId = await persistRun(env.DB, {
     appId: app.id,
     status: "awaiting_approval",
@@ -938,6 +982,27 @@ async function runAppWithAsc(
   // PRD 06: winnability opportunities — "where to push next." Same pure compute as
   // the no-key path; serves curated copy + drivers only (no raw ASC data).
   await attachOpportunities(env, app.id, result);
+  // PRD 03: metadata coverage from the LIVE copy we read from ASC (name + subtitle
+  // + keyword field) — the richest input, so duplicate/brand_repeat/filler waste is
+  // fully populated. Curated counts + copy only; no raw ASC crosses the boundary.
+  result.coverage = coverageForRun(result.currentCopy, app.name);
+  // PRD 04 — localization expansion. From the locales we just read + the category,
+  // recommend the highest-ROI markets to expand into (a STATIC, bundled heuristic —
+  // no live install data, no new ASC call). Derived only from locale codes + the
+  // category NAME, so it's PII-safe and reaches the client (findings-only boundary
+  // intact). Only when we actually read the locale set.
+  const liveLocaleRows = (ascSnapshot?.locales ?? []) as Array<{ locale?: string | undefined }>;
+  const liveLocales = liveLocaleRows
+    .map((l) => l.locale)
+    .filter((c): c is string => typeof c === "string" && c.length > 0);
+  if (liveLocales.length > 0) {
+    const category = ascSnapshot?.appInfo?.primaryCategory?.name;
+    const recs = recommendLocales({
+      liveLocales,
+      ...(category !== undefined ? { category } : {}),
+    });
+    if (recs.length > 0) result.localizationExpansion = recs;
+  }
   // Attach the full ASC snapshot to the result so the run carries the rich data
   // SERVER-SIDE only — persistRun deliberately does NOT copy it onto the trace,
   // so it never reaches the client (the snapshot stays for future server use).
@@ -1027,7 +1092,109 @@ async function appRanks(
 async function appDeltas(env: Env, userId: string, appId: string): Promise<unknown> {
   const app = await requireOwnedApp(env, appId, userId);
   const history = await getRankHistory(env.DB, appId, {});
-  return rankDeltasView(history, { appName: app.name });
+  // PRD 02: derive the app's approved pushes so rankDeltasView can overlay the
+  // (correlational) attribution — "after you added 'stoic' (Jun 12)" — onto each
+  // moved keyword. This is a pure join of already-captured data: shipped runs'
+  // proposed copy + their approval timestamps + the rank history. No new ASC
+  // read, no raw listing data — just the terms WE proposed (privacy boundary).
+  const pushes = await derivePushes(env, appId);
+  return rankDeltasView(history, { appName: app.name, pushes });
+}
+
+/**
+ * Build the `PushInput[]` the attribution engine joins against: one per SHIPPED
+ * run, carrying its proposed keywords/subtitle (and the baseline they diffed
+ * against) plus the approval timestamp. Reads the run trace's `proposedCopy`
+ * (the terms we proposed) and `currentCopy` (the baseline) — never raw ASC data.
+ * Runs without an approval row, or still awaiting the gate, are skipped: only an
+ * approved push can (correlationally) precede a rank move.
+ */
+async function derivePushes(env: Env, appId: string): Promise<PushInput[]> {
+  const runs = await listRunsForApp(env.DB, appId);
+  const shipped = runs.filter((r) => r.status === "shipped" || r.status === "approved");
+  const pushes: PushInput[] = [];
+  for (const r of shipped) {
+    const [run, approval] = await Promise.all([
+      getRun(env.DB, r.id),
+      getApproval(env.DB, r.id),
+    ]);
+    if (!run || !approval || approval.decision !== "approved") continue;
+    const trace = JSON.parse(run.reasoning_json) as ReasoningTrace;
+    pushes.push({
+      runId: r.id,
+      pushedAt: approval.decided_at,
+      proposedKeywords: trace.proposedCopy?.keywords ?? "",
+      proposedSubtitle: trace.proposedCopy?.subtitle ?? "",
+      currentKeywords: trace.currentCopy?.keywords ?? "",
+      currentSubtitle: trace.currentCopy?.subtitle ?? "",
+    });
+  }
+  return pushes;
+}
+
+/** Cap the competitor selection so a war-room call can't fan out unboundedly. */
+const MAX_WAR_ROOM_COMPETITORS = 4;
+
+/**
+ * GET /apps/:id/war-room?competitors=name1,name2 — the head-to-head rank war
+ * room (PRD 05, absorbs #25's competitor selector). We read YOUR rank history
+ * (real, from D1) for the trend + your current position, then for each SELECTED
+ * competitor we resolve the name to an App Store id and LIVE-CHECK their organic
+ * rank on exactly your tracked keywords (the same iTunes Search mechanism that
+ * produced your ranks). A competitor we can't resolve, or a keyword we couldn't
+ * place them on, comes back `null` — honest "we didn't check", never a guess.
+ *
+ * PRIVACY: only competitor NAME + rank numbers reach the client (buildWarRoom's
+ * output) — never a raw listing. READ-ONLY: no DB writes, no outward pushes.
+ */
+async function warRoom(env: Env, userId: string, appId: string, url: URL): Promise<unknown> {
+  const app = await requireOwnedApp(env, appId, userId);
+
+  // Parse + dedupe the selected competitor names (capped).
+  const selected = (url.searchParams.get("competitors") ?? "")
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
+  const names = [...new Set(selected)].slice(0, MAX_WAR_ROOM_COMPETITORS);
+
+  // Your real rank history → normalized RankSnapshot[] + the tracked keyword set.
+  const history = await getRankHistory(env.DB, appId, {});
+  const yourRanks: WarRoomRankSnapshot[] = history.map((r) => ({
+    keyword: r.keyword,
+    rank: r.rank,
+    checked_at: r.checked_at,
+  }));
+  const keywords = [...new Set(history.map((r) => r.keyword))];
+  const today = new Date().toISOString().slice(0, 10);
+
+  // For each selected competitor: resolve → live-check their rank on OUR tracked
+  // keywords. A resolution failure leaves `ranks` empty so every cell is null
+  // (unknown), not a fabricated zero. We never check keywords we don't track.
+  const fetchFn = fetchForEnv(env);
+  const country = app.country || env.DEFAULT_COUNTRY || "US";
+  const competitorRanks: Array<{ name: string; ranks: WarRoomRankSnapshot[] }> = [];
+  for (const name of names) {
+    let ranks: WarRoomRankSnapshot[] = [];
+    if (keywords.length) {
+      const compBundle = await resolveNameToBundle(fetchFn, name, { country });
+      if (compBundle) {
+        const checked = await ranksFor(fetchFn, compBundle, keywords, { country });
+        ranks = checked
+          .filter((r) => !r.error)
+          .map((r) => ({ keyword: r.keyword, rank: r.rank, checked_at: today }));
+      }
+    }
+    competitorRanks.push({ name, ranks });
+  }
+
+  const warRoomRows = buildWarRoom({ yourRanks, competitorRanks });
+  return {
+    appName: app.name,
+    warRoom: warRoomRows,
+    competitors: names,
+    window: 7,
+    checkedAt: `${today}T00:00:00Z`,
+  };
 }
 
 /**
@@ -1682,6 +1849,9 @@ export async function handleApi(req: Request, env: Env): Promise<Response> {
       }
       if (seg.length === 3 && seg[1] && seg[2] === "deltas" && method === "GET") {
         return json(await appDeltas(env, user.id, seg[1]), 200, origin);
+      }
+      if (seg.length === 3 && seg[1] && seg[2] === "war-room" && method === "GET") {
+        return json(await warRoom(env, user.id, seg[1], url), 200, origin);
       }
       if (seg.length === 3 && seg[1] && seg[2] === "share-card.svg" && method === "GET") {
         return await shareCardRoute(env, user.id, seg[1], url, origin);

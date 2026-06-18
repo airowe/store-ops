@@ -14,7 +14,10 @@ import type {
   AgentResult,
   AscContext,
   Change,
+  CoverageReport,
   Finding,
+  KeywordGap,
+  LocaleRecommendation,
   Opportunity,
   ProposedCopy,
   Rank,
@@ -134,6 +137,25 @@ export type ReasoningTrace = {
    * panel degrades to none). Sorted by opportunityScore desc by the engine.
    */
   opportunities?: Opportunity[] | undefined;
+  /**
+   * Keyword gaps (PRD 01): terms competitors VISIBLY use that you don't target or
+   * rank top-50 for, sorted by winnability with a `fitsBudget` flag. Names-only
+   * competitor attribution — safe to serve. Absent on older traces.
+   */
+  keywordGaps?: KeywordGap[] | undefined;
+  /**
+   * Metadata coverage report (PRD 03) — budget-efficiency score + itemized waste.
+   * Computed in the run path from the current copy; served to the client (curated
+   * counts + copy only, no raw ASC). Absent on older traces + runs with no copy.
+   */
+  coverage?: CoverageReport | undefined;
+  /**
+   * Localization expansion recommendations (PRD 04). ROI-sorted locales to add,
+   * from a STATIC, bundled heuristic — never raw ASC data, never fabricated install
+   * numbers. Derived only from live locale codes + the category name, so it's safe
+   * to serve to the client. Present only on a Mode-A run that read the locale set.
+   */
+  localizationExpansion?: LocaleRecommendation[] | undefined;
   /** why this run was opened (cron threshold reasons, or "manual"/"connect"). */
   trigger: { source: "manual" | "cron" | "connect"; reasons: string[] };
 };
@@ -429,6 +451,15 @@ export async function persistRun(
     ...(result.findings !== undefined ? { findings: result.findings } : {}),
     ...(result.ascContext !== undefined ? { ascContext: result.ascContext } : {}),
     ...(result.opportunities !== undefined ? { opportunities: result.opportunities } : {}),
+    // Keyword gaps (PRD 01) ride along when computed — names-only attribution,
+    // safe to serve. Persisted on the trace so the run page renders them verbatim.
+    ...(result.keywordGaps !== undefined ? { keywordGaps: result.keywordGaps } : {}),
+    // Coverage report (PRD 03): budget-efficiency score + waste, curated copy +
+    // counts only (no raw ASC). Rides along when the run path computed it.
+    ...(result.coverage !== undefined ? { coverage: result.coverage } : {}),
+    ...(result.localizationExpansion !== undefined
+      ? { localizationExpansion: result.localizationExpansion }
+      : {}),
     trigger: args.trigger,
   };
 

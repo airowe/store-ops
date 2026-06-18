@@ -16,6 +16,12 @@
  */
 import type { RankSnapshotRow, Tier } from "./d1.js";
 import type { EmailMessage } from "./auth.js";
+import {
+  attributeRankMovements,
+  type AttributedChange,
+  type AttributionConfidence,
+  type PushInput,
+} from "./engine/rankAttribution.js";
 
 export type DigestDirection = "up" | "down" | "new" | "lost" | "same";
 
@@ -152,10 +158,23 @@ export function buildDigest(
 
 // ── delta view: the dashboard's animated rank-movement payload ────────────────
 
+/**
+ * A delta entry, optionally carrying the PRD-02 rank-attribution overlay: the
+ * correlational link to the push that added this keyword (`attributedChange`) and
+ * a `confidence` enum. The overlay is present only when `rankDeltasView` is given
+ * the app's `pushes`; without them the entry is a plain `DigestEntry` and the UI
+ * shows no attribution line (graceful degrade). The copy is always correlational
+ * ("after you added X") — never causal — per the attribution engine.
+ */
+export type RankDeltaEntry = DigestEntry & {
+  attributedChange?: AttributedChange;
+  confidence?: AttributionConfidence;
+};
+
 export type RankDeltaView = {
   appName: string;
   /** per-keyword deltas, ordered by movement significance (biggest move first). */
-  entries: DigestEntry[];
+  entries: RankDeltaEntry[];
   /** false when every keyword held — lets the UI skip the movement animation. */
   anyMovement: boolean;
 };
@@ -190,10 +209,30 @@ function movementWeight(e: DigestEntry): number {
  */
 export function rankDeltasView(
   rankHistory: RankSnapshotRow[],
-  opts: BuildDigestOpts,
+  opts: BuildDigestOpts & { pushes?: PushInput[] },
 ): RankDeltaView {
   const { appName, entries, anyMovement } = buildDigest(rankHistory, opts);
-  const ordered = [...entries].sort((a, b) => movementWeight(b) - movementWeight(a));
+  const ordered: RankDeltaEntry[] = [...entries].sort(
+    (a, b) => movementWeight(b) - movementWeight(a),
+  );
+
+  // PRD 02: overlay rank attribution when the caller passes the app's pushes.
+  // attributeRankMovements re-derives the same per-keyword deltas (it reuses the
+  // digest's lastTwoDistinct window), so its movements line up 1:1 with `entries`
+  // by keyword. We copy ONLY the correlational overlay (attributedChange +
+  // confidence) onto the matching entry; the delta numbers stay authoritative
+  // from buildDigest so the email and the card can never disagree.
+  if (opts.pushes && opts.pushes.length) {
+    const movements = attributeRankMovements({ rankHistory, pushes: opts.pushes });
+    const byKeyword = new Map(movements.map((m) => [m.keyword, m]));
+    for (const entry of ordered) {
+      const m = byKeyword.get(entry.keyword);
+      if (!m) continue;
+      entry.confidence = m.confidence;
+      if (m.attributedChange) entry.attributedChange = m.attributedChange;
+    }
+  }
+
   return { appName, entries: ordered, anyMovement };
 }
 

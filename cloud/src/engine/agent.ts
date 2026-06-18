@@ -28,12 +28,15 @@ import {
   resolveNameToId,
 } from "./competitorWatch.js";
 import { bucketize, type KeywordInput, type ScoredKeyword } from "./keywords.js";
+import { findKeywordGaps, type KeywordGap } from "./keywordGap.js";
 import { optimizeCopy, type ProposedCopy } from "./optimize.js";
 import { type Rank, ranksFor } from "./rankCheck.js";
 import { score as scoreScreenshots, type ShotScore } from "./screenshotScore.js";
 import type { Finding } from "./auditFindings.js";
 import type { AscContext } from "./ascContext.js";
 import type { Opportunity } from "./rankOpportunity.js";
+import type { CoverageReport } from "./metadataCoverage.js";
+import type { LocaleRecommendation } from "./localizationExpansion.js";
 
 /** Everything the agent needs to run one app's loop. Pure data in. */
 export type AppInput = {
@@ -99,6 +102,28 @@ export type AgentResult = {
    * so older/other callers stay valid.
    */
   opportunities?: Opportunity[] | undefined;
+  /**
+   * Keyword gaps (PRD 01): terms tracked competitors VISIBLY use that you don't
+   * target and don't rank top-50 for, sorted by winnability with a `fitsBudget`
+   * flag. Inferred from competitors' name/subtitle only — never from their
+   * ranking algorithm. Names-only attribution (no raw competitor listing leaks).
+   * Safe to serialize to the client. Optional so older paths stay valid.
+   */
+  keywordGaps?: KeywordGap[] | undefined;
+  /**
+   * Metadata coverage report (PRD 03) — how hard the 30/30/100 char budget is
+   * working, with itemized waste (duplicate / brand_repeat / filler). Computed in
+   * the run path from the CURRENT copy + the app's brand. Curated counts + copy
+   * only (no raw ASC dump) — safe to serve to the client past the privacy boundary.
+   */
+  coverage?: CoverageReport | undefined;
+  /**
+   * Localization expansion recommendations (PRD 04) — ROI-sorted locales to add,
+   * from a STATIC, bundled locale-value heuristic (NOT live install data). Derived
+   * only from live locale codes + the category name, so it's PII-safe and reaches
+   * the client. Present on a Mode-A (ASC) run where we read all locales + category.
+   */
+  localizationExpansion?: LocaleRecommendation[] | undefined;
 };
 
 export type PushCommand = {
@@ -258,6 +283,19 @@ export async function runAgent(fetchFn: FetchFn, input: AppInput): Promise<Agent
   // 6. PREPARE (do not execute) the push command handoff
   const pushCommands = buildPushCommands(input.bundleId, proposedCopy);
 
+  // 7. Keyword gaps (PRD 01) — fuse competitor listings + your ranks + your live
+  //    copy. The keyword field is only known when read from ASC; without it we
+  //    pass name+subtitle (still honest: we only exclude what we can actually see).
+  const keywordGaps = findKeywordGaps({
+    yourCopy: {
+      name: input.baseCopy?.name ?? auditResult.liveName,
+      ...(currentCopy.subtitle !== undefined ? { subtitle: currentCopy.subtitle } : {}),
+      ...(currentCopy.keywords !== undefined ? { keywords: currentCopy.keywords } : {}),
+    },
+    yourRanks: ranks,
+    competitors: listings,
+  });
+
   return {
     audit: auditResult,
     ranks,
@@ -266,6 +304,7 @@ export async function runAgent(fetchFn: FetchFn, input: AppInput): Promise<Agent
     currentCopy,
     proposedCopy,
     pushCommands,
+    keywordGaps,
   };
 }
 

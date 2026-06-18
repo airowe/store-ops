@@ -524,6 +524,23 @@
         el("span", { class: "dmove" }, [prevEl, el("span", { class: "darrow" }, ["→"]), curEl]),
         chip,
       ]));
+
+      // PRD 02 attribution line: when this move is (correlationally) linked to a
+      // push that added the keyword, show "↳ after you added 'x' (Jun 12)" under
+      // the row, clickable through to that run. The copy is correlational only —
+      // it states the time order, never a cause. `linked` reads solid; the lighter
+      // `coincident` style is reserved for the rare case where the overlay carries
+      // a note without a full link.
+      var attr = e.attributedChange;
+      if (attr && attr.note) {
+        var conf = e.confidence === "linked" ? "linked" : "coincident";
+        var line = el("a", {
+          class: "dattr " + conf,
+          href: "#/runs/" + attr.runId,
+          title: "See the push this followed",
+        }, ["↳ " + attr.note]);
+        box.appendChild(el("div", { class: "dattr-row", style: "--i:" + i }, [line]));
+      }
     });
     var sub = entries.length
       ? (deltas.anyMovement ? "Week-over-week organic position. Lower is better — green means you climbed." : "All tracked keywords held steady this week.")
@@ -731,6 +748,13 @@
     //    proposed changes below, so it reads first: audit → diff → reasoning → gate.
     c.appendChild(listingAuditCard(R, run.app_id));
 
+    // 1b) EXPAND TO MORE MARKETS — PRD 04 localization expansion. Renders directly
+    //     below the findings card when the run computed locale recommendations
+    //     (a Mode-A/ASC run); the locale_single finding above is the headline, this
+    //     is the workbench. Absent → nothing renders.
+    var locCard = localizationExpansionCard(R, run.app_id);
+    if (locCard) c.appendChild(locCard);
+
     // 2) THE DIFF — lead with current → proposed, like a PR review (devs).
     c.appendChild(diffCard(R.currentCopy || {}, R.proposedCopy || {}));
 
@@ -743,6 +767,15 @@
     // 3b) WHERE TO PUSH NEXT — winnability opportunities (PRD 06). The honest
     //     ranker: closest+weakest-field terms first, longshots labeled not hidden.
     c.appendChild(opportunityCard(R.opportunities || []));
+
+    // 3c) keyword opportunities (PRD 01) — gaps competitors use that you don't.
+    //     Rendered only when the run computed gaps (omitted gracefully otherwise).
+    var gapCard = keywordGapCard(R.keywordGaps || [], run.app_id, R.reasoning || []);
+    if (gapCard) c.appendChild(gapCard);
+
+    // 3d) COMPETITOR RANK WAR ROOM — head-to-head per-keyword vs selected
+    //     competitors, gap-to-best, trend, sorted by closeable gap (PRD 05).
+    c.appendChild(warRoomCard(R.warRoom || null, run.app_id, R.competitors || {}));
 
     // 4) keyword reasoning table
     c.appendChild(keywordCard(R.reasoning || []));
@@ -853,13 +886,161 @@
       });
     }
 
-    var children = [head, body];
+    var children = [head];
+    // Metadata coverage gauge (PRD 03) — a budget-efficiency read, ABOVE the
+    // findings. Separate visual section; the findings card logic is untouched.
+    var cov = coverageSection(R.coverage);
+    if (cov) children.push(cov);
+    children.push(body);
     // No-key run → render the unlock CTA below the findings (PRD 04). Driven by the
     // asc_unlock finding (data hook from PRD 01); absent on key-bearing runs.
     var unlock = findings.filter(function (f) { return f.id === "asc_unlock"; })[0];
     if (unlock) children.push(ascUnlockCta(unlock, appId));
 
     return el("div", { class: "card audit-card" }, children);
+  }
+
+  // ── Metadata coverage gauge + waste breakdown (PRD 03) ─────────────────────
+  // "How hard your metadata is working" — a budget-efficiency heuristic, NOT a
+  // rank score (the honesty frame). Renders a radial gauge (0–100%), a normative
+  // context line, and each waste item as a finding-style row with chars saved.
+  var COVERAGE_WASTE_META = {
+    duplicate:    { ico: "⧉", label: "Duplicate" },
+    brand_repeat: { ico: "®", label: "Brand repeat" },
+    filler:       { ico: "·", label: "Filler" },
+    unused:       { ico: "∅", label: "Unused" },
+  };
+  function coverageBand(score) {
+    if (score >= 80) return { cls: "good", note: "Excellent — your budget is working hard." };
+    if (score >= 60) return { cls: "warn", note: "Strong. A few tweaks would tighten it." };
+    if (score >= 20) return { cls: "warn", note: "Typical. Trim the waste below to lift it." };
+    return { cls: "bad", note: "Heavy duplication, brand repeats, or filler — see below." };
+  }
+  function coverageSection(cov) {
+    if (!cov || typeof cov.coverageScore !== "number") return null;
+    var score = Math.round(cov.coverageScore);
+    var band = coverageBand(score);
+    var used = cov.usedChars || { name: 0, subtitle: 0, keywords: 0 };
+    var workingChars = Math.round((cov.coverageScore / 100) * 160);
+
+    // radial gauge via conic-gradient (no SVG dep); center shows the score.
+    var deg = Math.round((score / 100) * 360);
+    var gauge = el("div", { class: "cov-gauge " + band.cls,
+      style: "background:conic-gradient(currentColor " + deg + "deg, rgba(127,127,127,.18) " + deg + "deg)" }, [
+      el("div", { class: "cov-gauge-inner" }, [
+        el("span", { class: "cov-score" }, [String(score)]),
+        el("span", { class: "cov-pct" }, ["%"]),
+      ]),
+    ]);
+
+    var meta = el("div", { class: "cov-meta" }, [
+      el("div", { class: "cov-title" }, ["Metadata coverage"]),
+      el("div", { class: "cov-sub" }, [workingChars + " of 160 chars working"]),
+      el("div", { class: "cov-note faint" }, [band.note]),
+      el("div", { class: "cov-frame faint" }, ["A budget-efficiency heuristic — how hard your metadata works, not a rank score."]),
+      el("div", { class: "cov-fields faint" }, [
+        "Name " + used.name + "/30 · Subtitle " + used.subtitle + "/30 · Keywords " + used.keywords + "/100" +
+        " · " + (cov.distinctTerms || 0) + " distinct term" + ((cov.distinctTerms === 1) ? "" : "s"),
+      ]),
+    ]);
+
+    var head = el("div", { class: "cov-head" }, [gauge, meta]);
+    var kids = [head];
+
+    var waste = cov.waste || [];
+    if (waste.length) {
+      var list = el("div", { class: "cov-waste" });
+      waste.forEach(function (w, i) {
+        var m = COVERAGE_WASTE_META[w.kind] || { ico: "·", label: w.kind };
+        list.appendChild(el("div", { class: "cov-waste-item flip-in", style: "--i:" + i }, [
+          el("div", { class: "cov-waste-ico", title: m.label }, [m.ico]),
+          el("div", { class: "cov-waste-body" }, [
+            el("div", { class: "cov-waste-detail" }, [w.detail]),
+            el("div", { class: "cov-waste-meta" }, [
+              el("span", { class: "impact-chip neutral" }, [m.label]),
+              el("span", { class: "finding-evidence" }, [w.chars + " char" + (w.chars === 1 ? "" : "s")]),
+            ]),
+          ]),
+        ]));
+      });
+      kids.push(list);
+    } else {
+      kids.push(el("div", { class: "cov-clean faint" }, ["No wasted budget — no duplicates, brand repeats, or filler detected."]));
+    }
+    return el("div", { class: "cov-card" }, kids);
+  }
+
+  // ── "Expand to more markets" card (PRD 04 localization expansion) ──────────
+  // Renders the engine's ROI-sorted locale recommendations. Each App Store locale
+  // is a separate keyword surface; this card is the workbench the locale_single
+  // finding points at. Honest by construction: the rationale text comes straight
+  // from the engine (market/language descriptors, NO install numbers), and the
+  // effort badge is the engine's own honest "translate" vs "new". We show the top
+  // 3–5; the post-MVP "Draft this locale's metadata" button routes to the ASC run
+  // panel (reusing the existing credential surface — no new one).
+  var TIER_BADGE = {
+    "large":     { cls: "good",    label: "Large market" },
+    "mid":       { cls: "neutral", label: "Mid market" },
+    "long-tail": { cls: "neutral", label: "Emerging market" },
+  };
+  // A small static label map so a raw code reads as a language to the user. Falls
+  // back to the bare code when unknown (never fabricated).
+  var LOCALE_LANG = {
+    "es-MX": "Spanish (Mexico)", "es-ES": "Spanish (Spain)", "de-DE": "German",
+    "fr-FR": "French", "fr-CA": "French (Canada)", "ja-JP": "Japanese", "ko-KR": "Korean",
+    "pt-BR": "Portuguese (Brazil)", "pt-PT": "Portuguese", "it-IT": "Italian",
+    "ru-RU": "Russian", "zh-Hans-CN": "Simplified Chinese", "zh-Hant-TW": "Traditional Chinese",
+    "nl-NL": "Dutch", "sv-SE": "Swedish", "pl-PL": "Polish", "tr-TR": "Turkish",
+    "ar-SA": "Arabic", "th-TH": "Thai", "id-ID": "Indonesian", "vi-VN": "Vietnamese",
+    "hi-IN": "Hindi", "en-GB": "English (UK)", "en-AU": "English (Australia)",
+  };
+
+  function localizationExpansionCard(R, appId) {
+    var recs = (R && R.localizationExpansion) || [];
+    if (!recs.length) return null; // no recommendations → no card
+
+    var head = el("div", { class: "audit-head" }, [
+      el("h3", { style: "margin:0" }, ["Expand to more markets"]),
+      el("span", { class: "audit-summary" }, [
+        recs.length + " high-opportunity locale" + (recs.length === 1 ? "" : "s"),
+      ]),
+    ]);
+
+    var body = el("div", { class: "loc-recs" });
+    // UI shows the top 5 (engine already returns ≤7, ROI-sorted).
+    recs.slice(0, 5).forEach(function (r, i) {
+      var tier = TIER_BADGE[r.storefrontTier] || TIER_BADGE["mid"];
+      var lang = LOCALE_LANG[r.locale] || r.locale;
+      var effortLabel = r.effort === "translate" ? "Translate" : "New";
+      var effortTitle = r.effort === "translate"
+        ? "You have copy to translate into this storefront"
+        : "Net-new metadata for this storefront";
+
+      var meta = el("div", { class: "loc-rec-meta" }, [
+        el("span", { class: "impact-chip " + tier.cls }, [tier.label]),
+        el("span", { class: "loc-effort-badge " + r.effort, title: effortTitle }, [effortLabel]),
+      ]);
+      var draftBtn = el("button", {
+        class: "btn small", title: "Draft this locale's metadata with the optimizer",
+        onclick: function () { go("#/apps/" + appId + "?asc=1"); },
+      }, ["Draft " + r.locale + " metadata →"]);
+
+      body.appendChild(el("div", { class: "loc-rec flip-in", style: "--i:" + i }, [
+        el("div", { class: "loc-rec-head" }, [
+          el("span", { class: "loc-rec-code" }, [r.locale]),
+          el("span", { class: "loc-rec-lang faint" }, [lang]),
+        ]),
+        el("div", { class: "loc-rec-rationale" }, [r.rationale]),
+        meta,
+        el("div", { class: "btn-row", style: "margin-top:2px" }, [draftBtn]),
+      ]));
+    });
+
+    var note = el("p", { class: "faint loc-rec-note" }, [
+      "Each locale is a separate ranking surface. Opportunity is ranked by a static market-size heuristic — not live install data.",
+    ]);
+
+    return el("div", { class: "card loc-card" }, [head, body, note]);
   }
 
   function reasoningCard(R) {
@@ -1078,6 +1259,182 @@
       el("div", { class: "faint", style: "font-size:12px;margin-bottom:10px" }, ["score = volume·0.4 + (100−difficulty)·0.3 + relevance·0.3 → Primary anchors the title, Secondary the subtitle, Long-tail the keyword field, Aspirational tracked only."]),
       tbl,
     ]);
+  }
+
+  // "Keyword opportunities" card (PRD 01): terms tracked competitors VISIBLY use
+  // that you don't target and don't rank top-50 for, ranked by winnability. Each
+  // row shows the score bar, competitor badges, your current rank, and a budget
+  // flag. "Add to next run" feeds the term into the optimizer's target set.
+  //
+  // HONESTY (load-bearing copy — do not soften into causation): we infer term
+  // usage from a competitor's VISIBLE listing, never from their ranking algorithm.
+  // The card says "competitors use this term", NEVER "they rank #1 because of it".
+  // `fitsBudget` is advisory; the optimizer still enforces the 100-char limit.
+  function keywordGapCard(gaps, appId, reasoning) {
+    if (!gaps || !gaps.length) return null; // graceful omit — no gaps, no card
+    var TOP_N = 8;
+    var shown = gaps.slice(0, TOP_N);
+
+    var rows = el("div", { class: "gaplist" });
+    shown.forEach(function (g, i) {
+      var pct = Math.max(0, Math.min(100, Math.round(g.score)));
+      var badges = el("div", { class: "gap-comps" }, (g.competitorsUsing || []).map(function (nm) {
+        return el("span", { class: "gap-comp" }, [nm]);
+      }));
+      var rankLabel = g.youRank == null ? "Unranked" : "Rank #" + g.youRank;
+      var budget = g.fitsBudget
+        ? el("span", { class: "gap-budget ok", title: "Fits your remaining keyword-field budget (advisory)" }, ["✓ fits budget"])
+        : el("span", { class: "gap-budget warn", title: "Won't fit your remaining keyword chars (advisory — optimizer enforces the limit)" }, ["⚠ tight budget"]);
+
+      var addBtn = el("button", { class: "btn small", onclick: function () { feedGapToRun(appId, g.keyword, reasoning, addBtn); } }, ["+ Add to next run"]);
+
+      rows.appendChild(el("div", { class: "gap flip-in", style: "--i:" + i }, [
+        el("div", { class: "gap-head" }, [
+          el("span", { class: "gap-kw" }, [g.keyword]),
+          el("span", { class: "gap-score", title: "Winnability score (0–100)" }, [String(pct)]),
+        ]),
+        el("div", { class: "gap-bar" }, [el("i", { style: "width:" + pct + "%" })]),
+        el("div", { class: "gap-meta" }, [
+          badges,
+          el("span", { class: "gap-rank " + (g.youRank == null ? "none" : g.youRank <= 50 ? "mid" : "") }, [rankLabel]),
+          budget,
+        ]),
+        el("div", { class: "gap-actions" }, [addBtn]),
+      ]));
+    });
+
+    var moreNote = gaps.length > TOP_N
+      ? el("div", { class: "faint", style: "font-size:12px;margin-top:8px" }, ["Showing top " + TOP_N + " of " + gaps.length + " gaps by winnability."])
+      : null;
+
+    var children = [
+      el("div", { class: "audit-head" }, [
+        el("h3", { style: "margin:0" }, ["Keyword opportunities"]),
+        el("span", { class: "audit-summary" }, [gaps.length + " gap" + (gaps.length === 1 ? "" : "s")]),
+      ]),
+      el("p", { class: "faint", style: "margin:4px 0 14px;font-size:13px" },
+        ["Terms competitors use that you don't target. Based on competitors' visible listing — we can't see their keyword field or why they rank. These fit your metadata budget where flagged."]),
+      rows,
+    ];
+    if (moreNote) children.push(moreNote);
+    return el("div", { class: "card gap-card" }, children);
+  }
+
+  // Feed a gap keyword into the next run's target set: re-run the agent with the
+  // existing seed keywords PLUS this term. The human still approves the result —
+  // this only proposes a new target, it never pushes anything.
+  function feedGapToRun(appId, keyword, reasoning, btn) {
+    var seeds = (reasoning || []).map(function (k) { return k.keyword; });
+    if (seeds.indexOf(keyword) === -1) seeds.push(keyword);
+    btn.disabled = true; btn.innerHTML = '<span class="spin"></span> Queuing…';
+    api("POST", "/apps/" + appId + "/run", { keywords: seeds })
+      .then(function (r) { toast("Added “" + keyword + "” — running the agent with it."); go("#/runs/" + r.id); })
+      .catch(function (e) { btn.disabled = false; btn.textContent = "+ Add to next run"; toast(e.message || "Failed"); });
+  }
+
+  // ── Competitor Rank War Room (PRD 05, absorbs the #25 selector) ────────────
+  // Head-to-head per-keyword grid: You vs each SELECTED competitor, with the gap
+  // to the best competitor and your trend, sorted so the most CLOSEABLE gaps lead
+  // (winnability over vanity). A multi-select of tracked competitor names drives
+  // the grid; toggling re-fetches /apps/:id/war-room?competitors=… so the cells
+  // recompute live. Unknown competitor rank = "—" — honest "we didn't check",
+  // never a guessed number. Correlation only: we show the gap + trend side by
+  // side, never "you beat them BECAUSE X".
+  var WAR_TREND = {
+    gaining: { cls: "good", txt: "gaining ↑" },
+    losing:  { cls: "bad",  txt: "losing ↓" },
+    flat:    { cls: "neutral", txt: "flat =" },
+    "new":   { cls: "good", txt: "new ✨" },
+    lost:    { cls: "bad",  txt: "lost ✗" },
+  };
+
+  function warRoomCard(initial, appId, comp) {
+    // Available competitors = the tracked listing names (the captured set the
+    // selector is allowed to offer — no hand-typed arbitrary names).
+    var available = (comp.listings || []).map(function (l) { return l.name; }).filter(Boolean);
+    var card = el("div", { class: "card war-room" }, [
+      el("h3", {}, ["Competitor rank war room"]),
+      el("div", { class: "muted", style: "font-size:13px;margin-bottom:10px" }, [
+        "Head-to-head per keyword. The gap to the closest competitor and your trend, side by side — sorted by the gap you can actually close. ",
+        el("b", {}, ["—"]), " means we haven't checked that competitor on that keyword (never a guess).",
+      ]),
+    ]);
+
+    // The selected set: start from what the seeded payload used, else all available.
+    var selected = {};
+    var seedNames = (initial && initial.competitors) || available;
+    seedNames.forEach(function (n) { selected[n] = true; });
+
+    var gridWrap = el("div", { class: "war-grid-wrap" });
+
+    function renderGrid(data) {
+      clear(gridWrap);
+      var rows = (data && data.warRoom) || [];
+      var cols = (data && data.competitors) || [];
+      if (!rows.length) {
+        gridWrap.appendChild(el("div", { class: "faint" }, [
+          cols.length ? "No tracked keywords to compare yet — run the loop to capture ranks." : "Select a competitor to open the head-to-head.",
+        ]));
+        return;
+      }
+      var head = el("tr", {}, [el("th", {}, ["Keyword"]), el("th", {}, ["You"])]
+        .concat(cols.map(function (n) { return el("th", {}, [n]); }))
+        .concat([el("th", {}, ["Gap"]), el("th", {}, ["Trend"])]));
+      var tb = el("tbody", {});
+      rows.forEach(function (r) {
+        var tr = el("tr", { class: r.winning ? "winning" : "" }, []);
+        tr.appendChild(el("td", { class: "war-kw" }, [r.keyword]));
+        tr.appendChild(el("td", {}, [el("span", { class: "pos " + rankClass(r.you) }, [rankText(r.you)])]));
+        (r.competitors || []).forEach(function (cc) {
+          tr.appendChild(el("td", {}, [el("span", { class: "pos " + rankClass(cc.rank) }, [rankText(cc.rank)])]));
+        });
+        // Gap: red when you're behind (positive gap), green when you're winning.
+        var gapCell;
+        if (r.gapToBest == null) {
+          gapCell = el("span", { class: "war-gap " + (r.winning ? "good" : "neutral") }, [r.winning ? "winning" : "—"]);
+        } else {
+          gapCell = el("span", { class: "war-gap bad", title: "Your rank minus the closest competitor's — the gap to close" }, ["+" + r.gapToBest]);
+        }
+        tr.appendChild(el("td", {}, [gapCell]));
+        var tm = WAR_TREND[r.trend] || WAR_TREND.flat;
+        tr.appendChild(el("td", {}, [el("span", { class: "war-trend " + tm.cls }, [tm.txt])]));
+        tb.appendChild(tr);
+      });
+      gridWrap.appendChild(el("table", { class: "war-grid" }, [el("thead", {}, [head]), tb]));
+    }
+
+    async function refresh() {
+      var picked = Object.keys(selected).filter(function (n) { return selected[n]; });
+      try {
+        var data = await api("GET", "/apps/" + appId + "/war-room?competitors=" + encodeURIComponent(picked.join(",")));
+        renderGrid(data);
+      } catch (e) {
+        renderGrid({ warRoom: [], competitors: picked });
+      }
+    }
+
+    // Selector: a chip per available competitor; click toggles + re-fetches.
+    if (available.length) {
+      var chips = el("div", { class: "war-selector" }, [el("span", { class: "war-selector-label" }, ["Compare against:"])]);
+      available.forEach(function (name) {
+        var chip = el("button", {
+          class: "war-chip" + (selected[name] ? " on" : ""),
+          onclick: function () {
+            selected[name] = !selected[name];
+            chip.className = "war-chip" + (selected[name] ? " on" : "");
+            refresh();
+          },
+        }, [name]);
+        chips.appendChild(chip);
+      });
+      card.appendChild(chips);
+    }
+    card.appendChild(gridWrap);
+
+    // Seed from the run payload immediately (no flash), then it's selector-driven.
+    if (initial && initial.warRoom) renderGrid(initial);
+    else refresh();
+    return card;
   }
 
   function gateCard(run, R) {

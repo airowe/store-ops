@@ -700,3 +700,138 @@ svg.spark .lbl { fill: var(--faint); font-family: var(--mono); font-size: 10px; 
 @media (prefers-reduced-motion: reduce) {
   .tier-limit-modal { animation: none; }
 }
+
+/* ===== ranking-feature styles: dbf8e34 ===== */
+/* ── Keyword opportunities (PRD 01 keyword gap finder) ───────────────────── */
+.btn.small { padding: 5px 11px; font-size: 12.5px; }
+.gap-card .audit-head { display: flex; align-items: center; gap: 10px; }
+.gaplist { display: flex; flex-direction: column; }
+.gap { padding: 12px 0; border-bottom: 1px solid var(--line-soft); }
+.gap:last-child { border-bottom: 0; }
+.gap-head { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
+.gap-kw { font-weight: 650; color: var(--ink); font-size: 15px; }
+.gap-score { font-variant-numeric: tabular-nums; font-weight: 700; color: var(--signal); font-size: 13px; }
+.gap-bar { height: 5px; border-radius: 5px; background: var(--line); margin-top: 7px; overflow: hidden; }
+.gap-bar > i { display: block; height: 100%; background: var(--signal-dim); border-radius: 5px; }
+.gap-meta { display: flex; align-items: center; gap: 8px; margin-top: 9px; flex-wrap: wrap; }
+.gap-comps { display: flex; gap: 6px; flex-wrap: wrap; }
+.gap-comp { font-size: 11.5px; padding: 2px 8px; border-radius: 999px; color: var(--brand);
+  background: rgba(91,140,255,.12); border: 1px solid rgba(91,140,255,.4); }
+.gap-rank { font-size: 12px; color: var(--dim); font-variant-numeric: tabular-nums; }
+.gap-rank.mid { color: var(--warn); }
+.gap-rank.none { color: var(--faint); }
+.gap-budget { font-size: 11.5px; padding: 2px 8px; border-radius: 999px; border: 1px solid var(--line); }
+.gap-budget.ok { color: var(--signal); background: var(--signal-glow); border-color: var(--signal-dim); }
+.gap-budget.warn { color: var(--warn); background: rgba(251,191,36,.10); border-color: rgba(251,191,36,.4); }
+.gap-actions { margin-top: 10px; }
+
+/* ===== ranking-feature styles: 4b14294 ===== */
+/* PRD 02 — rank-attribution line under a moved keyword. Correlational copy only
+   ("after you added 'x'"), clickable through to the run. `linked` = solid/full
+   opacity; `coincident` = lighter + dashed underline (the softer visual hint). */
+.dattr-row { padding: 0 2px 8px; margin-top: -4px; }
+.dattr {
+  display: inline-block; font-size: 12px; line-height: 1.4; text-decoration: none;
+  color: var(--faint); opacity: 0; animation: rise .42s ease-out forwards;
+  animation-delay: calc(var(--i, 0) * 60ms + 380ms);
+}
+.dattr:hover { text-decoration: underline; }
+.dattr.linked { color: var(--signal); }
+.dattr.coincident { color: var(--faint); border-bottom: 1px dashed var(--line-soft); }
+
+
+  .reveal, .flip-in, .rank-pop, .rank-arrow, .dchip, .dattr { animation: none !important; opacity: 1 !important; transform: none !important; }
+
+/* ===== ranking-feature styles: 6874673 ===== */
+/* ── metadata coverage gauge + waste (PRD 03) ─────────────────── */
+.cov-card {
+  margin: 4px 0 14px; padding: 14px; border-radius: 11px;
+  background: var(--line-soft); border: 1px solid var(--line);
+}
+.cov-head { display: flex; gap: 16px; align-items: center; flex-wrap: wrap; }
+.cov-gauge {
+  flex: none; width: 76px; height: 76px; border-radius: 50%;
+  display: grid; place-items: center; color: var(--brand);
+}
+.cov-gauge.good { color: var(--signal); }
+.cov-gauge.warn { color: var(--warn); }
+.cov-gauge.bad  { color: var(--bad); }
+.cov-gauge-inner {
+  width: 58px; height: 58px; border-radius: 50%;
+  background: var(--bg, #0c0e14); display: grid; place-items: center;
+  grid-auto-flow: column; align-items: baseline;
+}
+.cov-score { font-size: 22px; font-weight: 700; color: var(--ink); font-family: var(--mono); }
+.cov-pct { font-size: 11px; color: var(--faint); font-family: var(--mono); }
+.cov-meta { flex: 1; min-width: 200px; }
+.cov-title { font-weight: 600; color: var(--ink); }
+.cov-sub { font-family: var(--mono); font-size: 12px; color: var(--dim); margin-top: 2px; }
+.cov-note { font-size: 13px; margin-top: 4px; }
+.cov-frame { font-size: 12px; margin-top: 4px; font-style: italic; }
+.cov-fields { font-family: var(--mono); font-size: 11px; margin-top: 6px; }
+.cov-waste { margin-top: 12px; display: flex; flex-direction: column; gap: 8px; }
+.cov-waste-item { display: flex; gap: 10px; align-items: flex-start; }
+.cov-waste-ico {
+  flex: none; width: 22px; height: 22px; border-radius: 6px;
+  display: grid; place-items: center; font-weight: 700; font-size: 12px;
+  color: var(--warn); background: rgba(251,191,36,.14);
+}
+.cov-waste-body { flex: 1; min-width: 0; }
+.cov-waste-detail { color: var(--dim); font-size: 13px; }
+.cov-waste-meta { display: flex; align-items: center; gap: 8px; margin-top: 5px; flex-wrap: wrap; }
+.cov-clean { margin-top: 10px; font-size: 13px; }
+
+/* ===== ranking-feature styles: b75150b ===== */
+.impact-chip.good    { color: var(--signal); background: var(--signal-glow); border-color: var(--signal-dim); }
+
+/* ── localization expansion card (PRD 04 "Expand to more markets") ── */
+.loc-card .loc-recs { display: flex; flex-direction: column; gap: 10px; margin-top: 6px; }
+.loc-rec {
+  padding: 12px 14px; border-radius: 10px;
+  background: var(--line-soft); border: 1px solid var(--line);
+}
+.loc-rec-head { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+.loc-rec-code { font-family: var(--mono); font-weight: 700; color: var(--ink); font-size: 14px; }
+.loc-rec-lang { font-size: 13px; }
+.loc-rec-rationale { color: var(--dim); font-size: 13px; margin-top: 4px; }
+.loc-rec-meta { display: flex; align-items: center; gap: 8px; margin-top: 8px; flex-wrap: wrap; }
+.loc-effort-badge {
+  display: inline-block; font-family: var(--mono); font-size: 11px; font-weight: 600;
+  padding: 2px 8px; border-radius: 999px; border: 1px solid transparent; white-space: nowrap;
+}
+.loc-effort-badge.translate { color: var(--brand); background: rgba(91,140,255,.12); border-color: rgba(91,140,255,.4); }
+.loc-effort-badge.new { color: var(--dim); background: var(--line-soft); border-color: var(--line); }
+.loc-rec .btn.small { font-size: 12px; padding: 4px 10px; }
+.loc-rec-note { margin-top: 10px; font-size: 12px; }
+
+/* ===== ranking-feature styles: 4f6b9b5 ===== */
+/* ── competitor rank war room (PRD 05) ───────────────────────── */
+.war-room .war-selector { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 4px 0 14px; }
+.war-selector-label { color: var(--faint); font-size: 12.5px; }
+.war-chip {
+  font: inherit; font-size: 12.5px; cursor: pointer;
+  padding: 5px 11px; border-radius: 999px;
+  border: 1px solid var(--line); background: transparent; color: var(--dim);
+  transition: border-color .15s, color .15s, background .15s;
+}
+.war-chip:hover { border-color: var(--signal); }
+.war-chip.on { border-color: var(--signal); color: var(--signal); background: rgba(52, 211, 153, .1); }
+.war-grid-wrap { overflow-x: auto; }
+.war-grid { width: 100%; border-collapse: collapse; font-size: 13px; }
+.war-grid th, .war-grid td { padding: 8px 10px; text-align: center; border-bottom: 1px solid var(--line-soft); }
+.war-grid th { color: var(--faint); font-weight: 600; font-size: 11.5px; text-transform: uppercase; letter-spacing: .04em; }
+.war-grid th:first-child, .war-grid td:first-child { text-align: left; }
+.war-grid .war-kw { font-weight: 600; color: var(--txt); }
+.war-grid tr.winning td:first-child { box-shadow: inset 3px 0 0 var(--signal); }
+.war-grid .pos { font-family: var(--mono); font-weight: 700; font-variant-numeric: tabular-nums; }
+.war-grid .pos.good { color: var(--signal); }
+.war-grid .pos.mid { color: var(--warn); }
+.war-grid .pos.none { color: var(--faint); font-weight: 500; }
+.war-gap { font-family: var(--mono); font-weight: 700; font-variant-numeric: tabular-nums; }
+.war-gap.bad { color: var(--bad); }
+.war-gap.good { color: var(--signal); }
+.war-gap.neutral { color: var(--faint); }
+.war-trend { font-size: 12px; font-weight: 600; white-space: nowrap; }
+.war-trend.good { color: var(--signal); }
+.war-trend.bad { color: var(--bad); }
+.war-trend.neutral { color: var(--faint); }

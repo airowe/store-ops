@@ -23,6 +23,7 @@ export {
   lookup,
   lookupAll,
   resolveNameToId,
+  resolveNameToBundle,
   diff as diffCompetitors,
   digestLine as competitorDigest,
   watched,
@@ -102,3 +103,36 @@ export {
   type RankOpportunityInput,
   rankOpportunities,
 } from "./rankOpportunity.js";
+export {
+  type KeywordGap,
+  type FindKeywordGapsInput,
+  findKeywordGaps,
+} from "./keywordGap.js";
+export {
+  type RankMovement,
+  type AttributedChange,
+  type AttributionConfidence,
+  type MovementDirection,
+  type PushInput,
+  attributeRankMovements,
+} from "./rankAttribution.js";
+export {
+  type CoverageReport,
+  type CoverageWaste,
+  type CoverageOptions,
+  metadataCoverage,
+} from "./metadataCoverage.js";
+export {
+  type LocaleRecommendation,
+  type StorefrontTier,
+  type RecommendLocalesInput,
+  recommendLocales,
+  rankAll as rankAllLocales,
+} from "./localizationExpansion.js";
+export {
+  type RankSnapshot as WarRoomRankSnapshot,
+  type HeadToHead,
+  type WarTrend,
+  type BuildWarRoomInput,
+  buildWarRoom,
+} from "./rankWarRoom.js";

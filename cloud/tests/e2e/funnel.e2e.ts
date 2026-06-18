@@ -101,6 +101,43 @@ test.describe("dashboard funnel (mock backend)", () => {
     }
   });
 
+  test("the run page renders the metadata coverage gauge + waste breakdown (PRD 03)", async ({ page }) => {
+    await gotoMockDashboard(page);
+    // An ASC (Mode-A) run fills the live subtitle + keyword field, so the coverage
+    // report has real terms to score (and likely some duplicate/filler waste).
+    const id = await seedAppWithRun(page, { asc: true });
+    const runId = await page.evaluate(async (appId) => {
+      const M = (window as any).STORE_OPS_MOCK;
+      const detail = await (await M.handle("GET", `/apps/${appId}`, null, "demo@store-ops.dev")).json();
+      return detail.runs[0].id as string;
+    }, id);
+    await page.goto(`/index.html#/runs/${runId}`);
+
+    // The coverage gauge renders inside the listing-audit card with a numeric score.
+    const gauge = page.locator(".cov-gauge .cov-score");
+    await expect(gauge).toBeVisible({ timeout: 10_000 });
+    const scoreText = (await gauge.textContent())?.trim() ?? "";
+    const score = Number(scoreText);
+    expect(Number.isFinite(score)).toBe(true);
+    expect(score).toBeGreaterThanOrEqual(0);
+    expect(score).toBeLessThanOrEqual(100);
+
+    // The honesty frame must be present — coverage is a budget heuristic, not a
+    // rank score (the PRD's over-claim guard, surfaced in the UI).
+    await expect(page.getByText(/not a rank score/i)).toBeVisible();
+    await expect(page.getByText(/of 160 chars working/i)).toBeVisible();
+
+    // The coverage report served to the client must match what renders, and must
+    // never carry the raw comma-joined keyword field (the privacy boundary).
+    const cov = await page.evaluate(async (rid) => {
+      const M = (window as any).STORE_OPS_MOCK;
+      const r = await (await M.handle("GET", `/runs/${rid}`, null, "demo@store-ops.dev")).json();
+      return r.result.coverage as { coverageScore: number; waste: Array<{ kind: string; chars: number }> };
+    }, runId);
+    expect(typeof cov.coverageScore).toBe("number");
+    expect(Math.round(cov.coverageScore)).toBe(score);
+  });
+
   test("approval gate hides push commands until approved, then reveals them", async ({ page }) => {
     await gotoMockDashboard(page);
     const id = await seedAppWithRun(page);
@@ -129,6 +166,34 @@ test.describe("dashboard funnel (mock backend)", () => {
     // yet — approval only reveals the commands). It reads "ready to push".
     await expect(page.getByText(/ready to push/i).first()).toBeVisible();
     await expect(page.getByText(/^Shipped$/)).toHaveCount(0);
+  });
+
+  test("the run page shows the keyword-opportunities card with competitor attribution and honest copy", async ({
+    page,
+  }) => {
+    await gotoMockDashboard(page);
+    // Seed an app whose targeted keywords do NOT cover the competitors' terms,
+    // so the gap finder surfaces real opportunities (PRD 01).
+    const id = await seedAppWithRun(page, { keywords: ["timer", "focus", "pomodoro"] });
+    const runId = await page.evaluate(async (appId) => {
+      const M = (window as any).STORE_OPS_MOCK;
+      const detail = await (await M.handle("GET", `/apps/${appId}`, null, "demo@store-ops.dev")).json();
+      return detail.runs[0].id as string;
+    }, id);
+    await page.goto(`/index.html#/runs/${runId}`);
+
+    // The card renders with its honest, non-causal framing.
+    await expect(page.getByRole("heading", { name: /keyword opportunities/i })).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByText(/competitors use that you don't target/i)).toBeVisible();
+    // Honesty boundary: never claims a competitor RANKS because of a term.
+    await expect(page.getByText(/visible listing/i)).toBeVisible();
+    await expect(page.getByText(/rank #1 because/i)).toHaveCount(0);
+
+    // At least one gap row with a competitor badge + an "Add to next run" button.
+    const gap = page.locator(".gap").first();
+    await expect(gap).toBeVisible();
+    await expect(gap.locator(".gap-comp").first()).toBeVisible();
+    await expect(page.getByRole("button", { name: /add to next run/i }).first()).toBeVisible();
   });
 
   test("prefers-reduced-motion: the movement card renders fully (no stuck/invisible elements)", async ({

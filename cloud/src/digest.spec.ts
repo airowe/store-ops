@@ -48,7 +48,7 @@ const WEEK2 = "2026-06-08 09:00:00";
 const WEEK3 = "2026-06-15 09:00:00";
 
 /** Pull a single keyword's entry out of a built digest. */
-function entryFor(entries: DigestEntry[], keyword: string): DigestEntry {
+function entryFor<T extends DigestEntry>(entries: T[], keyword: string): T {
   const found = entries.find((e) => e.keyword === keyword);
   if (!found) throw new Error(`no digest entry for keyword "${keyword}"`);
   return found;
@@ -169,6 +169,57 @@ describe("rankDeltasView — the API payload that feeds the animated dashboard",
     const view = rankDeltasView([], { appName: "Acme" });
     expect(view.entries).toEqual([]);
     expect(view.anyMovement).toBe(false);
+  });
+
+  // ── PRD 02: rank-attribution overlay (correlational, opt-in via `pushes`) ──
+  it("overlays a linked, correlational attribution when a push added the moved keyword", () => {
+    const history = [snap("stoic", null, WEEK1), snap("stoic", 18, WEEK2)];
+    const view = rankDeltasView(history, {
+      appName: "Acme",
+      pushes: [
+        {
+          runId: "run-1",
+          pushedAt: "2026-06-04 12:00:00", // between WEEK1 and WEEK2
+          currentKeywords: "calm",
+          proposedKeywords: "calm,stoic",
+          currentSubtitle: "",
+          proposedSubtitle: "",
+        },
+      ],
+    });
+    const e = entryFor(view.entries, "stoic");
+    expect(e.confidence).toBe("linked");
+    expect(e.attributedChange?.runId).toBe("run-1");
+    expect(e.attributedChange?.note.toLowerCase()).toContain("after you added");
+    expect(e.attributedChange?.note.toLowerCase()).not.toContain("caused");
+  });
+
+  it("leaves entries un-attributed (no overlay) when `pushes` is omitted", () => {
+    const history = [snap("stoic", null, WEEK1), snap("stoic", 18, WEEK2)];
+    const view = rankDeltasView(history, { appName: "Acme" });
+    const e = entryFor(view.entries, "stoic");
+    expect(e.confidence).toBeUndefined();
+    expect(e.attributedChange).toBeUndefined();
+  });
+
+  it("marks a moved keyword 'coincident' (no overlay) when no push added it", () => {
+    const history = [snap("stoic", 50, WEEK1), snap("stoic", 30, WEEK2)];
+    const view = rankDeltasView(history, {
+      appName: "Acme",
+      pushes: [
+        {
+          runId: "run-2",
+          pushedAt: "2026-06-04 12:00:00",
+          currentKeywords: "calm",
+          proposedKeywords: "calm,mindfulness", // did not add "stoic"
+          currentSubtitle: "",
+          proposedSubtitle: "",
+        },
+      ],
+    });
+    const e = entryFor(view.entries, "stoic");
+    expect(e.confidence).toBe("coincident");
+    expect(e.attributedChange).toBeUndefined();
   });
 });
 

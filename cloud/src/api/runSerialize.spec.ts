@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { serializeRunResult } from "./index.js";
 import { auditFindings, summarizeFindings } from "../engine/auditFindings.js";
 import { buildAscContext } from "../engine/ascContext.js";
+import { metadataCoverage } from "../engine/metadataCoverage.js";
 import type { ReasoningTrace } from "../d1.js";
 import type { AscSnapshot } from "../engine/ascRead.js";
 import type { Audit } from "../engine/agent.js";
@@ -75,6 +76,12 @@ function modeATrace(): ReasoningTrace {
   const snapshot = richSnapshot();
   const findings = auditFindings({ snapshot, audit: audit("A"), ranks: RANKS, appName: APP_NAME, hasAscKey: true });
   const ascContext = buildAscContext(snapshot);
+  // Coverage off the LIVE copy (PRD 03) — subtitle/keywords are read on a Mode-A
+  // run; brand is "Weatherly". "forecast" appears in subtitle + keywords (dup).
+  const coverage = metadataCoverage(
+    { name: APP_NAME, subtitle: "Live forecast radar", keywords: "weather,forecast,rain,storm" },
+    { brand: "Weatherly" },
+  );
   return {
     audit: audit("A"),
     ranks: RANKS,
@@ -84,6 +91,7 @@ function modeATrace(): ReasoningTrace {
     proposedCopy: { name: APP_NAME, subtitle: "", keywords: "", validation: { pass: true, checks: [] } },
     pushCommands: [],
     findings,
+    coverage,
     ...(ascContext !== undefined ? { ascContext } : {}),
     trigger: { source: "manual", reasons: ["test"] },
   };
@@ -149,6 +157,22 @@ describe("serializeRunResult — Mode-A (ASC) run", () => {
   it("does not carry the raw ascSnapshot", () => {
     expect((result as Record<string, unknown>).ascSnapshot).toBeUndefined();
   });
+
+  // ── PRD 03: the coverage report rides through, curated + safe ───────────────
+  it("includes the metadata coverage report with score, usedChars, and waste", () => {
+    expect(result.coverage).toBeTruthy();
+    expect(typeof result.coverage?.coverageScore).toBe("number");
+    expect(result.coverage?.coverageScore).toBeGreaterThanOrEqual(0);
+    expect(result.coverage?.coverageScore).toBeLessThanOrEqual(100);
+    expect(result.coverage?.usedChars).toEqual({ name: APP_NAME.length, subtitle: "Live forecast radar".length, keywords: "weather,forecast,rain,storm".length });
+    // 'forecast' lives in subtitle + keywords → a duplicate waste item.
+    expect(result.coverage?.waste.some((w) => w.kind === "duplicate" && w.detail.includes("forecast"))).toBe(true);
+  });
+
+  it("coverage never leaks the full raw keyword copy string (only curated tokens)", () => {
+    const serialized = JSON.stringify(result.coverage);
+    expect(serialized).not.toContain("weather,forecast,rain"); // never the comma-joined field
+  });
 });
 
 describe("serializeRunResult — no-key run", () => {
@@ -173,13 +197,15 @@ describe("serializeRunResult — no-key run", () => {
 });
 
 describe("serializeRunResult — legacy trace (pre-PRD 02)", () => {
-  it("defaults findings to [] and omits ascContext, never throwing", () => {
+  it("defaults findings to [] and omits ascContext + coverage, never throwing", () => {
     const legacy = noKeyTrace();
     delete (legacy as { findings?: unknown }).findings;
     const result = serializeRunResult(legacy, false);
     expect(result.findings).toEqual([]);
     expect(result.findingsSummary.total).toBe(0);
     expect("ascContext" in result).toBe(false);
+    // A trace with no coverage (older or no-copy run) omits it cleanly.
+    expect("coverage" in result).toBe(false);
   });
 });
 

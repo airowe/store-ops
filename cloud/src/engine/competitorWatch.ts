@@ -122,6 +122,32 @@ export async function resolveNameToId(
   }
 }
 
+/**
+ * Resolve a competitor app NAME directly to its `bundleId` via iTunes Search
+ * (top software result), or null. `rankFor` matches on bundleId, so the war room
+ * (PRD 05) uses this to turn a selected competitor name into something it can
+ * rank-check. One round-trip; never throws (returns null on any failure).
+ */
+export async function resolveNameToBundle(
+  fetchFn: FetchFn,
+  name: string,
+  { country = "US" }: { country?: string } = {},
+): Promise<string | null> {
+  try {
+    const url = buildUrl(ITUNES_SEARCH_URL, {
+      term: name,
+      country,
+      entity: "software",
+      limit: 1,
+    });
+    const data = asResponse(await fetchJson(fetchFn, url));
+    const bundle = data.results?.[0]?.bundleId;
+    return bundle ? String(bundle) : null;
+  } catch {
+    return null;
+  }
+}
+
 /** Look up several competitors in sequence (errors captured per-listing). */
 export async function lookupAll(
   fetchFn: FetchFn,
