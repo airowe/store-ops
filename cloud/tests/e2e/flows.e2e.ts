@@ -351,7 +351,7 @@ test.describe("run page — Listing audit card (ASC findings, PRD 03)", () => {
     page,
   }) => {
     await gotoMockDashboard(page);
-    const id = await seedAppWithRun(page);
+    const id = await seedAppWithRun(page, { asc: true });
     const runId = await latestRunId(page, id);
     await page.goto(`/index.html#/runs/${runId}`);
 
@@ -383,7 +383,7 @@ test.describe("run page — Listing audit card (ASC findings, PRD 03)", () => {
 
   test("a critical finding renders in the --bad (critical) treatment", async ({ page }) => {
     await gotoMockDashboard(page);
-    const id = await seedAppWithRun(page);
+    const id = await seedAppWithRun(page, { asc: true });
     const runId = await latestRunId(page, id);
     await page.goto(`/index.html#/runs/${runId}`);
 

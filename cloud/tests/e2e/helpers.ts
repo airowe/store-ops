@@ -32,16 +32,17 @@ export async function gotoMockDashboard(page: Page, hash = "#/"): Promise<void> 
  */
 export async function seedAppWithRun(
   page: Page,
-  opts: { name?: string; bundleId?: string; keywords?: string[] } = {},
+  opts: { name?: string; bundleId?: string; keywords?: string[]; asc?: boolean } = {},
 ): Promise<string> {
   const name = opts.name ?? "Calm";
   const bundleId = opts.bundleId ?? "com.calm.calmapp";
+  const asc = opts.asc ?? false;
   const keywords =
     opts.keywords ??
     ["meditation", "sleep sounds", "breathing exercises", "anxiety relief", "focus music", "habit tracker"];
 
   return await page.evaluate(
-    async ({ name, bundleId, keywords }) => {
+    async ({ name, bundleId, keywords, asc }) => {
       const M = (window as any).STORE_OPS_MOCK;
       const EM = "demo@store-ops.dev";
       // Seeding is a test fixture, not a paywall scenario — lift the partition to
@@ -50,10 +51,20 @@ export async function seedAppWithRun(
       await M.handle("POST", "/_tier", { tier: "fleet" }, EM);
       const conn = await M.handle("POST", "/apps", { bundle_id: bundleId, name, keywords }, EM);
       const id = (await conn.json()).id as string;
-      await M.handle("POST", `/apps/${id}/run`, {}, EM);
+      // asc:true seeds a Mode-A (keyed) run so the full findings set is produced
+      // (appInfo/previews/locales etc.); the default plain run yields the thin set.
+      if (asc) {
+        await M.handle("POST", `/apps/${id}/run-asc`, {
+          issuerId: "11111111-2222-3333-4444-555555555555",
+          keyId: "ABC123DEFG",
+          p8: "-----BEGIN PRIVATE KEY-----\nMOCK\n-----END PRIVATE KEY-----",
+        }, EM);
+      } else {
+        await M.handle("POST", `/apps/${id}/run`, {}, EM);
+      }
       return id;
     },
-    { name, bundleId, keywords },
+    { name, bundleId, keywords, asc },
   );
 }
 

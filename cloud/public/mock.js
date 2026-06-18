@@ -193,26 +193,16 @@
         command: "gplay listing update --package " + app.bundleId + " --title " + esc(name) + " --short-description " + esc(subtitle) },
     ];
 
-    // findings + summary + slim ascContext (PRD 02). Mirrors the engine catalog
-    // so the run-page card (PRD 03) and the funnel/E2E render representative
-    // findings. A no-key run gets the thin set + the asc_unlock CTA; an ASC run
-    // fills in the category/locale/preview findings + a PII-safe ascContext.
-    var findings = mockFindings(app, sc, iphoneCount, ipadCount, ascRead);
-    var findingsSummary = summarizeMockFindings(findings);
-
     var out = {
       audit: { app: app.name, bundleId: app.bundleId, screenshots: sc, liveName: app.name },
       findings: findings,
       findingsSummary: findingsSummary,
-      ascContext: ascContext,
       ranks: ranks,
       competitors: { listings: listings, changes: changes, digest: digest },
       reasoning: reasoning,
       currentCopy: currentCopy,
       proposedCopy: proposedCopy,
       pushCommands: pushCommands,
-      findings: findings,
-      findingsSummary: findingsSummary,
       _listingsSnapshot: listings.reduce(function (m, l) { m[l.key] = { version: l.version }; return m; }, {}),
     };
     // ascContext only exists on an ASC (Mode-A) run — counts + labels, never raw
@@ -230,83 +220,6 @@
     return out;
   }
 
-  // ── findings (PRD 02 mock) ───────────────────────────────────────────────
-  // A representative subset of the engine's catalog (ids match auditFindings),
-  // shaped { id, surface, severity, impact, title, detail, fix, evidence? }.
-  function mockFindings(app, sc, iphone, ipad, ascRead) {
-    var out = [];
-    // screenshots — reuse the audit grade
-    if (sc.grade === "D" || sc.grade === "F") {
-      out.push({ id: "screenshots_grade_low", surface: "screenshots", severity: "critical", impact: "conversion",
-        title: "Screenshots are hurting conversion (grade " + sc.grade + ")",
-        detail: "Weak screenshots cost installs — they're the first thing a shopper judges.",
-        fix: "Add 4+ tall-phone screenshots; the first 2–3 carry most installs.", evidence: "grade " + sc.grade });
-    } else if (sc.grade === "?") {
-      out.push({ id: "screenshots_unknown", surface: "screenshots", severity: "info", impact: "conversion",
-        title: "Couldn't read screenshots from public data",
-        detail: "The public iTunes API often omits screenshots, so we can't grade them reliably.",
-        fix: "Connect App Store Connect for a real screenshot grade." });
-    } else if (iphone >= 1 && iphone <= 3) {
-      out.push({ id: "screenshots_thin", surface: "screenshots", severity: "warn", impact: "conversion",
-        title: "Only " + iphone + " screenshot" + (iphone === 1 ? "" : "s"),
-        detail: "You're leaving conversion on the table by not filling the slots.",
-        fix: "Use more slots; the first 2–3 convert hardest.", evidence: iphone + " iPhone shots" });
-    }
-
-    if (ascRead) {
-      // Mode-A: the full ASC-derived set (representative).
-      out.push({ id: "preview_missing", surface: "previews", severity: "warn", impact: "conversion",
-        title: "No app preview video",
-        detail: "Preview videos lift conversion — they show the app in motion before install.",
-        fix: "Add a 15–30s preview for your primary device." });
-      out.push({ id: "secondary_category_missing", surface: "appInfo", severity: "warn", impact: "ranking",
-        title: "No secondary category set",
-        detail: "A secondary category is a free second ranking surface you're not using.",
-        fix: "Pick your most relevant secondary category in App Store Connect." });
-      out.push({ id: "primary_category_context", surface: "appInfo", severity: "info", impact: "ranking",
-        title: "Category: Productivity",
-        detail: "Your primary category shapes which charts and searches you rank in.",
-        fix: "Confirm it matches the keywords you're targeting.", evidence: "Productivity" });
-      out.push({ id: "locale_single", surface: "locales", severity: "warn", impact: "ranking",
-        title: "Live in 1 locale",
-        detail: "Each localization is a new keyword surface and a new audience you're not reaching.",
-        fix: "Localize for the top locales in your category.", evidence: "en-US" });
-      out.push({ id: "version_context", surface: "versionState", severity: "info", impact: "completeness",
-        title: "Live version 1.0.0 (READY_FOR_SALE)",
-        detail: "Current version context for the rest of the audit.",
-        fix: "No action — context only.", evidence: "1.0.0 READY_FOR_SALE" });
-    } else {
-      // No-key: the unlock CTA is the reward for connecting ASC.
-      out.push({ id: "asc_unlock", surface: "meta", severity: "info", impact: "completeness",
-        title: "Unlock your full audit",
-        detail: "Connect App Store Connect to audit screenshots, preview video, privacy policy, category, and localization gaps.",
-        fix: "Connect App Store Connect to unlock your full audit." });
-    }
-
-    // sort: severity weight desc (mirrors scoreFinding's ordering)
-    var SEV = { critical: 1000, warn: 400, info: 100, good: 10 };
-    var IMP = { completeness: 4, trust: 4, conversion: 2, ranking: 1 };
-    out.sort(function (a, b) {
-      var wa = SEV[a.severity] + IMP[a.impact], wb = SEV[b.severity] + IMP[b.impact];
-      if (wa !== wb) return wb - wa;
-      if (IMP[a.impact] !== IMP[b.impact]) return IMP[b.impact] - IMP[a.impact];
-      return a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
-    });
-    return out;
-  }
-
-  function summarizeMockFindings(findings) {
-    var SEV = { critical: 1000, warn: 400, info: 100, good: 10 };
-    var IMP = { completeness: 4, trust: 4, conversion: 2, ranking: 1 };
-    var s = { critical: 0, warn: 0, good: 0, info: 0, total: findings.length, topImpact: null };
-    var top = -1;
-    findings.forEach(function (f) {
-      s[f.severity] += 1;
-      var w = SEV[f.severity] + IMP[f.impact];
-      if (w > top) { top = w; s.topImpact = f.impact; }
-    });
-    return s;
-  }
 
   // ── ASC findings (PRD 01/05 model, emitted for the run-page audit card) ────
   // Mirrors auditFindings(): each surface yields zero+ Findings of the shape
@@ -338,36 +251,41 @@
         fix: "Use more screenshot slots to sell the app before the fold.",
         evidence: sc.iphoneCount + " of 10 slots" });
     }
-    // appInfo — privacy policy is a critical completeness gap (and a trust signal).
-    f.push({ id: "privacy_policy_missing", surface: "appInfo", severity: "critical", impact: "completeness",
-      title: "No privacy policy URL",
-      detail: "Apple can reject without one, and it's a trust signal to users.",
-      fix: "Add a privacy policy URL in App Store Connect." });
-    f.push({ id: "secondary_category_missing", surface: "appInfo", severity: "warn", impact: "ranking",
-      title: "No secondary category set",
-      detail: "A secondary category is a free second ranking surface.",
-      fix: "Pick your most relevant secondary category in App Store Connect." });
-    // previews — no preview video is a conversion warning.
-    f.push({ id: "preview_missing", surface: "previews", severity: "warn", impact: "conversion",
-      title: "No app preview video",
-      detail: "Previews lift conversion — a short demo earns trust before the install.",
-      fix: "Add a 15–30s preview for your primary device." });
-    // locales — single-locale is a ranking warning.
-    f.push({ id: "locale_single", surface: "locales", severity: "warn", impact: "ranking",
-      title: "Live in 1 locale",
-      detail: "Each localization is a new keyword surface + audience.",
-      fix: "Start with the top locales for your category.",
-      evidence: "1 locale" });
-    // good signal — CPPs present (so the card shows a green row too).
-    f.push({ id: "cpp_present", surface: "customProductPages", severity: "good", impact: "conversion",
-      title: ((ctx && ctx.cppCount) || 2) + " Custom Product Pages",
-      detail: "CPPs tailor your store page per ad/audience.",
-      fix: "Nice — you're using CPPs." });
-    // info — category context (a ranking framing note).
-    f.push({ id: "primary_category_context", surface: "appInfo", severity: "info", impact: "ranking",
-      title: "Category: " + ((ctx && ctx.category) || "Productivity"),
-      detail: "This is the primary surface you compete in.",
-      fix: "Confirm it matches the keywords you're targeting." });
+    // These derive from the ASC snapshot — only emit them on a keyed (Mode-A) run.
+    // Without a key we can't see appInfo/previews/locales, so we must NOT assert
+    // about them (the #30/#41 principle: never claim about a field you can't read).
+    if (ascRead) {
+      // appInfo — privacy policy is a critical completeness gap (and a trust signal).
+      f.push({ id: "privacy_policy_missing", surface: "appInfo", severity: "critical", impact: "completeness",
+        title: "No privacy policy URL",
+        detail: "Apple can reject without one, and it's a trust signal to users.",
+        fix: "Add a privacy policy URL in App Store Connect." });
+      f.push({ id: "secondary_category_missing", surface: "appInfo", severity: "warn", impact: "ranking",
+        title: "No secondary category set",
+        detail: "A secondary category is a free second ranking surface.",
+        fix: "Pick your most relevant secondary category in App Store Connect." });
+      // previews — no preview video is a conversion warning.
+      f.push({ id: "preview_missing", surface: "previews", severity: "warn", impact: "conversion",
+        title: "No app preview video",
+        detail: "Previews lift conversion — a short demo earns trust before the install.",
+        fix: "Add a 15–30s preview for your primary device." });
+      // locales — single-locale is a ranking warning.
+      f.push({ id: "locale_single", surface: "locales", severity: "warn", impact: "ranking",
+        title: "Live in 1 locale",
+        detail: "Each localization is a new keyword surface + audience.",
+        fix: "Start with the top locales for your category.",
+        evidence: "1 locale" });
+      // good signal — CPPs present (so the card shows a green row too).
+      f.push({ id: "cpp_present", surface: "customProductPages", severity: "good", impact: "conversion",
+        title: ((ctx && ctx.cppCount) || 2) + " Custom Product Pages",
+        detail: "CPPs tailor your store page per ad/audience.",
+        fix: "Nice — you're using CPPs." });
+      // info — category context (a ranking framing note).
+      f.push({ id: "primary_category_context", surface: "appInfo", severity: "info", impact: "ranking",
+        title: "Category: " + ((ctx && ctx.category) || "Productivity"),
+        detail: "This is the primary surface you compete in.",
+        fix: "Confirm it matches the keywords you're targeting." });
+    }
     // meta — no-key runs get the unlock nudge (PRD 04 renders the CTA).
     if (!ascRead) {
       f.push({ id: "asc_unlock", surface: "meta", severity: "info", impact: "completeness",
