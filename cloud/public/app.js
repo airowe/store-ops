@@ -122,7 +122,7 @@
   }
 
   // Debounced, race-safe auto-search controller for the app-search boxes — the
-  // tested spec lives in src/build/searchController.ts (keep in sync). Typing 3+
+  // tested spec lives in scripts/searchController.mjs (keep in sync). Typing 3+
   // chars fires a de-duped query after `delayMs`; an out-of-order response is
   // dropped (the `seq` guard) so a slow earlier search can't clobber a newer one.
   function createSearchController(o) {
@@ -150,6 +150,77 @@
       submit: function () { fire(lastFed); },
       onClear: function (fn) { clearCb = fn; },
     };
+  }
+
+  // Pagination controller for the candidate picker — tested spec in
+  // scripts/paginator.mjs (keep in sync). Owns offset/hasMore/in-flight so BOTH
+  // the "Show more" button and scroll-to-load can call loadMore() without
+  // double-fetching or paging past the end. Lets a lower-ranked app under a
+  // generic term (e.g. "Mangia - Recipe Manager" under "Mangia") be reached.
+  function createPaginator(o) {
+    var offset = o.initialOffset, pageSize = o.pageSize, more = o.initialHasMore, inFlight = false;
+    function loadMore() {
+      if (!more || inFlight) return;
+      inFlight = true;
+      var next = offset + pageSize;
+      Promise.resolve(o.fetchPage(next)).then(function (page) {
+        inFlight = false;
+        var cands = (page && page.candidates) || [];
+        offset = next;
+        more = !!(page && page.hasMore);
+        o.onPage(cands, page);
+      }, function () { inFlight = false; });  // failed page → retry same offset next call
+    }
+    return {
+      loadMore: loadMore,
+      hasMore: function () { return more; },
+      isLoading: function () { return inFlight; },
+      offset: function () { return offset; },
+    };
+  }
+
+  // Wire pagination onto a freshly-rendered candidate picker: a paginator + a
+  // scroll sentinel (IntersectionObserver) + a "Show more" button, both calling
+  // the same loadMore() (the paginator guards against double-fetch). `fetchNext`
+  // returns the raw next-page response ({candidates,hasMore,offset}); `renderRows`
+  // appends its candidates as picker rows. Shared by the logged-out preview and
+  // the authenticated connect pickers.
+  function attachPager(container, term, first, fetchNext, renderRows) {
+    var oldPager = container.querySelector(".pager");
+    if (oldPager) oldPager.remove();
+    if (!(first && first.hasMore && term)) {
+      if (((first && first.candidates) || []).length > 1) {
+        container.appendChild(el("div", { class: "pager faint", style: "font-size:12px;margin-top:6px" }, ["That's everything matching — refine the name if your app isn't here."]));
+      }
+      return;
+    }
+    var moreBtn = el("button", { class: "btn ghost more-btn" }, ["Show more results ↓"]);
+    var sentinel = el("div", { class: "pager-sentinel", style: "height:1px" });
+    var pager = el("div", { class: "pager", style: "margin-top:4px" }, [moreBtn, sentinel]);
+    container.appendChild(pager);
+
+    var io = null;
+    var paginator = createPaginator({
+      term: term, pageSize: ((first.candidates || []).length || 12), initialOffset: first.offset || 0, initialHasMore: !!first.hasMore,
+      fetchPage: function (nextOffset) {
+        moreBtn.disabled = true; moreBtn.innerHTML = '<span class="spin"></span> Loading…';
+        return Promise.resolve(fetchNext(nextOffset)).catch(function () { moreBtn.disabled = false; moreBtn.textContent = "Show more results ↓"; toast("Couldn't load more — try again."); return { candidates: [], hasMore: true }; });
+      },
+      onPage: function (cands) {
+        renderRows(cands);
+        container.appendChild(pager); // keep the controls at the bottom
+        if (paginator.hasMore()) { moreBtn.disabled = false; moreBtn.textContent = "Show more results ↓"; }
+        else { if (io) io.disconnect(); moreBtn.remove(); sentinel.remove(); container.appendChild(el("div", { class: "pager faint", style: "font-size:12px;margin-top:6px" }, ["That's everything matching — refine the name if your app isn't here."])); }
+      },
+    });
+    moreBtn.addEventListener("click", function () { paginator.loadMore(); });
+    // Scroll-to-load: fetch the next page as the sentinel nears the viewport.
+    if (typeof IntersectionObserver === "function") {
+      io = new IntersectionObserver(function (entries) {
+        if (entries.some(function (e) { return e.isIntersecting; })) paginator.loadMore();
+      }, { rootMargin: "200px" });
+      io.observe(sentinel);
+    }
   }
   // Trigger a client-side file download of `text` as `filename`.
   function downloadText(text, filename, label) {
@@ -327,43 +398,31 @@
         });
     }
 
-    // Render the resolver's candidate list as a clickable picker. `r` carries
-    // { candidates, hasMore, offset }; `term` powers "Show more"; `append` keeps
-    // prior rows when paging.
-    function renderCandidates(r, term, append) {
-      var cands = (r && r.candidates) || [];
-      if (!append) clear(results);
-      var oldPager = results.querySelector(".pager");
-      if (oldPager) oldPager.remove();
-
-      if (!cands.length && !append) { results.appendChild(el("div", { class: "faint", style: "font-size:12.5px" }, ["No apps found. Try a different name, an App Store / Play link, or a bundle id."])); return; }
-      if (!append) {
-        var heading = cands.length === 1 ? "Found it — click to connect:" : "Pick your app:";
-        results.appendChild(el("div", { class: "faint", style: "font-size:12.5px;margin:2px 0 6px" }, [heading]));
-      }
+    // Append resolver candidates as clickable connect rows.
+    function appendCandidateRows(cands) {
       cands.forEach(function (c) {
         var meta = [c.publisher, (c.genres && c.genres.length ? c.genres[0] : null)].filter(Boolean).join(" · ");
-        var row = el("div", { class: "card appcard", style: "padding:10px 12px;margin-bottom:6px", onclick: function () { connect(c.bundle_id, c.name); } }, [
+        results.appendChild(el("div", { class: "card appcard", style: "padding:10px 12px;margin-bottom:6px", onclick: function () { connect(c.bundle_id, c.name); } }, [
           el("div", { class: "row1" }, [
             c.icon_url ? el("img", { src: c.icon_url, width: "28", height: "28", style: "border-radius:6px;margin-right:8px;vertical-align:middle" }) : null,
             el("span", { class: "name" }, [c.name || c.bundle_id]),
           ]),
           el("div", { class: "bundle" }, [c.bundle_id + (meta ? "  ·  " + meta : "")]),
-        ]);
-        results.appendChild(row);
+        ]));
       });
-      if (r && r.hasMore && term) {
-        var nextOffset = (r.offset || 0) + (cands.length || 12);
-        var more = el("button", { class: "btn ghost more-btn", onclick: function () {
-          more.disabled = true; more.innerHTML = '<span class="spin"></span> Loading…';
-          api("POST", "/resolve", { query: term, offset: nextOffset })
-            .then(function (x) { renderCandidates(x, term, true); })
-            .catch(function (e) { more.disabled = false; more.textContent = "Show more results ↓"; toast(e.message || "Couldn't load more"); });
-        } }, ["Show more results ↓"]);
-        results.appendChild(el("div", { class: "pager", style: "margin-top:4px" }, [more]));
-      } else if (!append && cands.length > 1) {
-        results.appendChild(el("div", { class: "pager faint", style: "font-size:12px;margin-top:6px" }, ["That's everything matching — refine the name if your app isn't here."]));
-      }
+    }
+
+    // Render the resolver's candidate picker from the first /resolve response.
+    // Later pages stream in via the shared paginator (scroll sentinel + button).
+    function renderCandidates(r, term) {
+      clear(results);
+      var cands = (r && r.candidates) || [];
+      if (!cands.length) { results.appendChild(el("div", { class: "faint", style: "font-size:12.5px" }, ["No apps found. Try a different name, an App Store / Play link, or a bundle id."])); return; }
+      results.appendChild(el("div", { class: "faint", style: "font-size:12.5px;margin:2px 0 6px" }, [cands.length === 1 ? "Found it — click to connect:" : "Pick your app:"]));
+      appendCandidateRows(cands);
+      attachPager(results, term, r, function (nextOffset) {
+        return api("POST", "/resolve", { query: term, offset: nextOffset });
+      }, appendCandidateRows);
     }
 
     // Search → render, shared by auto-search (debounced) and Search/Enter.
@@ -383,7 +442,7 @@
       if (res.viaSubmit && r.kind === "resolved" && r.candidates.length === 1) {
         connect(r.candidates[0].bundle_id, r.candidates[0].name); return;
       }
-      renderCandidates(r, q, false);
+      renderCandidates(r, q);
     }
 
     var search = createSearchController({
@@ -2002,24 +2061,12 @@
     var c = root(); clear(c);
     var queryInput, results, submitBtn;
 
-    // Render a candidate picker. `r` is the /preview (or /resolve) response that
-    // carries { candidates, hasMore, offset, query }. `append` keeps prior rows
-    // (for "Show more"); otherwise it replaces. The original search term is
-    // threaded so the "Show more" button can request the next page.
-    function showCandidates(r, term, append) {
-      var cands = (r && r.candidates) || [];
-      if (!append) clear(results);
-      // strip any previous "Show more"/pager controls before re-appending
-      var oldPager = results.querySelector(".pager");
-      if (oldPager) oldPager.remove();
-
-      if (!cands.length && !append) {
-        results.appendChild(el("div", { class: "faint", style: "font-size:12.5px" }, ["No apps found. Try a different name, an App Store / Play link, or a bundle id."]));
-        return;
-      }
-      if (!append) {
-        results.appendChild(el("div", { class: "faint", style: "font-size:12.5px;margin:2px 0 6px" }, [cands.length === 1 ? "Found it — click to preview:" : "Pick your app:"]));
-      }
+    // Render a candidate picker from the first /preview response `r`
+    // ({ candidates, hasMore, offset, query }). Later pages stream in via a
+    // paginator that BOTH a "Show more" button and a scroll sentinel drive — so a
+    // lower-ranked app under a generic term ("Mangia - Recipe Manager" under
+    // "Mangia") is reachable by scrolling, not just an exact name.
+    function appendCandidateRows(cands) {
       cands.forEach(function (c2) {
         var meta = [c2.publisher, (c2.genres && c2.genres.length ? c2.genres[0] : null)].filter(Boolean).join(" · ");
         results.appendChild(el("div", { class: "card appcard", style: "padding:10px 12px;margin-bottom:6px", onclick: function () { runPreview({ bundle_id: c2.bundle_id }, c2.name); } }, [
@@ -2030,20 +2077,20 @@
           el("div", { class: "bundle" }, [c2.bundle_id + (meta ? "  ·  " + meta : "")]),
         ]));
       });
-      // "Show more" when the API says another page exists (and we have a term).
-      if (r && r.hasMore && term) {
-        var nextOffset = (r.offset || 0) + (cands.length || 12);
-        var more = el("button", { class: "btn ghost more-btn", onclick: function () {
-          more.disabled = true; more.innerHTML = '<span class="spin"></span> Loading…';
-          fetch(API_BASE + "/preview", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ query: term, offset: nextOffset }) })
-            .then(function (x) { return x.json(); })
-            .then(function (x2) { showCandidates(x2, term, true); })
-            .catch(function () { more.disabled = false; more.textContent = "Show more results ↓"; toast("Couldn't load more — try again."); });
-        } }, ["Show more results ↓"]);
-        results.appendChild(el("div", { class: "pager", style: "margin-top:4px" }, [more]));
-      } else if (!append && cands.length > 1) {
-        results.appendChild(el("div", { class: "pager faint", style: "font-size:12px;margin-top:6px" }, ["That's everything matching — refine the name if your app isn't here."]));
+    }
+
+    function showCandidates(r, term) {
+      clear(results);
+      var cands = (r && r.candidates) || [];
+      if (!cands.length) {
+        results.appendChild(el("div", { class: "faint", style: "font-size:12.5px" }, ["No apps found. Try a different name, an App Store / Play link, or a bundle id."]));
+        return;
       }
+      results.appendChild(el("div", { class: "faint", style: "font-size:12.5px;margin:2px 0 6px" }, [cands.length === 1 ? "Found it — click to preview:" : "Pick your app:"]));
+      appendCandidateRows(cands);
+      attachPager(results, term, r, function (nextOffset) {
+        return fetch(API_BASE + "/preview", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ query: term, offset: nextOffset }) }).then(function (x) { return x.json(); });
+      }, appendCandidateRows);
     }
 
     function runPreview(payload, displayName) {
@@ -2052,7 +2099,7 @@
       fetch(API_BASE + "/preview", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(payload) })
         .then(function (r) { return r.json(); })
         .then(function (r) {
-          if (r.needsChoice) { showCandidates(r, payload.query, false); return; }
+          if (r.needsChoice) { showCandidates(r, payload.query); return; }
           if (!r.preview) { clear(results); results.appendChild(el("div", { class: "faint" }, [r.error || "Couldn't preview that app."])); return; }
           showPreviewResult(r.preview, displayName, r.bundleId);
         })
@@ -2107,9 +2154,9 @@
       submitBtn.disabled = false; submitBtn.textContent = "Preview";
       if (!res.ok) { toast("Search failed — try again."); return; }
       var r = res.r, q = res.q;
-      if (r.needsChoice) { showCandidates(r, q, false); return; }
+      if (r.needsChoice) { showCandidates(r, q); return; }
       if (r.preview) { showPreviewResult(r.preview, q, r.bundleId); return; }
-      showCandidates(r, q, false);
+      showCandidates(r, q);
     }
 
     var search = createSearchController({

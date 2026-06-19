@@ -53,6 +53,54 @@ test.describe("dashboard funnel (mock backend)", () => {
     await expect(page.getByText(/found it — click to connect|pick your app/i)).toBeVisible();
   });
 
+  test("the picker pages: 'Show more' loads the next page of results", async ({
+    page,
+  }) => {
+    await gotoMockDashboard(page);
+    const search = page.getByPlaceholder(/app name, app store .* link, or bundle id/i);
+
+    // "meditation" is padded to 27 catalog results → page 1 = 12 + a "Show more".
+    await search.fill("meditation");
+    await expect(page.locator(".appcard").first()).toBeVisible({ timeout: 10_000 });
+    expect(await page.locator(".appcard").count()).toBe(12);
+    const moreBtn = page.getByRole("button", { name: /show more results/i });
+    await expect(moreBtn).toBeVisible();
+
+    // Clicking it appends the next page (rows accumulate, not replaced).
+    await moreBtn.click();
+    await expect.poll(async () => page.locator(".appcard").count()).toBeGreaterThan(12);
+
+    // Page through to the end by clicking "Show more" until it's gone. (The
+    // scroll sentinel may also fire — both drive the same paginator, so we just
+    // keep clicking while a button exists rather than assert exact step counts.)
+    for (let i = 0; i < 5; i++) {
+      const btn = page.getByRole("button", { name: /show more results/i });
+      if ((await btn.count()) === 0) break;
+      await btn.click().catch(() => {});
+      await page.waitForTimeout(150);
+    }
+
+    // All 27 loaded, button replaced by the "that's everything" note.
+    await expect.poll(async () => page.locator(".appcard").count()).toBe(27);
+    await expect(page.getByRole("button", { name: /show more results/i })).toHaveCount(0);
+    await expect(page.getByText(/that's everything matching/i)).toBeVisible();
+  });
+
+  test("the picker auto-loads more on scroll (infinite scroll sentinel)", async ({
+    page,
+  }) => {
+    await gotoMockDashboard(page);
+    const search = page.getByPlaceholder(/app name, app store .* link, or bundle id/i);
+    await search.fill("meditation");
+    await expect(page.locator(".appcard").first()).toBeVisible({ timeout: 10_000 });
+    expect(await page.locator(".appcard").count()).toBe(12);
+
+    // Scroll the sentinel into view → the IntersectionObserver fires loadMore()
+    // with no button click. More rows appear.
+    await page.locator(".pager-sentinel").scrollIntoViewIfNeeded();
+    await expect.poll(async () => page.locator(".appcard").count()).toBeGreaterThan(12);
+  });
+
   test("app detail renders the animated rank-movement card with numbers matching the data", async ({
     page,
   }) => {
