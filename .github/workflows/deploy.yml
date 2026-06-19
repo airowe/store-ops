@@ -86,6 +86,15 @@ jobs:
           workingDirectory: cloud
           command: deploy
 
+      # ── build the dashboard with content-hashed assets (cache-busting, #40) ──
+      # Stamps public/ → dist/ with name.<hash>.ext filenames + a rewritten
+      # index.html, so each deploy invalidates the client bundle. A stale cached
+      # app.js once made a preview audit the WRONG app; hashed names fix it at the
+      # source. public/ stays un-hashed for local dev + Playwright E2E.
+      - name: Build dashboard (cache-bust assets)
+        if: steps.creds.outputs.configured == 'true'
+        run: npm run build:dashboard
+
       # ── deploy the dashboard (Pages at app.shipaso.com) ──
       - name: Deploy Pages dashboard
         if: steps.creds.outputs.configured == 'true'
@@ -94,4 +103,4 @@ jobs:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           workingDirectory: cloud
-          command: pages deploy public --project-name store-ops-dashboard --branch main
+          command: pages deploy dist --project-name store-ops-dashboard --branch main
