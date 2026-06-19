@@ -1,5 +1,9 @@
 import { describe, it, expect } from "vitest";
-import { contentHash, stampAssets, type AssetFile } from "./stampAssets.js";
+// The pure logic lives in plain ESM (scripts/stampAssets.mjs) so the Node-20 CI
+// runner can import it without a TS loader — importing a .ts there broke the
+// first deploy. The spec imports the SAME .mjs the build script uses (typed via
+// scripts/stampAssets.d.ts).
+import { contentHash, stampAssets, type AssetFile } from "../../scripts/stampAssets.mjs";
 
 /**
  * Cache-busting for the static Pages dashboard. The source `public/` ships

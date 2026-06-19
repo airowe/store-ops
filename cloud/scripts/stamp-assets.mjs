@@ -20,7 +20,7 @@
 import { readFileSync, readdirSync, writeFileSync, mkdirSync, rmSync, statSync } from "node:fs";
 import { join, resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
-import { stampAssets } from "../src/build/stampAssets.ts";
+import { stampAssets } from "./stampAssets.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const root = resolve(here, "..");
