@@ -27,6 +27,32 @@ test.describe("dashboard funnel (mock backend)", () => {
     await expect(page.locator(".appcard", { hasText: "Calm" })).toBeVisible({ timeout: 10_000 });
   });
 
+  test("typing 3+ chars auto-searches (no button click) and shows the picker", async ({
+    page,
+  }) => {
+    await gotoMockDashboard(page);
+    const search = page.getByPlaceholder(/app name, app store .* link, or bundle id/i);
+
+    // Two chars: below the threshold — must NOT search yet.
+    await search.fill("me");
+    await page.waitForTimeout(500);
+    await expect(page.locator(".appcard")).toHaveCount(0);
+
+    // 3+ chars: a debounced auto-search fires WITHOUT clicking Search. "med"
+    // matches the meditation apps in the catalog → the picker renders. We never
+    // touch the Search button.
+    await search.fill("meditation");
+    await expect(page.locator(".appcard").first()).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByText(/pick your app/i)).toBeVisible();
+
+    // Auto-search must NOT auto-connect even on a lone exact hit — that would
+    // yank the user into a run on a keystroke. A single result shows the picker.
+    await search.fill("Calm");
+    await expect(page.locator(".appcard", { hasText: "Calm" })).toBeVisible({ timeout: 10_000 });
+    // Still on the connect screen (picker), not navigated to an app dashboard.
+    await expect(page.getByText(/found it — click to connect|pick your app/i)).toBeVisible();
+  });
+
   test("app detail renders the animated rank-movement card with numbers matching the data", async ({
     page,
   }) => {
