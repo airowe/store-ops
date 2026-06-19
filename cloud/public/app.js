@@ -120,6 +120,37 @@
     try { await navigator.clipboard.writeText(s); toast((label || "Copied") + " ✓"); }
     catch (e) { toast("Copy failed — select & ⌘C"); }
   }
+
+  // Debounced, race-safe auto-search controller for the app-search boxes — the
+  // tested spec lives in src/build/searchController.ts (keep in sync). Typing 3+
+  // chars fires a de-duped query after `delayMs`; an out-of-order response is
+  // dropped (the `seq` guard) so a slow earlier search can't clobber a newer one.
+  function createSearchController(o) {
+    var timer = null, lastFed = "", lastQueried = "", seq = 0, clearCb = null;
+    function cancel() { if (timer != null) { clearTimeout(timer); timer = null; } }
+    function fire(q) {
+      cancel();
+      if (q.length < o.minChars) return;
+      if (q === lastQueried) return;       // already shown — don't refetch
+      lastQueried = q;
+      var mine = ++seq;
+      Promise.resolve(o.fetcher(q)).then(function (result) {
+        if (mine !== seq) return;          // superseded by a newer search → drop
+        o.onResult(result, q);
+      });
+    }
+    return {
+      input: function (value) {
+        var q = (value || "").trim(); lastFed = q; cancel();
+        if (q.length === 0) { lastQueried = ""; seq++; if (clearCb) clearCb(); return; }
+        if (q.length < o.minChars) return;
+        if (q === lastQueried) return;
+        timer = setTimeout(function () { timer = null; fire(q); }, o.delayMs);
+      },
+      submit: function () { fire(lastFed); },
+      onClear: function (fn) { clearCb = fn; },
+    };
+  }
   // Trigger a client-side file download of `text` as `filename`.
   function downloadText(text, filename, label) {
     var blob = new Blob([text], { type: "text/x-shellscript" });
@@ -335,26 +366,46 @@
       }
     }
 
+    // Search → render, shared by auto-search (debounced) and Search/Enter.
+    // Resolves so the controller's race guard can drop a stale response.
+    function runSearch(q) {
+      submitBtn.disabled = true; submitBtn.innerHTML = '<span class="spin"></span> Searching…';
+      return api("POST", "/resolve", { query: q })
+        .then(function (r) { return { ok: true, q: q, r: r }; })
+        .catch(function (e) { return { ok: false, q: q, e: e }; });
+    }
+    function renderSearch(res) {
+      submitBtn.disabled = false; submitBtn.textContent = "Search";
+      if (!res.ok) { toast((res.e && res.e.message) || "Search failed"); return; }
+      var r = res.r, q = res.q;
+      // An auto-search never auto-connects (it would yank the user to a run on a
+      // keystroke); only an explicit submit may collapse a lone exact hit.
+      if (res.viaSubmit && r.kind === "resolved" && r.candidates.length === 1) {
+        connect(r.candidates[0].bundle_id, r.candidates[0].name); return;
+      }
+      renderCandidates(r, q, false);
+    }
+
+    var search = createSearchController({
+      minChars: 3,
+      delayMs: 280,
+      fetcher: runSearch,
+      onResult: function (res) { renderSearch(res); },
+    });
+    search.onClear(function () { clear(results); submitBtn.disabled = false; submitBtn.textContent = "Search"; });
+
     function submit(ev) {
       ev.preventDefault();
       var q = queryInput.value.trim();
       if (!q) { toast("Enter an app name, link, or bundle id"); queryInput.focus(); return; }
+      // Fire immediately, and tag this run as a submit so a lone exact hit may
+      // auto-connect (auto-search results never do).
       submitBtn.disabled = true; submitBtn.innerHTML = '<span class="spin"></span> Searching…';
       clear(results);
-      api("POST", "/resolve", { query: q })
-        .then(function (r) {
-          submitBtn.disabled = false; submitBtn.textContent = "Search";
-          // Exact single hit (bundle id / link / unique name) → connect straight away.
-          if (r.kind === "resolved" && r.candidates.length === 1) { connect(r.candidates[0].bundle_id, r.candidates[0].name); return; }
-          renderCandidates(r, q, false);
-        })
-        .catch(function (e) {
-          submitBtn.disabled = false; submitBtn.textContent = "Search";
-          toast(e.message || "Search failed");
-        });
+      runSearch(q).then(function (res) { res.viaSubmit = true; renderSearch(res); });
     }
 
-    queryInput = el("input", { class: "txt", placeholder: "App name, App Store / Play link, or bundle id", autocomplete: "off" });
+    queryInput = el("input", { class: "txt", placeholder: "App name, App Store / Play link, or bundle id", autocomplete: "off", oninput: function () { search.input(queryInput.value); } });
     submitBtn = el("button", { class: "btn primary", type: "submit" }, ["Search"]);
     results = el("div", { style: "margin-top:10px" });
     return el("div", { class: "card" }, [
@@ -2042,23 +2093,43 @@
       results.appendChild(card);
     }
 
+    // The actual search → render. Shared by auto-search (debounced) and the
+    // Preview button / Enter (immediate). Resolves so the controller's race
+    // guard can drop a stale response before it touches the DOM.
+    function runSearch(q) {
+      submitBtn.disabled = true; submitBtn.innerHTML = '<span class="spin"></span> Searching…';
+      return fetch(API_BASE + "/preview", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ query: q }) })
+        .then(function (r) { return r.json(); })
+        .then(function (r) { return { ok: true, q: q, r: r }; })
+        .catch(function () { return { ok: false, q: q }; });
+    }
+    function renderSearch(res) {
+      submitBtn.disabled = false; submitBtn.textContent = "Preview";
+      if (!res.ok) { toast("Search failed — try again."); return; }
+      var r = res.r, q = res.q;
+      if (r.needsChoice) { showCandidates(r, q, false); return; }
+      if (r.preview) { showPreviewResult(r.preview, q, r.bundleId); return; }
+      showCandidates(r, q, false);
+    }
+
+    var search = createSearchController({
+      minChars: 3,
+      delayMs: 280,
+      fetcher: runSearch,
+      onResult: renderSearch,
+    });
+    search.onClear(function () { clear(results); submitBtn.disabled = false; submitBtn.textContent = "Preview"; });
+
     function submit(ev) {
       ev.preventDefault();
       var q = queryInput.value.trim();
       if (!q) { toast("Enter an app name, link, or bundle id"); queryInput.focus(); return; }
-      submitBtn.disabled = true; submitBtn.innerHTML = '<span class="spin"></span> Searching…';
-      fetch(API_BASE + "/preview", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ query: q }) })
-        .then(function (r) { return r.json(); })
-        .then(function (r) {
-          submitBtn.disabled = false; submitBtn.textContent = "Preview";
-          if (r.needsChoice) { showCandidates(r, q, false); return; }
-          if (r.preview) { showPreviewResult(r.preview, q, r.bundleId); return; }
-          showCandidates(r, q, false);
-        })
-        .catch(function () { submitBtn.disabled = false; submitBtn.textContent = "Preview"; toast("Search failed — try again."); });
+      // Keep the controller's value in sync, then fire immediately (no debounce).
+      search.input(queryInput.value);
+      search.submit();
     }
 
-    queryInput = el("input", { class: "txt", placeholder: "App name, App Store / Play link, or bundle id", autocomplete: "off" });
+    queryInput = el("input", { class: "txt", placeholder: "App name, App Store / Play link, or bundle id", autocomplete: "off", oninput: function () { search.input(queryInput.value); } });
     submitBtn = el("button", { class: "btn primary", type: "submit" }, ["Preview"]);
     results = el("div", { style: "margin-top:12px" });
 

@@ -1,0 +1,20 @@
+# Cloudflare Pages cache policy (#40 — never serve a stale client bundle).
+#
+# index.html is rewritten on every deploy to point at content-hashed asset names
+# (app.<hash>.js, …). For that to take effect immediately, the HTML itself must
+# NOT be cached by the browser — otherwise a returning visitor keeps an old
+# index.html that references the previous hashes. So: HTML = always revalidate.
+#
+# The hashed assets are safe to cache forever: a content change yields a NEW
+# filename, so there is never a stale-content risk. immutable skips revalidation.
+
+/
+  Cache-Control: no-cache
+/index.html
+  Cache-Control: no-cache
+
+# Content-hashed bundles — cache hard, they're versioned by filename.
+/*.js
+  Cache-Control: public, max-age=31536000, immutable
+/*.css
+  Cache-Control: public, max-age=31536000, immutable

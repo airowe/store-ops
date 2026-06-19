@@ -11,6 +11,8 @@
     "test:watch": "vitest",
     "test:e2e": "playwright test",
     "typecheck": "tsc --noEmit",
+    "build:dashboard": "node scripts/stamp-assets.mjs",
+    "deploy:dashboard": "npm run build:dashboard && wrangler pages deploy dist --project-name store-ops-dashboard",
     "db:migrate": "wrangler d1 execute store_ops --file=./schema.sql",
     "db:migrate:local": "wrangler d1 execute store_ops --local --file=./schema.sql"
   },
