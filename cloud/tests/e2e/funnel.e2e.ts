@@ -299,3 +299,55 @@ test.describe("dashboard funnel (mock backend)", () => {
     await context.close();
   });
 });
+
+/**
+ * Header auth state (#49): on a LIVE backend the misleading editable
+ * "acting as <email>" X-User-Email stub must NOT show — a logged-out visitor
+ * gets a real "Sign in" button instead (the stub can't authenticate on prod).
+ * We simulate a live-but-logged-out frontend by pointing config.js at a non-empty
+ * API_BASE and stubbing /auth/me → {authed:false}.
+ */
+test.describe("header auth state (#49)", () => {
+  async function gotoLiveLoggedOut(page: import("@playwright/test").Page): Promise<void> {
+    await page.route("**/config.js", (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: "application/javascript",
+        body: 'window.STORE_OPS = { API_BASE: "https://api.test.local" };',
+      }),
+    );
+    // Every API call to the fake live backend: /auth/me says logged out; the
+    // preview endpoint returns an empty picker so the page renders.
+    await page.route("https://api.test.local/**", (route) => {
+      const url = route.request().url();
+      if (url.endsWith("/auth/me")) {
+        return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ authed: false }) });
+      }
+      return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ needsChoice: true, candidates: [], hasMore: false, offset: 0 }) });
+    });
+    await page.route("https://fonts.googleapis.com/**", (route) => route.abort());
+    await page.route("https://fonts.gstatic.com/**", (route) => route.abort());
+    await page.goto("/index.html");
+  }
+
+  test("logged-out on a live backend shows a 'Sign in' button, not the email stub", async ({ page }) => {
+    await gotoLiveLoggedOut(page);
+
+    // The misleading editable stub must be hidden.
+    await expect(page.locator("#emailInput")).toBeHidden();
+    // A real Sign in button is present in the header.
+    const signIn = page.locator(".who").getByRole("button", { name: /^sign in$/i });
+    await expect(signIn).toBeVisible();
+
+    // Clicking it opens the magic-link login screen.
+    await signIn.click();
+    await expect(page.getByRole("heading", { name: /sign in/i })).toBeVisible();
+    await expect(page.getByPlaceholder(/you@example\.com/i)).toBeVisible();
+  });
+
+  test("demo backend (no API_BASE) keeps the editable 'acting as' stub for local dev", async ({ page }) => {
+    await gotoMockDashboard(page); // API_BASE = "" → demoStub mode
+    await expect(page.locator("#emailInput")).toBeVisible();
+    await expect(page.locator(".who").getByRole("button", { name: /^sign in$/i })).toHaveCount(0);
+  });
+});

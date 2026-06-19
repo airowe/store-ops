@@ -46,6 +46,17 @@
     return session;
   }
 
+  // Decide what the header should render — tested spec in scripts/headerState.mjs
+  // (keep in sync). "signedIn" (live + real session cookie) → email + Sign out +
+  // auto-loaded apps; "signIn" (live, logged out / loading / demo-stub) → a Sign
+  // in button (the X-User-Email stub can't auth on prod and is misleading);
+  // "demoStub" (no API_BASE) → keep the editable field for local dev.
+  function headerState() {
+    if (!API_BASE) return { mode: "demoStub", email: (session && session.email) || null };
+    if (session && session.authed === true && session.via === "session") return { mode: "signedIn", email: session.email || null };
+    return { mode: "signIn", email: null };
+  }
+
   // ── API client ────────────────────────────────────────────────────────────
   var liveMode = !!API_BASE; // becomes false if the live Worker errors out
   async function api(method, path, body) {
@@ -2267,19 +2278,34 @@
       });
   }
 
-  // Reflect auth state in the header: a real session shows the email + Sign out
-  // (and hides the demo "acting as" field); demo/none keeps the editable field.
+  // Reflect auth state in the header (see headerState):
+  //   signedIn → email + Sign out (apps auto-load); hide the demo stub + label
+  //   signIn   → a "Sign in" button (→ magic link); hide the demo stub + label
+  //   demoStub → keep the editable "acting as…" field (local/demo only)
   function applyAuthHeader() {
     var who = document.querySelector(".who");
-    var input = document.getElementById("emailInput");
     if (!who) return;
-    var bySession = session && session.authed && session.via === "session";
-    if (input) input.style.display = bySession ? "none" : "";
+    var input = document.getElementById("emailInput");
+    var label = who.querySelector(".faint"); // the static "acting as" caption
+    var st = headerState();
+
+    // Tear down any prior injected control.
     var existing = document.getElementById("authState");
     if (existing) existing.remove();
-    if (bySession) {
+
+    if (st.mode === "demoStub") {
+      if (input) input.style.display = "";
+      if (label) { label.style.display = ""; label.textContent = "acting as"; }
+      return;
+    }
+
+    // Live backend: the editable stub never shows (it can't auth on prod).
+    if (input) input.style.display = "none";
+    if (label) label.style.display = "none";
+
+    if (st.mode === "signedIn") {
       var span = el("span", { id: "authState", class: "faint", style: "display:flex;gap:8px;align-items:center" }, [
-        el("span", {}, [session.email]),
+        el("span", {}, [st.email || ""]),
         el("a", { href: "#", style: "color:inherit;text-decoration:underline;cursor:pointer", onclick: function (e) {
           e.preventDefault();
           fetch(API_BASE + "/auth/logout", { method: "POST", credentials: "include" })
@@ -2287,6 +2313,13 @@
         } }, ["Sign out"]),
       ]);
       who.insertBefore(span, document.getElementById("envpill"));
+      return;
     }
+
+    // signIn: a real "Sign in" button → the magic-link login screen.
+    var btn = el("button", { id: "authState", class: "btn ghost", style: "padding:5px 12px;font-size:13px", onclick: function () {
+      loginView({ heading: "Sign in", sub: "We email you a one-time link — no password. Then your connected apps load automatically." });
+    } }, ["Sign in"]);
+    who.insertBefore(btn, document.getElementById("envpill"));
   }
 })();
