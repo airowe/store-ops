@@ -84,6 +84,8 @@ describe("readAscLocalization — reads live subtitle/keywords (the #30 fix)", (
     }) as FetchLike;
   }
 
+  // Real ASC shape (#69): name + subtitle live on appInfoLocalizations;
+  // keywords/promo/description/whatsNew on the version localization.
   const routes = {
     "/appStoreVersions?": { data: [{ id: "V1", attributes: { appStoreState: "PREPARE_FOR_SUBMISSION" } }] },
     "/appStoreVersionLocalizations?": {
@@ -92,13 +94,21 @@ describe("readAscLocalization — reads live subtitle/keywords (the #30 fix)", (
           id: "L1",
           attributes: {
             locale: "en-US",
-            name: "Heathen - Secular Meditation",
-            subtitle: "Stoic calm for atheists",
             keywords: "mindfulness,journal,affirmation,anxiety,sleep,focus,philosophy,aurelius,seneca,agnostic,gratitude",
             promotionalText: "New programs.",
             description: "A secular meditation app.",
             whatsNew: "Added offline mode. Fixed a sync crash.",
           },
+        },
+      ],
+    },
+    "/appInfos?": {
+      data: [{ id: "AI1", relationships: { appInfoLocalizations: { data: [{ type: "appInfoLocalizations", id: "AIL1" }] } } }],
+      included: [
+        {
+          type: "appInfoLocalizations",
+          id: "AIL1",
+          attributes: { locale: "en-US", name: "Heathen - Secular Meditation", subtitle: "Stoic calm for atheists" },
         },
       ],
     },
@@ -137,12 +147,11 @@ describe("readAscLocalization — reads live subtitle/keywords (the #30 fix)", (
     const liveOnly = {
       "/appStoreVersions?": { data: [{ id: "VLIVE", attributes: { appStoreState: "READY_FOR_SALE" } }] },
       "/appStoreVersionLocalizations?": {
-        data: [
-          {
-            id: "LLIVE",
-            attributes: { locale: "en-US", subtitle: "Stoic calm for atheists", keywords: "mindfulness,stoic" },
-          },
-        ],
+        data: [{ id: "LLIVE", attributes: { locale: "en-US", keywords: "mindfulness,stoic" } }],
+      },
+      "/appInfos?": {
+        data: [{ id: "AI1", relationships: { appInfoLocalizations: { data: [{ type: "appInfoLocalizations", id: "AIL1" }] } } }],
+        included: [{ type: "appInfoLocalizations", id: "AIL1", attributes: { locale: "en-US", subtitle: "Stoic calm for atheists" } }],
       },
     };
     const live = await readAscLocalization(mockFetch(liveOnly), { token: "JWT", appId: "APP1", locale: "en-US" });
@@ -153,6 +162,63 @@ describe("readAscLocalization — reads live subtitle/keywords (the #30 fix)", (
   it("throws only when there are NO versions at all", async () => {
     const none = { "/appStoreVersions?": { data: [] } };
     await expect(readAscLocalization(mockFetch(none), { token: "JWT", appId: "APP1", locale: "en-US" })).rejects.toThrow();
+  });
+
+  // #69: REAL App Store Connect splits listing metadata across two resources —
+  // name + subtitle live on appInfoLocalizations (app-level), while description,
+  // keywords, promotionalText, whatsNew live on appStoreVersionLocalizations
+  // (version-level). The old read pulled name/subtitle off the VERSION
+  // localization where they don't exist, so a populated subtitle read as empty
+  // and the name read stale. The read must merge BOTH resources.
+  it("reads name + subtitle from appInfoLocalizations, copy from the version localization (#69)", async () => {
+    const realShape = {
+      "/appStoreVersions?": { data: [{ id: "V1", attributes: { appStoreState: "READY_FOR_SALE" } }] },
+      // Version localization: description/keywords/promo/whatsNew ONLY (no name/subtitle).
+      "/appStoreVersionLocalizations?": {
+        data: [
+          {
+            id: "L1",
+            attributes: {
+              locale: "en-US",
+              keywords: "recipe,cooking,meal,planner,grocery,pantry",
+              promotionalText: "Now with AI import.",
+              description: "Mangia turns any recipe link into a cookable format.",
+              whatsNew: "Bug fixes.",
+            },
+          },
+        ],
+      },
+      // appInfo localization (via ?include=appInfoLocalizations…): name + subtitle.
+      "/appInfos?": {
+        data: [{ id: "AI1", relationships: { appInfoLocalizations: { data: [{ type: "appInfoLocalizations", id: "AIL1" }] } } }],
+        included: [
+          {
+            type: "appInfoLocalizations",
+            id: "AIL1",
+            attributes: { locale: "en-US", name: "Mangia - Recipe & Meal Planner", subtitle: "AI Recipe Saver & Meal Planner" },
+          },
+        ],
+      },
+    };
+    const live = await readAscLocalization(mockFetch(realShape), { token: "JWT", appId: "APP1", locale: "en-US" });
+    // The whole point: a POPULATED subtitle is read (not reported empty).
+    expect(live.subtitle).toBe("AI Recipe Saver & Meal Planner");
+    expect(live.name).toBe("Mangia - Recipe & Meal Planner");
+    // Version-level fields still come through.
+    expect(live.keywords).toContain("recipe");
+    expect(live.promo).toBe("Now with AI import.");
+    expect(live.description).toContain("cookable format");
+  });
+
+  it("returns name/subtitle undefined when the appInfo locale is absent — never invents them (#69)", async () => {
+    const noAppInfoLocale = {
+      "/appStoreVersions?": { data: [{ id: "V1", attributes: { appStoreState: "READY_FOR_SALE" } }] },
+      "/appStoreVersionLocalizations?": { data: [{ id: "L1", attributes: { locale: "en-US", keywords: "a,b" } }] },
+      "/appInfos?": { data: [{ id: "AI1", relationships: { appInfoLocalizations: { data: [] } } }] },
+    };
+    const live = await readAscLocalization(mockFetch(noAppInfoLocale), { token: "JWT", appId: "APP1", locale: "en-US" });
+    expect(live.subtitle).toBeUndefined();
+    expect(live.keywords).toBe("a,b"); // version-level field unaffected
   });
 });
 

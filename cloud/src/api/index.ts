@@ -929,6 +929,7 @@ async function runAppWithAsc(
   let liveSubtitle: string | undefined;
   let liveKeywords: string | undefined;
   let liveName: string | undefined;
+  let liveDescription: string | undefined;
   let ascSnapshot: AscSnapshot | undefined;
   try {
     const ascAppId = await findAscAppId(fetch, token, app.bundle_id);
@@ -936,6 +937,7 @@ async function runAppWithAsc(
     liveSubtitle = live.subtitle;
     liveKeywords = live.keywords;
     liveName = live.name;
+    liveDescription = live.description;
     // The full pre-launch read: screenshots, previews, appInfo, version state,
     // pricing/IAPs, age rating, custom pages, all locales. Best-effort — a read
     // failure here records a per-surface error but never strands the run.
@@ -966,6 +968,10 @@ async function runAppWithAsc(
     ...(liveName !== undefined ? { name: liveName } : {}),
     subtitle: liveSubtitle ?? "",
     keywords: liveKeywords ?? "",
+    // Thread the live description so the #57 keyword reasoner can run on keyed
+    // runs (it derives intent keywords from the description; without it the run
+    // falls back to name-tokenization and "manager"/brand tokens leak back in).
+    ...(liveDescription !== undefined ? { description: liveDescription } : {}),
     ...(body.baseCopy ?? {}),
   };
   const ascReasoner = reasonerForEnv(env.AI);
