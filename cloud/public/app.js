@@ -190,18 +190,59 @@
     };
   }
 
+  // Mirror of the server resolver's classifyQuery (src/engine/resolveApp.ts): is
+  // this raw query a NAME search? A URL, a numeric App Store id, or a dotted
+  // bundle/package id all resolve EXACTLY, so they're not name searches. Anything
+  // else (a plain name like "Mangia") is — and a name search can miss a
+  // lower-ranked app entirely, which is what the end-of-results nudge addresses.
+  var BUNDLE_RE = /^[A-Za-z][\w-]*(\.[A-Za-z0-9][\w-]*)+$/;
+  function isNameSearch(raw) {
+    var q = (raw || "").trim();
+    if (!q) return false;
+    if (/^https?:\/\//i.test(q)) return false; // App Store / Play link → exact lookup
+    if (/^\d+$/.test(q)) return false;          // numeric App Store track id
+    if (BUNDLE_RE.test(q)) return false;        // bundle / package id
+    return true;
+  }
+
+  // The end-of-results footer ("That's everything matching…"), plus — for NAME
+  // searches only — a gentle nudge to paste an exact App Store link or bundle id.
+  // Search can miss an app that doesn't yet rank for a common term (the live
+  // "Mangia" case), so we offer the exact path; the "App Store link or bundle id"
+  // phrase is actionable and focuses the search box. We never show the nudge for
+  // queries that already resolved exactly (link / id / bundle), and stay
+  // conservative — no rank claims from a single search.
+  function appendEndOfResults(container, term, focusSearch) {
+    var footer = el("div", { class: "pager faint", style: "font-size:12px;margin-top:6px" }, [
+      "That's everything matching — refine the name if your app isn't here.",
+    ]);
+    if (isNameSearch(term)) {
+      var link = el("a", { class: "find-exact-link", href: "#", role: "button", style: "font-weight:600;text-decoration:underline;cursor:pointer" }, ["App Store link or bundle id"]);
+      link.addEventListener("click", function (ev) {
+        ev.preventDefault();
+        if (typeof focusSearch === "function") focusSearch();
+      });
+      footer.appendChild(el("div", { class: "find-exact-nudge", style: "margin-top:6px" }, [
+        "Don't see your app? Paste your ", link,
+        " to find it exactly — search can miss apps that don't yet rank for a common term.",
+      ]));
+    }
+    container.appendChild(footer);
+  }
+
   // Wire pagination onto a freshly-rendered candidate picker: a paginator + a
   // scroll sentinel (IntersectionObserver) + a "Show more" button, both calling
   // the same loadMore() (the paginator guards against double-fetch). `fetchNext`
   // returns the raw next-page response ({candidates,hasMore,offset}); `renderRows`
-  // appends its candidates as picker rows. Shared by the logged-out preview and
-  // the authenticated connect pickers.
-  function attachPager(container, term, first, fetchNext, renderRows) {
+  // appends its candidates as picker rows. `focusSearch` (optional) focuses the
+  // picker's search input — wired to the end-of-results "paste exact id" nudge.
+  // Shared by the logged-out preview and the authenticated connect pickers.
+  function attachPager(container, term, first, fetchNext, renderRows, focusSearch) {
     var oldPager = container.querySelector(".pager");
     if (oldPager) oldPager.remove();
     if (!(first && first.hasMore && term)) {
       if (((first && first.candidates) || []).length > 1) {
-        container.appendChild(el("div", { class: "pager faint", style: "font-size:12px;margin-top:6px" }, ["That's everything matching — refine the name if your app isn't here."]));
+        appendEndOfResults(container, term, focusSearch);
       }
       return;
     }
@@ -221,7 +262,7 @@
         renderRows(cands);
         container.appendChild(pager); // keep the controls at the bottom
         if (paginator.hasMore()) { moreBtn.disabled = false; moreBtn.textContent = "Show more results ↓"; }
-        else { if (io) io.disconnect(); moreBtn.remove(); sentinel.remove(); container.appendChild(el("div", { class: "pager faint", style: "font-size:12px;margin-top:6px" }, ["That's everything matching — refine the name if your app isn't here."])); }
+        else { if (io) io.disconnect(); moreBtn.remove(); sentinel.remove(); appendEndOfResults(container, term, focusSearch); }
       },
     });
     moreBtn.addEventListener("click", function () { paginator.loadMore(); });
@@ -433,7 +474,7 @@
       appendCandidateRows(cands);
       attachPager(results, term, r, function (nextOffset) {
         return api("POST", "/resolve", { query: term, offset: nextOffset });
-      }, appendCandidateRows);
+      }, appendCandidateRows, function () { if (queryInput) queryInput.focus(); });
     }
 
     // Search → render, shared by auto-search (debounced) and Search/Enter.
@@ -2101,7 +2142,7 @@
       appendCandidateRows(cands);
       attachPager(results, term, r, function (nextOffset) {
         return fetch(API_BASE + "/preview", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ query: term, offset: nextOffset }) }).then(function (x) { return x.json(); });
-      }, appendCandidateRows);
+      }, appendCandidateRows, function () { if (queryInput) queryInput.focus(); });
     }
 
     function runPreview(payload, displayName) {
