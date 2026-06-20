@@ -466,9 +466,12 @@ function pricingFindings(snapshot: AscSnapshot | undefined): Finding[] {
     );
   }
 
-  // baseTerritoryPrice === 0 ⇒ free; any positive number ⇒ paid; null ⇒ unknown,
-  // which we surface as "paid" only when there's a price string, else "free".
-  const priceLabel = pricing.pricing.baseTerritoryPrice === 0 ? "free" : "paid";
+  // Honest three-state label (#71): 0 ⇒ free; positive ⇒ paid; null/undefined ⇒
+  // UNKNOWN — we couldn't read the price, so we must NOT assert "paid" (that was
+  // a fabricated-as-measured bug: a free app whose price read failed showed
+  // "paid"). Unknown is surfaced as "unknown", never guessed.
+  const basePrice = pricing.pricing.baseTerritoryPrice;
+  const priceLabel = basePrice === 0 ? "free" : basePrice != null && basePrice > 0 ? "paid" : "unknown price";
   const iapSuffix = iaps.length > 0 ? `, ${iaps.length} IAPs` : "";
   out.push(
     mk({
