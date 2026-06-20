@@ -791,6 +791,86 @@ test.describe("run page — ASC unlock CTA on a no-key run (PRD 04)", () => {
   });
 });
 
+test.describe("run page — no-key honesty nits (#56)", () => {
+  // Seed a no-key run (asc:false). currentCopy = { name } only → subtitle/keywords
+  // are UNSEEN, not measured 0. These assertions guard against over-claiming.
+  async function seedNoKeyRun(page: import("@playwright/test").Page): Promise<string> {
+    await gotoMockDashboard(page);
+    const id = await seedAppWithRun(page, { name: "Mangia", bundleId: "com.mangia.recipes" });
+    const runId = await page.evaluate(async (appId) => {
+      const M = (window as any).STORE_OPS_MOCK;
+      const detail = await (await M.handle("GET", `/apps/${appId}`, null, "demo@store-ops.dev")).json();
+      return detail.runs[0].id as string;
+    }, id);
+    await page.goto(`/index.html#/runs/${runId}`);
+    await expect(page.locator(".audit-card")).toBeVisible();
+    return runId;
+  }
+
+  test("(1) coverage card does NOT claim Excellent / budget working hard, and shows subtitle/keywords as unseen — not a measured 0", async ({ page }) => {
+    await seedNoKeyRun(page);
+    const cov = page.locator(".cov-card");
+    await expect(cov).toBeVisible();
+    // Never present an unseen field as optimized/measured.
+    await expect(cov).not.toContainText(/excellent/i);
+    await expect(cov).not.toContainText(/working hard/i);
+    // The breakdown must NOT read "Subtitle 0/30 · Keywords 0/100" (a measured 0).
+    await expect(cov).not.toContainText(/Subtitle 0\/30/i);
+    await expect(cov).not.toContainText(/Keywords 0\/100/i);
+    // It must flag the fields as unseen instead.
+    await expect(cov).toContainText(/unseen/i);
+  });
+
+  test("(2) narrative says it couldn't propose subtitle/keyword changes without ASC (matching the empty diff)", async ({ page }) => {
+    await seedNoKeyRun(page);
+    // The "What the agent did" card.
+    const reasoning = page.locator(".card", { hasText: /what the agent did/i }).first();
+    await expect(reasoning).toBeVisible();
+    // It must NOT narrate subtitle/keyword work the empty diff doesn't reflect.
+    await expect(reasoning).not.toContainText(/takes the subtitle/i);
+    await expect(reasoning).not.toContainText(/feed the keyword field/i);
+    // It must say the changes couldn't be proposed without an ASC connection.
+    await expect(reasoning).toContainText(/couldn.t propose|without App Store Connect|connect App Store Connect/i);
+  });
+
+  test("(3) the run header is softened for a no-key run — no 'prepared the change below'", async ({ page }) => {
+    await seedNoKeyRun(page);
+    const lead = page.locator("p.lead").first();
+    await expect(lead).toBeVisible();
+    await expect(lead).not.toContainText(/prepared the change below/i);
+  });
+
+  test("(4) 'Unlock your full audit' appears exactly once — the CTA card, not also a findings row", async ({ page }) => {
+    await seedNoKeyRun(page);
+    // Exactly one big CTA card.
+    await expect(page.locator(".asc-unlock")).toHaveCount(1);
+    // The asc_unlock finding must NOT also render as a finding row.
+    await expect(page.locator(".findings .finding-title", { hasText: /unlock your full audit/i })).toHaveCount(0);
+    // Across the whole audit card, the phrase shows up once.
+    const occurrences = await page.locator(".audit-card", { hasText: /unlock your full audit/i }).evaluate((node) => {
+      return (node.textContent || "").match(/unlock your full audit/gi)?.length ?? 0;
+    });
+    expect(occurrences).toBe(1);
+  });
+
+  test("a key-bearing run keeps the full narrative + measured coverage (regression guard)", async ({ page }) => {
+    await gotoMockDashboard(page);
+    const id = await seedAppWithRun(page, { name: "Mangia", bundleId: "com.mangia.recipes", asc: true });
+    const runId = await page.evaluate(async (appId) => {
+      const M = (window as any).STORE_OPS_MOCK;
+      const detail = await (await M.handle("GET", `/apps/${appId}`, null, "demo@store-ops.dev")).json();
+      return detail.runs[0].id as string;
+    }, id);
+    await page.goto(`/index.html#/runs/${runId}`);
+    await expect(page.locator(".audit-card")).toBeVisible();
+    // Coverage reflects real subtitle/keywords — no "unseen" framing.
+    const cov = page.locator(".cov-card");
+    await expect(cov).not.toContainText(/unseen/i);
+    // Header keeps the confident framing on a keyed run.
+    await expect(page.locator("p.lead").first()).toContainText(/prepared the change below/i);
+  });
+});
+
 test.describe("connect — 402 tier-limit paywall (#27)", () => {
   test("connecting past the plan's app limit shows a visible upgrade modal, not a silent fail", async ({
     page,

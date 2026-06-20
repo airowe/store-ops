@@ -756,6 +756,8 @@ svg.spark .lbl { fill: var(--faint); font-family: var(--mono); font-size: 10px; 
 .cov-gauge.good { color: var(--signal); }
 .cov-gauge.warn { color: var(--warn); }
 .cov-gauge.bad  { color: var(--bad); }
+/* No-key run: scored on the name alone — a muted ring, not a confident grade. */
+.cov-gauge.neutral { color: var(--faint); }
 .cov-gauge-inner {
   width: 58px; height: 58px; border-radius: 50%;
   background: var(--bg, #0c0e14); display: grid; place-items: center;
