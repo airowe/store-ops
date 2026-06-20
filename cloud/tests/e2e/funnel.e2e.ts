@@ -101,6 +101,55 @@ test.describe("dashboard funnel (mock backend)", () => {
     await expect.poll(async () => page.locator(".appcard").count()).toBeGreaterThan(12);
   });
 
+  test("name search at end-of-results nudges to paste an exact link/bundle id, and the link focuses the search box (#48)", async ({
+    page,
+  }) => {
+    await gotoMockDashboard(page);
+    const search = page.getByPlaceholder(/app name, app store .* link, or bundle id/i);
+
+    // A NAME search ("meditation") pages to the very end of the mock's 27 results.
+    await search.fill("meditation");
+    await expect(page.locator(".appcard").first()).toBeVisible({ timeout: 10_000 });
+
+    // Click through to the end so the paginator hits hasMore=false.
+    for (let i = 0; i < 6; i++) {
+      const btn = page.getByRole("button", { name: /show more results/i });
+      if ((await btn.count()) === 0) break;
+      await btn.click().catch(() => {});
+      await page.waitForTimeout(150);
+    }
+    await expect(page.getByRole("button", { name: /show more results/i })).toHaveCount(0);
+
+    // The end-of-results nudge is visible and frames the find-my-app path honestly.
+    const nudge = page.locator(".find-exact-nudge");
+    await expect(nudge).toBeVisible();
+    await expect(nudge).toContainText(/don't see your app/i);
+    await expect(nudge).toContainText(/search can miss apps that don't yet rank/i);
+
+    // The "App Store link or bundle id" phrase is an actionable control that
+    // focuses the search input (so the user can paste their exact id/link).
+    const link = nudge.locator(".find-exact-link");
+    await expect(link).toBeVisible();
+    await expect(link).toHaveText(/app store link or bundle id/i);
+    await link.click();
+    await expect(search).toBeFocused();
+  });
+
+  test("an exact bundle-id search resolves directly and shows NO end-of-results nudge (#48)", async ({
+    page,
+  }) => {
+    await gotoMockDashboard(page);
+    const search = page.getByPlaceholder(/app name, app store .* link, or bundle id/i);
+
+    // A bundle id resolves to exactly one catalog app (single result, hasMore=false)
+    // — there's nothing to "find exactly", so the nudge must NOT appear.
+    await search.fill("com.calm.calmapp");
+    await expect(page.getByText(/found it — click to connect|pick your app/i)).toBeVisible({
+      timeout: 10_000,
+    });
+    await expect(page.locator(".find-exact-nudge")).toHaveCount(0);
+  });
+
   test("app detail renders the animated rank-movement card with numbers matching the data", async ({
     page,
   }) => {
