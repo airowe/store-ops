@@ -51,6 +51,7 @@ type Localization = {
     keywords?: string;
     promotionalText?: string;
     description?: string;
+    whatsNew?: string; // release notes — present in the SAME localization read (#46)
   };
 };
 
@@ -61,6 +62,7 @@ export type LiveListingCopy = {
   keywords?: string | undefined;
   promo?: string | undefined;
   description?: string | undefined;
+  whatsNew?: string | undefined; // release notes (#46)
 };
 
 /**
@@ -137,6 +139,7 @@ export type LocalizationPatch = {
       keywords: string;
       promotionalText: string;
       description: string;
+      whatsNew: string;
     }>;
   };
 };
@@ -158,6 +161,7 @@ export function buildLocalizationPatch(localizationId: string, copy: CopyFields)
   set("keywords", copy.keywords);
   set("promotionalText", copy.promo); // copy.promo → ASC promotionalText
   set("description", copy.description);
+  set("whatsNew", copy.whatsNew); // release notes (#46)
   return {
     data: { type: "appStoreVersionLocalizations", id: localizationId, attributes },
   };
@@ -292,6 +296,7 @@ export async function readAscLocalization(
     keywords: a.keywords,
     promo: a.promotionalText,
     description: a.description,
+    whatsNew: a.whatsNew, // release notes (#46)
   };
 }
 
@@ -679,6 +684,7 @@ export async function readAscAllLocales(
       keywords: a.keywords,
       promo: a.promotionalText, // map ASC promotionalText → our promo
       description: a.description,
+      whatsNew: a.whatsNew, // release notes (#46)
     });
   }
   return out;

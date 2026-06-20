@@ -97,6 +97,7 @@ describe("readAscLocalization — reads live subtitle/keywords (the #30 fix)", (
             keywords: "mindfulness,journal,affirmation,anxiety,sleep,focus,philosophy,aurelius,seneca,agnostic,gratitude",
             promotionalText: "New programs.",
             description: "A secular meditation app.",
+            whatsNew: "Added offline mode. Fixed a sync crash.",
           },
         },
       ],
@@ -115,6 +116,7 @@ describe("readAscLocalization — reads live subtitle/keywords (the #30 fix)", (
     expect(live.name).toBe("Heathen - Secular Meditation");
     expect(live.promo).toBe("New programs.");
     expect(live.description).toBe("A secular meditation app.");
+    expect(live.whatsNew).toBe("Added offline mode. Fixed a sync crash."); // release notes (#46)
   });
 
   it("returns undefined fields when ASC omits them (a sparse listing)", async () => {
@@ -181,6 +183,7 @@ describe("buildLocalizationPatch", () => {
     keywords: "meditation,sleep,calm,focus",
     promo: "New: bedtime stories.",
     description: "The #1 app for sleep and meditation.",
+    whatsNew: "Added offline playback. Fixed a sync crash.",
   };
 
   it("targets the appStoreVersionLocalizations resource with the given id", () => {
@@ -196,6 +199,7 @@ describe("buildLocalizationPatch", () => {
     expect(a.keywords).toBe(copy.keywords);
     expect(a.promotionalText).toBe(copy.promo); // promo → promotionalText
     expect(a.description).toBe(copy.description);
+    expect(a.whatsNew).toBe(copy.whatsNew); // release notes (#46)
   });
 
   it("omits attributes that are absent in the copy (never sends empty over the real value)", () => {
@@ -204,6 +208,7 @@ describe("buildLocalizationPatch", () => {
     expect(a.name).toBe("X");
     expect("promotionalText" in a).toBe(false);
     expect("description" in a).toBe(false);
+    expect("whatsNew" in a).toBe(false); // release notes omitted when absent (#46)
   });
 
   it("omits empty-string fields too (don't wipe a live field with a blank)", () => {

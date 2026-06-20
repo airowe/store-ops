@@ -19,6 +19,7 @@ export type CopyFields = {
   keywords: string; // the keyword FIELD (comma-joined, no spaces)
   promo?: string;
   description?: string;
+  whatsNew?: string; // release notes — the ASC whatsNew field (#46)
 };
 
 /**
