@@ -90,7 +90,17 @@ export function classifyDevice(displayType?: string): DeviceClass {
 
 // ── ASC JSON:API row shapes (only the fields we read) ────────────────────────
 type Version = { id: string; attributes?: { appStoreState?: string } };
-type Localization = { id: string; attributes?: { locale?: string } };
+type Localization = {
+  id: string;
+  attributes?: {
+    locale?: string;
+    name?: string;
+    subtitle?: string;
+    keywords?: string;
+    promotionalText?: string;
+    description?: string;
+  };
+};
 type ScreenshotSetRow = { id: string; attributes?: { screenshotDisplayType?: string } };
 type ScreenshotRow = {
   id: string;
@@ -227,6 +237,91 @@ async function readSetsForLocalization(
     out.push({ device, displayType: device, count: screenshots.length, screenshots });
   }
   return out;
+}
+
+// ── readAscListingCopy: the REAL listing copy off the localization (#66) ─────
+
+/** A single copy field that was READ from ASC. `seen: true` always — an empty
+ *  `value` means "we read it and it's empty", NOT "we didn't read it". The only
+ *  way a field is unseen is the read never happening (function returns null). */
+type SeenField = { value: string; seen: true };
+
+/**
+ * The genuine listing copy read from App Store Connect's
+ * appStoreVersionLocalizations (#66). Every field is `seen: true` because, by the
+ * time we have this object, the localization WAS read — even fields ASC returns
+ * empty/omitted are measured facts (rendered "empty"), never fabricated guesses.
+ */
+export type AscListingCopy = {
+  locale: string;
+  name: SeenField;
+  subtitle: SeenField;
+  keywords: SeenField;
+  promotionalText: SeenField;
+  description: SeenField;
+  /** Hard-coded true: this came from ASC, not a name-derived seed guess. Closes #66. */
+  dataReliable: true;
+};
+
+/** A read-but-empty/omitted attribute is `{ value: "", seen: true }` — empty is a
+ *  measured fact, not an unmeasured guess. */
+function seenField(value: string | undefined): SeenField {
+  return { value: value ?? "", seen: true };
+}
+
+/**
+ * Read the REAL listing copy (name/subtitle/keywords/promotionalText/description)
+ * straight from App Store Connect — closing the #66 honesty gap where the old
+ * `Localization` shape discarded these fields, forcing downstream to fall back to
+ * name-derived seed keywords while wrongly marking them `seen: true`.
+ *
+ * Reuses the SAME version + localizations traversal as readAscScreenshots
+ * (pickReadableVersion → list localizations → pick locale). If a `locale` is
+ * passed, that localization is used (throws via pickLocalization if absent). If
+ * omitted, the first localization is used; if there are none, returns null.
+ *
+ * HONESTY: when a localization is read, EVERY copy field is `seen: true`, even
+ * when its value is "" (empty is a fact). The only "not seen" signal is this
+ * function returning null (read not performed). Errors strip the token (ascError).
+ */
+export async function readAscListingCopy(
+  fetchFn: FetchLike,
+  opts: { token: string; appId: string; locale?: string },
+): Promise<AscListingCopy | null> {
+  const auth = { authorization: `Bearer ${opts.token}` };
+
+  // 1. versions → readable one (editable preferred, else live) — same as screenshots.
+  const versionsRes = await fetchFn(
+    `${ASC_BASE}/apps/${encodeURIComponent(opts.appId)}/appStoreVersions?limit=50`,
+    { headers: auth },
+  );
+  if (!versionsRes.ok) throw await ascError(versionsRes, "list app store versions");
+  const versions = (await versionsRes.json().catch(() => ({}))) as { data?: Version[] };
+  const version = pickReadableVersion(versions.data ?? []);
+
+  // 2. localizations for that version.
+  const locsRes = await fetchFn(
+    `${ASC_BASE}/appStoreVersions/${version.id}/appStoreVersionLocalizations?limit=50`,
+    { headers: auth },
+  );
+  if (!locsRes.ok) throw await ascError(locsRes, "list version localizations");
+  const locsBody = (await locsRes.json().catch(() => ({}))) as { data?: Localization[] };
+  const allLocs = locsBody.data ?? [];
+
+  // Choose the localization: requested locale (throws if missing) or the first.
+  const loc = opts.locale ? pickLocalization(allLocs, opts.locale) : allLocs[0];
+  if (!loc) return null; // no locale requested and none exist → read not performed
+
+  const a = loc.attributes ?? {};
+  return {
+    locale: a.locale ?? opts.locale ?? "",
+    name: seenField(a.name),
+    subtitle: seenField(a.subtitle),
+    keywords: seenField(a.keywords),
+    promotionalText: seenField(a.promotionalText),
+    description: seenField(a.description),
+    dataReliable: true,
+  };
 }
 
 // ── readAscPreviews: preview VIDEOS per device (issue: preview audit) ───────
