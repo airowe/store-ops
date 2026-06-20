@@ -85,6 +85,13 @@ export {
 } from "./ascWrite.js";
 export { type AscSnapshot, readAscSnapshot, ascScreenshotsToListing } from "./ascRead.js";
 export {
+  type ReleaseVoice,
+  type HumanizeReleaseNotesInput,
+  type HumanizedReleaseNotes,
+  RELEASE_NOTES_LIMIT,
+  humanizeReleaseNotes,
+} from "./releaseNotes.js";
+export {
   type Finding,
   type FindingSeverity,
   type FindingImpact,

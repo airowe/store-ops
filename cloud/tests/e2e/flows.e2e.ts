@@ -338,6 +338,73 @@ test.describe("run page — PR-style diff (current → proposed)", () => {
   });
 });
 
+test.describe("run page — diff hides unchanged fields (#58)", () => {
+  // Force a run whose proposed copy is IDENTICAL to current copy for every
+  // field by wrapping the mock's GET /runs/:id response. An unchanged field
+  // must never render as a "proposed change."
+  async function forceUnchangedRun(page: import("@playwright/test").Page, runId: string): Promise<void> {
+    // Pre-read the real run, doctor it so proposed === current for every field,
+    // then stash the doctored body. The mock's handle() is SYNCHRONOUS (app.js
+    // does `handle(...).json()`), so the override must synchronously return a
+    // Response built from the already-resolved doctored body.
+    const doctored = await page.evaluate(async (rid) => {
+      const M = (window as any).STORE_OPS_MOCK;
+      const run = await (await M.handle("GET", `/runs/${rid}`, null, "demo@store-ops.dev")).json();
+      const cur = run.result.currentCopy || {};
+      const same = {
+        name: cur.name,
+        subtitle: cur.subtitle ?? "",
+        keywords: cur.keywords ?? "",
+        promo: cur.promo ?? "",
+      };
+      run.result.currentCopy = { ...same };
+      run.result.proposedCopy = { ...same, validation: run.result.proposedCopy?.validation };
+      return run;
+    }, runId);
+
+    await page.evaluate(
+      ({ rid, body }) => {
+        const M = (window as any).STORE_OPS_MOCK;
+        const orig = M.handle.bind(M);
+        M.handle = function (method: string, path: string, b: unknown, email: string) {
+          if (method === "GET" && path === `/runs/${rid}`) {
+            return new Response(JSON.stringify(body), {
+              status: 200,
+              headers: { "content-type": "application/json" },
+            });
+          }
+          return orig(method, path, b, email);
+        };
+      },
+      { rid: runId, body: doctored },
+    );
+  }
+
+  test("unchanged fields render no diff row and the all-unchanged empty state shows", async ({ page }) => {
+    await gotoMockDashboard(page);
+    const id = await seedAppWithRun(page);
+    const runId = await page.evaluate(async (appId) => {
+      const M = (window as any).STORE_OPS_MOCK;
+      const detail = await (await M.handle("GET", `/apps/${appId}`, null, "demo@store-ops.dev")).json();
+      return detail.runs[0].id as string;
+    }, id);
+    await forceUnchangedRun(page, runId);
+    await page.goto(`/index.html#/runs/${runId}`);
+
+    // The diff card still leads with its header…
+    await expect(page.getByRole("heading", { name: /proposed changes/i })).toBeVisible();
+    // …but NOT a single field row renders, because nothing changed.
+    await expect(page.locator(".diffrow")).toHaveCount(0);
+    // The honest empty state names the real next step (connect ASC), never an
+    // empty diff or a fake "0 changed" row.
+    await expect(
+      page.getByText(/no metadata changes proposed.*connect app store connect/i),
+    ).toBeVisible();
+    // The summary reports zero fields changed (no invented count).
+    await expect(page.locator(".diffsummary")).toContainText(/0 fields changed/i);
+  });
+});
+
 test.describe("run page — Listing audit card (ASC findings, PRD 03)", () => {
   async function latestRunId(page: import("@playwright/test").Page, appId: string): Promise<string> {
     return await page.evaluate(async (id) => {
@@ -721,6 +788,99 @@ test.describe("run page — ASC unlock CTA on a no-key run (PRD 04)", () => {
 
     await expect(page.locator(".audit-card")).toBeVisible();
     await expect(page.locator(".audit-card .asc-unlock")).toHaveCount(0);
+  });
+});
+
+test.describe("run page — no-key honesty nits (#56)", () => {
+  // Seed a no-key run (asc:false). currentCopy = { name } only → subtitle/keywords
+  // are UNSEEN, not measured 0. These assertions guard against over-claiming.
+  async function seedNoKeyRun(page: import("@playwright/test").Page): Promise<string> {
+    await gotoMockDashboard(page);
+    const id = await seedAppWithRun(page, { name: "Mangia", bundleId: "com.mangia.recipes" });
+    const runId = await page.evaluate(async (appId) => {
+      const M = (window as any).STORE_OPS_MOCK;
+      const detail = await (await M.handle("GET", `/apps/${appId}`, null, "demo@store-ops.dev")).json();
+      return detail.runs[0].id as string;
+    }, id);
+    await page.goto(`/index.html#/runs/${runId}`);
+    await expect(page.locator(".audit-card")).toBeVisible();
+    return runId;
+  }
+
+  test("(1) coverage card does NOT claim Excellent / budget working hard, and shows subtitle/keywords as unseen — not a measured 0", async ({ page }) => {
+    await seedNoKeyRun(page);
+    const cov = page.locator(".cov-card");
+    await expect(cov).toBeVisible();
+    // Never present an unseen field as optimized/measured.
+    await expect(cov).not.toContainText(/excellent/i);
+    await expect(cov).not.toContainText(/working hard/i);
+    // The breakdown must NOT read "Subtitle 0/30 · Keywords 0/100" (a measured 0).
+    await expect(cov).not.toContainText(/Subtitle 0\/30/i);
+    await expect(cov).not.toContainText(/Keywords 0\/100/i);
+    // It must flag the fields as unseen instead.
+    await expect(cov).toContainText(/unseen/i);
+    // (#60) A per-field FILL breakdown renders: Name has a real used/limit, while
+    // subtitle & keywords are explicitly UNSEEN (not a measured 0/limit).
+    const rows = cov.locator(".cov-field-row");
+    await expect(rows).toHaveCount(3);
+    const nameRow = cov.locator(".cov-field-row", { hasText: "Name" });
+    await expect(nameRow).toContainText(/\d+\/30/); // real fill for the public name
+    await expect(nameRow.locator(".cov-bar-fill")).toBeVisible();
+    const subRow = cov.locator(".cov-field-row", { hasText: "Subtitle" });
+    await expect(subRow.locator(".cov-field-val.unseen")).toHaveText(/unseen/i);
+    await expect(subRow).not.toContainText(/0\/30/);
+    const kwRow = cov.locator(".cov-field-row", { hasText: "Keywords" });
+    await expect(kwRow.locator(".cov-field-val.unseen")).toHaveText(/unseen/i);
+    await expect(kwRow).not.toContainText(/0\/100/);
+  });
+
+  test("(2) narrative says it couldn't propose subtitle/keyword changes without ASC (matching the empty diff)", async ({ page }) => {
+    await seedNoKeyRun(page);
+    // The "What the agent did" card.
+    const reasoning = page.locator(".card", { hasText: /what the agent did/i }).first();
+    await expect(reasoning).toBeVisible();
+    // It must NOT narrate subtitle/keyword work the empty diff doesn't reflect.
+    await expect(reasoning).not.toContainText(/takes the subtitle/i);
+    await expect(reasoning).not.toContainText(/feed the keyword field/i);
+    // It must say the changes couldn't be proposed without an ASC connection.
+    await expect(reasoning).toContainText(/couldn.t propose|without App Store Connect|connect App Store Connect/i);
+  });
+
+  test("(3) the run header is softened for a no-key run — no 'prepared the change below'", async ({ page }) => {
+    await seedNoKeyRun(page);
+    const lead = page.locator("p.lead").first();
+    await expect(lead).toBeVisible();
+    await expect(lead).not.toContainText(/prepared the change below/i);
+  });
+
+  test("(4) 'Unlock your full audit' appears exactly once — the CTA card, not also a findings row", async ({ page }) => {
+    await seedNoKeyRun(page);
+    // Exactly one big CTA card.
+    await expect(page.locator(".asc-unlock")).toHaveCount(1);
+    // The asc_unlock finding must NOT also render as a finding row.
+    await expect(page.locator(".findings .finding-title", { hasText: /unlock your full audit/i })).toHaveCount(0);
+    // Across the whole audit card, the phrase shows up once.
+    const occurrences = await page.locator(".audit-card", { hasText: /unlock your full audit/i }).evaluate((node) => {
+      return (node.textContent || "").match(/unlock your full audit/gi)?.length ?? 0;
+    });
+    expect(occurrences).toBe(1);
+  });
+
+  test("a key-bearing run keeps the full narrative + measured coverage (regression guard)", async ({ page }) => {
+    await gotoMockDashboard(page);
+    const id = await seedAppWithRun(page, { name: "Mangia", bundleId: "com.mangia.recipes", asc: true });
+    const runId = await page.evaluate(async (appId) => {
+      const M = (window as any).STORE_OPS_MOCK;
+      const detail = await (await M.handle("GET", `/apps/${appId}`, null, "demo@store-ops.dev")).json();
+      return detail.runs[0].id as string;
+    }, id);
+    await page.goto(`/index.html#/runs/${runId}`);
+    await expect(page.locator(".audit-card")).toBeVisible();
+    // Coverage reflects real subtitle/keywords — no "unseen" framing.
+    const cov = page.locator(".cov-card");
+    await expect(cov).not.toContainText(/unseen/i);
+    // Header keeps the confident framing on a keyed run.
+    await expect(page.locator("p.lead").first()).toContainText(/prepared the change below/i);
   });
 });
 

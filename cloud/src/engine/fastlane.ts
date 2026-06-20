@@ -39,6 +39,7 @@ export function buildFastlaneBundle(
   add(`${ios}/keywords.txt`, copy.keywords);
   add(`${ios}/promotional_text.txt`, copy.promo);
   add(`${ios}/description.txt`, copy.description);
+  add(`${ios}/release_notes.txt`, copy.whatsNew); // What's New / release notes (#46)
 
   // ── Google Play · supply (no keyword field) ──
   const android = `fastlane/metadata/android/${locale}`;
@@ -64,7 +65,7 @@ export function fastlaneReadme(locale: string): string {
     "## What this is",
     "",
     "- **App Store** (`fastlane deliver`): `metadata/" + locale + "/*.txt`",
-    "  — `name`, `subtitle`, `keywords`, `promotional_text`, `description`.",
+    "  — `name`, `subtitle`, `keywords`, `promotional_text`, `description`, `release_notes`.",
     "- **Google Play** (`fastlane supply`): `metadata/android/" + locale + "/*.txt`",
     "  — `title`, `short_description`, `full_description` (Play has no keyword field).",
     "",

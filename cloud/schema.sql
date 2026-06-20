@@ -6,8 +6,11 @@
 --   app  --< rank_snapshots / competitor_snapshots   (time-series ground truth)
 --
 -- The run.status enum is the spine of the approval-gate guarantee:
---   detected -> researching -> awaiting_approval -> approved|rejected -> shipped
--- The irreversible push only happens after an 'approved' approval row exists.
+--   detected -> researching -> awaiting_approval -> approved|rejected
+-- Approval moves a run to 'approved' and REVEALS the push commands; it does not
+-- push anything. 'shipped' is reserved for a verified push that actually reached
+-- App Store Connect (set out-of-band, not by the approval gate) — so a run's
+-- status never claims 'shipped' until something truly shipped.
 
 PRAGMA foreign_keys = ON;
 

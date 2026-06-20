@@ -269,4 +269,61 @@ describe("composeSubtitle — deterministic natural-phrase authoring", () => {
   it("returns empty string for no usable terms", () => {
     expect(composeSubtitle([])).toBe("");
   });
+
+  // #42: the brand name's words are wasted chars in the subtitle (Apple already
+  // ranks the title) — strip them from the composed phrase.
+  it("excludes banned name words from the composed phrase (case-insensitive)", () => {
+    const out = composeSubtitle(["heathen", "meditation", "mindfulness"], { ban: "Heathen" });
+    expect(out.toLowerCase()).not.toContain("heathen");
+    expect(out.toLowerCase()).toContain("meditation");
+  });
+
+  it("strips multi-word name tokens regardless of case", () => {
+    const out = composeSubtitle(["trip", "weatherthere", "forecast"], { ban: "WeatherThere — Trip Forecast" });
+    const subWords = new Set(out.toLowerCase().split(/\s+/).filter(Boolean));
+    for (const w of ["weatherthere", "trip", "forecast"]) expect(subWords.has(w)).toBe(false);
+  });
+});
+
+describe("optimizeCopy — subtitle never repeats the app name (#42)", () => {
+  // Reproduces the observed leak: secondary/primary terms that collide with the
+  // brand name must not surface in the proposed subtitle.
+  const nameWord = (name: string) =>
+    new Set(name.toLowerCase().split(/[^a-z0-9]+/).filter(Boolean));
+
+  it("WeatherThere: proposed subtitle shares no word with the app name", () => {
+    const scored: ScoredKeyword[] = [
+      { keyword: "weatherthere", volume: 50, difficulty: 30, relevance: 90, score: 80, bucket: "Primary", field: "name" },
+      { keyword: "trip", volume: 70, difficulty: 30, relevance: 85, score: 78, bucket: "Secondary", field: "subtitle" },
+      { keyword: "forecast", volume: 65, difficulty: 30, relevance: 80, score: 74, bucket: "Secondary", field: "subtitle" },
+      { keyword: "rain radar", volume: 60, difficulty: 30, relevance: 75, score: 70, bucket: "Long-tail", field: "keywords" },
+    ];
+    const copy = optimizeCopy(
+      scored,
+      { name: "WeatherThere — Trip Forecast", subtitle: "", keywords: "" },
+      { canWriteSubtitleKeywords: true },
+    );
+    const banned = nameWord("WeatherThere — Trip Forecast");
+    const subWords = copy.subtitle.toLowerCase().split(/\s+/).filter(Boolean);
+    for (const w of subWords) expect(banned.has(w)).toBe(false);
+    expect(copy.subtitle.length).toBeGreaterThan(0);
+  });
+
+  it("Heathen: proposed subtitle shares no word with the app name", () => {
+    const scored: ScoredKeyword[] = [
+      { keyword: "heathen", volume: 50, difficulty: 30, relevance: 90, score: 80, bucket: "Primary", field: "name" },
+      { keyword: "meditation", volume: 80, difficulty: 30, relevance: 85, score: 80, bucket: "Secondary", field: "subtitle" },
+      { keyword: "mindfulness", volume: 70, difficulty: 30, relevance: 80, score: 74, bucket: "Secondary", field: "subtitle" },
+      { keyword: "stoic", volume: 60, difficulty: 30, relevance: 75, score: 70, bucket: "Long-tail", field: "keywords" },
+    ];
+    const copy = optimizeCopy(
+      scored,
+      { name: "Heathen - Secular Meditation", subtitle: "", keywords: "" },
+      { canWriteSubtitleKeywords: true },
+    );
+    const banned = nameWord("Heathen - Secular Meditation");
+    const subWords = copy.subtitle.toLowerCase().split(/\s+/).filter(Boolean);
+    for (const w of subWords) expect(banned.has(w)).toBe(false);
+    expect(copy.subtitle.length).toBeGreaterThan(0);
+  });
 });

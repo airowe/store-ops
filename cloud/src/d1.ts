@@ -564,9 +564,11 @@ export async function getApproval(db: D1Database, runId: string): Promise<Approv
 
 /**
  * Record the human approval decision and move the run's status accordingly,
- * atomically. approve → status 'shipped' (commands are handed off, never run);
- * reject → status 'rejected'. The UNIQUE(run_id) constraint guarantees one gate
- * per run; a second call surfaces as a conflict to the caller.
+ * atomically. approve → status 'approved' (the push commands are revealed but
+ * never run — nothing has reached App Store Connect yet, so we do NOT claim
+ * 'shipped'); reject → status 'rejected'. 'shipped' is reserved for a verified
+ * push that actually reached Apple. The UNIQUE(run_id) constraint guarantees one
+ * gate per run; a second call surfaces as a conflict to the caller.
  */
 export async function recordApproval(
   db: D1Database,
@@ -578,7 +580,7 @@ export async function recordApproval(
     decision: args.decision,
     decided_at: now(),
   };
-  const nextStatus: RunStatus = args.decision === "approved" ? "shipped" : "rejected";
+  const nextStatus: RunStatus = args.decision === "approved" ? "approved" : "rejected";
 
   await db.batch([
     db

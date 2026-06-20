@@ -140,6 +140,49 @@ describe("metadataCoverage — coverage score", () => {
   });
 });
 
+// ── Per-field fill (#60) ──────────────────────────────────────────────────────
+
+describe("metadataCoverage — per-field fill", () => {
+  const fieldOf = (r: CoverageReport, field: "name" | "subtitle" | "keywords") => {
+    const row = r.fieldFill.find((f) => f.field === field);
+    if (!row) throw new Error(`missing fill row for ${field}`);
+    return row;
+  };
+
+  it("reports a fill row per field with used/limit, in name/subtitle/keywords order", () => {
+    const r = metadataCoverage({ name: "Weather Radar", subtitle: "Live storm", keywords: "rain,storm" });
+    expect(r.fieldFill.map((f) => f.field)).toEqual(["name", "subtitle", "keywords"]);
+    expect(fieldOf(r, "name").used).toBe("Weather Radar".length);
+    expect(fieldOf(r, "name").limit).toBe(CHAR_LIMITS.name);
+    expect(fieldOf(r, "subtitle").limit).toBe(CHAR_LIMITS.subtitle);
+    expect(fieldOf(r, "keywords").limit).toBe(CHAR_LIMITS.keywords);
+  });
+
+  it("a SEEN field (a string, incl. empty) is marked seen; fillPct = used/limit", () => {
+    const r = metadataCoverage({ name: "abc", subtitle: "", keywords: "x" });
+    expect(fieldOf(r, "name").seen).toBe(true);
+    expect(fieldOf(r, "subtitle").seen).toBe(true); // empty string is a MEASURED 0, not unseen
+    expect(fieldOf(r, "subtitle").used).toBe(0);
+    expect(fieldOf(r, "name").fillPct).toBeCloseTo((3 / CHAR_LIMITS.name) * 100, 5);
+  });
+
+  it("an UNSEEN field (undefined input) is marked seen:false with used 0 — UNKNOWN, not a measured 0", () => {
+    const r = metadataCoverage({ name: "Weather", subtitle: undefined, keywords: undefined });
+    expect(fieldOf(r, "name").seen).toBe(true);
+    expect(fieldOf(r, "subtitle").seen).toBe(false);
+    expect(fieldOf(r, "keywords").seen).toBe(false);
+    // an unseen field carries no fabricated fill
+    expect(fieldOf(r, "subtitle").used).toBe(0);
+    expect(fieldOf(r, "subtitle").fillPct).toBe(0);
+  });
+
+  it("fillPct is clamped to 100 even if a field somehow exceeds its limit", () => {
+    const r = metadataCoverage({ name: "a".repeat(CHAR_LIMITS.name + 12) });
+    const name = r.fieldFill.find((f) => f.field === "name");
+    expect(name?.fillPct).toBe(100);
+  });
+});
+
 // ── Distinct terms ────────────────────────────────────────────────────────────
 
 describe("metadataCoverage — distinct terms", () => {

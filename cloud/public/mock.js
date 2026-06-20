@@ -470,6 +470,18 @@
       subtitle: (copy.subtitle || "").length,
       keywords: (copy.keywords || "").length,
     };
+    // Per-field FILL (#60) — used/limit per field, with `seen` from whether the
+    // input was a string at all. An UNSEEN field (undefined, e.g. a no-key run)
+    // carries no fabricated fill: used + fillPct stay 0 so the UI shows UNKNOWN,
+    // never a measured "0/limit". Mirrors src/engine/metadataCoverage.ts.
+    var fieldFill = ["name", "subtitle", "keywords"].map(function (field) {
+      var raw = copy[field];
+      var seen = raw !== undefined && raw !== null;
+      var used = seen ? String(raw).length : 0;
+      var limit = CHAR_LIMITS[field];
+      var fillPct = seen ? Math.max(0, Math.min(100, (used / limit) * 100)) : 0;
+      return { field: field, limit: limit, used: used, fillPct: fillPct, seen: seen };
+    });
     var brandToks = {};
     covTokens(brand).forEach(function (t) { brandToks[t] = 1; });
     function nonBrand(s) { return covTokens(s).filter(function (t) { return !brandToks[t]; }); }
@@ -508,7 +520,7 @@
     var totalWaste = waste.reduce(function (s, w) { return s + w.chars; }, 0);
     var coverageScore = distinctTerms === 0 ? 0
       : Math.max(0, Math.min(100, ((COVERAGE_BUDGET - totalWaste) / COVERAGE_BUDGET) * 100));
-    return { coverageScore: coverageScore, usedChars: usedChars, distinctTerms: distinctTerms, waste: waste };
+    return { coverageScore: coverageScore, usedChars: usedChars, fieldFill: fieldFill, distinctTerms: distinctTerms, waste: waste };
   }
   function setOf(arr) { var m = {}; arr.forEach(function (t) { m[t] = 1; }); return m; }
 

@@ -59,7 +59,7 @@
  *   GET  /apps/:id/ranks    rank history for the trend chart (?keyword= optional)
  *   GET  /runs/:id          run + reasoning + proposed copy + push commands
  *   POST /runs/:id/approve  {decision:'approve'|'reject'} → records approval;
- *                           approve → status 'shipped' + returns push COMMANDS
+ *                           approve → status 'approved' + returns push COMMANDS
  *                           (we hand off commands, we never execute them)
  */
 import {
@@ -212,7 +212,7 @@ async function readJson<T>(req: Request): Promise<T> {
  * reasoning / proposedCopy (with validation) / pushCommands.
  *
  * The approval gate is enforced here: pushCommands are only included once the
- * run has been approved (status 'shipped'/'approved'). Before that they are
+ * run has been approved (status 'approved', or a legacy 'shipped' row). Before that they are
  * withheld so a pre-approval client literally cannot read them.
  */
 async function runView(env: Env, runId: string) {
@@ -1242,8 +1242,9 @@ type ApproveBody = { decision?: string };
  *
  * `action` comes from the URL segment ("approve"/"reject"); the JSON body's
  * `decision` is also honored when present (so `/approve` with `{decision}` keeps
- * working). approve → status 'shipped' + reveals the generated push commands
- * (which we still never execute); reject → status 'rejected', nothing pushed.
+ * working). approve → status 'approved' + reveals the generated push commands
+ * (which we still never execute — nothing reaches App Store Connect); reject →
+ * status 'rejected', nothing pushed.
  */
 async function decideRun(
   req: Request,
@@ -1281,12 +1282,13 @@ async function decideRun(
     return { id: runId, status: "rejected", pushCommands: [] };
   }
 
-  // approved → status is now 'shipped'; return the generated, NON-executed
-  // push command handoff so the client can copy + run it on a credentialed box.
+  // approved → status is now 'approved' (NOT 'shipped' — nothing has reached
+  // App Store Connect yet); return the generated, NON-executed push command
+  // handoff so the client can copy + run it on a credentialed box.
   const trace = JSON.parse(run.reasoning_json) as ReasoningTrace;
   return {
     id: runId,
-    status: "shipped",
+    status: "approved",
     note: "Approved. Hand the metadata to your build pipeline (credential-free), or apply it yourself — ShipASO never stores your store credentials.",
     pushCommands: trace.pushCommands,
   };

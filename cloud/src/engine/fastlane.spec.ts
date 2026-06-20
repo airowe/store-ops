@@ -8,6 +8,7 @@ const fullCopy: CopyFields = {
   keywords: "moodjournal,dailyplanner,focustimer,budgetapp",
   promo: "New: Calm Tracker just got faster.",
   description: "The calmest way to build habits.",
+  whatsNew: "Added offline streaks. Fixed a sync crash.",
 };
 
 const minimalCopy: CopyFields = {
@@ -48,6 +49,7 @@ describe("buildFastlaneBundle — fastlane/metadata tree from proposed copy", ()
     expect(m["fastlane/metadata/en-US/keywords.txt"]).toBe(fullCopy.keywords);
     expect(m["fastlane/metadata/en-US/promotional_text.txt"]).toBe(fullCopy.promo);
     expect(m["fastlane/metadata/en-US/description.txt"]).toBe(fullCopy.description);
+    expect(m["fastlane/metadata/en-US/release_notes.txt"]).toBe(fullCopy.whatsNew); // (#46)
   });
 
   it("writes the Google Play supply files under metadata/android/<locale>", () => {
@@ -69,6 +71,7 @@ describe("buildFastlaneBundle — fastlane/metadata tree from proposed copy", ()
     const m = asMap(buildFastlaneBundle(minimalCopy, { locale: "en-US" }).files);
     expect(m["fastlane/metadata/en-US/promotional_text.txt"]).toBeUndefined();
     expect(m["fastlane/metadata/en-US/description.txt"]).toBeUndefined();
+    expect(m["fastlane/metadata/en-US/release_notes.txt"]).toBeUndefined(); // (#46)
     // Play full_description also absent (it maps from description)
     expect(m["fastlane/metadata/android/en-US/full_description.txt"]).toBeUndefined();
     // but the required files are always present

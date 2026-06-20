@@ -360,9 +360,11 @@
 
   // ── status helpers ──────────────────────────────────────────────────────────
   function statusBadge(s) { return el("span", { class: "badge " + s }, [labelFor(s)]); }
-  // NOTE: the `shipped` enum is set on APPROVAL, before any push to App Store
-  // Connect — so the label must NOT claim "Shipped" (nothing has reached Apple
-  // yet). It reads "Approved · ready to push" until a real verified push exists.
+  // NOTE: approval moves a run to `approved` and only REVEALS the push commands —
+  // nothing has reached App Store Connect yet, so the label must NOT claim
+  // "Shipped". Legacy `shipped` rows predate this split and likewise only mean
+  // "approved" (no verified push), so they read the same honest copy. A truthful
+  // "Shipped" is reserved for a confirmed push.
   function labelFor(s) { return ({ detected: "Detected", researching: "Researching", awaiting_approval: "Awaiting approval", approved: "Approved · ready to push", rejected: "Rejected", shipped: "Approved · ready to push" })[s] || s; }
   function rankClass(r) { return r == null ? "none" : r <= 10 ? "good" : r <= 50 ? "mid" : ""; }
   function rankText(r) { return r == null ? "—" : "#" + r; }
@@ -929,7 +931,14 @@
       el("h1", { style: "margin-bottom:0" }, ["Agent proposal"]),
       statusBadge(run.status),
     ]));
-    c.appendChild(el("p", { class: "lead" }, ["The agent ran the full ASO loop on real data and prepared the change below. Read its reasoning, then approve or reject. Approving reveals the exact commands — we never run them for you."]));
+    // Header (#56 item 3): a no-key run produces little/no change (subtitle &
+    // keywords are unreadable without ASC), so don't promise "prepared the change
+    // below." Soften to what it actually did — audited public data, flagged what a
+    // connection would unlock.
+    var leadText = isNoKeyRun(R)
+      ? "The agent ran the ASO loop on public App Store data — auditing what it can see and flagging what an App Store Connect connection would unlock. Read its reasoning below; connect to let it read and improve your subtitle & keywords."
+      : "The agent ran the full ASO loop on real data and prepared the change below. Read its reasoning, then approve or reject. Approving reveals the exact commands — we never run them for you.";
+    c.appendChild(el("p", { class: "lead" }, [leadText]));
 
     // 1) THE LISTING AUDIT — the findings, instructive first. Explains *why* the
     //    proposed changes below, so it reads first: audit → diff → reasoning → gate.
@@ -1098,9 +1107,21 @@
     return el("div", { class: "shots-gallery" }, [head, strip, note]);
   }
 
+  // No-key run detector: a public-data run carries the `asc_unlock` finding and
+  // has NO ascContext (only the ASC-read path builds one). On such a run the live
+  // subtitle/keywords are UNSEEN — never present them as a measured 0 (#56).
+  function isNoKeyRun(R) {
+    if (R && R.ascContext) return false;
+    var findings = (R && R.findings) || [];
+    return findings.some(function (f) { return f.id === "asc_unlock"; });
+  }
+
   function listingAuditCard(R, appId) {
-    var findings = R.findings || [];
     var summary = R.findingsSummary || null;
+    var noKey = isNoKeyRun(R);
+    // De-dupe the unlock nudge (#56 item 4): on a no-key run it renders as the big
+    // bordered CTA below; keep it OUT of the findings list so it shows exactly once.
+    var findings = (R.findings || []).filter(function (f) { return f.id !== "asc_unlock"; });
 
     var head = el("div", { class: "audit-head" }, [
       el("h3", { style: "margin:0" }, ["Listing audit"]),
@@ -1152,12 +1173,13 @@
     if (gallery) children.push(gallery);
     // Metadata coverage gauge (PRD 03) — a budget-efficiency read, ABOVE the
     // findings. Separate visual section; the findings card logic is untouched.
-    var cov = coverageSection(R.coverage);
+    var cov = coverageSection(R.coverage, noKey);
     if (cov) children.push(cov);
     children.push(body);
     // No-key run → render the unlock CTA below the findings (PRD 04). Driven by the
-    // asc_unlock finding (data hook from PRD 01); absent on key-bearing runs.
-    var unlock = findings.filter(function (f) { return f.id === "asc_unlock"; })[0];
+    // asc_unlock finding (data hook from PRD 01); absent on key-bearing runs. The
+    // finding is filtered OUT of the list above so it surfaces only once (#56).
+    var unlock = (R.findings || []).filter(function (f) { return f.id === "asc_unlock"; })[0];
     if (unlock) children.push(ascUnlockCta(unlock, appId));
 
     return el("div", { class: "card audit-card" }, children);
@@ -1179,16 +1201,56 @@
     if (score >= 20) return { cls: "warn", note: "Typical. Trim the waste below to lift it." };
     return { cls: "bad", note: "Heavy duplication, brand repeats, or filler — see below." };
   }
-  function coverageSection(cov) {
+  // Per-field FILL breakdown (#60) — separate from the efficiency score. Each row
+  // shows how much of that field's own 30/30/100 budget is used, with a real fill
+  // bar. A field the run couldn't read (seen:false — e.g. a no-key run's subtitle
+  // & keywords) is shown as UNSEEN, never a measured "0/limit" (false precision).
+  var COV_FIELD_LABEL = { name: "Name", subtitle: "Subtitle", keywords: "Keywords" };
+  function coverageFieldBreakdown(cov) {
+    var fill = cov && cov.fieldFill;
+    // Fallback for older payloads without fieldFill: synthesize seen rows from
+    // usedChars (treats every field as seen — only used by legacy data).
+    if (!fill || !fill.length) {
+      var used = cov && cov.usedChars ? cov.usedChars : { name: 0, subtitle: 0, keywords: 0 };
+      var LIM = { name: 30, subtitle: 30, keywords: 100 };
+      fill = ["name", "subtitle", "keywords"].map(function (f) {
+        return { field: f, limit: LIM[f], used: used[f] || 0, fillPct: Math.min(100, ((used[f] || 0) / LIM[f]) * 100), seen: true };
+      });
+    }
+    var rows = fill.map(function (r) {
+      var label = COV_FIELD_LABEL[r.field] || r.field;
+      var barFill = r.seen ? el("span", { class: "cov-bar-fill", style: "width:" + Math.round(r.fillPct) + "%" }) : null;
+      var bar = el("div", { class: "cov-bar" + (r.seen ? "" : " unseen") }, barFill ? [barFill] : []);
+      var valueEl = r.seen
+        ? el("span", { class: "cov-field-val" }, [r.used + "/" + r.limit])
+        : el("span", { class: "cov-field-val unseen", title: "Connect App Store Connect to read this field" }, ["unseen"]);
+      return el("div", { class: "cov-field-row" }, [
+        el("span", { class: "cov-field-name" }, [label]),
+        bar,
+        valueEl,
+      ]);
+    });
+    return el("div", { class: "cov-fields-list" }, rows);
+  }
+  function coverageSection(cov, noKey) {
     if (!cov || typeof cov.coverageScore !== "number") return null;
     var score = Math.round(cov.coverageScore);
     var band = coverageBand(score);
     var used = cov.usedChars || { name: 0, subtitle: 0, keywords: 0 };
     var workingChars = Math.round((cov.coverageScore / 100) * 160);
+    // No-key run (#56 item 1): the score is computed only on the NAME — the live
+    // subtitle/keywords are UNSEEN, not a measured 0. Claiming "100% Excellent /
+    // budget working hard" reads as "you're optimized" when the agent simply can't
+    // see two of three fields. So we drop the normative band note + the "of 160
+    // working" gauge framing, and flag the unseen fields plainly instead.
+    var coverageBlind = noKey === true;
 
-    // radial gauge via conic-gradient (no SVG dep); center shows the score.
+    // radial gauge via conic-gradient (no SVG dep); center shows the score. On a
+    // no-key run the score reflects ONLY the name, so we render a neutral partial
+    // ring (not a green "100% / excellent" full ring that implies optimization).
     var deg = Math.round((score / 100) * 360);
-    var gauge = el("div", { class: "cov-gauge " + band.cls,
+    var gaugeCls = coverageBlind ? "neutral" : band.cls;
+    var gauge = el("div", { class: "cov-gauge " + gaugeCls,
       style: "background:conic-gradient(currentColor " + deg + "deg, rgba(127,127,127,.18) " + deg + "deg)" }, [
       el("div", { class: "cov-gauge-inner" }, [
         el("span", { class: "cov-score" }, [String(score)]),
@@ -1196,16 +1258,33 @@
       ]),
     ]);
 
-    var meta = el("div", { class: "cov-meta" }, [
+    var metaKids = [
       el("div", { class: "cov-title" }, ["Metadata coverage"]),
-      el("div", { class: "cov-sub" }, [workingChars + " of 160 chars working"]),
-      el("div", { class: "cov-note faint" }, [band.note]),
-      el("div", { class: "cov-frame faint" }, ["A budget-efficiency heuristic — how hard your metadata works, not a rank score."]),
-      el("div", { class: "cov-fields faint" }, [
-        "Name " + used.name + "/30 · Subtitle " + used.subtitle + "/30 · Keywords " + used.keywords + "/100" +
-        " · " + (cov.distinctTerms || 0) + " distinct term" + ((cov.distinctTerms === 1) ? "" : "s"),
-      ]),
-    ]);
+    ];
+    if (coverageBlind) {
+      // Honest framing: only the public name was seen; subtitle/keywords are unseen.
+      metaKids.push(el("div", { class: "cov-sub" }, ["Name only — subtitle & keywords unseen"]));
+      metaKids.push(el("div", { class: "cov-note faint" }, [
+        "Scored on your app name alone. Connect App Store Connect to grade your live subtitle & keyword field.",
+      ]));
+      metaKids.push(el("div", { class: "cov-frame faint" }, ["A budget-efficiency heuristic — how hard your metadata works, not a rank score."]));
+      // FILL breakdown — per-field, with subtitle/keywords shown as UNSEEN.
+      metaKids.push(coverageFieldBreakdown(cov));
+      metaKids.push(el("div", { class: "cov-fields faint" }, [
+        (cov.distinctTerms || 0) + " distinct term" + ((cov.distinctTerms === 1) ? "" : "s") + " in the name",
+      ]));
+    } else {
+      metaKids.push(el("div", { class: "cov-sub" }, [workingChars + " of 160 chars working"]));
+      metaKids.push(el("div", { class: "cov-note faint" }, [band.note]));
+      metaKids.push(el("div", { class: "cov-frame faint" }, ["A budget-efficiency heuristic — how hard your metadata works, not a rank score."]));
+      // FILL breakdown — per-field used/limit with real bars (separate from the
+      // efficiency score above; a near-empty field reads low here even at 100%).
+      metaKids.push(coverageFieldBreakdown(cov));
+      metaKids.push(el("div", { class: "cov-fields faint" }, [
+        (cov.distinctTerms || 0) + " distinct term" + ((cov.distinctTerms === 1) ? "" : "s"),
+      ]));
+    }
+    var meta = el("div", { class: "cov-meta" }, metaKids);
 
     var head = el("div", { class: "cov-head" }, [gauge, meta]);
     var kids = [head];
@@ -1228,7 +1307,11 @@
       });
       kids.push(list);
     } else {
-      kids.push(el("div", { class: "cov-clean faint" }, ["No wasted budget — no duplicates, brand repeats, or filler detected."]));
+      // On a no-key run we only scanned the name — don't imply the whole listing
+      // is clean when subtitle/keywords were never read (#56).
+      kids.push(el("div", { class: "cov-clean faint" }, [coverageBlind
+        ? "No waste in the name. Your subtitle & keywords weren't read — connect App Store Connect to scan them."
+        : "No wasted budget — no duplicates, brand repeats, or filler detected."]));
     }
     return el("div", { class: "cov-card" }, kids);
   }
@@ -1328,7 +1411,16 @@
     var prim = rsn.find(function (k) { return k.bucket === "Primary"; });
     var sec = rsn.find(function (k) { return k.bucket === "Secondary"; });
     var lt = rsn.filter(function (k) { return k.bucket === "Long-tail"; }).length;
-    steps.push({ cls: "", ico: "✦", t: "Scored & bucketed keywords", d: "Best term “" + (prim ? prim.keyword : "") + "” (score " + (prim ? prim.score : "?") + ") anchors the title; “" + (sec ? sec.keyword : "") + "” takes the subtitle; " + lt + " long-tail terms feed the keyword field." });
+    // No-key run (#56 item 2): the agent can't read OR write the subtitle/keyword
+    // fields without an ASC connection, so the diff is empty. Narrate that honestly
+    // instead of describing subtitle/keyword work the output never reflects.
+    if (isNoKeyRun(R)) {
+      steps.push({ cls: "", ico: "✦", t: "Scored & bucketed keywords",
+        d: "Best term “" + (prim ? prim.keyword : "") + "” (score " + (prim ? prim.score : "?") +
+           ") anchors the title. Without an App Store Connect connection the agent can't read or write your subtitle & keyword field, so it couldn't propose changes to them — connect App Store Connect to let it improve those." });
+    } else {
+      steps.push({ cls: "", ico: "✦", t: "Scored & bucketed keywords", d: "Best term “" + (prim ? prim.keyword : "") + "” (score " + (prim ? prim.score : "?") + ") anchors the title; “" + (sec ? sec.keyword : "") + "” takes the subtitle; " + lt + " long-tail terms feed the keyword field." });
+    }
     var v = (R.proposedCopy && R.proposedCopy.validation) || {};
     steps.push({ cls: v.pass ? "ok" : "warn", ico: v.pass ? "✓" : "!", t: "Drafted copy within hard char limits", d: v.pass ? "All fields validated under Apple's limits (name 30, subtitle 30, keywords 100, promo 170). No over-limit copy emitted." : "One or more fields need attention." });
     steps.push({ cls: "warn", ico: "⏸", t: "Stopped at the approval gate", d: "Generated the asc/gplay push commands but did NOT run them. The irreversible store push is yours to approve." });
@@ -1354,10 +1446,12 @@
     var rows = order.map(function (o) {
       var field = o[0], label = o[1];
       var was = current[field], now = proposed[field];
-      // Skip fields the proposal didn't touch AND we have no 'before' for.
-      if ((now == null || now === "") && (was == null || was === "")) return null;
       var limit = LIMITS[field];
       var changed = (was || "") !== (now || "");
+      // An unchanged field is not a "proposed change" — don't render a row for
+      // it (#58). This also drops fields the proposal never touched (was===now,
+      // both empty). Only genuine changes survive into the diff.
+      if (!changed) return null;
       var emptyWas = was == null || was === "";
       var emptyNow = now == null || now === "";
 
@@ -1373,13 +1467,12 @@
         ]);
       }
 
-      var rowAttrs = { class: "diffrow" + (changed ? " is-changed" : " is-same") };
-      if (changed) rowAttrs.style = "--i:" + revealIndex++;
-      return el("div", rowAttrs, [
+      // Every surviving row is a genuine change (unchanged ones were filtered
+      // out above), so the row is always is-changed and carries the stagger.
+      return el("div", { class: "diffrow is-changed", style: "--i:" + revealIndex++ }, [
         el("div", { class: "dfield" }, [
           el("span", { class: "fname" }, [label]),
-          el("span", { class: "dtag " + (changed ? (emptyWas ? "added" : "modified") : "unchanged") },
-            [changed ? (emptyWas ? "added" : "changed") : "unchanged"]),
+          el("span", { class: "dtag " + (emptyWas ? "added" : "modified") }, [emptyWas ? "added" : "changed"]),
         ]),
         el("div", { class: "diffcols" }, [
           side("was", was, emptyWas),
@@ -1389,12 +1482,18 @@
       ]);
     }).filter(Boolean);
 
-    if (!rows.length) rows = [el("div", { class: "faint" }, ["No copy changes proposed."])];
+    // Rendered rows ARE the changed fields (unchanged were filtered out), so the
+    // summary count is just the row count — no separate recompute to drift.
+    var changedCount = rows.length;
 
-    var changedCount = order.filter(function (o) {
-      var was = current[o[0]], now = proposed[o[0]];
-      return (now != null && now !== "") && ((was || "") !== (now || ""));
-    }).length;
+    // All fields unchanged → no honest "proposed change" to show. Say so plainly
+    // and point at the real next step (an ASC read), rather than an empty diff or
+    // a fake row (#58). On a no-key run, subtitle/keywords are UNSEEN, not "same."
+    if (!rows.length) {
+      rows = [el("div", { class: "faint", style: "padding:6px 0" }, [
+        "No metadata changes proposed — connect App Store Connect to let the agent read + improve your subtitle/keywords.",
+      ])];
+    }
 
     return el("div", { class: "card" }, [
       el("div", { class: "diffhead" }, [

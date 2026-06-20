@@ -250,6 +250,17 @@ test.describe("dashboard funnel (mock backend)", () => {
     await expect(page.getByText(/not a rank score/i)).toBeVisible();
     await expect(page.getByText(/of 160 chars working/i)).toBeVisible();
 
+    // (#60) A per-field FILL breakdown renders for all three fields. On a keyed
+    // run every field is SEEN, so each row carries a real used/limit + a fill bar
+    // (no "unseen" markers) — fill is shown honestly, separate from the score.
+    const covCard = page.locator(".cov-card");
+    const rows = covCard.locator(".cov-field-row");
+    await expect(rows).toHaveCount(3);
+    await expect(covCard.locator(".cov-field-row", { hasText: "Name" })).toContainText(/\d+\/30/);
+    await expect(covCard.locator(".cov-field-row", { hasText: "Subtitle" })).toContainText(/\d+\/30/);
+    await expect(covCard.locator(".cov-field-row", { hasText: "Keywords" })).toContainText(/\d+\/100/);
+    await expect(covCard.locator(".cov-field-val.unseen")).toHaveCount(0);
+
     // The coverage report served to the client must match what renders, and must
     // never carry the raw comma-joined keyword field (the privacy boundary).
     const cov = await page.evaluate(async (rid) => {
@@ -285,10 +296,22 @@ test.describe("dashboard funnel (mock backend)", () => {
       timeout: 10_000,
     });
 
-    // Honest status: the badge must NOT claim "Shipped" (nothing pushed to Apple
-    // yet — approval only reveals the commands). It reads "ready to push".
+    // Honest status: the status BADGE must NOT claim "Shipped" (nothing pushed
+    // to Apple yet — approval only reveals the commands). It reads "ready to
+    // push".
+    await expect(page.locator(".badge")).toHaveText(/Approved · ready to push/);
     await expect(page.getByText(/ready to push/i).first()).toBeVisible();
     await expect(page.getByText(/^Shipped$/)).toHaveCount(0);
+
+    // The approval-sets-status path: the run row is now 'approved' — NOT
+    // 'shipped'. 'shipped' would overstate (it implies a verified push reached
+    // App Store Connect, which has not happened).
+    const status = await page.evaluate(async (rid) => {
+      const M = (window as any).STORE_OPS_MOCK;
+      const run = await (await M.handle("GET", `/runs/${rid}`, null, "demo@store-ops.dev")).json();
+      return run.status as string;
+    }, runId);
+    expect(status).toBe("approved");
   });
 
   test("the run page shows the keyword-opportunities card with competitor attribution and honest copy", async ({
