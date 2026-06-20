@@ -84,7 +84,6 @@ export {
   mapAgeRatingDeclaration,
 } from "./ascWrite.js";
 export { type AscSnapshot, readAscSnapshot, ascScreenshotsToListing } from "./ascRead.js";
-export { type AscListingCopy, readAscListingCopy } from "./ascRead.js";
 export {
   type ReleaseVoice,
   type HumanizeReleaseNotesInput,
