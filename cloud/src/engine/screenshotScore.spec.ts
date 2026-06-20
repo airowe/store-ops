@@ -95,3 +95,37 @@ describe("screenshot grading — unreadable data is unknown, not zero (#41)", ()
     expect(res.grade).toBe("F");
   });
 });
+
+// #47: the score carries the REAL screenshot URLs (App Store order) so the
+// run/audit page can render the actual shots next to the grade. Honesty rule
+// (#41): when the set is unreadable ("?"), it carries NO urls — never a fake set.
+describe("screenshot scoring — carries the real screenshot urls (#47)", () => {
+  const A = "https://is1.mzstatic.com/image/thumb/x/v4/a/b/c/1290x2796bb.png";
+  const B = "https://is1.mzstatic.com/image/thumb/x/v4/d/e/f/1290x2796bb.png";
+  const IPAD = "https://is1.mzstatic.com/image/thumb/x/v4/g/h/i/2048x2732bb.png";
+
+  it("returns the iPhone + iPad urls verbatim, in order, when the set is readable", () => {
+    const res = score("x", { screenshotUrls: [A, B], ipadScreenshotUrls: [IPAD], dataReliable: true });
+    expect(res.screenshotUrls).toEqual([A, B]);
+    expect(res.ipadScreenshotUrls).toEqual([IPAD]);
+  });
+
+  it("carries real urls even from an unreliable source that DID return shots", () => {
+    const res = score("x", { screenshotUrls: [A, B], ipadScreenshotUrls: [], dataReliable: false });
+    expect(res.grade).not.toBe("?");
+    expect(res.screenshotUrls).toEqual([A, B]);
+  });
+
+  it("carries NO urls when the set is unreadable (the '?' branch — no fake gallery)", () => {
+    const res = score("x", { screenshotUrls: [], ipadScreenshotUrls: [], dataReliable: false });
+    expect(res.grade).toBe("?");
+    expect(res.screenshotUrls).toEqual([]);
+    expect(res.ipadScreenshotUrls).toEqual([]);
+  });
+
+  it("never returns null/undefined url arrays (stable shape for the client)", () => {
+    const res = score("x", {});
+    expect(Array.isArray(res.screenshotUrls)).toBe(true);
+    expect(Array.isArray(res.ipadScreenshotUrls)).toBe(true);
+  });
+});

@@ -1015,6 +1015,48 @@
     return map[id] || null;
   }
 
+  // ── Screenshot gallery (#47, before.click-style) ──────────────────────────
+  // Renders the app's REAL App Store screenshots — full-bleed, rounded, softly
+  // elevated, side-by-side in App Store order, horizontally scrollable — so the
+  // screenshot grade is shown next to WHAT it graded. Honest by construction
+  // (#41): only renders when we actually hold real screenshot URLs; the "?"
+  // (unreadable) state carries no URLs, so this returns null and the existing
+  // "couldn't read — connect App Store Connect" finding/CTA stands alone. Framed
+  // as a CONVERSION signal (not ranking), consistent with the impact chips.
+  function screenshotGallery(sc) {
+    if (!sc) return null;
+    var iphone = sc.screenshotUrls || [];
+    var ipad = sc.ipadScreenshotUrls || [];
+    // Honesty gate: no real URLs → no gallery (never an empty/fake frame).
+    if (!iphone.length && !ipad.length) return null;
+
+    var strip = el("div", { class: "shots-strip" });
+    iphone.forEach(function (url, i) {
+      strip.appendChild(el("div", { class: "shot-frame flip-in", style: "--i:" + i }, [
+        el("img", { class: "shot-img", src: url, alt: "App Store screenshot " + (i + 1), loading: "lazy" }),
+      ]));
+    });
+    // iPad set follows the iPhone set, in App Store order, visually tagged.
+    ipad.forEach(function (url, i) {
+      strip.appendChild(el("div", { class: "shot-frame shot-ipad flip-in", style: "--i:" + (iphone.length + i) }, [
+        el("img", { class: "shot-img", src: url, alt: "iPad screenshot " + (i + 1), loading: "lazy" }),
+        el("span", { class: "shot-tag" }, ["iPad"]),
+      ]));
+    });
+
+    var count = iphone.length + (ipad.length ? " iPhone · " + ipad.length + " iPad" : "");
+    var head = el("div", { class: "shots-head" }, [
+      el("span", { class: "shots-title" }, ["Your live screenshots"]),
+      el("span", { class: "shots-count faint" }, [
+        ipad.length ? (iphone.length + " iPhone · " + ipad.length + " iPad") : (iphone.length + " screenshot" + (iphone.length === 1 ? "" : "s")),
+      ]),
+    ]);
+    var note = el("div", { class: "shots-note faint" }, [
+      "The real shots we graded above — a conversion signal, not ranking. This is what your store visitors see.",
+    ]);
+    return el("div", { class: "shots-gallery" }, [head, strip, note]);
+  }
+
   function listingAuditCard(R, appId) {
     var findings = R.findings || [];
     var summary = R.findingsSummary || null;
@@ -1062,6 +1104,11 @@
     }
 
     var children = [head];
+    // Screenshot gallery (#47) — the REAL shots we graded, rendered next to the
+    // grade chip + findings so "what is being graded" is visible. Null when the
+    // set is unreadable ("?"), so the honest empty-state finding stands alone (#41).
+    var gallery = screenshotGallery(R.audit && R.audit.screenshots);
+    if (gallery) children.push(gallery);
     // Metadata coverage gauge (PRD 03) — a budget-efficiency read, ABOVE the
     // findings. Separate visual section; the findings card logic is untouched.
     var cov = coverageSection(R.coverage);

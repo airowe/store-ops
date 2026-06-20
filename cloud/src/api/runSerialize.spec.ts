@@ -64,8 +64,8 @@ function audit(grade: "A" | "?"): Audit {
     bundleId: "com.weatherly.app",
     liveName: APP_NAME,
     screenshots: grade === "?"
-      ? { app: "weatherly", iphoneCount: 0, ipadCount: 0, score: null, grade: "?", findings: [], aspectHint: "" }
-      : { app: "weatherly", iphoneCount: 6, ipadCount: 2, score: 90, grade: "A", findings: [], aspectHint: "1290x2796" },
+      ? { app: "weatherly", iphoneCount: 0, ipadCount: 0, score: null, grade: "?", findings: [], aspectHint: "", screenshotUrls: [], ipadScreenshotUrls: [] }
+      : { app: "weatherly", iphoneCount: 6, ipadCount: 2, score: 90, grade: "A", findings: [], aspectHint: "1290x2796", screenshotUrls: [], ipadScreenshotUrls: [] },
   };
 }
 

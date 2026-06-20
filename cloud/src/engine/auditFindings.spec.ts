@@ -23,6 +23,8 @@ function shot(over: Partial<ShotScore> = {}): ShotScore {
     grade: "A",
     findings: [],
     aspectHint: "tall phone",
+    screenshotUrls: [],
+    ipadScreenshotUrls: [],
     ...over,
   };
 }
