@@ -341,8 +341,16 @@ async function attachOpportunities(
   // per-keyword volume/difficulty is threaded in anymore (#65).
   const checkedAt = new Date().toISOString().replace("T", " ").slice(0, 19);
   const prior = await getRankHistory(env.DB, appId, {});
+  // #73: opportunities = "where to push NEXT", so only keywords the run currently
+  // TARGETS may appear. Prior history is for MOMENTUM on those keywords — it must
+  // NOT resurrect keywords we've since dropped (e.g. pre-#57 'manager'/'mangia'
+  // tombstoned in old snapshots). Restrict the keyword universe to this run's
+  // target set; history only contributes momentum for keywords still targeted.
+  const targeted = new Set(result.ranks.map((r) => r.keyword));
   const ranks = [
-    ...prior.map((r) => ({ keyword: r.keyword, rank: r.rank, total: r.total, checked_at: r.checked_at })),
+    ...prior
+      .filter((r) => targeted.has(r.keyword))
+      .map((r) => ({ keyword: r.keyword, rank: r.rank, total: r.total, checked_at: r.checked_at })),
     ...result.ranks.map((r) => ({ keyword: r.keyword, rank: r.rank, total: r.total, checked_at: checkedAt })),
   ];
 

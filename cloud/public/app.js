@@ -1433,9 +1433,11 @@
     steps.push({ cls: "ok", ico: "↑", t: "Checked organic rank on " + ranks.length + " keywords", d: (lead ? "Leads with “" + lead.keyword + "” at " + rankText(lead.rank) + ". " : "") + top10 + " in the top 10, " + none + " not yet in the top 200 — clear room to climb." });
     var comp = R.competitors || {};
     // Honest competitor step: only claim we "watched" competitors when some were
-    // actually tracked. With an empty set, "No movement detected" falsely implies
-    // we watched and found nothing — when really none were added. (#72)
-    var compTracked = (comp.changes && comp.changes.length) || (comp.listings && comp.listings.length) || comp.digest;
+    // actually tracked. The backend emits a hollow digest ("no changes") even with
+    // ZERO competitors, so a digest string is NOT evidence of tracking — require
+    // real changes or listings. With an empty set, "No movement detected" falsely
+    // implies we watched and found nothing, when really none were added. (#72)
+    var compTracked = (comp.changes && comp.changes.length) || (comp.listings && comp.listings.length);
     if (compTracked) {
       steps.push({ cls: "", ico: "◎", t: "Watched competitors", d: comp.digest || "No competitor movement this week." });
     } else {
