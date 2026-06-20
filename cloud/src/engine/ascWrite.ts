@@ -289,10 +289,36 @@ export async function readAscLocalization(
   const localization = pickLocalization(locs.data ?? [], opts.locale);
 
   const a = localization.attributes ?? {};
-  // map ASC attribute names → our CopyFields shape (promotionalText → promo)
+
+  // #69: name + subtitle DON'T live on the version localization — App Store
+  // Connect keeps them on appInfoLocalizations (the app-level layer). Reading
+  // them off `a` here always yielded undefined, so a populated subtitle read as
+  // empty and the name read stale. Pull them from the appInfo layer for the same
+  // locale. Best-effort: an appInfo read failure must NOT strand the copy read
+  // (the version-level fields are still valuable), so we degrade to undefined.
+  let appInfoName: string | undefined;
+  let appInfoSubtitle: string | undefined;
+  try {
+    const info = await readAscAppInfo(fetchFn, { token: opts.token, appId: opts.appId });
+    const loc =
+      info.locales.find((l) => l.locale === opts.locale) ??
+      // Fall back to a base-language match (e.g. "en" for "en-US") then the first.
+      info.locales.find((l) => l.locale.split("-")[0] === opts.locale.split("-")[0]) ??
+      info.locales[0];
+    appInfoName = loc?.name;
+    appInfoSubtitle = loc?.subtitle;
+  } catch {
+    // appInfo unreadable (restricted key, etc.) — leave name/subtitle unknown
+    // rather than asserting an empty value we didn't actually read.
+    appInfoName = undefined;
+    appInfoSubtitle = undefined;
+  }
+
+  // map ASC attribute names → our CopyFields shape (promotionalText → promo).
+  // name/subtitle come from the appInfo layer (#69); the rest from the version.
   return {
-    name: a.name,
-    subtitle: a.subtitle,
+    name: appInfoName,
+    subtitle: appInfoSubtitle,
     keywords: a.keywords,
     promo: a.promotionalText,
     description: a.description,
