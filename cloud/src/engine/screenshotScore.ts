@@ -51,6 +51,32 @@ export type ShotScore = {
   ipadScreenshotUrls: string[];
 };
 
+/**
+ * Apple's iTunes/ASC image URLs end in an UNSUBSTITUTED size template, e.g.
+ * `…/iphone-6.5_05.png/{w}x{h}bb.{f}`. The `{w}` `{h}` `{f}` (and optional `{c}`
+ * crop) tokens are placeholders the CLIENT is expected to fill with concrete
+ * width/height/format before requesting the image. If they reach an `<img src>`
+ * untouched, the browser percent-encodes the braces (`%7Bw%7D…`) and Apple's CDN
+ * returns 404 — every screenshot renders broken (and `aspectFromUrl` can't read
+ * the dimensions, silently degrading the aspect score too).
+ *
+ * `resolveShotUrl` substitutes the tokens with the image's NATIVE dimensions so
+ * the URL loads AND the size token still encodes the true aspect ratio. Native
+ * (not downscaled) dims keep `aspectFromUrl` honest; the browser downscales for
+ * display and `loading="lazy"` keeps it cheap. Idempotent: a URL with no tokens
+ * is returned unchanged.
+ */
+const SHOT_NATIVE_W = 1290;
+const SHOT_NATIVE_H = 2796;
+export function resolveShotUrl(url: string): string {
+  if (!url.includes("{")) return url;
+  return url
+    .replace("{w}", String(SHOT_NATIVE_W))
+    .replace("{h}", String(SHOT_NATIVE_H))
+    .replace("{c}", "") // optional crop token — empty keeps Apple's default
+    .replace("{f}", "png");
+}
+
 /** Parse the size token at the end of a screenshot URL → [w, h] or null. */
 export function aspectFromUrl(url: string): [number, number] | null {
   const m = url.match(/\/(\d{2,4})x(\d{2,4})[a-z]{0,3}\.(png|jpg|jpeg)/);
@@ -76,8 +102,11 @@ function gradeFor(pts: number): Grade {
 
 /** Score a listing's screenshot set. Pure; no network (caption heuristic off). */
 export function score(app: string, listing: Listing): ShotScore {
-  const iphone = listing.screenshotUrls ?? [];
-  const ipad = listing.ipadScreenshotUrls ?? [];
+  // Resolve Apple's {w}x{h}bb.{f} URL templates to real, loadable URLs up front
+  // so BOTH the aspect score (reads dims from the URL) and the gallery (#47)
+  // operate on URLs that actually 200 — never the broken templated form.
+  const iphone = (listing.screenshotUrls ?? []).map(resolveShotUrl);
+  const ipad = (listing.ipadScreenshotUrls ?? []).map(resolveShotUrl);
   const findings: string[] = [];
   let pts = 0;
 

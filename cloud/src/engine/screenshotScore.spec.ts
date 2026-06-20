@@ -1,8 +1,21 @@
 import { describe, expect, it } from "vitest";
-import { aspectFromUrl, aspectLabel, score, type Listing } from "./screenshotScore.js";
+import {
+  aspectFromUrl,
+  aspectLabel,
+  resolveShotUrl,
+  score,
+  type Listing,
+} from "./screenshotScore.js";
 
 const TALL = "https://is1.mzstatic.com/image/thumb/x/v4/a/b/c/1290x2796bb.png";
 const WIDE = "https://is1.mzstatic.com/image/thumb/x/v4/a/b/c/392x696bb.png";
+
+// The iTunes/ASC APIs return the trailing size token as an UNSUBSTITUTED
+// template, e.g. ".../iphone-6.5_05.png/{w}x{h}bb.{f}". Sent to <img> as-is,
+// the browser percent-encodes the braces and Apple's CDN 404s — every shot
+// renders broken. resolveShotUrl must substitute the tokens with real values.
+const TEMPLATED =
+  "https://is1-ssl.mzstatic.com/image/thumb/PurpleSource221/v4/a/b/c/iphone-6.5_05_whatcanImake.png/{w}x{h}bb.{f}";
 
 function listing(nIphone = 0, nIpad = 0, url = TALL): Listing {
   return {
@@ -19,6 +32,42 @@ describe("aspect parsing", () => {
 
   it("returns null when there is no size token", () => {
     expect(aspectFromUrl("https://x/no-size-here.png")).toBeNull();
+  });
+
+  it("reads dims from a resolved (previously templated) URL", () => {
+    // The whole point of resolveShotUrl: aspect detection works afterwards.
+    expect(aspectFromUrl(resolveShotUrl(TEMPLATED))).not.toBeNull();
+  });
+});
+
+describe("resolveShotUrl (mzstatic template substitution)", () => {
+  it("substitutes {w}/{h}/{f} with real values", () => {
+    const out = resolveShotUrl(TEMPLATED);
+    expect(out).not.toContain("{w}");
+    expect(out).not.toContain("{h}");
+    expect(out).not.toContain("{f}");
+    expect(out).not.toContain("%7B"); // no encoded brace survives
+    // ends in a real, loadable size token
+    expect(out).toMatch(/\/\d{2,4}x\d{2,4}bb\.(png|jpg)$/);
+  });
+
+  it("preserves the native dimensions so aspect scoring stays correct", () => {
+    const dims = aspectFromUrl(resolveShotUrl(TEMPLATED));
+    expect(dims).not.toBeNull();
+    const [w, h] = dims as [number, number];
+    expect(h / w).toBeGreaterThanOrEqual(2.0); // tall-phone ratio recovered
+  });
+
+  it("leaves an already-resolved URL untouched (idempotent)", () => {
+    expect(resolveShotUrl(TALL)).toBe(TALL);
+    expect(resolveShotUrl(WIDE)).toBe(WIDE);
+  });
+
+  it("handles the {c} crop token if Apple includes it", () => {
+    const withCrop = TEMPLATED.replace("bb.{f}", "{c}.{f}");
+    const out = resolveShotUrl(withCrop);
+    expect(out).not.toContain("{c}");
+    expect(out).not.toContain("{f}");
   });
 
   it("labels a tall phone ratio", () => {
