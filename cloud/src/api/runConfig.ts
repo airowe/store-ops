@@ -9,6 +9,7 @@
  * (on-demand run) and the cron (weekly run) feed the engine identically.
  */
 import type { AppInput, KeywordInput } from "../engine/index.js";
+import { type Reasoner, reasonKeywords } from "../engine/keywordReasoner.js";
 import type { AppRow } from "../d1.js";
 
 export type RunOverrides = {
@@ -18,6 +19,15 @@ export type RunOverrides = {
   /** True when baseCopy's subtitle/keywords were READ from App Store Connect — lets
    *  the optimizer improve them instead of omitting them (the #30 Mode-A path). */
   ascMetadataRead?: boolean;
+  /**
+   * Optional LLM reasoner for keyword targeting (#57). When present AND a
+   * description is available, keywords are derived by reasonKeywords (LLM
+   * classifies → reality validates) instead of tokenizing the title. Omit → the
+   * deterministic classifier is used. The concrete env.AI-backed Reasoner is
+   * built in the API layer and threaded in here; a missing AI binding simply
+   * means no reasoner is passed and the run degrades gracefully.
+   */
+  reasoner?: Reasoner;
 };
 
 // Words that are never useful keyword seeds.
@@ -116,19 +126,84 @@ function sanitizeKeywords(keywords: KeywordInput[]): KeywordInput[] {
   return out;
 }
 
+/** Tokenize the app name into candidate keyword tokens for the reasoner. */
+function candidateTokensFromName(name: string): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const w of name
+    .toLowerCase()
+    .split(/[^a-z0-9]+/)
+    .map((w) => w.trim())
+    .filter((w) => w.length >= 3 && !SEED_STOP.has(w))) {
+    if (seen.has(w)) continue;
+    seen.add(w);
+    out.push(w);
+  }
+  return out;
+}
+
 /**
- * Compose the agent input. Precedence: explicit overrides > name-derived seeds.
- * `previousCompetitors` is threaded in separately by the caller (it comes from
- * D1 snapshots, not the request).
+ * Map reasoned `target` strings to the engine's KeywordInput shape. We keep the
+ * neutral mid-band volume/difficulty/relevance proxies untouched here on purpose:
+ * #65 already made the SCORING honest (no fabricated metrics flow into the
+ * opportunity/attribution surfaces), and #57 is strictly about WHICH keywords we
+ * target — not re-deriving metrics. So targeting gets smarter; the proxies stay.
  */
-export function buildAppInput(
+function targetsToKeywordInputs(targets: string[]): KeywordInput[] {
+  return targets.map((keyword) => ({
+    keyword,
+    volume: 55,
+    difficulty: 45,
+    relevance: 90,
+  }));
+}
+
+/**
+ * Source the run's keywords from the reasoning step (#57) when a description is
+ * available: the LLM (or the deterministic fallback) classifies the title tokens
+ * + suggests description-derived targets, guardrailed against invention. Brand
+ * and dropped terms are excluded from the keyword SET (brand is monitor-only; the
+ * engine's AppInput has no brand lane today, so we simply don't target them).
+ * Falls back to the old name-seeder only when there's no description to reason
+ * over (a bare bundle connect before the live listing is read).
+ */
+async function reasonedKeywords(
+  app: AppRow,
+  description: string | undefined,
+  reasoner?: Reasoner,
+): Promise<KeywordInput[]> {
+  const name = app.name || app.bundle_id;
+  if (!description || !description.trim()) {
+    // No description to reason over → keep the deterministic name seeder as the
+    // floor so a bare connect still produces a real (if coarser) keyword set.
+    return seedKeywordsFromName(name);
+  }
+  const reasoning = await reasonKeywords(
+    { appName: name, description, candidateTokens: candidateTokensFromName(name) },
+    reasoner,
+  );
+  const targets = targetsToKeywordInputs(reasoning.target);
+  // Defensive: if reasoning somehow yields nothing targetable, don't ship an
+  // empty keyword set — fall back to the name seeder.
+  return targets.length > 0 ? targets : seedKeywordsFromName(name);
+}
+
+/**
+ * Compose the agent input. Precedence: explicit overrides > reasoned keywords
+ * (#57) > name-derived seeds. `previousCompetitors` is threaded in separately by
+ * the caller (it comes from D1 snapshots, not the request). Async because the
+ * keyword reasoning step may call an injected LLM.
+ */
+export async function buildAppInput(
   app: AppRow,
   overrides: RunOverrides = {},
   previousCompetitors: Record<string, Record<string, string>> = {},
-): AppInput {
+): Promise<AppInput> {
   const clean = overrides.keywords ? sanitizeKeywords(overrides.keywords) : [];
   const keywords =
-    clean.length > 0 ? clean : seedKeywordsFromName(app.name || app.bundle_id);
+    clean.length > 0
+      ? clean
+      : await reasonedKeywords(app, overrides.baseCopy?.description, overrides.reasoner);
 
   const input: AppInput = {
     app: app.name || app.bundle_id,

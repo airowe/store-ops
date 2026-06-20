@@ -128,6 +128,7 @@ import {
   verifyStripeSignature,
 } from "../billing.js";
 import { buildAppInput, type RunOverrides } from "./runConfig.js";
+import { reasonerForEnv } from "./aiReasoner.js";
 import { fetchForEnv } from "../fetchAdapter.js";
 import { buildFastlaneBundle } from "../engine/fastlane.js";
 import { zipStore } from "../engine/zip.js";
@@ -596,7 +597,8 @@ async function previewApp(req: Request, env: Env): Promise<unknown> {
 
   // Build a throwaway app row (never persisted) just to drive the engine.
   const appRow = { id: "preview", user_id: "preview", bundle_id: bundleId, name, country } as AppRow;
-  const input = buildAppInput(appRow, {}, {});
+  const reasoner = reasonerForEnv(env.AI);
+  const input = await buildAppInput(appRow, reasoner ? { reasoner } : {}, {});
   const result = await runAgent(fetchForEnv(env), input);
   return { preview: buildPreview(result), bundleId, country };
 }
@@ -785,8 +787,10 @@ async function connectApp(req: Request, env: Env, userId: string): Promise<unkno
   if (body.keywords) overrides.keywords = body.keywords;
   if (body.competitors) overrides.competitors = body.competitors;
   if (body.baseCopy) overrides.baseCopy = body.baseCopy;
+  const connectReasoner = reasonerForEnv(env.AI);
+  if (connectReasoner) overrides.reasoner = connectReasoner;
 
-  const input = buildAppInput(app, overrides, {});
+  const input = await buildAppInput(app, overrides, {});
   const result: AgentResult = await runAgent(fetchForEnv(env), input);
   const runId = await persistRun(env.DB, {
     appId: app.id,
@@ -859,8 +863,10 @@ async function runApp(
   if (body.keywords) overrides.keywords = body.keywords;
   if (body.competitors) overrides.competitors = body.competitors;
   if (body.baseCopy) overrides.baseCopy = body.baseCopy;
+  const runReasoner = reasonerForEnv(env.AI);
+  if (runReasoner) overrides.reasoner = runReasoner;
 
-  const input = buildAppInput(app, overrides, previous);
+  const input = await buildAppInput(app, overrides, previous);
   const result = await runAgent(fetchForEnv(env), input);
   // No-key run: compute the thin (public-only) findings set + the `asc_unlock`
   // CTA. EVERY run carries findings, ASC or not (PRD 02). No snapshot ⇒ no
@@ -956,8 +962,10 @@ async function runAppWithAsc(
     ...(liveKeywords !== undefined ? { keywords: liveKeywords } : {}),
     ...(body.baseCopy ?? {}),
   };
+  const ascReasoner = reasonerForEnv(env.AI);
+  if (ascReasoner) overrides.reasoner = ascReasoner;
 
-  const input = buildAppInput(app, overrides, previous);
+  const input = await buildAppInput(app, overrides, previous);
   const result = await runAgent(fetchForEnv(env), input);
   // #44: if we read REAL screenshots from ASC, re-score the audit with them
   // (dataReliable:true) so the grade is genuine — not the public-iTunes "unknown".

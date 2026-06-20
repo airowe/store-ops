@@ -39,6 +39,23 @@ database_id = "30f6f8cf-90a5-4646-936f-8899ec4f62f6"
 [triggers]
 crons = ["0 9 * * 1"]
 
+# ── Workers AI — bound as env.AI (#57) ───────────────────────────────────────
+# Powers the keyword-reasoning step (engine/keywordReasoner.ts): the run path
+# asks a small instruct model to classify title tokens + suggest description-
+# derived target keywords, then guardrails the output against the listing text.
+# OPTIONAL at runtime: if the binding is absent (e.g. local dev without AI), the
+# run derives keywords with the deterministic classifier instead — a missing
+# binding never breaks a run.
+#
+# DISABLED FOR LAUNCH (deliberate): the deterministic classifier already fixes
+# the #57 honesty bug (drops "manager", classifies brand, mines real intent from
+# the description) with zero new infra. The LLM layer is a post-launch feature —
+# enable it then by uncommenting the two lines below. With the binding absent,
+# every run path falls through to classifyDeterministic (see reasonerForEnv →
+# undefined → deterministic floor). No code change needed to flip it on.
+# [ai]
+# binding = "AI"
+
 # ── Vars (non-secret config) ─────────────────────────────────────────────────
 [vars]
 DEFAULT_COUNTRY = "US"
