@@ -882,6 +882,42 @@ test.describe("run page — no-key honesty nits (#56)", () => {
     // Header keeps the confident framing on a keyed run.
     await expect(page.locator("p.lead").first()).toContainText(/prepared the change below/i);
   });
+
+  test("a keyed run with an EMPTY live subtitle/keywords shows 'empty' (opportunity), never 'unseen' or a fake fill", async ({ page }) => {
+    await gotoMockDashboard(page);
+    const id = await seedAppWithRun(page, {
+      name: "Mangia",
+      bundleId: "com.mangia.recipes",
+      asc: true,
+      emptyLive: true, // live subtitle + keyword field are blank
+    });
+    const runId = await page.evaluate(async (appId) => {
+      const M = (window as any).STORE_OPS_MOCK;
+      const detail = await (await M.handle("GET", `/apps/${appId}`, null, "demo@store-ops.dev")).json();
+      return detail.runs[0].id as string;
+    }, id);
+    await page.goto(`/index.html#/runs/${runId}`);
+    await expect(page.locator(".cov-card")).toBeVisible();
+    const cov = page.locator(".cov-card");
+
+    // This was a KEYED read — we DID see the fields, so they must NOT read "unseen".
+    await expect(cov).not.toContainText(/unseen/i);
+
+    // Read-but-empty subtitle + keywords render as "empty" (a real, unused surface),
+    // never a fabricated fill. The name (which IS populated) is unaffected.
+    const subRow = cov.locator(".cov-field-row", { hasText: /subtitle/i });
+    await expect(subRow.locator(".cov-field-val.empty")).toContainText(/empty/i);
+    const kwRow = cov.locator(".cov-field-row", { hasText: /keyword/i });
+    await expect(kwRow.locator(".cov-field-val.empty")).toContainText(/empty/i);
+
+    // The headline leads with the opportunity, NOT a normative "Excellent" band.
+    await expect(cov).toContainText(/empty — unused ranking surface/i);
+    await expect(cov).not.toContainText(/budget is working hard/i);
+
+    // CRITICAL honesty: the derived/proposed keywords must NOT masquerade as the
+    // live keyword field. The empty keyword row never shows a populated count.
+    await expect(kwRow.locator(".cov-field-val")).not.toContainText(/[1-9]\d*\/100/);
+  });
 });
 
 test.describe("connect — 402 tier-limit paywall (#27)", () => {

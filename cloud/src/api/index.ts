@@ -956,10 +956,16 @@ async function runAppWithAsc(
   if (body.keywords) overrides.keywords = body.keywords;
   if (body.competitors) overrides.competitors = body.competitors;
   // baseCopy carries the LIVE values read from ASC (the optimizer's floor).
+  // We reached here via a SUCCESSFUL ASC localization read, so subtitle/keywords
+  // were READ — an `undefined` from the read means the field is EMPTY on the
+  // listing, NOT unknown. Coalesce read-but-empty to "" so it propagates as
+  // seen-but-empty ("empty"), never collapsing into the false "unseen" state
+  // (the honesty bug: an app with no subtitle showed "unseen" instead of "empty",
+  // and an empty keyword field was backfilled with derived guesses shown as live).
   overrides.baseCopy = {
     ...(liveName !== undefined ? { name: liveName } : {}),
-    ...(liveSubtitle !== undefined ? { subtitle: liveSubtitle } : {}),
-    ...(liveKeywords !== undefined ? { keywords: liveKeywords } : {}),
+    subtitle: liveSubtitle ?? "",
+    keywords: liveKeywords ?? "",
     ...(body.baseCopy ?? {}),
   };
   const ascReasoner = reasonerForEnv(env.AI);

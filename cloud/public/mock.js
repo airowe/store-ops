@@ -146,8 +146,14 @@
     // term additions to (correlationally) link a later rank move to.
     var currentCopy = { name: app.name };
     if (ascRead) {
-      currentCopy.subtitle = app._liveSubtitle || cap("Your daily companion", CHAR_LIMITS.subtitle);
-      currentCopy.keywords = app._liveKeywords || "daily,simple,calm,everyday";
+      // With an ASC read we KNOW the live subtitle/keywords. Honor an explicitly
+      // EMPTY live value ("") as read-but-empty — never swallow it with a default
+      // (mirrors the runAppWithAsc coalesce). Only fall back to a sample value
+      // when the field was never set on the seeded app (undefined).
+      currentCopy.subtitle = (app._liveSubtitle !== undefined && app._liveSubtitle !== null)
+        ? app._liveSubtitle : cap("Your daily companion", CHAR_LIMITS.subtitle);
+      currentCopy.keywords = (app._liveKeywords !== undefined && app._liveKeywords !== null)
+        ? app._liveKeywords : "daily,simple,calm,everyday";
     }
 
     // competitor read
@@ -942,6 +948,11 @@
         keywords: body.keywords || null, competitors: body.competitors || null,
         runs: [], latestRunSummary: null, rankSummary: null,
       };
+      // TEST-ONLY fixture hooks: pin the live ASC subtitle/keyword field so a keyed
+      // run can simulate read-but-EMPTY ("") vs populated copy. Honored only when
+      // explicitly provided (including "") — never invented.
+      if (body._liveSubtitle !== undefined) app._liveSubtitle = body._liveSubtitle;
+      if (body._liveKeywords !== undefined) app._liveKeywords = body._liveKeywords;
       if (!app.bundleId) return json(400, { error: "bundle_id required" });
 
       // Tier gate (mirrors src/api/index.ts): enforce the per-tier connected-app

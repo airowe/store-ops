@@ -784,8 +784,11 @@ svg.spark .lbl { fill: var(--faint); font-family: var(--mono); font-size: 10px; 
 .cov-bar { height: 6px; border-radius: 4px; background: rgba(127,127,127,.18); overflow: hidden; }
 .cov-bar-fill { display: block; height: 100%; border-radius: 4px; background: var(--brand); }
 .cov-bar.unseen { background: transparent; border: 1px dashed var(--line); }
+/* EMPTY: read-but-blank — an unused ranking surface (opportunity), not unknown. */
+.cov-bar.empty { background: transparent; border: 1px dashed var(--brand); opacity: .55; }
 .cov-field-val { font-family: var(--mono); font-size: 11px; color: var(--dim); text-align: right; }
 .cov-field-val.unseen { color: var(--faint); font-style: italic; }
+.cov-field-val.empty { color: var(--brand); }
 .cov-waste { margin-top: 12px; display: flex; flex-direction: column; gap: 8px; }
 .cov-waste-item { display: flex; gap: 10px; align-items: flex-start; }
 .cov-waste-ico {
