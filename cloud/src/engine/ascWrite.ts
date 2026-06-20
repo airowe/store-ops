@@ -699,14 +699,29 @@ export async function readAscAllLocales(
   if (!locsRes.ok) throw await ascError(locsRes, "list version localizations");
   const locs = (await locsRes.json().catch(() => ({}))) as { data?: Localization[] };
 
+  // #69/#71: name + subtitle live on appInfoLocalizations (app-level), NOT on the
+  // version localization. Reading them off `a` always yielded undefined — so the
+  // `locale_incomplete` finding falsely fired ("fill your subtitle") on locales
+  // that HAVE a subtitle. Pull per-locale name/subtitle from the appInfo layer.
+  // Best-effort: an appInfo read failure leaves name/subtitle undefined rather
+  // than stranding the (still-useful) version-level fields.
+  const appInfoByLocale = new Map<string, { name?: string | undefined; subtitle?: string | undefined }>();
+  try {
+    const info = await readAscAppInfo(fetchFn, { token: opts.token, appId: opts.appId });
+    for (const l of info.locales) appInfoByLocale.set(l.locale, { name: l.name, subtitle: l.subtitle });
+  } catch {
+    // leave the map empty — name/subtitle stay undefined, never invented
+  }
+
   const out: LocaleListingCopy[] = [];
   for (const loc of locs.data ?? []) {
     const a = loc.attributes ?? {};
     if (!a.locale) continue; // locale is the result key — skip anonymous rows
+    const appInfoLoc = appInfoByLocale.get(a.locale);
     out.push({
       locale: a.locale,
-      name: a.name,
-      subtitle: a.subtitle,
+      name: appInfoLoc?.name, // from appInfoLocalizations (#69/#71)
+      subtitle: appInfoLoc?.subtitle, // from appInfoLocalizations (#69/#71)
       keywords: a.keywords,
       promo: a.promotionalText, // map ASC promotionalText → our promo
       description: a.description,

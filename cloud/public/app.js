@@ -410,7 +410,7 @@
     // agent status line
     c.appendChild(el("div", { class: "agentline" }, [
       el("span", { class: "live-dot" }), null,
-      el("span", { html: "Autonomous agent <b style='color:var(--txt)'>active</b> — re-checks ranks &amp; watches competitors every Monday 09:00 UTC. It prepares every move; <b style='color:var(--txt)'>you approve the push.</b>" }),
+      el("span", { html: "Autonomous agent <b style='color:var(--txt)'>active</b> — re-checks your ranks &amp; listing every Monday 09:00 UTC (and any competitors you add). It prepares every move; <b style='color:var(--txt)'>you approve the push.</b>" }),
     ]));
 
     // connect-app card
@@ -1432,7 +1432,15 @@
     var lead = ranks[0];
     steps.push({ cls: "ok", ico: "↑", t: "Checked organic rank on " + ranks.length + " keywords", d: (lead ? "Leads with “" + lead.keyword + "” at " + rankText(lead.rank) + ". " : "") + top10 + " in the top 10, " + none + " not yet in the top 200 — clear room to climb." });
     var comp = R.competitors || {};
-    steps.push({ cls: "", ico: "◎", t: "Watched competitors", d: comp.digest || "No competitor movement detected." });
+    // Honest competitor step: only claim we "watched" competitors when some were
+    // actually tracked. With an empty set, "No movement detected" falsely implies
+    // we watched and found nothing — when really none were added. (#72)
+    var compTracked = (comp.changes && comp.changes.length) || (comp.listings && comp.listings.length) || comp.digest;
+    if (compTracked) {
+      steps.push({ cls: "", ico: "◎", t: "Watched competitors", d: comp.digest || "No competitor movement this week." });
+    } else {
+      steps.push({ cls: "faint", ico: "○", t: "Competitor watch", d: "No competitors added yet — add competitors to track their listing & rank moves." });
+    }
     var rsn = R.reasoning || [];
     var prim = rsn.find(function (k) { return k.bucket === "Primary"; });
     var sec = rsn.find(function (k) { return k.bucket === "Secondary"; });

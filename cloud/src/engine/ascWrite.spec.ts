@@ -838,6 +838,8 @@ describe("readAscAllLocales — all appStoreVersionLocalizations in one read", (
     }) as FetchLike;
   }
 
+  // Real ASC shape (#69/#71): name + subtitle on appInfoLocalizations;
+  // keywords/promo/description on appStoreVersionLocalizations.
   const multiLocale = {
     "/appStoreVersions?": { data: [{ id: "V1", attributes: { appStoreState: "PREPARE_FOR_SUBMISSION" } }] },
     "/appStoreVersionLocalizations?": {
@@ -846,8 +848,6 @@ describe("readAscAllLocales — all appStoreVersionLocalizations in one read", (
           id: "L1",
           attributes: {
             locale: "en-US",
-            name: "Heathen",
-            subtitle: "Stoic calm for atheists",
             keywords: "stoic,seneca,aurelius",
             promotionalText: "New programs.",
             description: "A secular meditation app.",
@@ -857,18 +857,28 @@ describe("readAscAllLocales — all appStoreVersionLocalizations in one read", (
           id: "L2",
           attributes: {
             locale: "de-DE",
-            name: "Heathen DE",
-            subtitle: "Stoische Ruhe",
             keywords: "stoik,seneca",
             promotionalText: "Neue Programme.",
             description: "Eine säkulare Meditations-App.",
           },
         },
         {
-          // sparse locale: only name + locale, everything else omitted by ASC
+          // sparse locale: only locale, everything else omitted by ASC
           id: "L3",
-          attributes: { locale: "ja-JP", name: "Heathen JP" },
+          attributes: { locale: "ja-JP" },
         },
+      ],
+    },
+    "/appInfos?": {
+      data: [{ id: "AI1", relationships: { appInfoLocalizations: { data: [
+        { type: "appInfoLocalizations", id: "AIL1" },
+        { type: "appInfoLocalizations", id: "AIL2" },
+        { type: "appInfoLocalizations", id: "AIL3" },
+      ] } } }],
+      included: [
+        { type: "appInfoLocalizations", id: "AIL1", attributes: { locale: "en-US", name: "Heathen", subtitle: "Stoic calm for atheists" } },
+        { type: "appInfoLocalizations", id: "AIL2", attributes: { locale: "de-DE", name: "Heathen DE", subtitle: "Stoische Ruhe" } },
+        { type: "appInfoLocalizations", id: "AIL3", attributes: { locale: "ja-JP", name: "Heathen JP" } },
       ],
     },
   };
@@ -919,12 +929,29 @@ describe("readAscAllLocales — all appStoreVersionLocalizations in one read", (
     const liveOnly = {
       "/appStoreVersions?": { data: [{ id: "VLIVE", attributes: { appStoreState: "READY_FOR_SALE" } }] },
       "/appStoreVersionLocalizations?": {
-        data: [{ id: "LLIVE", attributes: { locale: "en-US", subtitle: "live" } }],
+        data: [{ id: "LLIVE", attributes: { locale: "en-US", keywords: "a,b" } }],
+      },
+      // subtitle lives on appInfoLocalizations (#69/#71)
+      "/appInfos?": {
+        data: [{ id: "AI1", relationships: { appInfoLocalizations: { data: [{ type: "appInfoLocalizations", id: "AIL1" }] } } }],
+        included: [{ type: "appInfoLocalizations", id: "AIL1", attributes: { locale: "en-US", subtitle: "live" } }],
       },
     };
     const all = await readAscAllLocales(mockFetch(liveOnly), { token: "JWT", appId: "APP1" });
     expect(all).toHaveLength(1);
     expect(all[0]?.subtitle).toBe("live");
+  });
+
+  // #71-A2: the locale_incomplete finding falsely fired because name/subtitle
+  // were read from the version localization (where they don't exist). With the
+  // appInfo merge, a locale that HAS a subtitle + keywords reads complete.
+  it("merges appInfo name/subtitle so a populated locale isn't reported incomplete (#71)", async () => {
+    const all = await readAscAllLocales(mockFetch(multiLocale), { token: "JWT", appId: "APP1" });
+    const en = all.find((l) => l.locale === "en-US")!;
+    expect(en.subtitle).toBe("Stoic calm for atheists"); // from appInfo, not undefined
+    expect(en.keywords).toBe("stoic,seneca,aurelius"); // from version localization
+    // Both present → the downstream locale_incomplete check won't fire for en-US.
+    expect(Boolean(en.subtitle && en.keywords)).toBe(true);
   });
 
   it("returns an empty array when the readable version has no localizations", async () => {

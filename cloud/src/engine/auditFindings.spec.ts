@@ -411,6 +411,34 @@ describe("severity caps (the #41 trap)", () => {
   });
 });
 
+// #71-A1: an UNKNOWN price (baseTerritoryPrice null — we couldn't read it) must
+// NEVER be asserted as "paid". A free app whose price read came back null was
+// being labeled "paid" — fabricated-as-measured. Unknown is "unknown", not paid.
+describe("pricing label honesty (#71)", () => {
+  const pricingTitle = (price: number | null): string | undefined => {
+    const snap = healthySnapshot();
+    snap.pricing!.iaps = [];
+    snap.pricing!.pricing = { priceTier: null, baseTerritoryPrice: price, baseTerritory: "USA" };
+    const f = auditFindings(input({ snapshot: snap })).find((x) => x.id === "pricing_context");
+    return f?.title;
+  };
+
+  it("labels a 0 price as 'free'", () => {
+    expect(pricingTitle(0)).toBe("free");
+  });
+
+  it("labels a positive price as 'paid'", () => {
+    expect(pricingTitle(2.99)).toBe("paid");
+  });
+
+  it("never labels an UNKNOWN (null) price as 'paid'", () => {
+    const title = pricingTitle(null);
+    expect(title).not.toBe("paid");
+    // Either omitted entirely, or an explicit "unknown" — never a false "paid".
+    if (title !== undefined) expect(title).toMatch(/unknown/i);
+  });
+});
+
 // ── Sort order ───────────────────────────────────────────────────────────────
 
 describe("sort order", () => {
