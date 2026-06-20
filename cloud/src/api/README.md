@@ -28,7 +28,7 @@ Preflight (`OPTIONS`) handled; `Origin` is echoed back with
 | `POST /apps/:id/run`      | `{keywords?, competitors?, baseCopy?}` (all optional) | runs the agent (diffs vs last competitor snapshot), opens an `awaiting_approval` run → `{runId, status, digest}` (201) |
 | `GET  /apps/:id/ranks`    | `?keyword=` (optional)                        | `{appId, series:{ [keyword]: [{rank,total,at}] }}` — trend chart data |
 | `GET  /runs/:id`          | —                                             | `{run, audit, ranks, competitors, reasoning, proposedCopy, pushCommands, approval, trigger}` |
-| `POST /runs/:id/approve`  | `{decision:"approve"\|"reject"}`              | approve → status `shipped` + returns the generated push commands; reject → status `rejected`. One decision per run (`UNIQUE(run_id)`); re-decide → 409 |
+| `POST /runs/:id/approve`  | `{decision:"approve"\|"reject"}`              | approve → status `approved` (nothing is pushed yet) + returns the generated push commands; reject → status `rejected`. One decision per run (`UNIQUE(run_id)`); re-decide → 409 |
 
 `keywords` items are `{keyword, volume, difficulty, relevance}` on 0–100 scales.
 When omitted, seeds are derived from the app name (`runConfig.ts`) so a bare run

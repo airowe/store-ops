@@ -285,10 +285,22 @@ test.describe("dashboard funnel (mock backend)", () => {
       timeout: 10_000,
     });
 
-    // Honest status: the badge must NOT claim "Shipped" (nothing pushed to Apple
-    // yet — approval only reveals the commands). It reads "ready to push".
+    // Honest status: the status BADGE must NOT claim "Shipped" (nothing pushed
+    // to Apple yet — approval only reveals the commands). It reads "ready to
+    // push".
+    await expect(page.locator(".badge")).toHaveText(/Approved · ready to push/);
     await expect(page.getByText(/ready to push/i).first()).toBeVisible();
     await expect(page.getByText(/^Shipped$/)).toHaveCount(0);
+
+    // The approval-sets-status path: the run row is now 'approved' — NOT
+    // 'shipped'. 'shipped' would overstate (it implies a verified push reached
+    // App Store Connect, which has not happened).
+    const status = await page.evaluate(async (rid) => {
+      const M = (window as any).STORE_OPS_MOCK;
+      const run = await (await M.handle("GET", `/runs/${rid}`, null, "demo@store-ops.dev")).json();
+      return run.status as string;
+    }, runId);
+    expect(status).toBe("approved");
   });
 
   test("the run page shows the keyword-opportunities card with competitor attribution and honest copy", async ({
