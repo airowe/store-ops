@@ -760,17 +760,32 @@ svg.spark .lbl { fill: var(--faint); font-family: var(--mono); font-size: 10px; 
 .cov-gauge.neutral { color: var(--faint); }
 .cov-gauge-inner {
   width: 58px; height: 58px; border-radius: 50%;
-  background: var(--bg, #0c0e14); display: grid; place-items: center;
-  grid-auto-flow: column; align-items: baseline;
+  background: var(--bg, #0c0e14);
+  /* Center the "NN%" cluster both axes (#60): a single inline-flex row,
+     centered, with the score + % baseline-aligned to read as one unit. The
+     previous grid-auto-flow:column left the cluster off-center vertically. */
+  display: flex; align-items: center; justify-content: center;
+  line-height: 1;
 }
-.cov-score { font-size: 22px; font-weight: 700; color: var(--ink); font-family: var(--mono); }
-.cov-pct { font-size: 11px; color: var(--faint); font-family: var(--mono); }
+.cov-score { font-size: 22px; font-weight: 700; color: var(--ink); font-family: var(--mono); line-height: 1; }
+.cov-pct { font-size: 11px; color: var(--faint); font-family: var(--mono); align-self: flex-start; margin-top: 2px; }
 .cov-meta { flex: 1; min-width: 200px; }
 .cov-title { font-weight: 600; color: var(--ink); }
 .cov-sub { font-family: var(--mono); font-size: 12px; color: var(--dim); margin-top: 2px; }
 .cov-note { font-size: 13px; margin-top: 4px; }
 .cov-frame { font-size: 12px; margin-top: 4px; font-style: italic; }
 .cov-fields { font-family: var(--mono); font-size: 11px; margin-top: 6px; }
+/* Per-field FILL breakdown (#60) — used/limit per field with a real bar. An
+   UNSEEN field (no-key run) renders a hollow track + an "unseen" tag, never a
+   filled "0/limit" that would imply we measured an empty field. */
+.cov-fields-list { margin-top: 8px; display: flex; flex-direction: column; gap: 6px; }
+.cov-field-row { display: grid; grid-template-columns: 64px 1fr 56px; gap: 8px; align-items: center; }
+.cov-field-name { font-size: 12px; color: var(--dim); }
+.cov-bar { height: 6px; border-radius: 4px; background: rgba(127,127,127,.18); overflow: hidden; }
+.cov-bar-fill { display: block; height: 100%; border-radius: 4px; background: var(--brand); }
+.cov-bar.unseen { background: transparent; border: 1px dashed var(--line); }
+.cov-field-val { font-family: var(--mono); font-size: 11px; color: var(--dim); text-align: right; }
+.cov-field-val.unseen { color: var(--faint); font-style: italic; }
 .cov-waste { margin-top: 12px; display: flex; flex-direction: column; gap: 8px; }
 .cov-waste-item { display: flex; gap: 10px; align-items: flex-start; }
 .cov-waste-ico {

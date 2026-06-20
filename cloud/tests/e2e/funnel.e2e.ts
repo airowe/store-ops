@@ -250,6 +250,17 @@ test.describe("dashboard funnel (mock backend)", () => {
     await expect(page.getByText(/not a rank score/i)).toBeVisible();
     await expect(page.getByText(/of 160 chars working/i)).toBeVisible();
 
+    // (#60) A per-field FILL breakdown renders for all three fields. On a keyed
+    // run every field is SEEN, so each row carries a real used/limit + a fill bar
+    // (no "unseen" markers) — fill is shown honestly, separate from the score.
+    const covCard = page.locator(".cov-card");
+    const rows = covCard.locator(".cov-field-row");
+    await expect(rows).toHaveCount(3);
+    await expect(covCard.locator(".cov-field-row", { hasText: "Name" })).toContainText(/\d+\/30/);
+    await expect(covCard.locator(".cov-field-row", { hasText: "Subtitle" })).toContainText(/\d+\/30/);
+    await expect(covCard.locator(".cov-field-row", { hasText: "Keywords" })).toContainText(/\d+\/100/);
+    await expect(covCard.locator(".cov-field-val.unseen")).toHaveCount(0);
+
     // The coverage report served to the client must match what renders, and must
     // never carry the raw comma-joined keyword field (the privacy boundary).
     const cov = await page.evaluate(async (rid) => {

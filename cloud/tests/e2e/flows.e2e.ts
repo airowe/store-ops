@@ -819,6 +819,19 @@ test.describe("run page — no-key honesty nits (#56)", () => {
     await expect(cov).not.toContainText(/Keywords 0\/100/i);
     // It must flag the fields as unseen instead.
     await expect(cov).toContainText(/unseen/i);
+    // (#60) A per-field FILL breakdown renders: Name has a real used/limit, while
+    // subtitle & keywords are explicitly UNSEEN (not a measured 0/limit).
+    const rows = cov.locator(".cov-field-row");
+    await expect(rows).toHaveCount(3);
+    const nameRow = cov.locator(".cov-field-row", { hasText: "Name" });
+    await expect(nameRow).toContainText(/\d+\/30/); // real fill for the public name
+    await expect(nameRow.locator(".cov-bar-fill")).toBeVisible();
+    const subRow = cov.locator(".cov-field-row", { hasText: "Subtitle" });
+    await expect(subRow.locator(".cov-field-val.unseen")).toHaveText(/unseen/i);
+    await expect(subRow).not.toContainText(/0\/30/);
+    const kwRow = cov.locator(".cov-field-row", { hasText: "Keywords" });
+    await expect(kwRow.locator(".cov-field-val.unseen")).toHaveText(/unseen/i);
+    await expect(kwRow).not.toContainText(/0\/100/);
   });
 
   test("(2) narrative says it couldn't propose subtitle/keyword changes without ASC (matching the empty diff)", async ({ page }) => {

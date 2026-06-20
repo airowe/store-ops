@@ -35,6 +35,27 @@ export type CoverageWaste = {
   chars: number;
 };
 
+/**
+ * Per-field FILL — how much of a field's own budget is used. This is the HONEST
+ * counterpart to `coverageScore` (which is efficiency, not fill): a near-empty
+ * listing has low fill but can still be "waste-free". `seen` distinguishes a
+ * MEASURED empty field (input was a string, even "") from an UNSEEN one (input
+ * was undefined — e.g. a no-key run can't read subtitle/keywords). We never
+ * fabricate fill for an unseen field — used/fillPct stay 0 AND seen is false, so
+ * the UI can render "UNSEEN" rather than a false "0/limit".
+ */
+export type FieldFill = {
+  field: "name" | "subtitle" | "keywords";
+  /** the field's own char budget (30 / 30 / 100). */
+  limit: number;
+  /** chars used — 0 for an unseen field (carries no measured value). */
+  used: number;
+  /** used/limit × 100, clamped 0–100 — 0 for an unseen field. */
+  fillPct: number;
+  /** false when the field's input was undefined (unseen) — a 0 here is UNKNOWN. */
+  seen: boolean;
+};
+
 export type CoverageReport = {
   /** 0–100: (available budget − total waste chars) / available budget, clamped. */
   coverageScore: number;
@@ -44,6 +65,8 @@ export type CoverageReport = {
     subtitle: number;
     keywords: number;
   };
+  /** per-field fill (used/limit), with a `seen` flag so unseen fields read as UNKNOWN. */
+  fieldFill: FieldFill[];
   /** count of unique ranking terms across all fields (brand + dupes removed). */
   distinctTerms: number;
   /** itemized waste — empty when the listing is clean. */
@@ -128,6 +151,18 @@ export function metadataCoverage(
     keywords: copy.keywords?.length ?? 0,
   };
 
+  // Per-field FILL (#60): used/limit per field, with `seen` set from whether the
+  // input was a string at all. An UNSEEN field (undefined) carries no fabricated
+  // fill — used + fillPct stay 0 so the UI shows UNKNOWN, never a measured "0".
+  const fieldFill: FieldFill[] = (["name", "subtitle", "keywords"] as const).map((field) => {
+    const raw = copy[field];
+    const seen = raw !== undefined;
+    const used = seen ? raw.length : 0;
+    const limit = CHAR_LIMITS[field];
+    const fillPct = seen ? Math.max(0, Math.min(100, (used / limit) * 100)) : 0;
+    return { field, limit, used, fillPct, seen };
+  });
+
   const brandTokens = new Set(tokenize(opts.brand));
 
   // Tokenize each field; brand tokens are removed from the normal term analysis
@@ -203,6 +238,7 @@ export function metadataCoverage(
   return {
     coverageScore,
     usedChars,
+    fieldFill,
     distinctTerms,
     waste,
     // topMissingValue deferred to the gap finder (#01) — omitted (exactOptional).

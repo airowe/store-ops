@@ -1201,6 +1201,37 @@
     if (score >= 20) return { cls: "warn", note: "Typical. Trim the waste below to lift it." };
     return { cls: "bad", note: "Heavy duplication, brand repeats, or filler — see below." };
   }
+  // Per-field FILL breakdown (#60) — separate from the efficiency score. Each row
+  // shows how much of that field's own 30/30/100 budget is used, with a real fill
+  // bar. A field the run couldn't read (seen:false — e.g. a no-key run's subtitle
+  // & keywords) is shown as UNSEEN, never a measured "0/limit" (false precision).
+  var COV_FIELD_LABEL = { name: "Name", subtitle: "Subtitle", keywords: "Keywords" };
+  function coverageFieldBreakdown(cov) {
+    var fill = cov && cov.fieldFill;
+    // Fallback for older payloads without fieldFill: synthesize seen rows from
+    // usedChars (treats every field as seen — only used by legacy data).
+    if (!fill || !fill.length) {
+      var used = cov && cov.usedChars ? cov.usedChars : { name: 0, subtitle: 0, keywords: 0 };
+      var LIM = { name: 30, subtitle: 30, keywords: 100 };
+      fill = ["name", "subtitle", "keywords"].map(function (f) {
+        return { field: f, limit: LIM[f], used: used[f] || 0, fillPct: Math.min(100, ((used[f] || 0) / LIM[f]) * 100), seen: true };
+      });
+    }
+    var rows = fill.map(function (r) {
+      var label = COV_FIELD_LABEL[r.field] || r.field;
+      var barFill = r.seen ? el("span", { class: "cov-bar-fill", style: "width:" + Math.round(r.fillPct) + "%" }) : null;
+      var bar = el("div", { class: "cov-bar" + (r.seen ? "" : " unseen") }, barFill ? [barFill] : []);
+      var valueEl = r.seen
+        ? el("span", { class: "cov-field-val" }, [r.used + "/" + r.limit])
+        : el("span", { class: "cov-field-val unseen", title: "Connect App Store Connect to read this field" }, ["unseen"]);
+      return el("div", { class: "cov-field-row" }, [
+        el("span", { class: "cov-field-name" }, [label]),
+        bar,
+        valueEl,
+      ]);
+    });
+    return el("div", { class: "cov-fields-list" }, rows);
+  }
   function coverageSection(cov, noKey) {
     if (!cov || typeof cov.coverageScore !== "number") return null;
     var score = Math.round(cov.coverageScore);
@@ -1237,17 +1268,20 @@
         "Scored on your app name alone. Connect App Store Connect to grade your live subtitle & keyword field.",
       ]));
       metaKids.push(el("div", { class: "cov-frame faint" }, ["A budget-efficiency heuristic — how hard your metadata works, not a rank score."]));
+      // FILL breakdown — per-field, with subtitle/keywords shown as UNSEEN.
+      metaKids.push(coverageFieldBreakdown(cov));
       metaKids.push(el("div", { class: "cov-fields faint" }, [
-        "Name " + used.name + "/30 · Subtitle — (unseen) · Keywords — (unseen)" +
-        " · " + (cov.distinctTerms || 0) + " distinct term" + ((cov.distinctTerms === 1) ? "" : "s") + " in the name",
+        (cov.distinctTerms || 0) + " distinct term" + ((cov.distinctTerms === 1) ? "" : "s") + " in the name",
       ]));
     } else {
       metaKids.push(el("div", { class: "cov-sub" }, [workingChars + " of 160 chars working"]));
       metaKids.push(el("div", { class: "cov-note faint" }, [band.note]));
       metaKids.push(el("div", { class: "cov-frame faint" }, ["A budget-efficiency heuristic — how hard your metadata works, not a rank score."]));
+      // FILL breakdown — per-field used/limit with real bars (separate from the
+      // efficiency score above; a near-empty field reads low here even at 100%).
+      metaKids.push(coverageFieldBreakdown(cov));
       metaKids.push(el("div", { class: "cov-fields faint" }, [
-        "Name " + used.name + "/30 · Subtitle " + used.subtitle + "/30 · Keywords " + used.keywords + "/100" +
-        " · " + (cov.distinctTerms || 0) + " distinct term" + ((cov.distinctTerms === 1) ? "" : "s"),
+        (cov.distinctTerms || 0) + " distinct term" + ((cov.distinctTerms === 1) ? "" : "s"),
       ]));
     }
     var meta = el("div", { class: "cov-meta" }, metaKids);
