@@ -177,11 +177,15 @@
     var chgCount = changes.filter(function (c) { return c.status === "changed"; }).length;
     var digest = newCount + " new competitor" + (newCount === 1 ? "" : "s") + " tracked, " + chgCount + " changed since last week";
 
-    // screenshot audit
+    // screenshot audit. Public (no-key) data is UNRELIABLE for screenshots (#41):
+    // a bundle flagged "unreadable" (or one the public API returned no shots for)
+    // grades "?" with NO gallery; otherwise we have the real shots to render (#47).
     var h2 = hash(app.bundleId);
-    var iphoneCount = 3 + (h2 % 6);
-    var ipadCount = (h2 % 2) ? 0 : 2 + (h2 % 4);
-    var sc = scoreShots(app.name, iphoneCount, ipadCount);
+    var publicUnreadable = !ascRead && /unreadable|noshots/i.test(app.bundleId);
+    var iphoneCount = publicUnreadable ? 0 : 3 + (h2 % 6);
+    var ipadCount = publicUnreadable ? 0 : ((h2 % 2) ? 0 : 2 + (h2 % 4));
+    // ASC reads are reliable; public reads are not (drives the "?" honesty path).
+    var sc = scoreShots(app.name, iphoneCount, ipadCount, ascRead ? true : false);
 
     // ASC findings — the "Listing audit" card payload (PRD 02/03). Findings only;
     // never raw ASC data. A slim ascContext carries just the display values the
@@ -285,8 +289,9 @@
 
   function buildFindings(app, sc, ascRead, ctx) {
     var f = [];
-    // screenshots — real grade when a key let us read them; else "unknown".
-    if (!ascRead) {
+    // screenshots — "unknown" only when we genuinely couldn't read the set (#41);
+    // otherwise the real grade (public shots ARE often available to render, #47).
+    if (sc.grade === "?") {
       f.push({ id: "screenshots_unknown", surface: "screenshots", severity: "info", impact: "conversion",
         title: "Couldn't read screenshots from public data",
         detail: "Public App Store data doesn't expose your screenshot set reliably.",
@@ -615,7 +620,29 @@
     return { appName: app.name, warRoom: warRoom, competitors: names, window: 7, checkedAt: today + "T00:00:00Z" };
   }
 
-  function scoreShots(app, iphone, ipad) {
+  // Build deterministic, real-looking App Store image URLs (the mzstatic size
+  // token drives the aspect-ratio read; the gallery just renders the URL). #47.
+  function shotUrls(seed, n, dims) {
+    var urls = [];
+    for (var i = 0; i < n; i++) {
+      urls.push("https://is1.mzstatic.com/image/thumb/mock/" + seed + "/" + i + "/" + dims + "bb.png");
+    }
+    return urls;
+  }
+
+  // dataReliable:false + an empty set → the honest "?" (unknown) grade (#41):
+  // we couldn't read the real screenshots, so we carry NO urls — never a fake
+  // gallery. Mirrors src/engine/screenshotScore.ts's "?" branch.
+  function scoreShots(app, iphone, ipad, dataReliable) {
+    var iUrls = shotUrls(app + ":iphone", iphone, "1290x2796");
+    var pUrls = shotUrls(app + ":ipad", ipad, "2048x2732");
+    if (iphone === 0 && dataReliable === false) {
+      return {
+        app: app, iphoneCount: 0, ipadCount: ipad, score: null, grade: "?",
+        findings: ["ℹ Couldn't read your screenshots from public App Store data — connect App Store Connect to audit your real screenshot set."],
+        aspectHint: "", screenshotUrls: [], ipadScreenshotUrls: [],
+      };
+    }
     var score = 0, findings = [];
     if (iphone === 0) { findings.push("No iPhone screenshots — cannot convert."); }
     else if (iphone < 4) { score += 20; findings.push("Only " + iphone + " iPhone shots; add up to 4–6 for full coverage."); }
@@ -627,7 +654,7 @@
     score += 8;
     score = Math.min(100, score);
     var grade = score >= 85 ? "A" : score >= 70 ? "B" : score >= 50 ? "C" : score >= 30 ? "D" : "F";
-    return { app: app, iphoneCount: iphone, ipadCount: ipad, score: score, grade: grade, findings: findings, aspectHint: "1290x2796" };
+    return { app: app, iphoneCount: iphone, ipadCount: ipad, score: score, grade: grade, findings: findings, aspectHint: "1290x2796", screenshotUrls: iUrls, ipadScreenshotUrls: pUrls };
   }
 
   // ── rank opportunity score (PRD 06) — mirrors src/engine/rankOpportunity.ts ─

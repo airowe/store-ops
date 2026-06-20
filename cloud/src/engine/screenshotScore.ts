@@ -40,6 +40,15 @@ export type ShotScore = {
   grade: Grade;
   findings: string[];
   aspectHint: string;
+  /**
+   * The REAL screenshot URLs we graded, in App Store order (#47) — so the
+   * run/audit page can render the actual shots next to the grade. iPhone set
+   * first, iPad set second. Empty when the set is unreadable (the "?" branch):
+   * never a fake/placeholder gallery (#41). These are public App Store image
+   * URLs, safe to serve past the findings-only privacy boundary.
+   */
+  screenshotUrls: string[];
+  ipadScreenshotUrls: string[];
 };
 
 /** Parse the size token at the end of a screenshot URL → [w, h] or null. */
@@ -88,6 +97,9 @@ export function score(app: string, listing: Listing): ShotScore {
           "Connect App Store Connect to audit your real screenshot set.",
       ],
       aspectHint: "",
+      // #47 + #41: unreadable set → carry NO urls. Never render a fake gallery.
+      screenshotUrls: [],
+      ipadScreenshotUrls: [],
     };
   }
 
@@ -154,5 +166,8 @@ export function score(app: string, listing: Listing): ShotScore {
     grade: gradeFor(pts),
     findings,
     aspectHint,
+    // #47: the real shots we just graded, in App Store order — for the gallery.
+    screenshotUrls: [...iphone],
+    ipadScreenshotUrls: [...ipad],
   };
 }
