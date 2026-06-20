@@ -32,24 +32,36 @@ export async function gotoMockDashboard(page: Page, hash = "#/"): Promise<void> 
  */
 export async function seedAppWithRun(
   page: Page,
-  opts: { name?: string; bundleId?: string; keywords?: string[]; asc?: boolean } = {},
+  opts: { name?: string; bundleId?: string; keywords?: string[]; asc?: boolean; emptyLive?: boolean } = {},
 ): Promise<string> {
   const name = opts.name ?? "Calm";
   const bundleId = opts.bundleId ?? "com.calm.calmapp";
   const asc = opts.asc ?? false;
+  // emptyLive: simulate an app whose live ASC subtitle + keyword field are BLANK
+  // (read-but-empty) — to assert the gauge shows "empty" (an opportunity), never
+  // the false "unseen" (which means unread). Only meaningful with asc:true.
+  const emptyLive = opts.emptyLive ?? false;
   const keywords =
     opts.keywords ??
     ["meditation", "sleep sounds", "breathing exercises", "anxiety relief", "focus music", "habit tracker"];
 
   return await page.evaluate(
-    async ({ name, bundleId, keywords, asc }) => {
+    async ({ name, bundleId, keywords, asc, emptyLive }) => {
       const M = (window as any).STORE_OPS_MOCK;
       const EM = "demo@store-ops.dev";
       // Seeding is a test fixture, not a paywall scenario — lift the partition to
       // the top tier so seeding N apps never trips the free-tier connect gate
       // (#27). Tests that exercise the 402 paywall set the tier explicitly.
       await M.handle("POST", "/_tier", { tier: "fleet" }, EM);
-      const conn = await M.handle("POST", "/apps", { bundle_id: bundleId, name, keywords }, EM);
+      // emptyLive pins the live ASC subtitle/keyword field to "" via the connect
+      // body's test-only fixture hooks, so the keyed run reads them as read-but-
+      // blank (mirrors a real app with no subtitle/keyword field set).
+      const connectBody: Record<string, unknown> = { bundle_id: bundleId, name, keywords };
+      if (emptyLive) {
+        connectBody._liveSubtitle = "";
+        connectBody._liveKeywords = "";
+      }
+      const conn = await M.handle("POST", "/apps", connectBody, EM);
       const id = (await conn.json()).id as string;
       // asc:true seeds a Mode-A (keyed) run so the full findings set is produced
       // (appInfo/previews/locales etc.); the default plain run yields the thin set.
@@ -64,7 +76,7 @@ export async function seedAppWithRun(
       }
       return id;
     },
-    { name, bundleId, keywords, asc },
+    { name, bundleId, keywords, asc, emptyLive },
   );
 }
 

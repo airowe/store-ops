@@ -1219,11 +1219,22 @@
     }
     var rows = fill.map(function (r) {
       var label = COV_FIELD_LABEL[r.field] || r.field;
-      var barFill = r.seen ? el("span", { class: "cov-bar-fill", style: "width:" + Math.round(r.fillPct) + "%" }) : null;
-      var bar = el("div", { class: "cov-bar" + (r.seen ? "" : " unseen") }, barFill ? [barFill] : []);
-      var valueEl = r.seen
-        ? el("span", { class: "cov-field-val" }, [r.used + "/" + r.limit])
-        : el("span", { class: "cov-field-val unseen", title: "Connect App Store Connect to read this field" }, ["unseen"]);
+      // Three honest states (not two):
+      //   • UNSEEN — we couldn't read this field (no ASC key). Unknown, not 0.
+      //   • EMPTY  — we READ it and it's blank. A real, unused ranking surface
+      //              (an opportunity), NOT "unknown" and NOT "fully used".
+      //   • used/limit — read and populated.
+      var isEmpty = r.seen && r.used === 0;
+      var barFill = r.seen && !isEmpty ? el("span", { class: "cov-bar-fill", style: "width:" + Math.round(r.fillPct) + "%" }) : null;
+      var bar = el("div", { class: "cov-bar" + (r.seen ? (isEmpty ? " empty" : "") : " unseen") }, barFill ? [barFill] : []);
+      var valueEl;
+      if (!r.seen) {
+        valueEl = el("span", { class: "cov-field-val unseen", title: "Connect App Store Connect to read this field" }, ["unseen"]);
+      } else if (isEmpty) {
+        valueEl = el("span", { class: "cov-field-val empty", title: "We read this field and it's empty — an unused ranking surface you can claim" }, ["empty · 0/" + r.limit]);
+      } else {
+        valueEl = el("span", { class: "cov-field-val" }, [r.used + "/" + r.limit]);
+      }
       return el("div", { class: "cov-field-row" }, [
         el("span", { class: "cov-field-name" }, [label]),
         bar,
@@ -1274,8 +1285,23 @@
         (cov.distinctTerms || 0) + " distinct term" + ((cov.distinctTerms === 1) ? "" : "s") + " in the name",
       ]));
     } else {
-      metaKids.push(el("div", { class: "cov-sub" }, [workingChars + " of 160 chars working"]));
-      metaKids.push(el("div", { class: "cov-note faint" }, [band.note]));
+      // Count read-but-EMPTY surfaces — a high efficiency score on near-empty
+      // metadata ("Excellent" while subtitle+keywords are blank) is the mixed
+      // signal we avoid: efficiency ≠ fill. When fields were READ and are empty,
+      // lead with the opportunity, not a normative "Excellent" band.
+      var emptySurfaces = (cov.fieldFill || []).filter(function (f) { return f.seen && f.used === 0; });
+      if (emptySurfaces.length) {
+        var names = emptySurfaces.map(function (f) { return COV_FIELD_LABEL[f.field] || f.field; });
+        metaKids.push(el("div", { class: "cov-sub" }, [
+          names.join(" & ") + (emptySurfaces.length === 1 ? " is" : " are") + " empty — unused ranking surface" + (emptySurfaces.length === 1 ? "" : "s"),
+        ]));
+        metaKids.push(el("div", { class: "cov-note faint" }, [
+          "You're using " + (used.name || 0) + " of your name's chars; " + names.join(" & ").toLowerCase() + " " + (emptySurfaces.length === 1 ? "sits" : "sit") + " empty. Filling " + (emptySurfaces.length === 1 ? "it" : "them") + " is your biggest available gain.",
+        ]));
+      } else {
+        metaKids.push(el("div", { class: "cov-sub" }, [workingChars + " of 160 chars working"]));
+        metaKids.push(el("div", { class: "cov-note faint" }, [band.note]));
+      }
       metaKids.push(el("div", { class: "cov-frame faint" }, ["A budget-efficiency heuristic — how hard your metadata works, not a rank score."]));
       // FILL breakdown — per-field used/limit with real bars (separate from the
       // efficiency score above; a near-empty field reads low here even at 100%).

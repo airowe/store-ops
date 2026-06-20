@@ -37,6 +37,7 @@ import { canRunCron } from "../billing.js";
 import { type DigestAppInput, planDigests } from "../digest.js";
 import { emailSenderForEnv } from "../emailSender.js";
 import { buildAppInput } from "../api/runConfig.js";
+import { reasonerForEnv } from "../api/aiReasoner.js";
 import { fetchForEnv } from "../fetchAdapter.js";
 import type { Env } from "../index.js";
 
@@ -124,7 +125,8 @@ export async function runWeeklySweep(env: Env): Promise<CronReport> {
       }
 
       const previous = await getLatestCompetitorMap(env.DB, app.id);
-      const input = buildAppInput(app, {}, previous);
+      const cronReasoner = reasonerForEnv(env.AI);
+      const input = await buildAppInput(app, cronReasoner ? { reasoner: cronReasoner } : {}, previous);
       const result = await runAgent(fetchForEnv(env), input);
 
       const decision = evaluateThreshold(result);

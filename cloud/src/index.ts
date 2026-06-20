@@ -16,6 +16,10 @@ export type Env = {
   DB: D1Database;
   DEFAULT_COUNTRY: string;
   APP_ENV: string;
+  // Workers AI binding (#57) — powers the keyword-reasoning step. OPTIONAL: when
+  // unset (local dev / not provisioned) the run derives keywords with the
+  // deterministic classifier instead. A missing binding NEVER breaks a run.
+  AI?: Ai;
   // Public base URL of the dashboard (for magic-link callback + CORS origin echo).
   // Optional: falls back to the request Origin when unset.
   DASHBOARD_ORIGIN?: string;

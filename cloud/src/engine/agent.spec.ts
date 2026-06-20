@@ -78,4 +78,32 @@ describe("runAgent — currentCopy carries the 'before' for the diff", () => {
     expect(r.currentCopy.subtitle).toBe("Stoic calm for atheists");
     expect(r.currentCopy.keywords).toBe("mindfulness,stoic");
   });
+
+  it("treats an ASC-read-but-EMPTY subtitle/keywords as '' (seen), not omitted (unseen)", async () => {
+    // The honesty bug (live Mangia): an app with no subtitle set yields an empty
+    // read. We MUST distinguish read-but-empty ("") from never-read (undefined):
+    // when ascMetadataRead is true, an empty field was READ — carry it as "" so
+    // downstream coverage shows "empty", never the false "unseen".
+    const fetchFn = stubFetch({ trackName: "Mangia", description: "recipe app" });
+    const input = {
+      ...baseInput(),
+      ascMetadataRead: true,
+      baseCopy: { name: "Mangia", subtitle: "", keywords: "", description: "recipe app" },
+    };
+    const r = await runAgent(fetchFn as never, input);
+    expect(r.currentCopy.subtitle).toBe(""); // present + empty, NOT undefined
+    expect(r.currentCopy.keywords).toBe(""); // present + empty, NOT undefined
+    expect("subtitle" in r.currentCopy).toBe(true);
+    expect("keywords" in r.currentCopy).toBe(true);
+  });
+
+  it("never lets undefined ASC fields masquerade as read (stays unseen)", async () => {
+    // When ascMetadataRead is FALSE (public/no-key run), subtitle/keywords are
+    // genuinely unknown — they must be omitted (unseen), never coerced to "".
+    const fetchFn = stubFetch({ trackName: "Mangia", description: "recipe app" });
+    const input = { ...baseInput(), ascMetadataRead: false as const };
+    const r = await runAgent(fetchFn as never, input);
+    expect("subtitle" in r.currentCopy).toBe(false);
+    expect("keywords" in r.currentCopy).toBe(false);
+  });
 });
