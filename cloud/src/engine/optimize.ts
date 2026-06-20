@@ -172,13 +172,26 @@ function sentenceCase(s: string): string {
  * A SINGLE usable term still yields that term (a one-word phrase) — the caller
  * decides whether one word is "weak"; this function just authors from what it
  * is given. Returns "" when there is nothing usable.
+ *
+ * `opts.ban` (#42): a phrase (typically the app NAME) whose words are excluded.
+ * Apple already ranks the title's words, so repeating a brand word in the
+ * subtitle burns a scarce 30-char surface for zero ranking gain. Banned words
+ * are stripped term-by-term; a term that becomes empty after stripping is
+ * skipped entirely.
  */
-export function composeSubtitle(terms: string[]): string {
+export function composeSubtitle(terms: string[], opts: { ban?: string } = {}): string {
   const limit = CHAR_LIMITS.subtitle;
+  const banned = opts.ban ? words(opts.ban) : new Set<string>();
   const usedWords = new Set<string>();
   const parts: string[] = [];
   for (const raw of terms) {
-    const term = raw.trim().toLowerCase().replace(/\s+/g, " ");
+    const term = raw
+      .trim()
+      .toLowerCase()
+      .replace(/\s+/g, " ")
+      .split(" ")
+      .filter((w) => !banned.has(w.replace(/[^a-z0-9]/g, "")))
+      .join(" ");
     if (!term) continue;
     const termWords = term.split(" ");
     // skip a term whose words are already all present (no new signal)
@@ -250,9 +263,10 @@ export function optimizeCopy(
       subtitle = fitToLimit(liveSubtitle, "subtitle");
       notes.subtitleMode = "preserved";
     } else {
-      // Author from the highest-value distinct terms; the brand name is a weak
-      // tail cue so the phrase still reads naturally if room remains.
-      const composed = composeSubtitle([...secondary, ...primary, ...longTail, name]);
+      // Author from the highest-value distinct terms. The brand name's words are
+      // BANNED (#42): Apple already ranks the title, so a subtitle that repeats a
+      // brand word wastes a scarce 30-char surface for zero ranking gain.
+      const composed = composeSubtitle([...secondary, ...primary, ...longTail], { ban: name });
       subtitle = fitToLimit(composed, "subtitle");
       notes.subtitleMode = "composed";
     }
