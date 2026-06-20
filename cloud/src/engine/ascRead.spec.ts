@@ -892,4 +892,37 @@ describe("ascScreenshotsToListing — ASC set → scoreable Listing (real grade)
     expect(ascScreenshotsToListing({ iphoneScreenshots: [], ipadScreenshots: [], dataReliable: true })).toBeNull();
     expect(ascScreenshotsToListing(undefined)).toBeNull();
   });
+
+  // #70: Apple stores each screenshot as a SEPARATE asset per device display
+  // size (6.5"/6.7"/5.5"). The same 5 logical shots across 3 sizes must NOT be
+  // counted as 15 — that inflates both the reported count and the grade. We
+  // report the count of the MOST-COMPLETE single device size (the representative
+  // set), not the union of every device-size variant.
+  it("counts ONE representative device size, not the union across sizes (#70)", () => {
+    const five = (sz: string) =>
+      ({ device: sz, displayType: sz, count: 5, screenshots: [shot(`${sz}-1`), shot(`${sz}-2`), shot(`${sz}-3`), shot(`${sz}-4`), shot(`${sz}-5`)] });
+    const set = {
+      // The SAME 5 shots, replicated across 3 iPhone display sizes.
+      iphoneScreenshots: [five("APP_IPHONE_65"), five("APP_IPHONE_67"), five("APP_IPHONE_55")],
+      ipadScreenshots: [],
+      dataReliable: true as const,
+    };
+    const listing = ascScreenshotsToListing(set);
+    expect(listing).not.toBeNull();
+    // 5 real screenshots — NOT 15 (5 × 3 sizes).
+    expect(listing!.screenshotUrls).toHaveLength(5);
+  });
+
+  it("picks the device size with the MOST screenshots as representative (#70)", () => {
+    const set = {
+      iphoneScreenshots: [
+        { device: "APP_IPHONE_55", displayType: "APP_IPHONE_55", count: 2, screenshots: [shot("a"), shot("b")] },
+        { device: "APP_IPHONE_67", displayType: "APP_IPHONE_67", count: 6, screenshots: [shot("c"), shot("d"), shot("e"), shot("f"), shot("g"), shot("h")] },
+      ],
+      ipadScreenshots: [],
+      dataReliable: true as const,
+    };
+    const listing = ascScreenshotsToListing(set);
+    expect(listing!.screenshotUrls).toHaveLength(6); // the fuller 6.7" set, not 2+6=8
+  });
 });

@@ -640,10 +640,20 @@ export function ascScreenshotsToListing(
   set: AscScreenshotSet | undefined,
 ): { screenshotUrls: string[]; ipadScreenshotUrls: string[]; dataReliable: true } | null {
   if (!set) return null;
-  const urls = (sets: AscScreenshotSetPerDevice[]): string[] =>
-    sets.flatMap((d) => d.screenshots.map((s) => s.imageTemplate).filter((u): u is string => !!u));
-  const iphone = urls(set.iphoneScreenshots);
-  const ipad = urls(set.ipadScreenshots);
+  // #70: Apple stores each screenshot as a SEPARATE asset PER device display
+  // size (APP_IPHONE_65 / _67 / _55 …). The same logical shots are replicated
+  // across sizes, so flattening every per-device set counts 5 shots × 3 sizes =
+  // 15 — inflating both the reported count AND the grade (the count lever pays
+  // ≥6 → +50). The honest count is the screenshots of ONE device size, so we
+  // take the MOST-COMPLETE single device set as the representative (the family's
+  // best slot usage), not the cross-size union.
+  const representative = (sets: AscScreenshotSetPerDevice[]): string[] => {
+    if (sets.length === 0) return [];
+    const best = sets.reduce((a, b) => (b.screenshots.length > a.screenshots.length ? b : a));
+    return best.screenshots.map((s) => s.imageTemplate).filter((u): u is string => !!u);
+  };
+  const iphone = representative(set.iphoneScreenshots);
+  const ipad = representative(set.ipadScreenshots);
   if (iphone.length === 0 && ipad.length === 0) return null;
   return { screenshotUrls: iphone, ipadScreenshotUrls: ipad, dataReliable: true };
 }
