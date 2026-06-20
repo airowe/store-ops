@@ -1356,10 +1356,12 @@
     var rows = order.map(function (o) {
       var field = o[0], label = o[1];
       var was = current[field], now = proposed[field];
-      // Skip fields the proposal didn't touch AND we have no 'before' for.
-      if ((now == null || now === "") && (was == null || was === "")) return null;
       var limit = LIMITS[field];
       var changed = (was || "") !== (now || "");
+      // An unchanged field is not a "proposed change" — don't render a row for
+      // it (#58). This also drops fields the proposal never touched (was===now,
+      // both empty). Only genuine changes survive into the diff.
+      if (!changed) return null;
       var emptyWas = was == null || was === "";
       var emptyNow = now == null || now === "";
 
@@ -1375,13 +1377,12 @@
         ]);
       }
 
-      var rowAttrs = { class: "diffrow" + (changed ? " is-changed" : " is-same") };
-      if (changed) rowAttrs.style = "--i:" + revealIndex++;
-      return el("div", rowAttrs, [
+      // Every surviving row is a genuine change (unchanged ones were filtered
+      // out above), so the row is always is-changed and carries the stagger.
+      return el("div", { class: "diffrow is-changed", style: "--i:" + revealIndex++ }, [
         el("div", { class: "dfield" }, [
           el("span", { class: "fname" }, [label]),
-          el("span", { class: "dtag " + (changed ? (emptyWas ? "added" : "modified") : "unchanged") },
-            [changed ? (emptyWas ? "added" : "changed") : "unchanged"]),
+          el("span", { class: "dtag " + (emptyWas ? "added" : "modified") }, [emptyWas ? "added" : "changed"]),
         ]),
         el("div", { class: "diffcols" }, [
           side("was", was, emptyWas),
@@ -1391,12 +1392,18 @@
       ]);
     }).filter(Boolean);
 
-    if (!rows.length) rows = [el("div", { class: "faint" }, ["No copy changes proposed."])];
+    // Rendered rows ARE the changed fields (unchanged were filtered out), so the
+    // summary count is just the row count — no separate recompute to drift.
+    var changedCount = rows.length;
 
-    var changedCount = order.filter(function (o) {
-      var was = current[o[0]], now = proposed[o[0]];
-      return (now != null && now !== "") && ((was || "") !== (now || ""));
-    }).length;
+    // All fields unchanged → no honest "proposed change" to show. Say so plainly
+    // and point at the real next step (an ASC read), rather than an empty diff or
+    // a fake row (#58). On a no-key run, subtitle/keywords are UNSEEN, not "same."
+    if (!rows.length) {
+      rows = [el("div", { class: "faint", style: "padding:6px 0" }, [
+        "No metadata changes proposed — connect App Store Connect to let the agent read + improve your subtitle/keywords.",
+      ])];
+    }
 
     return el("div", { class: "card" }, [
       el("div", { class: "diffhead" }, [

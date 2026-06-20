@@ -338,6 +338,73 @@ test.describe("run page — PR-style diff (current → proposed)", () => {
   });
 });
 
+test.describe("run page — diff hides unchanged fields (#58)", () => {
+  // Force a run whose proposed copy is IDENTICAL to current copy for every
+  // field by wrapping the mock's GET /runs/:id response. An unchanged field
+  // must never render as a "proposed change."
+  async function forceUnchangedRun(page: import("@playwright/test").Page, runId: string): Promise<void> {
+    // Pre-read the real run, doctor it so proposed === current for every field,
+    // then stash the doctored body. The mock's handle() is SYNCHRONOUS (app.js
+    // does `handle(...).json()`), so the override must synchronously return a
+    // Response built from the already-resolved doctored body.
+    const doctored = await page.evaluate(async (rid) => {
+      const M = (window as any).STORE_OPS_MOCK;
+      const run = await (await M.handle("GET", `/runs/${rid}`, null, "demo@store-ops.dev")).json();
+      const cur = run.result.currentCopy || {};
+      const same = {
+        name: cur.name,
+        subtitle: cur.subtitle ?? "",
+        keywords: cur.keywords ?? "",
+        promo: cur.promo ?? "",
+      };
+      run.result.currentCopy = { ...same };
+      run.result.proposedCopy = { ...same, validation: run.result.proposedCopy?.validation };
+      return run;
+    }, runId);
+
+    await page.evaluate(
+      ({ rid, body }) => {
+        const M = (window as any).STORE_OPS_MOCK;
+        const orig = M.handle.bind(M);
+        M.handle = function (method: string, path: string, b: unknown, email: string) {
+          if (method === "GET" && path === `/runs/${rid}`) {
+            return new Response(JSON.stringify(body), {
+              status: 200,
+              headers: { "content-type": "application/json" },
+            });
+          }
+          return orig(method, path, b, email);
+        };
+      },
+      { rid: runId, body: doctored },
+    );
+  }
+
+  test("unchanged fields render no diff row and the all-unchanged empty state shows", async ({ page }) => {
+    await gotoMockDashboard(page);
+    const id = await seedAppWithRun(page);
+    const runId = await page.evaluate(async (appId) => {
+      const M = (window as any).STORE_OPS_MOCK;
+      const detail = await (await M.handle("GET", `/apps/${appId}`, null, "demo@store-ops.dev")).json();
+      return detail.runs[0].id as string;
+    }, id);
+    await forceUnchangedRun(page, runId);
+    await page.goto(`/index.html#/runs/${runId}`);
+
+    // The diff card still leads with its header…
+    await expect(page.getByRole("heading", { name: /proposed changes/i })).toBeVisible();
+    // …but NOT a single field row renders, because nothing changed.
+    await expect(page.locator(".diffrow")).toHaveCount(0);
+    // The honest empty state names the real next step (connect ASC), never an
+    // empty diff or a fake "0 changed" row.
+    await expect(
+      page.getByText(/no metadata changes proposed.*connect app store connect/i),
+    ).toBeVisible();
+    // The summary reports zero fields changed (no invented count).
+    await expect(page.locator(".diffsummary")).toContainText(/0 fields changed/i);
+  });
+});
+
 test.describe("run page — Listing audit card (ASC findings, PRD 03)", () => {
   async function latestRunId(page: import("@playwright/test").Page, appId: string): Promise<string> {
     return await page.evaluate(async (id) => {
