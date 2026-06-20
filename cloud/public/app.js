@@ -965,7 +965,7 @@
     c.appendChild(warRoomCard(R.warRoom || null, run.app_id, R.competitors || {}));
 
     // 4) keyword reasoning table
-    c.appendChild(keywordCard(R.reasoning || []));
+    c.appendChild(keywordCard(R.reasoning || [], R.ranks || []));
 
     // 5) THE APPROVAL GATE + commands
     c.appendChild(gateCard(run, R));
@@ -1452,9 +1452,10 @@
     soon:     { cls: "soon",     label: "Soon" },
     longshot: { cls: "longshot", label: "Longshot" },
   };
+  // Only MEASURED drivers (#65) — each derived from real organic rank. No
+  // "Volume" bar: we have no measured search-volume source, so we never show one.
   var DRIVER_META = [
-    { key: "volume", label: "Volume" },
-    { key: "distance", label: "Distance" },
+    { key: "distance", label: "Distance to top" },
     { key: "competitorWeakness", label: "Weak field" },
     { key: "momentum", label: "Momentum" },
   ];
@@ -1462,7 +1463,7 @@
   function opportunityCard(opportunities) {
     var head = el("div", { class: "audit-head" }, [
       el("h3", { style: "margin:0" }, ["Where to push next"]),
-      el("span", { class: "audit-summary" }, ["ranked by winnability, not just volume"]),
+      el("span", { class: "audit-summary" }, ["ranked by reachability, from your real rank data"]),
     ]);
 
     if (!opportunities.length) {
@@ -1496,32 +1497,42 @@
     return el("div", { class: "card opp-card" }, [
       head,
       el("div", { class: "faint", style: "font-size:12px;margin:6px 0 12px" }, [
-        "Winnability = volume·0.4 + distance-to-top·0.3 + competitor-weakness·0.2 + momentum·0.1. A heuristic for the most reachable next move — not a guarantee. “Now”/“Soon” terms feed the optimizer's targets.",
+        "Reachability = distance-to-top·0.5 + competitor-weakness·0.35 + momentum·0.15 — all from your measured organic rank (no estimated search volume). A heuristic for the most reachable next move, not a guarantee. “Now”/“Soon” terms feed the optimizer's targets.",
       ]),
       list,
     ]);
   }
 
-  function keywordCard(reasoning) {
+  // Keyword table — MEASURED columns only (#65). We show each target keyword's
+  // real organic rank + competition count (from R.ranks) and the agent's
+  // qualitative placement. We deliberately DON'T show "volume/difficulty/
+  // relevance" numbers: we have no measured source for them, so displaying them
+  // would be fabricated precision dressed as data.
+  function keywordCard(reasoning, ranks) {
+    // Join the agent's target keywords to the real rank data by keyword.
+    var rankByKw = {};
+    (ranks || []).forEach(function (r) { rankByKw[r.keyword] = r; });
+
     var tbl = el("table", { class: "kw" }, [
-      el("thead", {}, [el("tr", {}, ["Keyword", "Vol", "Diff", "Rel", "Score", "Placement"].map(function (h) { return el("th", {}, [h]); }))]),
+      el("thead", {}, [el("tr", {}, ["Keyword", "Your rank", "Competing", "Placement"].map(function (h) { return el("th", {}, [h]); }))]),
     ]);
     var tb = el("tbody", {});
     reasoning.forEach(function (k) {
       var bcls = "bucket " + (k.bucket || "").replace(/[^A-Za-z-]/g, "");
+      var r = rankByKw[k.keyword];
+      var rankCell = r && r.rank != null ? ("#" + r.rank) : (r ? "not in top 200" : "—");
+      var compCell = r && r.total ? String(r.total) : "—";
       tb.appendChild(el("tr", {}, [
         el("td", { style: "font-weight:600" }, [k.keyword]),
-        el("td", {}, [String(k.volume)]),
-        el("td", {}, [String(k.difficulty)]),
-        el("td", {}, [String(k.relevance)]),
-        el("td", { class: "score" }, [String(k.score)]),
+        el("td", { class: r && r.rank != null ? "" : "faint" }, [rankCell]),
+        el("td", { class: "faint" }, [compCell]),
         el("td", {}, [el("span", { class: bcls }, [k.bucket])]),
       ]));
     });
     tbl.appendChild(tb);
     return el("div", { class: "card" }, [
-      el("h3", {}, ["Keyword reasoning"]),
-      el("div", { class: "faint", style: "font-size:12px;margin-bottom:10px" }, ["score = volume·0.4 + (100−difficulty)·0.3 + relevance·0.3 → Primary anchors the title, Secondary the subtitle, Long-tail the keyword field, Aspirational tracked only."]),
+      el("h3", {}, ["Keyword targeting"]),
+      el("div", { class: "faint", style: "font-size:12px;margin-bottom:10px" }, ["Your real organic rank + how many apps compete for each term. Placement = where the agent uses it: Primary anchors the title, Secondary the subtitle, Long-tail the keyword field, Aspirational tracked only."]),
       tbl,
     ]);
   }

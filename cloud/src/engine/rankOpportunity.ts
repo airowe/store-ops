@@ -2,12 +2,16 @@
  * Rank opportunity score — PRD 06 (`docs/prd/ranking-features/06-rank-opportunity-score.md`).
  *
  * A PURE, DETERMINISTIC, NETWORK-FREE ranker that scores each tracked keyword by
- * WINNABILITY — not raw volume — so users chase reachable gains instead of vanity
- * terms. It fuses four signals we already compute:
- *   • volume          — the keyword's composite score (`scoreKeyword`, 0–100).
- *   • distance         — how close you are to the top (closer = more winnable).
+ * WINNABILITY — built ONLY from signals we actually MEASURE (#65). It fuses three
+ * real signals computed from rank data:
+ *   • distance           — how close you are to the top (closer = more winnable).
  *   • competitorWeakness — weak/absent rivals on the term = more winnable.
- *   • momentum         — already gaining = momentum to ride (a tiebreak, low weight).
+ *   • momentum           — already gaining = momentum to ride (a tiebreak, low weight).
+ *
+ * It deliberately does NOT use a "search volume"/"difficulty"/"relevance" signal:
+ * we have no measured source for those (the iTunes APIs expose rank, not volume),
+ * so inventing them would be fabricated precision dressed as data (#65). Every
+ * driver here is derived from real organic rank — ours and competitors'.
  *
  * The headline output is `opportunityScore` (0–100) plus a `reachability` enum
  * ("now" | "soon" | "longshot"). The enum is the HONEST HEDGE: a #200 weak app on
@@ -17,8 +21,7 @@
  *
  * HARD CONSTRAINTS (carried from the suite overview):
  *  - No fetch / Date.now / randomness — same input → identical output.
- *  - Winnability over vanity volume: distance + competitor weakness are
- *    first-class terms so a far/strong-incumbent term can't top the list on volume.
+ *  - Only measured signals: no fabricated volume/difficulty/relevance.
  *  - Correlational only: `why` describes the state ("close to top 10, weak
  *    competitors"), never asserts a metadata change CAUSED a rank move.
  */
@@ -41,13 +44,12 @@ export type RankSnapshot = {
 export type Reachability = "now" | "soon" | "longshot";
 
 export type OpportunityDrivers = {
-  /** 0–100, the keyword's composite score (volume·0.4 + …). */
-  volume: number;
-  /** 0–100; 100 ≈ rank 1, 0 at rank ≥ 200 / unranked. */
+  /** 0–100; 100 ≈ rank 1, 0 at rank ≥ 200 / unranked. (measured: your rank) */
   distance: number;
-  /** 0–100; 100 = no rivals on the term, 0 = strong incumbents at the top. */
+  /** 0–100; 100 = no rivals on the term, 0 = strong incumbents at the top.
+   *  (measured: competitor ranks) */
   competitorWeakness: number;
-  /** 0–100; 100 = gaining, 50 = flat / no prior, 0 = losing. */
+  /** 0–100; 100 = gaining, 50 = flat / no prior, 0 = losing. (measured: rank history) */
   momentum: number;
 };
 
@@ -55,7 +57,7 @@ export type Opportunity = {
   keyword: string;
   /** current (latest) rank, 1-based, or null if not in the top results. */
   rank: number | null;
-  /** 0–100, winnability-weighted (NOT raw volume). */
+  /** 0–100, weighted over the three measured drivers (distance/competitor-weakness/momentum). */
   opportunityScore: number;
   /** human, correlational explanation — "close to top 10, weak competitors, gaining". */
   why: string;
@@ -65,10 +67,10 @@ export type Opportunity = {
 };
 
 export type RankOpportunityInput = {
-  /** your per-keyword rank history rows (any number of snapshots per keyword). */
+  /** your per-keyword rank history rows (any number of snapshots per keyword).
+   *  Every keyword present here is ranked — the rank rows ARE the target set, so
+   *  we never need an invented per-keyword "score" to decide what to rank (#65). */
   ranks: RankSnapshot[];
-  /** keyword → 0–100 composite score (from `scoreKeyword`). */
-  keywordScores: Record<string, number>;
   /** optional competitor rank data, same snapshot shape grouped by name. */
   competitorRanks?:
     | Array<{ name: string; ranks: RankSnapshot[] }>
@@ -78,9 +80,10 @@ export type RankOpportunityInput = {
 /** The denominator for distance/competitor scaling — the iTunes top-200 window. */
 const SCAN_DEPTH = 200;
 
-/** Driver weights — distance + competitor weakness outweigh raw volume on purpose
- *  so a far/strong term can't win on volume alone. momentum is a low-weight tiebreak. */
-const WEIGHTS = { volume: 0.4, distance: 0.3, competitorWeakness: 0.2, momentum: 0.1 } as const;
+/** Driver weights over the THREE measured signals (sum to 1.0). Distance (your
+ *  own rank, the most direct signal) leads; competitor weakness is second;
+ *  momentum is a low-weight tiebreak. No fabricated "volume" term (#65). */
+const WEIGHTS = { distance: 0.5, competitorWeakness: 0.35, momentum: 0.15 } as const;
 
 function clamp(n: number, lo = 0, hi = 100): number {
   return Math.max(lo, Math.min(hi, n));
@@ -157,18 +160,21 @@ function momentumScore(historyRows: RankSnapshot[]): number {
  *  - already top-10 → "now" (you're winning; keep momentum).
  *  - close (≤30) AND weak field → "now" (a very reachable push).
  *  - reachable gap (decent distance + weak field) → "soon".
- *  - unranked but high-volume winnable field → "soon".
+ *  - unranked but an open field (weak/absent incumbents) → "soon".
  *  - otherwise → "longshot" (far, or strong incumbents — labeled, not hidden).
  */
 function reachabilityFor(
   rank: number | null,
   drivers: OpportunityDrivers,
 ): Reachability {
-  const { distance, competitorWeakness, volume } = drivers;
+  const { distance, competitorWeakness } = drivers;
   if (rank !== null && rank <= 10) return "now";
   if (rank !== null && rank <= 30 && distance >= 60 && competitorWeakness >= 50) return "now";
   if (distance >= 60 && competitorWeakness >= 60) return "soon";
-  if (rank === null && volume >= 50 && competitorWeakness >= 50) return "soon";
+  // Unranked but the field is genuinely open (weak/absent incumbents) → a real,
+  // reachable push. No fabricated "volume" gate here (#65) — the open field is
+  // the measured signal that makes it winnable.
+  if (rank === null && competitorWeakness >= 70) return "soon";
   return "longshot";
 }
 
@@ -186,8 +192,6 @@ function explain(rank: number | null, drivers: OpportunityDrivers, reach: Reacha
   if (drivers.momentum === 100) parts.push("gaining");
   else if (drivers.momentum === 0) parts.push("losing ground");
 
-  if (drivers.volume >= 60) parts.push("high search volume");
-
   const lead =
     reach === "now"
       ? "Most winnable next"
@@ -198,32 +202,27 @@ function explain(rank: number | null, drivers: OpportunityDrivers, reach: Reacha
 }
 
 /**
- * Score every tracked keyword by winnability and return them sorted by
- * `opportunityScore` descending. A keyword with no `keywordScores` entry is
- * skipped (we never invent a volume we don't have). Pure + deterministic.
+ * Score every tracked keyword by winnability (from measured rank signals only)
+ * and return them sorted by `opportunityScore` descending. Every keyword present
+ * in `ranks` is ranked — no invented per-keyword score gates the list (#65).
+ * Pure + deterministic.
  */
 export function rankOpportunities(input: RankOpportunityInput): Opportunity[] {
   const byKeyword = groupByKeyword(input.ranks);
   const out: Opportunity[] = [];
 
   for (const [keyword, rows] of byKeyword) {
-    const volume = input.keywordScores[keyword];
-    // Degrade gracefully: no score for this term → not an opportunity we can rank.
-    if (volume === undefined) continue;
-
     const latest = rows[rows.length - 1]!;
     const rank = latest.rank;
 
     const drivers: OpportunityDrivers = {
-      volume: clamp(volume),
       distance: round2(distanceScore(rank)),
       competitorWeakness: round2(competitorWeaknessScore(avgCompetitorRankFor(keyword, input.competitorRanks))),
       momentum: momentumScore(rows),
     };
 
     const opportunityScore = round2(
-      drivers.volume * WEIGHTS.volume +
-        drivers.distance * WEIGHTS.distance +
+      drivers.distance * WEIGHTS.distance +
         drivers.competitorWeakness * WEIGHTS.competitorWeakness +
         drivers.momentum * WEIGHTS.momentum,
     );

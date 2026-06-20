@@ -219,7 +219,7 @@ describe("serializeRunResult — rank opportunities (PRD 06)", () => {
         opportunityScore: 72,
         reachability: "now",
         why: "Most winnable next: already top 10.",
-        drivers: { volume: 60, distance: 98, competitorWeakness: 100, momentum: 50 },
+        drivers: { distance: 98, competitorWeakness: 100, momentum: 50 },
       },
     ];
     const result = serializeRunResult(trace, false);

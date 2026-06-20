@@ -334,11 +334,10 @@ async function attachOpportunities(
   appId: string,
   result: AgentResult,
 ): Promise<void> {
-  const keywordScores: Record<string, number> = {};
-  for (const k of result.reasoning) keywordScores[k.keyword] = k.score;
-
   // Prior snapshots give momentum; the run's current ranks are appended as the
   // latest snapshot (history may not yet include this pass at compute time).
+  // Opportunities are scored from MEASURED rank signals only — no fabricated
+  // per-keyword volume/difficulty is threaded in anymore (#65).
   const checkedAt = new Date().toISOString().replace("T", " ").slice(0, 19);
   const prior = await getRankHistory(env.DB, appId, {});
   const ranks = [
@@ -346,7 +345,7 @@ async function attachOpportunities(
     ...result.ranks.map((r) => ({ keyword: r.keyword, rank: r.rank, total: r.total, checked_at: checkedAt })),
   ];
 
-  result.opportunities = rankOpportunities({ ranks, keywordScores });
+  result.opportunities = rankOpportunities({ ranks });
 }
 
 // ── auth ─────────────────────────────────────────────────────────────────────

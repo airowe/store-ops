@@ -482,8 +482,10 @@ test.describe("run page — Where to push next (rank opportunity score, PRD 06)"
     await expect(opps.first().locator(".opp-score")).toBeVisible();
     await expect(opps.first().locator(".reach-chip")).toBeVisible();
     await expect(opps.first().locator(".opp-why")).not.toBeEmpty();
-    // Four driver bars (volume / distance / weak-field / momentum).
-    expect(await opps.first().locator(".opp-driver").count()).toBe(4);
+    // Three MEASURED driver bars (distance / weak-field / momentum). The
+    // fabricated "volume" bar was removed (#65) — we never show a search-volume
+    // we don't measure.
+    expect(await opps.first().locator(".opp-driver").count()).toBe(3);
 
     // Honesty: opportunities are sorted by score descending (winnability first).
     const scores = await card.locator(".opp-score").allTextContents();

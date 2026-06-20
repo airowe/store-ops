@@ -212,7 +212,6 @@
     }) }];
     var opportunities = rankOpportunities({
       ranks: ranks.map(function (r) { return { keyword: r.keyword, rank: r.rank, total: r.total, checked_at: "2026-01-15 00:00:00" }; }),
-      keywordScores: keywordScores,
       competitorRanks: compRanks,
     });
 
@@ -661,7 +660,8 @@
   // Pure: scores keywords by WINNABILITY (volume × distance × competitor-weakness ×
   // momentum), with a reachability enum that labels (never hides) longshots.
   var OPP_SCAN_DEPTH = 200;
-  var OPP_WEIGHTS = { volume: 0.4, distance: 0.3, competitorWeakness: 0.2, momentum: 0.1 };
+  // #65: measured drivers only (no fabricated volume), weights sum to 1.0.
+  var OPP_WEIGHTS = { distance: 0.5, competitorWeakness: 0.35, momentum: 0.15 };
   function oppClamp(n) { return Math.max(0, Math.min(100, n)); }
   function oppRound2(n) { return Math.round(n * 100) / 100; }
 
@@ -676,8 +676,6 @@
 
     var out = [];
     Object.keys(byKw).forEach(function (keyword) {
-      var vol = input.keywordScores[keyword];
-      if (vol === undefined) return; // no score → not an opportunity we can rank
       var rows = byKw[keyword];
       var rank = rows[rows.length - 1].rank;
 
@@ -703,18 +701,18 @@
         momentum = cc < p ? 100 : cc > p ? 0 : 50;
       }
 
-      var drivers = { volume: oppClamp(vol), distance: oppRound2(distance), competitorWeakness: oppRound2(weakness), momentum: momentum };
-      var score = oppRound2(drivers.volume * OPP_WEIGHTS.volume + drivers.distance * OPP_WEIGHTS.distance + drivers.competitorWeakness * OPP_WEIGHTS.competitorWeakness + drivers.momentum * OPP_WEIGHTS.momentum);
+      var drivers = { distance: oppRound2(distance), competitorWeakness: oppRound2(weakness), momentum: momentum };
+      var score = oppRound2(drivers.distance * OPP_WEIGHTS.distance + drivers.competitorWeakness * OPP_WEIGHTS.competitorWeakness + drivers.momentum * OPP_WEIGHTS.momentum);
 
-      // reachability bucketing — the honest hedge
+      // reachability bucketing — the honest hedge (measured signals only, #65)
       var reach;
       if (rank != null && rank <= 10) reach = "now";
       else if (rank != null && rank <= 30 && drivers.distance >= 60 && drivers.competitorWeakness >= 50) reach = "now";
       else if (drivers.distance >= 60 && drivers.competitorWeakness >= 60) reach = "soon";
-      else if (rank == null && drivers.volume >= 50 && drivers.competitorWeakness >= 50) reach = "soon";
+      else if (rank == null && drivers.competitorWeakness >= 70) reach = "soon";
       else reach = "longshot";
 
-      // correlational why — describes state, never causation
+      // correlational why — describes state, never causation (no search-volume claim, #65)
       var parts = [];
       if (rank != null && rank <= 10) parts.push("already top 10");
       else if (rank != null && rank <= 30) parts.push("close to top 10");
@@ -724,7 +722,6 @@
       else if (drivers.competitorWeakness <= 30) parts.push("strong incumbents");
       if (drivers.momentum === 100) parts.push("gaining");
       else if (drivers.momentum === 0) parts.push("losing ground");
-      if (drivers.volume >= 60) parts.push("high search volume");
       var lead = reach === "now" ? "Most winnable next" : reach === "soon" ? "Reachable with a push" : "Longshot";
 
       out.push({ keyword: keyword, rank: rank, opportunityScore: score, reachability: reach, why: lead + ": " + parts.join(", ") + ".", drivers: drivers });
