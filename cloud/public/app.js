@@ -1820,17 +1820,50 @@
       ]),
     ]);
 
-    // The selected set: start from what the seeded payload used, else all available.
+    // The selected set: start from what the seeded payload used; else default to
+    // the TOP MOVERS — the competitors that are ahead of you on the most/widest
+    // keywords (largest summed closeable gap), capped at MAX (#25 "defaulting to
+    // the top movers"). Deterministic name tie-break to match the builder.
+    var MAX_WAR_ROOM_COMPETITORS = 4;
     var selected = {};
-    var seedNames = (initial && initial.competitors) || available;
+    var seedNames = (initial && initial.competitors && initial.competitors.length)
+      ? initial.competitors
+      : topMovers((initial && initial.warRoom) || [], available, MAX_WAR_ROOM_COMPETITORS);
     seedNames.forEach(function (n) { selected[n] = true; });
 
+    // Rank available competitors by how much movement there is to chase: sum the
+    // positive gap (their rank ahead of yours) across keywords. Pure + deterministic.
+    function topMovers(rows, names, cap) {
+      if (!names.length) return [];
+      var score = {};
+      names.forEach(function (n) { score[n] = 0; });
+      (rows || []).forEach(function (r) {
+        if (r.you == null) return;
+        (r.competitors || []).forEach(function (cc) {
+          if (cc.rank == null || score[cc.name] == null) return;
+          var gap = r.you - cc.rank; // positive = competitor ahead of you
+          if (gap > 0) score[cc.name] += gap;
+        });
+      });
+      return names.slice().sort(function (a, b) {
+        if (score[b] !== score[a]) return score[b] - score[a]; // most movement first
+        return a < b ? -1 : a > b ? 1 : 0; // stable name tie-break
+      }).slice(0, cap);
+    }
+
     var gridWrap = el("div", { class: "war-grid-wrap" });
+    var asOf = el("div", { class: "war-asof faint" });
 
     function renderGrid(data) {
       clear(gridWrap);
       var rows = (data && data.warRoom) || [];
       var cols = (data && data.competitors) || [];
+      // Honest provenance: the live-checked competitor numbers are a point-in-time
+      // snapshot, not continuous tracking — stamp them with the endpoint's "as of".
+      clear(asOf);
+      if (data && data.checkedAt) {
+        asOf.appendChild(document.createTextNode("Competitor ranks live-checked as of " + (data.checkedAt || "").slice(0, 10) + "."));
+      }
       if (!rows.length) {
         gridWrap.appendChild(el("div", { class: "faint" }, [
           cols.length ? "No tracked keywords to compare yet — run the loop to capture ranks." : "Select a competitor to open the head-to-head.",
@@ -1841,23 +1874,36 @@
         .concat(cols.map(function (n) { return el("th", {}, [n]); }))
         .concat([el("th", {}, ["Gap"]), el("th", {}, ["Trend"])]));
       var tb = el("tbody", {});
-      rows.forEach(function (r) {
-        var tr = el("tr", { class: r.winning ? "winning" : "" }, []);
+      rows.forEach(function (r, i) {
+        var tr = el("tr", { class: "war-row flip-in" + (r.winning ? " winning" : ""), style: "--i:" + i }, []);
         tr.appendChild(el("td", { class: "war-kw" }, [r.keyword]));
-        tr.appendChild(el("td", {}, [el("span", { class: "pos " + rankClass(r.you) }, [rankText(r.you)])]));
+        // YOUR cell: animate your prev → cur count-up, pulsing green when you're
+        // gaining and red when you're losing/lost. youPrevious === null (single
+        // snapshot) → countUpRank skips the tween and just shows the current rank
+        // — no fabricated movement. prefers-reduced-motion jumps to final (handled
+        // inside countUpRank). The pulse class tracks YOUR trend, not the gap.
+        var trendPulse = (r.trend === "gaining" || r.trend === "new") ? " good"
+          : (r.trend === "losing" || r.trend === "lost") ? " bad" : "";
+        var youEl = el("span", { class: "pos rank-pop " + rankClass(r.you) + trendPulse, style: "--i:" + i }, [rankText(r.you)]);
+        countUpRank(youEl, r.youPrevious, r.you, 120 + i * 60);
+        tr.appendChild(el("td", {}, [youEl]));
+        // Competitor cells stay static honest current ranks ("—" when unchecked).
+        // We have no historical competitor rank to count up from (Track A), so we
+        // never animate a competitor — that would imply unmeasured movement.
         (r.competitors || []).forEach(function (cc) {
           tr.appendChild(el("td", {}, [el("span", { class: "pos " + rankClass(cc.rank) }, [rankText(cc.rank)])]));
         });
-        // Gap: red when you're behind (positive gap), green when you're winning.
+        // Gap: directional tint by YOUR trend so a closing gap reads as momentum.
         var gapCell;
         if (r.gapToBest == null) {
-          gapCell = el("span", { class: "war-gap " + (r.winning ? "good" : "neutral") }, [r.winning ? "winning" : "—"]);
+          gapCell = el("span", { class: "war-gap rank-pop " + (r.winning ? "good" : "neutral"), style: "--i:" + i }, [r.winning ? "winning" : "—"]);
         } else {
-          gapCell = el("span", { class: "war-gap bad", title: "Your rank minus the closest competitor's — the gap to close" }, ["+" + r.gapToBest]);
+          var gapTint = r.trend === "gaining" ? " good" : " bad";
+          gapCell = el("span", { class: "war-gap rank-pop" + gapTint, style: "--i:" + i, title: "Your rank minus the closest competitor's — the gap to close" }, ["+" + r.gapToBest]);
         }
         tr.appendChild(el("td", {}, [gapCell]));
         var tm = WAR_TREND[r.trend] || WAR_TREND.flat;
-        tr.appendChild(el("td", {}, [el("span", { class: "war-trend " + tm.cls }, [tm.txt])]));
+        tr.appendChild(el("td", {}, [el("span", { class: "war-trend rank-pop " + tm.cls, style: "--i:" + i }, [tm.txt])]));
         tb.appendChild(tr);
       });
       gridWrap.appendChild(el("table", { class: "war-grid" }, [el("thead", {}, [head]), tb]));
@@ -1890,6 +1936,7 @@
       card.appendChild(chips);
     }
     card.appendChild(gridWrap);
+    card.appendChild(asOf);
 
     // Seed from the run payload immediately (no flash), then it's selector-driven.
     if (initial && initial.warRoom) renderGrid(initial);

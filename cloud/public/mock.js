@@ -594,7 +594,7 @@
       var winning = you !== null && known.length > 0 && known.every(function (r) { return you <= r; });
       var gapToBest = null;
       if (you !== null && best !== null) { var g = you - best; gapToBest = g > 0 ? g : null; }
-      return { keyword: kw, you: you, competitors: competitors, gapToBest: gapToBest, trend: trendOf(tt.previous, you), winning: winning };
+      return { keyword: kw, you: you, youPrevious: tt.previous, competitors: competitors, gapToBest: gapToBest, trend: trendOf(tt.previous, you), winning: winning };
     });
     rows.sort(function (a, b) {
       var aHas = a.gapToBest !== null, bHas = b.gapToBest !== null;
@@ -616,11 +616,16 @@
     var prevDay = lastWeek.toISOString().slice(0, 10);
     // your two-snapshot history (mirrors rankDeltas movement).
     var yourRanks = [];
-    kws.forEach(function (kw) {
+    kws.forEach(function (kw, idx) {
       var seed = hash(kw + (app.bundleId || ""));
       var prev = 12 + (seed % 60);
       var cur = Math.max(1, prev + (((seed >> 3) % 21) - 9));
-      yourRanks.push({ keyword: kw, rank: prev, checked_at: prevDay });
+      // The last keyword gets ONLY a current snapshot (no prior). This exercises
+      // the honesty fallback: youPrevious === null → the UI shows the current
+      // rank with no fabricated "previous →" count-up.
+      if (idx < kws.length - 1) {
+        yourRanks.push({ keyword: kw, rank: prev, checked_at: prevDay });
+      }
       yourRanks.push({ keyword: kw, rank: cur, checked_at: today });
     });
     var names = (selected && selected.length ? selected : defaultCompetitors(app.name)).slice(0, 4);
