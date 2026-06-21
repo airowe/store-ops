@@ -101,6 +101,7 @@ import {
   persistRun,
   recordApproval,
   recordSubscriber,
+  setAgentPaused,
   setGithubConnection,
   setOptOut,
   setTier,
@@ -511,11 +512,18 @@ async function authMe(req: Request, env: Env, origin: string | null): Promise<Re
   if (token) {
     const res = await verifySessionToken(sessionSecret(env), token);
     if (res.ok) {
-      // Surface the RLHF opt-out so the settings toggle reflects the live state
-      // (#39 Part 2). get-or-create keeps a first-login session consistent.
+      // Resolve the user (idempotent upsert) so the boot check carries the
+      // per-user pause flag (#51 — the banner renders "active" vs "paused") AND
+      // the RLHF opt-out (#39 Part 2 — the settings toggle), no extra round-trip.
       const user = await upsertUser(env.DB, res.email);
       return json(
-        { authed: true, via: "session", email: res.email, rlhf_opt_out: user.rlhf_opt_out === 1 },
+        {
+          authed: true,
+          via: "session",
+          email: user.email,
+          paused: user.agent_paused,
+          rlhf_opt_out: user.rlhf_opt_out === 1,
+        },
         200,
         origin,
         env,
@@ -527,7 +535,13 @@ async function authMe(req: Request, env: Env, origin: string | null): Promise<Re
     if (email && email.includes("@")) {
       const user = await upsertUser(env.DB, email);
       return json(
-        { authed: true, via: "demo", email, rlhf_opt_out: user.rlhf_opt_out === 1 },
+        {
+          authed: true,
+          via: "demo",
+          email,
+          paused: user.agent_paused,
+          rlhf_opt_out: user.rlhf_opt_out === 1,
+        },
         200,
         origin,
         env,
@@ -1675,6 +1689,23 @@ async function githubConnectRoute(req: Request, env: Env, userId: string): Promi
   return { connected: !!installationId, repo: repo ?? null };
 }
 
+/**
+ * POST /agent/pause and POST /agent/resume (#51) — the per-user master switch for
+ * the autonomous weekly sweep. Pausing only REDUCES what the cron does (it stops
+ * preparing + emailing); it can never push, approve, or weaken the human gate.
+ * Manual runs stay available while paused (a non-goal: pausing the robot must not
+ * lock the human out of their own tool). Returns the canonical new state so the
+ * client renders the banner from the server, not an optimistic guess.
+ */
+async function setAgentPausedRoute(
+  env: Env,
+  userId: string,
+  paused: boolean,
+): Promise<unknown> {
+  await setAgentPaused(env.DB, { userId, paused });
+  return { paused };
+}
+
 /** GET /github/status — does the user have a GitHub connection + the app configured? */
 async function githubStatusRoute(env: Env, userId: string): Promise<unknown> {
   const user = await getUser(env.DB, userId);
@@ -2104,6 +2135,14 @@ export async function handleApi(req: Request, env: Env): Promise<Response> {
     }
     if (seg[0] === "github" && seg[1] === "status" && seg.length === 2 && method === "GET") {
       return json(await githubStatusRoute(env, user.id), 200, origin);
+    }
+
+    // /agent/pause | /agent/resume — per-user master switch for the weekly sweep (#51).
+    if (seg[0] === "agent" && seg[1] === "pause" && seg.length === 2 && method === "POST") {
+      return json(await setAgentPausedRoute(env, user.id, true), 200, origin);
+    }
+    if (seg[0] === "agent" && seg[1] === "resume" && seg.length === 2 && method === "POST") {
+      return json(await setAgentPausedRoute(env, user.id, false), 200, origin);
     }
 
     // /apps ...

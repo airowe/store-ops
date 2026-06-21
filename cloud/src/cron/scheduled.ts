@@ -30,6 +30,7 @@ import {
   getTier,
   getUser,
   hasOpenRun,
+  isAgentPaused,
   listAllApps,
   persistRun,
 } from "../d1.js";
@@ -82,6 +83,8 @@ export type CronReport = {
   runsOpened: number;
   /** apps skipped because their owner's tier has no standing autonomy (free/launch). */
   skippedTier: number;
+  /** apps skipped because the owner explicitly paused the autonomous sweep (#51). */
+  skippedPaused: number;
   perApp: Array<{
     appId: string;
     bundleId: string;
@@ -90,6 +93,8 @@ export type CronReport = {
     skippedOpenRun: boolean;
     /** true when skipped: owner is on a tier without cron autonomy. */
     skippedTier?: boolean;
+    /** true when skipped: owner paused the autonomous sweep (#51). No run, no digest. */
+    skippedPaused?: boolean;
     reasons: string[];
     error?: string;
   }>;
@@ -102,7 +107,7 @@ export type CronReport = {
  */
 export async function runWeeklySweep(env: Env): Promise<CronReport> {
   const apps = await listAllApps(env.DB);
-  const report: CronReport = { appsProcessed: 0, runsOpened: 0, skippedTier: 0, perApp: [] };
+  const report: CronReport = { appsProcessed: 0, runsOpened: 0, skippedTier: 0, skippedPaused: 0, perApp: [] };
 
   for (const app of apps) {
     report.appsProcessed++;
@@ -120,6 +125,25 @@ export async function runWeeklySweep(env: Env): Promise<CronReport> {
           skippedOpenRun: false,
           skippedTier: true,
           reasons: [`skipped — ${tier} tier has no scheduled autonomy`],
+        });
+        continue;
+      }
+
+      // Pause gate (#51): the owner explicitly stopped standing autonomy for this
+      // target. Checked AFTER the tier gate (so a free user reads as skippedTier,
+      // not skippedPaused) and BEFORE the agent runs — so a paused target collects
+      // NO data: no run is opened, no `detected` snapshot is written, and because
+      // sendWeeklyDigests skips skippedPaused entries, no digest is emailed.
+      if (await isAgentPaused(env.DB, { userId: app.user_id, appId: app.id })) {
+        report.skippedPaused++;
+        report.perApp.push({
+          appId: app.id,
+          bundleId: app.bundle_id,
+          crossed: false,
+          runId: null,
+          skippedOpenRun: false,
+          skippedPaused: true,
+          reasons: ["skipped — agent paused by owner"],
         });
         continue;
       }
@@ -203,6 +227,9 @@ export async function sendWeeklyDigests(env: Env, report: CronReport): Promise<n
 
   const inputs: DigestAppInput[] = [];
   for (const entry of report.perApp) {
+    // Pause suppresses the nag (#51): a paused target opened no run, so it must
+    // not be emailed either. Skip before any reads.
+    if (entry.skippedPaused) continue;
     const app = byId.get(entry.appId);
     if (!app) continue;
     const tier = await getTier(env.DB, app.user_id);

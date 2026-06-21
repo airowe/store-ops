@@ -117,7 +117,15 @@
 
   // Ask the backend who we are. Never throws — returns {authed:false} on any failure.
   async function loadSession() {
-    if (!API_BASE) { session = { authed: true, via: "demo", email: email() }; return session; }
+    if (!API_BASE) {
+      // Offline/demo backend: read the boot check (incl. the per-user pause flag,
+      // #51) from the mock so the dashboard banner reflects real state.
+      try {
+        var mr = window.STORE_OPS_MOCK.handle("GET", "/auth/me", null, email());
+        session = await mr.json();
+      } catch (e2) { session = { authed: true, via: "demo", email: email() }; }
+      return session;
+    }
     try {
       var headers = {};
       var demo = explicitDemoEmail();
@@ -581,6 +589,45 @@
     setTimeout(settle, delay + dur + 80);
   }
 
+  // The pause flag the dashboard renders from. Sourced from /auth/me on boot;
+  // updated from the pause/resume endpoint's RETURNED state (never an optimistic
+  // guess) so the banner can't drift from the server (#51).
+  function agentPaused() { return !!(session && session.paused); }
+
+  // Toggle the weekly autonomous sweep. Calls the canonical endpoint, adopts the
+  // returned `paused`, and re-renders the dashboard so the banner + button update
+  // without a full reload.
+  function toggleAgentPause(btn) {
+    var goingToPause = !agentPaused();
+    if (btn) { btn.disabled = true; btn.textContent = goingToPause ? "Pausing…" : "Resuming…"; }
+    api("POST", goingToPause ? "/agent/pause" : "/agent/resume")
+      .then(function (r) {
+        if (session) session.paused = !!r.paused;
+        toast(r.paused ? "Autonomous agent paused — no new weekly checks until you resume." : "Autonomous agent resumed — back to the Monday sweep.");
+        viewDashboard();
+      })
+      .catch(function (e) {
+        if (btn) { btn.disabled = false; btn.textContent = goingToPause ? "Pause agent" : "Resume agent"; }
+        toast((e && e.message) || "Failed to update agent state.");
+      });
+  }
+
+  // The dashboard's agent status banner — REAL state, never a hard-coded "active"
+  // (the bug #51 fixes). Paused copy never implies a fresh measurement happened.
+  function agentBanner() {
+    var paused = agentPaused();
+    var line = el("div", { class: "agentline" });
+    var toggle = el("button", { class: "btn ghost", style: "margin-left:auto", onclick: function () { toggleAgentPause(toggle); } }, [paused ? "Resume agent" : "Pause agent"]);
+    line.appendChild(el("span", { class: "live-dot", style: paused ? "background:var(--muted,#888);box-shadow:none" : "" }));
+    line.appendChild(
+      paused
+        ? el("span", { html: "Autonomous agent <b style='color:var(--txt)'>paused</b> — the Monday sweep is off, so there are no new rank/listing checks and no weekly emails until you resume. Your manual runs still work." })
+        : el("span", { html: "Autonomous agent <b style='color:var(--txt)'>active</b> — re-checks your ranks &amp; listing every Monday 09:00 UTC (and any competitors you add). It prepares every move; <b style='color:var(--txt)'>you approve the push.</b>" }),
+    );
+    line.appendChild(toggle);
+    return line;
+  }
+
   /* ════════════════════════ VIEW: dashboard ════════════════════════════════ */
   async function viewDashboard() {
     loading("Loading your apps…");
@@ -590,11 +637,9 @@
 
     var c = root(); clear(c);
 
-    // agent status line
-    c.appendChild(el("div", { class: "agentline" }, [
-      el("span", { class: "live-dot" }), null,
-      el("span", { html: "Autonomous agent <b style='color:var(--txt)'>active</b> — re-checks your ranks &amp; listing every Monday 09:00 UTC (and any competitors you add). It prepares every move; <b style='color:var(--txt)'>you approve the push.</b>" }),
-    ]));
+    // agent status line — state-driven (#51): reflects the REAL pause flag, never
+    // a hard-coded "active". A toggle pauses/resumes the weekly sweep.
+    c.appendChild(agentBanner());
 
     // connect-app card
     c.appendChild(connectCard());
