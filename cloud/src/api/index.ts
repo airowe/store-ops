@@ -789,14 +789,14 @@ async function connectApp(req: Request, env: Env, userId: string): Promise<unkno
     country,
   });
 
-  // Run the agent once so the connected app immediately has live data + a
-  // proposal waiting at the gate.
-  const overrides: RunOverrides = {};
-  if (body.keywords) overrides.keywords = body.keywords;
+  // Run an AUDIT-ONLY pass so the connected app immediately has real data
+  // (screenshots, findings, rank baseline) — but NOT fabricated keyword targets
+  // tokenized from the name (#77). A blind connect of "Clear Cost" must not
+  // recommend "clear"/"cost"; real targets come on the user's first explicit run.
+  const overrides: RunOverrides = { auditOnly: true };
+  if (body.keywords) { overrides.keywords = body.keywords; delete overrides.auditOnly; }
   if (body.competitors) overrides.competitors = body.competitors;
   if (body.baseCopy) overrides.baseCopy = body.baseCopy;
-  const connectReasoner = reasonerForEnv(env.AI);
-  if (connectReasoner) overrides.reasoner = connectReasoner;
 
   const input = await buildAppInput(app, overrides, {});
   const result: AgentResult = await runAgent(fetchForEnv(env), input);

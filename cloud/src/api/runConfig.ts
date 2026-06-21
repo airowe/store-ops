@@ -28,6 +28,14 @@ export type RunOverrides = {
    * means no reasoner is passed and the run degrades gracefully.
    */
   reasoner?: Reasoner;
+  /**
+   * #77: audit-only pass (the initial connect run). Runs the real listing audit
+   * (screenshots, findings, rank baseline) but does NOT seed keyword targets from
+   * the name — so a blind connect of an app whose name doesn't describe it (e.g.
+   * "Clear Cost") never surfaces fabricated name-token targets ("clear","cost").
+   * Real keyword targets appear on the user's first explicit run (keyed or blind).
+   */
+  auditOnly?: boolean;
 };
 
 // Words that are never useful keyword seeds.
@@ -221,8 +229,12 @@ export async function buildAppInput(
   previousCompetitors: Record<string, Record<string, string>> = {},
 ): Promise<AppInput> {
   const clean = overrides.keywords ? sanitizeKeywords(overrides.keywords) : [];
-  const keywords =
-    clean.length > 0
+  // #77: an audit-only pass (initial connect) tracks NO keyword targets — the
+  // audit/rank baseline is real, but we never tokenize the name into fabricated
+  // targets. Real targets come on the first explicit run.
+  const keywords = overrides.auditOnly
+    ? clean // empty unless the caller explicitly supplied keywords
+    : clean.length > 0
       ? clean
       : await reasonedKeywords(
           app,
