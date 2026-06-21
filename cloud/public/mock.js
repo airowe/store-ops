@@ -103,8 +103,14 @@
   function fieldCheck(field, value) {
     var limit = CHAR_LIMITS[field];
     var issues = [];
-    if (value.length > limit) issues.push("over limit by " + (value.length - limit));
-    if (field === "keywords" && /\s/.test(value)) issues.push("keyword field must not contain spaces");
+    value = String(value == null ? "" : value);
+    if (value.length > limit) issues.push("over limit by " + (value.length - limit) + " (" + value.length + "/" + limit + ")");
+    // keyword field rules mirror the engine's validateCopy (src/engine/optimize.ts)
+    // AND the client mirror: comma-separated, NO spaces around commas, no
+    // title/subtitle word dupes. (A space INSIDE a multi-word term is allowed.)
+    if (field === "keywords") {
+      if (/,\s/.test(value) || /\s,/.test(value)) issues.push("keyword field must be comma-separated with NO spaces around commas");
+    }
     return { field: field, value: value, count: value.length, limit: limit, ok: issues.length === 0, issues: issues };
   }
 
@@ -204,6 +210,10 @@
     };
     var findings = buildFindings(app, sc, ascRead, { category: ascContext.category, cppCount: cppCount });
     var findingsSummary = summarizeFindings(findings);
+    // Locked-field upgrade surfaces (#61) — mirrors src/engine/auditFindings.ts
+    // surfaceLocks(): a keyed run reads everything ⇒ [], a no-key run carries the
+    // canonical blind-spot list with honest capability/opportunity copy.
+    var locks = buildLocks(ascRead);
 
     // PRD 06: winnability opportunities — "where to push next." Mirrors the pure
     // rankOpportunities() engine. Deterministic competitor ranks per keyword (from
@@ -250,6 +260,7 @@
       audit: { app: app.name, bundleId: app.bundleId, screenshots: sc, liveName: app.name },
       findings: findings,
       findingsSummary: findingsSummary,
+      locks: locks,
       opportunities: opportunities,
       coverage: coverage,
       ranks: ranks,
@@ -291,6 +302,24 @@
   // "Listing audit" card renders end-to-end with no key. Sorted biggest-win-first.
   var SEV_ORDER = { critical: 0, warn: 1, good: 2, info: 3 };
   var IMPACT_ORDER = { ranking: 0, conversion: 1, trust: 2, completeness: 3 };
+
+  // Locked-field upgrade surfaces (#61) — mirrors src/engine/auditFindings.ts
+  // surfaceLocks(). A keyed run reads everything ⇒ []; a no-key run is blind to
+  // these App Store Connect-only surfaces, each rendered as an honest inline 🔒.
+  // Copy is CAPABILITY + OPPORTUNITY only — never a deficiency or urgency.
+  var NO_KEY_LOCKS = [
+    { surface: "subtitle",    label: "We can't see your subtitle without access",          unlockCopy: "Connect App Store Connect to read your live subtitle and improve it." },
+    { surface: "keywords",    label: "We can't see your keyword field without access",     unlockCopy: "Connect App Store Connect to read your keyword field and improve it." },
+    { surface: "screenshots", label: "We can't read your real screenshots without access", unlockCopy: "Connect App Store Connect to grade your real screenshot set and improve it." },
+    { surface: "previews",    label: "We can't see your app preview video without access", unlockCopy: "Connect App Store Connect to read your preview coverage and improve it." },
+    { surface: "privacy",     label: "We can't see your privacy policy without access",    unlockCopy: "Connect App Store Connect to read your privacy policy and category and improve them." },
+    { surface: "category",    label: "We can't see your full category setup without access", unlockCopy: "Connect App Store Connect to read your primary and secondary categories and improve them." },
+    { surface: "locales",     label: "We can't see your per-locale keyword surfaces without access", unlockCopy: "Connect App Store Connect to read every locale's keyword surface and improve it." },
+  ];
+  function buildLocks(ascRead) {
+    if (ascRead) return [];
+    return NO_KEY_LOCKS.map(function (l) { return { surface: l.surface, label: l.label, unlockCopy: l.unlockCopy }; });
+  }
 
   function buildFindings(app, sc, ascRead, ctx) {
     var f = [];
@@ -365,9 +394,13 @@
     return f;
   }
 
+  // mirrors src/engine/auditFindings.ts summarizeFindings + findingsLabel —
+  // keep the `label` format byte-identical to the engine (source of truth there)
+  // so the demo never promises header copy the real product doesn't deliver.
   function summarizeFindings(findings) {
     var c = { total: findings.length, critical: 0, warn: 0, good: 0, info: 0 };
     findings.forEach(function (x) { if (c[x.severity] != null) c[x.severity] += 1; });
+    // "fixes" = critical + warn (actionable); info/good context never counts.
     var parts = [];
     var fixes = c.critical + c.warn;
     if (fixes > 0) parts.push(fixes + " fix" + (fixes === 1 ? "" : "es") + " available");
@@ -594,7 +627,7 @@
       var winning = you !== null && known.length > 0 && known.every(function (r) { return you <= r; });
       var gapToBest = null;
       if (you !== null && best !== null) { var g = you - best; gapToBest = g > 0 ? g : null; }
-      return { keyword: kw, you: you, competitors: competitors, gapToBest: gapToBest, trend: trendOf(tt.previous, you), winning: winning };
+      return { keyword: kw, you: you, youPrevious: tt.previous, competitors: competitors, gapToBest: gapToBest, trend: trendOf(tt.previous, you), winning: winning };
     });
     rows.sort(function (a, b) {
       var aHas = a.gapToBest !== null, bHas = b.gapToBest !== null;
@@ -616,11 +649,16 @@
     var prevDay = lastWeek.toISOString().slice(0, 10);
     // your two-snapshot history (mirrors rankDeltas movement).
     var yourRanks = [];
-    kws.forEach(function (kw) {
+    kws.forEach(function (kw, idx) {
       var seed = hash(kw + (app.bundleId || ""));
       var prev = 12 + (seed % 60);
       var cur = Math.max(1, prev + (((seed >> 3) % 21) - 9));
-      yourRanks.push({ keyword: kw, rank: prev, checked_at: prevDay });
+      // The last keyword gets ONLY a current snapshot (no prior). This exercises
+      // the honesty fallback: youPrevious === null → the UI shows the current
+      // rank with no fabricated "previous →" count-up.
+      if (idx < kws.length - 1) {
+        yourRanks.push({ keyword: kw, rank: prev, checked_at: prevDay });
+      }
       yourRanks.push({ keyword: kw, rank: cur, checked_at: today });
     });
     var names = (selected && selected.length ? selected : defaultCompetitors(app.name)).slice(0, 4);
@@ -650,6 +688,36 @@
   // dataReliable:false + an empty set → the honest "?" (unknown) grade (#41):
   // we couldn't read the real screenshots, so we carry NO urls — never a fake
   // gallery. Mirrors src/engine/screenshotScore.ts's "?" branch.
+  function gradeForMock(pts) {
+    return pts >= 85 ? "A" : pts >= 70 ? "B" : pts >= 50 ? "C" : pts >= 30 ? "D" : "F";
+  }
+
+  // Port of src/engine/screenshotScore.ts shotLevers() (#55) — the SAME budget,
+  // so the offline dashboard renders the same prioritized C→B→A levers the engine
+  // computes. The engine is the TDD'd source of truth; this mirrors it for the
+  // no-backend demo. Honesty gates identical: "?"/null → [], no no-op, sorted.
+  function shotLeversMock(sc) {
+    if (sc.grade === "?" || sc.score === null) return [];
+    var base = sc.score, levers = [];
+    function add(id, label, detail, delta, skill) {
+      if (delta <= 0) return;
+      var lv = { id: id, label: label, detail: detail, delta: delta,
+        fromGrade: sc.grade, toGrade: gradeForMock(Math.min(100, base + delta)) };
+      if (skill) lv.skill = true;
+      levers.push(lv);
+    }
+    var n = sc.iphoneCount;
+    if (n === 0) add("count", "Add 4+ screenshots", "An empty deck can't convert. Fill at least 4 of your 10 slots — the first 3 carry most installs.", 40, true);
+    else if (n < 4) add("count", "Fill up to 4–5 slots", "You're using " + n + " of 10 slots — reaching 4–5 jumps the count tier. The first 3 carry most installs.", 20, true);
+    else if (n < 6) add("count", "Add a 6th screenshot", n + " shots is solid, but a 6th uses your slot budget fully — 6+ scores higher than 4–5.", 10, true);
+    // aspect — the mock always emits tall 1290×2796 shots, so no aspect lever fires
+    // (the engine reads the size token; here it's always tall). Kept for parity.
+    if (sc.ipadCount === 0) add("ipad", "Add iPad screenshots", "If you ship a universal (iPad) app, an empty iPad deck leaves that surface blank. Skip this if you're iPhone-only.", 10, false);
+    var ORDER = { count: 0, aspect: 1, ipad: 2 };
+    levers.sort(function (a, b) { return (b.delta - a.delta) || (ORDER[a.id] - ORDER[b.id]); });
+    return levers;
+  }
+
   function scoreShots(app, iphone, ipad, dataReliable) {
     var iUrls = shotUrls(app + ":iphone", iphone, "1290x2796");
     var pUrls = shotUrls(app + ":ipad", ipad, "2048x2732");
@@ -657,7 +725,7 @@
       return {
         app: app, iphoneCount: 0, ipadCount: ipad, score: null, grade: "?",
         findings: ["ℹ Couldn't read your screenshots from public App Store data — connect App Store Connect to audit your real screenshot set."],
-        aspectHint: "", screenshotUrls: [], ipadScreenshotUrls: [],
+        aspectHint: "", screenshotUrls: [], ipadScreenshotUrls: [], levers: [],
       };
     }
     var score = 0, findings = [];
@@ -670,8 +738,10 @@
     score += 20; findings.push("Tall 1290×2796 aspect detected — optimal for modern iPhones.");
     score += 8;
     score = Math.min(100, score);
-    var grade = score >= 85 ? "A" : score >= 70 ? "B" : score >= 50 ? "C" : score >= 30 ? "D" : "F";
-    return { app: app, iphoneCount: iphone, ipadCount: ipad, score: score, grade: grade, findings: findings, aspectHint: "1290x2796", screenshotUrls: iUrls, ipadScreenshotUrls: pUrls };
+    var grade = gradeForMock(score);
+    var sc = { app: app, iphoneCount: iphone, ipadCount: ipad, score: score, grade: grade, findings: findings, aspectHint: "1290x2796", screenshotUrls: iUrls, ipadScreenshotUrls: pUrls, levers: [] };
+    sc.levers = shotLeversMock(sc);
+    return sc;
   }
 
   // ── rank opportunity score (PRD 06) — mirrors src/engine/rankOpportunity.ts ─
@@ -931,6 +1001,21 @@
     var db = ctx.db;
     var m;
 
+    // GET /auth/me — surface the RLHF opt-out so the toggle reflects live state
+    // (#39 Part 2). The mock is always "authed as" the acting email.
+    if (method === "GET" && path === "/auth/me") {
+      return json(200, { authed: true, via: "demo", email: email, rlhf_opt_out: !!db.rlhf_opt_out });
+    }
+
+    // POST /account/rlhf-optout {optOut} — flip RLHF capture opt-out (#39 Part 2).
+    // Persisted in the mock db so a re-render reflects it (mirrors the Worker,
+    // which writes users.rlhf_opt_out and honors it at capture write time).
+    if (method === "POST" && path === "/account/rlhf-optout") {
+      if (!body || typeof body.optOut !== "boolean") return json(400, { error: "optOut must be a boolean" });
+      db.rlhf_opt_out = body.optOut; ctx.commit();
+      return json(200, { rlhf_opt_out: db.rlhf_opt_out });
+    }
+
     // POST /resolve — name / link / id → connectable candidates (demo catalog)
     if (method === "POST" && path === "/resolve") {
       var q = (body.query || "").trim();
@@ -1100,9 +1185,50 @@
     if (method === "POST" && (m = path.match(/^\/runs\/([^/]+)\/(approve|reject)$/))) {
       var run = db.runs[m[1]];
       if (!run) return json(404, { error: "run not found" });
+      var app = db.apps[run.app_id];
+
+      // Editable proposals (#39 Part 1): on approve with an edit buffer, merge the
+      // editable fields over the agent's proposal, RE-VALIDATE (mirror of the
+      // engine's validateCopy), and reflect the edited copy back. An invalid edit
+      // 400s and the gate is NOT crossed (status stays awaiting_approval) — mirrors
+      // the Worker, where server validation is authoritative.
+      if (m[2] === "approve" && body && body.editedCopy && Object.keys(body.editedCopy).length) {
+        var proposed = (run.result && run.result.proposedCopy) || {};
+        var editable = ["name", "subtitle", "keywords", "promo"];
+        var finalCopy = {};
+        editable.forEach(function (f) { if (proposed[f] !== undefined) finalCopy[f] = proposed[f]; });
+        editable.forEach(function (f) {
+          if (proposed[f] !== undefined && typeof body.editedCopy[f] === "string") finalCopy[f] = body.editedCopy[f];
+        });
+        var checks = editable
+          .filter(function (f) { return finalCopy[f] !== undefined; })
+          .map(function (f) { return fieldCheck(f, finalCopy[f]); });
+        var pass = checks.every(function (c) { return c.ok; });
+        if (!pass) {
+          var bad = checks.filter(function (c) { return !c.ok; })
+            .map(function (c) { return c.field + " (" + c.issues.join("; ") + ")"; }).join(", ");
+          return json(400, { error: "edited copy fails validation: " + bad });
+        }
+        // re-derive push commands from the edited copy (mirrors buildPushCommands)
+        var bundleId = (app && app.bundleId) || "";
+        var esc = function (s) { return "'" + String(s == null ? "" : s).replace(/'/g, "'\\''") + "'"; };
+        var newPush = [
+          { store: "appstore", tool: "asc", description: "Stage App Store name + subtitle + keyword field (review-gated).",
+            command: "asc metadata set --bundle " + bundleId + " --name " + esc(finalCopy.name) + " --subtitle " + esc(finalCopy.subtitle) + " --keywords " + esc(finalCopy.keywords) },
+        ];
+        if (finalCopy.promo !== undefined) {
+          newPush.push({ store: "appstore", tool: "asc", description: "Stage promotional text (editable without resubmission).",
+            command: "asc metadata set --bundle " + bundleId + " --promo " + esc(finalCopy.promo) });
+        }
+        newPush.push({ store: "googleplay", tool: "gplay", description: "Stage Play Store title + short description (no keyword field on Play).",
+          command: "gplay listing update --package " + bundleId + " --title " + esc(finalCopy.name) + " --short-description " + esc(finalCopy.subtitle) });
+        // stage the edited copy onto the run (every downstream read sees it)
+        run.result.proposedCopy = Object.assign({}, proposed, finalCopy, { validation: { pass: true, checks: checks } });
+        run.result.pushCommands = newPush;
+      }
+
       run.status = m[2] === "approve" ? "approved" : "rejected";
       run.decided_at = nowISO();
-      var app = db.apps[run.app_id];
       if (app && app.latestRunSummary && app.latestRunSummary.id === run.id) app.latestRunSummary.status = run.status;
       // PRD 02: on approval, record the push (the terms WE proposed + the baseline
       // + the timestamp) so the next rank-check can (correlationally) attribute a
@@ -1118,6 +1244,15 @@
         }]);
       }
       ctx.commit();
+      // On approve, return the FINALIZED (possibly edited) copy + re-derived
+      // commands so the client renders what actually ships (mirrors the Worker).
+      if (m[2] === "approve") {
+        return json(200, {
+          id: run.id, status: run.status,
+          proposedCopy: run.result.proposedCopy,
+          pushCommands: run.result.pushCommands,
+        });
+      }
       return json(200, { id: run.id, status: run.status });
     }
 

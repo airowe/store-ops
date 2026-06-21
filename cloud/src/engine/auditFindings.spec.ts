@@ -4,9 +4,11 @@ import {
   type Finding,
   type FindingImpact,
   type FindingSeverity,
+  type SurfaceLock,
   auditFindings,
   scoreFinding,
   summarizeFindings,
+  surfaceLocks,
 } from "./auditFindings.js";
 import type { AscSnapshot } from "./ascRead.js";
 import type { Audit } from "./agent.js";
@@ -25,6 +27,7 @@ function shot(over: Partial<ShotScore> = {}): ShotScore {
     aspectHint: "tall phone",
     screenshotUrls: [],
     ipadScreenshotUrls: [],
+    levers: [],
     ...over,
   };
 }
@@ -587,6 +590,7 @@ describe("summarizeFindings", () => {
       good: 1,
       total: 4,
       topImpact: "completeness",
+      label: "2 fixes available · 1 critical",
     });
   });
   it("empty findings → zeroed counts and null topImpact", () => {
@@ -597,6 +601,7 @@ describe("summarizeFindings", () => {
       good: 0,
       total: 0,
       topImpact: null,
+      label: "No fixes found",
     });
   });
   it("topImpact follows the highest-weighted finding", () => {
@@ -605,6 +610,53 @@ describe("summarizeFindings", () => {
     const summary = summarizeFindings(auditFindings(input({ snapshot: snap })));
     expect(summary.topImpact).toBe("completeness");
     expect(summary.critical).toBe(1);
+  });
+});
+
+// ── summarizeFindings.label (PRD #45 — mock/production parity) ────────────────
+
+describe("summarizeFindings label", () => {
+  const f = (severity: FindingSeverity): Finding => ({
+    id: "x",
+    surface: "s",
+    severity,
+    impact: "conversion",
+    title: "t",
+    detail: "d",
+    fix: "fx",
+  });
+
+  it("counts critical + warn as fixes and appends the critical count", () => {
+    expect(summarizeFindings([f("critical"), f("warn"), f("warn")]).label).toBe(
+      "3 fixes available · 1 critical",
+    );
+  });
+
+  it("uses the singular 'fix' for a single actionable finding", () => {
+    expect(summarizeFindings([f("warn")]).label).toBe("1 fix available");
+  });
+
+  it("does NOT append a critical clause when there are no criticals", () => {
+    expect(summarizeFindings([f("warn"), f("warn")]).label).toBe("2 fixes available");
+  });
+
+  it("falls back to 'No fixes found' for an all-info/good set (info/good are not fixes)", () => {
+    expect(summarizeFindings([f("info"), f("good")]).label).toBe("No fixes found");
+  });
+
+  it("falls back to 'No fixes found' for an empty array", () => {
+    expect(summarizeFindings([]).label).toBe("No fixes found");
+  });
+
+  it("counts critical-only as a fix and pluralizes both clauses", () => {
+    expect(summarizeFindings([f("critical"), f("critical")]).label).toBe(
+      "2 fixes available · 2 critical",
+    );
+  });
+
+  it("is deterministic — same input → deep-equal summary including label", () => {
+    const set = [f("critical"), f("warn"), f("info")];
+    expect(summarizeFindings(set)).toEqual(summarizeFindings(set));
   });
 });
 
@@ -629,5 +681,89 @@ describe("determinism", () => {
       return input({ snapshot: snap, audit: audit(shot({ grade: "F", iphoneCount: 2 })) });
     };
     expect(auditFindings(broken())).toEqual(auditFindings(broken()));
+  });
+});
+
+// ── surfaceLocks (#61): per-surface "unlock to see + improve" data contract ───
+//
+// A keyed run can READ every surface ⇒ locks nothing. A no-key run is blind to
+// the App Store Connect-only surfaces, so each becomes an honest lock that frames
+// OPPORTUNITY (connect to read + improve), never a deficiency. The engine owns the
+// canonical blind-spot list + copy; the UI never re-derives "is this readable".
+describe("surfaceLocks", () => {
+  // The canonical no-key blind-spots (the surfaces public iTunes can't expose).
+  const CANONICAL_SURFACES: SurfaceLock["surface"][] = [
+    "subtitle",
+    "keywords",
+    "screenshots",
+    "previews",
+    "privacy",
+    "category",
+    "locales",
+  ];
+
+  it("returns [] on a keyed run (nothing is unreadable)", () => {
+    expect(surfaceLocks(input({ hasAscKey: true }))).toEqual([]);
+  });
+
+  it("returns [] on a keyed run even with no snapshot", () => {
+    expect(surfaceLocks(input({ hasAscKey: true, snapshot: undefined }))).toEqual([]);
+  });
+
+  it("returns exactly the canonical blind-spot surfaces on a no-key run", () => {
+    const locks = surfaceLocks(input({ hasAscKey: false, snapshot: undefined }));
+    expect(locks.map((l) => l.surface)).toEqual(CANONICAL_SURFACES);
+  });
+
+  describe.each(CANONICAL_SURFACES)("lock for surface %s", (surface) => {
+    const lock = (): SurfaceLock => {
+      const locks = surfaceLocks(input({ hasAscKey: false, snapshot: undefined }));
+      const found = locks.find((l) => l.surface === surface);
+      expect(found, `expected a lock for ${surface}`).toBeDefined();
+      return found!;
+    };
+
+    it("carries a non-empty label + unlockCopy", () => {
+      const l = lock();
+      expect(l.label.length).toBeGreaterThan(0);
+      expect(l.unlockCopy.length).toBeGreaterThan(0);
+    });
+
+    // HONESTY (the §6 CI invariant): a lock means "we can't SEE this", never a
+    // deficiency. No false "0/30", no "empty/missing/bad", no loss/urgency framing.
+    const FORBIDDEN = [/\b0\/(30|100)\b/, /empty|missing|bad|costing you|losing|urgent/i];
+    it("never asserts a deficiency or urgency in label/unlockCopy", () => {
+      const l = lock();
+      for (const pattern of FORBIDDEN) {
+        expect(l.label, `label leaks a forbidden phrase: ${pattern}`).not.toMatch(pattern);
+        expect(l.unlockCopy, `unlockCopy leaks a forbidden phrase: ${pattern}`).not.toMatch(pattern);
+      }
+    });
+
+    // OPPORTUNITY frame: the unlock copy reads as "connect to read + improve".
+    it("frames opportunity (connect to read/unlock + improve)", () => {
+      const l = lock();
+      expect(l.unlockCopy).toMatch(/connect|unlock|read|see/i);
+    });
+
+    // CAPABILITY frame: the label states a visibility gap, not a measured fact.
+    it("states a capability gap (can't see/read without access)", () => {
+      const l = lock();
+      expect(l.label).toMatch(/can.?t see|can.?t read|without access|unseen|not visible/i);
+    });
+  });
+
+  it("is deterministic — same input → deep-equal output", () => {
+    const a = surfaceLocks(input({ hasAscKey: false, snapshot: undefined }));
+    const b = surfaceLocks(input({ hasAscKey: false, snapshot: undefined }));
+    expect(a).toEqual(b);
+  });
+
+  it("ignores any snapshot on a no-key run (the gap is keyed-ness, not the data)", () => {
+    // hasAscKey:false is the single source of truth — a stray snapshot does not
+    // unlock surfaces (mirrors how asc_unlock keys off hasAscKey alone).
+    const withSnap = surfaceLocks(input({ hasAscKey: false, snapshot: healthySnapshot() }));
+    const noSnap = surfaceLocks(input({ hasAscKey: false, snapshot: undefined }));
+    expect(withSnap).toEqual(noSnap);
   });
 });

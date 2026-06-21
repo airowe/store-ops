@@ -65,9 +65,12 @@
 import {
   type AgentResult,
   type AppCandidate,
+  type CopyFields,
   type ProposedCopy,
+  type PushCommand,
   type PushInput,
   type WarRoomRankSnapshot,
+  buildPushCommands,
   buildWarRoom,
   lookup,
   rankOpportunities,
@@ -79,10 +82,12 @@ import {
 import type { ReasoningTrace, AppRow, FindingsSummary } from "../d1.js";
 import { buildPreview } from "../engine/preview.js";
 import {
+  captureProposalEdits,
   countAppsForUser,
   createApp,
   deleteApp,
   getApp,
+  getOptOut,
   getUser,
   getApproval,
   getLatestCompetitorMap,
@@ -98,9 +103,13 @@ import {
   recordSubscriber,
   setAgentPaused,
   setGithubConnection,
+  setOptOut,
   setTier,
+  updateRunCopy,
   upsertUser,
 } from "../d1.js";
+import { finalizeEditedCopy } from "./proposalEdit.js";
+import { decryptField, importKeyFromBase64 } from "../crypto/rlhfCrypto.js";
 import {
   mintMagicToken,
   mintSessionToken,
@@ -137,7 +146,7 @@ import { mintAscJwt } from "../engine/ascJwt.js";
 import { findAscAppId, applyAscMetadata, readAscLocalization, AscWriteError } from "../engine/ascWrite.js";
 import { readAscSnapshot, ascScreenshotsToListing, type AscSnapshot } from "../engine/ascRead.js";
 import { score as scoreScreenshots } from "../engine/screenshotScore.js";
-import { auditFindings, summarizeFindings } from "../engine/auditFindings.js";
+import { auditFindings, summarizeFindings, surfaceLocks } from "../engine/auditFindings.js";
 import { buildAscContext } from "../engine/ascContext.js";
 import { metadataCoverage } from "../engine/metadataCoverage.js";
 import { recommendLocales } from "../engine/localizationExpansion.js";
@@ -266,6 +275,12 @@ export function serializeRunResult(trace: ReasoningTrace, approved: boolean) {
     // is sorted by the engine; summary feeds the card header.
     findings,
     findingsSummary: summarizeFindings(findings),
+    // Locked-field upgrade surfaces (#61): the per-surface "unlock to see +
+    // improve" data the no-key UI renders as inline 🔒 locks. Static capability/
+    // opportunity copy only (no raw ASC) — the same privacy boundary as findings.
+    // Present only when the trace carried them (older traces omit it; the UI then
+    // falls back to isNoKeyRun) so the response shape stays stable + truthful.
+    ...(trace.locks !== undefined ? { locks: trace.locks } : {}),
     ...(trace.ascContext !== undefined ? { ascContext: trace.ascContext } : {}),
     // Winnability opportunities (PRD 06) — "where to push next." Curated copy +
     // drivers only; safe to serve. Older traces have none → empty array.
@@ -498,11 +513,17 @@ async function authMe(req: Request, env: Env, origin: string | null): Promise<Re
     const res = await verifySessionToken(sessionSecret(env), token);
     if (res.ok) {
       // Resolve the user (idempotent upsert) so the boot check carries the
-      // per-user pause flag (#51) — the dashboard banner renders "active" vs
-      // "paused" straight from this, no extra round-trip.
+      // per-user pause flag (#51 — the banner renders "active" vs "paused") AND
+      // the RLHF opt-out (#39 Part 2 — the settings toggle), no extra round-trip.
       const user = await upsertUser(env.DB, res.email);
       return json(
-        { authed: true, via: "session", email: user.email, paused: user.agent_paused },
+        {
+          authed: true,
+          via: "session",
+          email: user.email,
+          paused: user.agent_paused,
+          rlhf_opt_out: user.rlhf_opt_out === 1,
+        },
         200,
         origin,
         env,
@@ -513,10 +534,93 @@ async function authMe(req: Request, env: Env, origin: string | null): Promise<Re
     const email = req.headers.get("x-user-email")?.trim().toLowerCase();
     if (email && email.includes("@")) {
       const user = await upsertUser(env.DB, email);
-      return json({ authed: true, via: "demo", email, paused: user.agent_paused }, 200, origin, env);
+      return json(
+        {
+          authed: true,
+          via: "demo",
+          email,
+          paused: user.agent_paused,
+          rlhf_opt_out: user.rlhf_opt_out === 1,
+        },
+        200,
+        origin,
+        env,
+      );
     }
   }
   return json({ authed: false }, 200, origin, env);
+}
+
+/**
+ * POST /account/rlhf-optout {optOut:boolean} — flip this user's RLHF capture
+ * opt-out (#39 Part 2). Capture is ON by default; opting out means NO further
+ * `proposal_edits` rows are written for this user (honored at write time). Returns
+ * the new state. requireUser-gated (the caller decides for their own account).
+ */
+async function rlhfOptOutRoute(req: Request, env: Env, userId: string): Promise<unknown> {
+  const body = await readJson<{ optOut?: unknown }>(req);
+  if (typeof body.optOut !== "boolean") {
+    throw new HttpError(400, "optOut must be a boolean");
+  }
+  await setOptOut(env.DB, { userId, optOut: body.optOut });
+  return { rlhf_opt_out: body.optOut };
+}
+
+/**
+ * GET /admin/preference-data — OWNER-ONLY export of the RLHF dataset (#39 Part 2).
+ * Decrypts every anonymous `proposal_edits` row → JSONL of
+ * `{field, decision, edited, proposed, final, created_at}` (still NO user/app id).
+ *
+ * Degrades CLOSED:
+ *   • RLHF_EXPORT_TOKEN unset OR header mismatch → 403 (no admin-role system, so
+ *     the secret IS the gate; unset means nobody can call it).
+ *   • RLHF_ENCRYPTION_KEY unset/invalid → 503 with an honest message (the rows are
+ *     encrypted; without the key there is nothing to export). Never crashes.
+ */
+async function preferenceDataExport(req: Request, env: Env, origin: string | null): Promise<Response> {
+  const token = env.RLHF_EXPORT_TOKEN;
+  const presented = req.headers.get("x-rlhf-export");
+  if (!token || presented !== token) {
+    return json({ error: "forbidden" }, 403, origin, env);
+  }
+  const key = await rlhfKey(env);
+  if (!key) {
+    return json(
+      { error: "RLHF_ENCRYPTION_KEY is not configured — encrypted rows cannot be exported" },
+      503,
+      origin,
+      env,
+    );
+  }
+  const { results } = await env.DB.prepare(
+    "SELECT field, decision, edited, proposed_enc, final_enc, created_at FROM proposal_edits ORDER BY created_at, id",
+  ).all<{
+    field: string;
+    decision: string;
+    edited: number;
+    proposed_enc: string;
+    final_enc: string;
+    created_at: string;
+  }>();
+
+  const lines: string[] = [];
+  for (const r of results ?? []) {
+    const proposed = await decryptField(key, r.proposed_enc);
+    const final = await decryptField(key, r.final_enc);
+    lines.push(
+      JSON.stringify({
+        field: r.field,
+        decision: r.decision,
+        edited: r.edited === 1,
+        proposed,
+        final,
+        created_at: r.created_at,
+      }),
+    );
+  }
+  const headers = corsHeaders(origin, env);
+  headers["content-type"] = "application/x-ndjson";
+  return new Response(lines.length ? lines.join("\n") + "\n" : "", { status: 200, headers });
 }
 
 /** Load an app and assert it belongs to this user. */
@@ -898,6 +1002,15 @@ async function runApp(
     appName: app.name,
     hasAscKey: false,
   });
+  // #61: the per-surface "unlock to see + improve" locks. On a no-key run this is
+  // the canonical blind-spot list (subtitle, keywords, screenshots, …); the UI
+  // renders each as an honest inline 🔒. Static copy only — no ASC data crosses.
+  result.locks = surfaceLocks({
+    audit: result.audit,
+    ranks: result.ranks,
+    appName: app.name,
+    hasAscKey: false,
+  });
   // PRD 06: winnability opportunities — "where to push next." Computed from the
   // run's keyword scores + rank history; no raw ASC data (safe to serve).
   await attachOpportunities(env, app.id, result);
@@ -1011,6 +1124,16 @@ async function runAppWithAsc(
   // ascContext. The raw snapshot stays server-side; ONLY findings + ascContext
   // reach the client (PRD 02 privacy boundary).
   result.findings = auditFindings({
+    snapshot: ascSnapshot,
+    audit: result.audit,
+    ranks: result.ranks,
+    appName: app.name,
+    hasAscKey: true,
+  });
+  // #61: a keyed run reads every surface ⇒ it locks NOTHING. We still set the
+  // field (to []) so the serializer is symmetric and the client never re-derives
+  // "is this readable" — a connected run simply carries no locks.
+  result.locks = surfaceLocks({
     snapshot: ascSnapshot,
     audit: result.audit,
     ranks: result.ranks,
@@ -1300,7 +1423,34 @@ async function getRunRoute(env: Env, userId: string, runId: string): Promise<unk
   return runView(env, runId);
 }
 
-type ApproveBody = { decision?: string };
+/**
+ * Import the RLHF AES key from env, or return null (SAFE-DEGRADE). Returns null
+ * when env.RLHF_ENCRYPTION_KEY is unset OR malformed (wrong length / bad base64),
+ * so capture silently no-ops instead of throwing — a misconfigured key must never
+ * break an approval. (The export route surfaces a missing/bad key as an honest
+ * error instead.)
+ */
+async function rlhfKey(env: Env): Promise<CryptoKey | null> {
+  const b64 = env.RLHF_ENCRYPTION_KEY;
+  if (!b64) return null;
+  try {
+    return await importKeyFromBase64(b64);
+  } catch (e) {
+    console.error("RLHF_ENCRYPTION_KEY invalid — capture disabled:", e);
+    return null;
+  }
+}
+
+type ApproveBody = {
+  decision?: string;
+  /**
+   * Editable proposals (#39 Part 1). When approving, the client may send the human
+   * edit buffer — only the editable fields (name/subtitle/keywords/promo) are
+   * honored; the server re-validates with the engine's `validateCopy` before
+   * staging anything. The client mirror is advisory only.
+   */
+  editedCopy?: Partial<CopyFields>;
+};
 
 /**
  * POST /runs/:id/approve  and  POST /runs/:id/reject — the human gate.
@@ -1320,7 +1470,7 @@ async function decideRun(
 ): Promise<unknown> {
   const run = await getRun(env.DB, runId);
   if (!run) throw new HttpError(404, "run not found");
-  await requireOwnedApp(env, run.app_id, userId);
+  const app = await requireOwnedApp(env, run.app_id, userId);
 
   if (run.status !== "awaiting_approval") {
     throw new HttpError(409, `run is not awaiting approval (status=${run.status})`);
@@ -1341,21 +1491,88 @@ async function decideRun(
             throw new HttpError(400, "decision must be 'approve' or 'reject'");
           })();
 
-  await recordApproval(env.DB, { runId, decision });
+  const trace = JSON.parse(run.reasoning_json) as ReasoningTrace;
+
+  // Editable proposals (#39 Part 1): when approving WITH a human edit buffer,
+  // merge the editable fields over the agent's proposal and re-validate with the
+  // engine's authoritative `validateCopy` BEFORE we record the approval. An
+  // over-limit / keyword-rule-violating edit can NEVER be staged — we throw 400
+  // and the gate row is never written (gate not crossed). Validation runs first so
+  // an invalid edit leaves the run untouched.
+  let finalized: { copy: CopyFields; pushCommands: PushCommand[] } | null = null;
+  if (decision === "approved" && body.editedCopy && Object.keys(body.editedCopy).length > 0) {
+    const { copy, validation } = finalizeEditedCopy(trace.proposedCopy, body.editedCopy);
+    if (!validation.pass) {
+      const failing = validation.checks.filter((c) => !c.ok);
+      throw new HttpError(
+        400,
+        `edited copy fails validation: ${failing
+          .map((c) => `${c.field} (${c.issues.join("; ")})`)
+          .join(", ")}`,
+      );
+    }
+    // re-derive the push-command handoff from the edited copy with the engine's
+    // own builder (the one used at run time) — the validation block is carried
+    // through so `buildPushCommands`'s ProposedCopy input is well-formed.
+    const pushCommands = buildPushCommands(app.bundle_id, { ...copy, validation });
+    finalized = { copy, pushCommands };
+  }
+
+  // RLHF capture (#39 Part 2): build the ANONYMOUS, ENCRYPTED preference rows and
+  // append them to the SAME atomic batch as the gate decision, so the captured
+  // signal can never disagree with the recorded approval. Gated two ways:
+  //   • SAFE-DEGRADE — no env.RLHF_ENCRYPTION_KEY ⇒ key is null ⇒ zero rows, no
+  //     throw, approval proceeds (like the AI reasoner degrades without env.AI).
+  //   • OPT-OUT (on by default OFF; honored at WRITE time) — an opted-out user
+  //     never gets a row written. Since rows are anonymous they can't be deleted
+  //     later, so we simply never capture them.
+  // Rejected decisions ARE captured (a rejection is negative preference signal).
+  // The whole block is best-effort: any capture error must NEVER block approval.
+  let captureStmts: D1PreparedStatement[] = [];
+  try {
+    const key = await rlhfKey(env);
+    if (key && !(await getOptOut(env.DB, userId))) {
+      const finalCopy = finalized ? finalized.copy : trace.proposedCopy;
+      captureStmts = await captureProposalEdits(env.DB, key, {
+        proposed: trace.proposedCopy,
+        final: finalCopy,
+        decision,
+      });
+    }
+  } catch (e) {
+    console.error("rlhf capture skipped (non-fatal):", e);
+    captureStmts = [];
+  }
+
+  await recordApproval(env.DB, { runId, decision, extraStmts: captureStmts });
 
   if (decision === "rejected") {
     return { id: runId, status: "rejected", pushCommands: [] };
   }
 
+  // Persist the finalized (edited) copy onto the trace + proposals so every
+  // downstream handoff reads the edited values (approach (a)). With no edits this
+  // is a no-op and the agent's original proposal stands.
+  if (finalized) {
+    await updateRunCopy(env.DB, {
+      runId,
+      copy: finalized.copy,
+      pushCommands: finalized.pushCommands,
+    });
+  }
+
   // approved → status is now 'approved' (NOT 'shipped' — nothing has reached
   // App Store Connect yet); return the generated, NON-executed push command
-  // handoff so the client can copy + run it on a credentialed box.
-  const trace = JSON.parse(run.reasoning_json) as ReasoningTrace;
+  // handoff so the client can copy + run it on a credentialed box. The returned
+  // copy/commands reflect any human edits staged above.
+  const finalPush = finalized ? finalized.pushCommands : trace.pushCommands;
+  const finalCopy = finalized ? finalized.copy : trace.proposedCopy;
   return {
     id: runId,
     status: "approved",
     note: "Approved. Hand the metadata to your build pipeline (credential-free), or apply it yourself — ShipASO never stores your store credentials.",
-    pushCommands: trace.pushCommands,
+    proposedCopy: finalCopy,
+    pushCommands: finalPush,
   };
 }
 
@@ -1860,6 +2077,12 @@ export async function handleApi(req: Request, env: Env): Promise<Response> {
     if (seg[0] === "preview" && seg.length === 1 && method === "POST") {
       return json(await previewApp(req, env), 200, origin, env);
     }
+    // Owner-only RLHF export (#39 Part 2). NOT session-gated — it has its own
+    // secret-token gate (x-rlhf-export === env.RLHF_EXPORT_TOKEN) and degrades
+    // CLOSED (403) when the token is unset, so it lives outside requireUser.
+    if (seg[0] === "admin" && seg[1] === "preference-data" && seg.length === 2 && method === "GET") {
+      return preferenceDataExport(req, env, origin);
+    }
   } catch (e) {
     if (e instanceof HttpError) return json({ error: e.message }, e.status, origin, env);
     // Log the real error server-side; return a generic message so unexpected
@@ -1889,6 +2112,16 @@ export async function handleApi(req: Request, env: Env): Promise<Response> {
     // /portfolio — the Fleet roll-up across all of the user's apps
     if (seg[0] === "portfolio" && seg.length === 1 && method === "GET") {
       return json(await portfolioView(env, user.id), 200, origin, env);
+    }
+
+    // /account/rlhf-optout — flip this user's RLHF capture opt-out (#39 Part 2)
+    if (
+      seg[0] === "account" &&
+      seg[1] === "rlhf-optout" &&
+      seg.length === 2 &&
+      method === "POST"
+    ) {
+      return json(await rlhfOptOutRoute(req, env, user.id), 200, origin, env);
     }
 
     // /runs/approve-all — bulk-approve every pending run (matched BEFORE /runs/:id)

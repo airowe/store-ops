@@ -19,6 +19,88 @@
   var CFG = window.STORE_OPS || {};
   var API_BASE = (CFG.API_BASE || "").replace(/\/$/, "");
   var LIMITS = { name: 30, subtitle: 30, keywords: 100, promo: 170, description: 4000 };
+  // The fields a human may edit on the run page (#39 Part 1) — mirrors the diff
+  // card + the server's EDITABLE_FIELDS. description/whatsNew are out of scope.
+  var EDITABLE_FIELDS = ["name", "subtitle", "keywords", "promo"];
+
+  // ── client mirror of the engine's validateCopy (src/engine/optimize.ts) ─────
+  // ADVISORY ONLY: gives the user instant red/green before they approve. The
+  // server re-runs the REAL validateCopy at the gate and is authoritative — an
+  // invalid edit can never be staged regardless of what this says. Kept a thin
+  // 1:1 port so the two never disagree on the cases that matter.
+  function kwWords(s) {
+    return String(s == null ? "" : s).toLowerCase().split(/\s+/)
+      .map(function (w) { return w.replace(/[^a-z0-9]/g, ""); })
+      .filter(Boolean);
+  }
+  function clientFieldCheck(field, copy) {
+    var value = String(copy[field] == null ? "" : copy[field]);
+    var limit = LIMITS[field];
+    var issues = [];
+    if (value.length > limit) issues.push("over limit by " + (value.length - limit) + " (" + value.length + "/" + limit + ")");
+    if (field === "keywords") {
+      if (/,\s/.test(value) || /\s,/.test(value)) issues.push("keyword field must be comma-separated with NO spaces around commas");
+      var banned = {};
+      kwWords(copy.name).concat(kwWords(copy.subtitle)).forEach(function (w) { banned[w] = 1; });
+      var terms = value.split(",").map(function (t) { return t.trim(); }).filter(Boolean);
+      var dupes = terms.filter(function (t) { return kwWords(t).some(function (w) { return banned[w]; }); });
+      if (dupes.length) issues.push("keyword field duplicates title/subtitle word(s): " + dupes.join(", "));
+    }
+    return { field: field, value: value, count: value.length, limit: limit, ok: issues.length === 0, issues: issues };
+  }
+  // Validate only the editable fields the proposal actually carries (never
+  // fabricate an unseen field into a check).
+  function clientValidateCopy(copy) {
+    var checks = EDITABLE_FIELDS
+      .filter(function (f) { return copy[f] !== undefined; })
+      .map(function (f) { return clientFieldCheck(f, copy); });
+    return { pass: checks.every(function (c) { return c.ok; }), checks: checks };
+  }
+
+  // A per-run edit buffer shared between the diff card (the inputs) and the gate
+  // card (Approve enablement + handoff render). Only fields the agent actually
+  // proposed AND could SEE are editable — editing can never fabricate an unseen
+  // field into existence (honesty guard #39 §6.1). subtitle/keywords are unseen on
+  // a no-key run: the proposal carries them as "" but the live value is unknown
+  // (absent from currentCopy), so we must NOT expose them as editable inputs.
+  function makeEditState(proposed, current) {
+    var p = proposed || {};
+    var cur = current || {};
+    // name + promo are always authored by the agent; subtitle/keywords are only
+    // genuinely proposed when the run could READ the live value (currentCopy carries
+    // the field). Otherwise they're unseen and stay non-editable.
+    var seen = function (f) {
+      if (p[f] === undefined) return false;
+      if (f === "subtitle" || f === "keywords") return cur[f] !== undefined;
+      return true;
+    };
+    var buffer = {};
+    EDITABLE_FIELDS.forEach(function (f) { if (seen(f)) buffer[f] = p[f]; });
+    var subs = [];
+    return {
+      buffer: buffer,
+      original: p,
+      editable: function (f) { return seen(f); },
+      set: function (f, v) { buffer[f] = v; this.notify(); },
+      reset: function (f) { buffer[f] = p[f]; this.notify(); },
+      isDirty: function (f) { return String(buffer[f] == null ? "" : buffer[f]) !== String(p[f] == null ? "" : p[f]); },
+      validation: function () { return clientValidateCopy(buffer); },
+      isValid: function () { return this.validation().pass; },
+      subscribe: function (fn) { subs.push(fn); },
+      notify: function () { subs.forEach(function (fn) { fn(); }); },
+    };
+  }
+
+  // The bundle the browser actually executed. In the deployed dist/ this is
+  // app.<hash>.js (content-hashed by scripts/stampAssets.mjs); in local/public
+  // (un-hashed, no build step) it's app.js. document.currentScript is the
+  // running <script>'s element at top-level IIFE execution time — app.js is a
+  // classic (non-module) script (index.html:40) so this is available here.
+  // Used by the SPA-freshness check (#54) to tell which bundle is live.
+  // CFG.SELF_SCRIPT is a test-only seam (E2E simulates a hashed deploy against
+  // the un-hashed local public/); config.js never sets it in prod, so the real
+  // running bundle's URL is the source of truth.
+  var SELF_SCRIPT = CFG.SELF_SCRIPT || (document.currentScript && document.currentScript.src) || "";
 
   // ── auth ──────────────────────────────────────────────────────────────────
   // Real path: a signed-in session cookie (magic-link). Demo path (when the
@@ -151,6 +233,94 @@
   async function copyText(s, label) {
     try { await navigator.clipboard.writeText(s); toast((label || "Copied") + " ✓"); }
     catch (e) { toast("Copy failed — select & ⌘C"); }
+  }
+
+  // ── SPA freshness (#54) ─────────────────────────────────────────────────────
+  // A tab left open across a deploy keeps running the OLD app.<hash>.js — the
+  // hash router re-renders #view in place and never re-requests app.js. We
+  // detect a newer deploy by re-fetching the always-no-cache /index.html
+  // (_headers:13-14) and comparing the app bundle it references against the
+  // bundle the browser actually ran (SELF_SCRIPT). On a difference we show a
+  // gentle, dismissible banner — we NEVER auto-reload (an at-the-wrong-moment
+  // reload could drop an in-flight approval or the in-memory .p8). The two pure
+  // functions below MIRROR scripts/freshness.mjs (tested spec) — keep in sync.
+  var FRESHNESS_POLL_MS = 15 * 60 * 1000; // backstop for an always-foreground tab
+
+  // Extract the referenced app bundle (app.<hash>.js or bare app.js) from an
+  // index.html string; null if none. Scoped to app.* so config/mock/styles can
+  // never match. Mirrors bundleRefFromHtml in scripts/freshness.mjs.
+  function bundleRefFromHtml(html) {
+    if (!html) return null;
+    var m = String(html).match(/src="(app(?:\.[0-9a-f]+)?\.js)"/);
+    return m ? m[1] : null;
+  }
+  function freshnessBasename(url) {
+    if (!url) return "";
+    var s = String(url).split("?")[0].split("#")[0];
+    var slash = s.lastIndexOf("/");
+    return slash >= 0 ? s.slice(slash + 1) : s;
+  }
+  // Is the running bundle older than what /index.html now references? Honest
+  // "don't know" → false (never nag): unknown self, failed fetch (null ref), or
+  // an un-hashed local/E2E bundle (bare app.js) all return false. Compares
+  // basenames only (origin-independent). Mirrors isStale in scripts/freshness.mjs.
+  function isStale(selfScriptUrl, liveBundleRef) {
+    if (!selfScriptUrl || !liveBundleRef) return false;
+    var self = freshnessBasename(selfScriptUrl);
+    var live = freshnessBasename(liveBundleRef);
+    if (!self || !live) return false;
+    if (self === "app.js") return false; // un-hashed dev bundle → dormant
+    return self !== live;
+  }
+
+  var freshnessBannerShown = false; // once shown, stop polling (state is monotonic)
+  var freshnessTimer = null;
+
+  // Re-fetch the no-cache /index.html and diff its bundle ref against SELF_SCRIPT.
+  // Deliberately uses its OWN fetch (NOT api()) so a probe failure can never flip
+  // the app into mock mode (liveMode) or toast an error — it must fail silently.
+  async function checkFreshness() {
+    if (freshnessBannerShown) return;
+    try {
+      var res = await fetch("/index.html", { cache: "no-store" });
+      if (!res || !res.ok) return; // silent: an unreachable probe is "don't know"
+      var html = await res.text();
+      if (isStale(SELF_SCRIPT, bundleRefFromHtml(html))) showFreshnessBanner();
+    } catch (e) { /* offline / parse error → silent, never nag, never flip mode */ }
+  }
+
+  function dismissFreshnessBanner() {
+    var bar = document.getElementById("freshness");
+    if (bar) bar.classList.remove("show");
+    // Keep freshnessBannerShown = true: we don't re-nag the SAME detected
+    // version this session. A FURTHER deploy can show it again — but we've also
+    // stopped polling, which is fine: a returning user gets a fresh index.html
+    // (and the latest bundle) on their next real reload anyway.
+  }
+
+  function showFreshnessBanner() {
+    if (freshnessBannerShown) return;
+    freshnessBannerShown = true;
+    if (freshnessTimer != null) { clearInterval(freshnessTimer); freshnessTimer = null; }
+    var bar = document.getElementById("freshness");
+    if (!bar) return;
+    clear(bar);
+    bar.appendChild(el("span", { class: "fresh-msg" }, ["A new version of ShipASO is available — refresh to update."]));
+    bar.appendChild(el("button", { class: "btn", id: "freshnessReload", onclick: function () { location.reload(); } }, ["Refresh"]));
+    bar.appendChild(el("button", { class: "fresh-x", id: "freshnessDismiss", "aria-label": "Dismiss", onclick: dismissFreshnessBanner }, ["×"]));
+    bar.classList.add("show");
+  }
+
+  // Start freshness detection — focus (cheapest, highest-signal: user returned
+  // to the tab) + a 15-min interval backstop. Gated to PROD-only: API_BASE set
+  // AND a hashed bundle (SELF_SCRIPT !== app.js), so it's inert in local/demo/E2E
+  // unless a test explicitly drives it. No route-change trigger (focus already
+  // covers "came back to the tab" without a network hop per hash navigation).
+  function startFreshnessChecks() {
+    if (!API_BASE) return;
+    if (freshnessBasename(SELF_SCRIPT) === "app.js") return; // un-hashed → dormant
+    window.addEventListener("focus", checkFreshness);
+    freshnessTimer = setInterval(checkFreshness, FRESHNESS_POLL_MS);
   }
 
   // Debounced, race-safe auto-search controller for the app-search boxes — the
@@ -625,6 +795,24 @@
     ]);
     var badge = findingBadge(a.findings_summary);
     if (badge) row1.appendChild(badge);
+    // #50: a card-level "Run now" so the dashboard's "agent active" line has an
+    // adjacent control. This is the BLIND (public-data) run — it never reads ASC
+    // and never pushes; it ends in awaiting_approval at the human gate. The
+    // handler stopPropagation()s so the click doesn't bubble to the card's
+    // navigate-to-detail onclick below. The helper copy stays honest: read+prepare
+    // only, you still approve, and the ASC read lives on the app page.
+    var runNowBtn = el("button", {
+      class: "btn small run-now",
+      onclick: function (ev) {
+        ev.stopPropagation();
+        triggerRun(a.id, this, { label: "▶ Run now", backHash: "#/" });
+      },
+    }, ["▶ Run now"]);
+    var runNowFoot = el("div", { class: "appcard-foot", onclick: function (ev) { ev.stopPropagation(); } }, [
+      runNowBtn,
+      el("span", { class: "faint run-now-note" }, ["Re-checks ranks & drafts changes on public data — you still approve before anything ships. Connect App Store Connect (on the app page) to also read your subtitle & keywords."]),
+    ]);
+
     var card = el("div", { class: "card appcard", onclick: function () { go("#/apps/" + a.id); } }, [
       row1,
       el("div", { class: "bundle" }, [a.bundle_id]),
@@ -633,6 +821,7 @@
         el("div", {}, [el("div", { class: "k" }, ["Lead rank"]), el("div", { class: "v" }, [rs ? rankText(rs.lead_rank) : "—"])]),
         el("div", {}, [el("div", { class: "k" }, ["Top-10 kw"]), el("div", { class: "v" }, [rs ? String(rs.top10) + "/" + rs.tracked : "—"])]),
       ]),
+      runNowFoot,
     ]);
     return card;
   }
@@ -889,7 +1078,15 @@
           el("div", { class: "faint", style: "margin:8px 0 16px" }, [message || "Something went wrong running the agent."]),
           el("div", { class: "btn-row" }, [
             el("button", { class: "btn primary", onclick: function () { if (onRetry) onRetry(); } }, ["↻ Try again"]),
-            el("button", { class: "btn ghost", onclick: function () { go(backHash || "#/"); } }, ["← Back"]),
+            // "Back" returns to backHash. When that hash equals the current one
+            // (e.g. a dashboard "Run now" fails while we're still at #/), setting
+            // location.hash is a no-op that wouldn't re-fire the router — so call
+            // route() directly to rebuild the view we replaced with this card.
+            el("button", { class: "btn ghost", onclick: function () {
+              var target = backHash || "#/";
+              if (location.hash === target || (!location.hash && target === "#/")) route();
+              else go(target);
+            } }, ["← Back"]),
           ]),
         ]));
       },
@@ -905,12 +1102,20 @@
     "Preparing the change for your review",
   ];
 
-  function triggerRun(appId, btn) {
+  // The blind (public-data) run. Reused from two call sites: the app-detail
+  // opt-out button and the dashboard card's "Run now" (#50). `opts` lets each
+  // caller restore its own idle label on error and choose where the error card's
+  // "Back" returns to. Defaults reproduce the app-detail caller's behavior, so
+  // existing callers can keep passing nothing.
+  function triggerRun(appId, btn, opts) {
+    opts = opts || {};
+    var label = opts.label || "▶ Run agent now";
+    var backHash = opts.backHash || ("#/apps/" + appId);
     btn.disabled = true; btn.innerHTML = '<span class="spin"></span> Agent running…';
     var inter = runInterstitial(RUN_STEPS);
     api("POST", "/apps/" + appId + "/run")
       .then(function (r) { inter.settle(); toast("Agent finished — review the proposal."); go("#/runs/" + r.id); })
-      .catch(function (e) { btn.disabled = false; btn.textContent = "▶ Run agent now"; inter.fail(e.message || "The agent run failed.", function () { triggerRun(appId, btn); }, "#/apps/" + appId); });
+      .catch(function (e) { btn.disabled = false; btn.textContent = label; inter.fail(e.message || "The agent run failed.", function () { triggerRun(appId, btn, opts); }, backHash); });
   }
 
   // Read a .p8 file client-side and fill the textarea (paste stays a fallback).
@@ -1026,8 +1231,12 @@
     var locCard = localizationExpansionCard(R, run.app_id);
     if (locCard) c.appendChild(locCard);
 
-    // 2) THE DIFF — lead with current → proposed, like a PR review (devs).
-    c.appendChild(diffCard(R.currentCopy || {}, R.proposedCopy || {}));
+    // 2) THE DIFF — lead with current → proposed, like a PR review (devs). The
+    //    proposal is now EDITABLE (#39 Part 1): a per-run edit buffer is shared
+    //    between the diff card (the inputs) and the gate card (Approve + handoff),
+    //    so a tweak flows straight to what ships.
+    var edit = makeEditState(R.proposedCopy || {}, R.currentCopy || {});
+    c.appendChild(diffCard(R.currentCopy || {}, R.proposedCopy || {}, edit));
 
     // 2) PLAIN-ENGLISH REASONING (what makes this read as an agent)
     c.appendChild(reasoningCard(R));
@@ -1051,9 +1260,15 @@
     // 4) keyword reasoning table
     c.appendChild(keywordCard(R.reasoning || [], R.ranks || []));
 
-    // 5) THE APPROVAL GATE + commands
-    c.appendChild(gateCard(run, R));
+    // 5) THE APPROVAL GATE + commands (reads the shared edit buffer)
+    c.appendChild(gateCard(run, R, edit));
   }
+
+  // The make-it tool for the screenshot levers (#55) + the findings linkout. The
+  // free MIT app-store-screenshots skill — the agent NEVER generates/pushes assets;
+  // this is a linkout for the human to act on. Module-scope so both the findings
+  // fix-link AND the improvement panel reuse the same URL.
+  var SHOTS_SKILL = "https://github.com/ParthJadhav/app-store-screenshots";
 
   // The "Listing audit" card: the engine's findings, prioritized (biggest wins
   // first, as returned), each labeled by impact lane with a concrete fix. Findings
@@ -1113,12 +1328,57 @@
     ]);
   }
 
+  // ── Locked-field upgrade surface (#61) ────────────────────────────────────
+  // An inline, honest 🔒 lock for a surface we couldn't READ on a no-key run.
+  // "We can't see this without access" — a CAPABILITY gap, never a deficiency,
+  // never urgency. Routes to the SAME primary ASC run panel as the unlock CTA
+  // (go("#/apps/:id?asc=1") → viewApp flashes it), so it builds NO new credential
+  // surface. It deliberately does NOT reuse the .locked class (commandsLocked):
+  // THAT lock gates an ACTION (approve to reveal a push command); THIS one marks a
+  // READING we can't take. The distinct .field-lock class keeps the two semantics
+  // clearly distinguished (the issue's non-negotiable).
+  function fieldLock(lock, appId) {
+    return el("div", { class: "field-lock", role: "note" }, [
+      el("span", { class: "field-lock-ico", "aria-hidden": "true" }, ["🔒"]),
+      el("div", { class: "field-lock-body" }, [
+        el("div", { class: "field-lock-label" }, [lock.label || "We can't see this without access"]),
+        lock.unlockCopy ? el("div", { class: "field-lock-copy faint" }, [lock.unlockCopy]) : null,
+        el("a", { class: "field-lock-link", href: "#/apps/" + appId + "?asc=1", onclick: function (e) {
+          if (e && e.preventDefault) e.preventDefault();
+          go("#/apps/" + appId + "?asc=1");
+        } }, ["Connect to unlock →"]),
+      ]),
+    ]);
+  }
+
+  // The surface-lock data the run carries (#61), or a graceful fallback for older
+  // stored runs that predate result.locks: synthesize the canonical no-key list
+  // from isNoKeyRun(R) (mirrors the fieldFill legacy fallback). A keyed run → [].
+  var LEGACY_NO_KEY_LOCKS = [
+    { surface: "subtitle",    label: "We can't see your subtitle without access",          unlockCopy: "Connect App Store Connect to read your live subtitle and improve it." },
+    { surface: "keywords",    label: "We can't see your keyword field without access",     unlockCopy: "Connect App Store Connect to read your keyword field and improve it." },
+    { surface: "screenshots", label: "We can't read your real screenshots without access", unlockCopy: "Connect App Store Connect to grade your real screenshot set and improve it." },
+    { surface: "previews",    label: "We can't see your app preview video without access", unlockCopy: "Connect App Store Connect to read your preview coverage and improve it." },
+    { surface: "privacy",     label: "We can't see your privacy policy without access",    unlockCopy: "Connect App Store Connect to read your privacy policy and category and improve them." },
+    { surface: "category",    label: "We can't see your full category setup without access", unlockCopy: "Connect App Store Connect to read your primary and secondary categories and improve them." },
+    { surface: "locales",     label: "We can't see your per-locale keyword surfaces without access", unlockCopy: "Connect App Store Connect to read every locale's keyword surface and improve it." },
+  ];
+  function locksFor(R) {
+    if (R && Array.isArray(R.locks)) return R.locks;
+    // Legacy run (no locks field): a no-key run is blind to the same surfaces.
+    return isNoKeyRun(R) ? LEGACY_NO_KEY_LOCKS : [];
+  }
+  function lockForSurface(R, surface) {
+    var all = locksFor(R);
+    for (var i = 0; i < all.length; i++) { if (all[i].surface === surface) return all[i]; }
+    return null;
+  }
+
   // A finding's "fix path" — so no finding is a dead end. Returns DOM children
   // (links/notes) for findings that have an actionable external path, or null.
   // Curated, honest: real tools we'd recommend + the exact App Store Connect spot.
   function fixLinkFor(id) {
     var ASC = "https://appstoreconnect.apple.com";
-    var SHOTS_SKILL = "https://github.com/ParthJadhav/app-store-screenshots";
     var map = {
       screenshots_grade_low: [
         el("a", { href: SHOTS_SKILL, target: "_blank", rel: "noopener" }, ["Generate a better shot deck →"]),
@@ -1182,6 +1442,51 @@
     return el("div", { class: "shots-gallery" }, [head, strip, note]);
   }
 
+  // ── Screenshot improvement panel (#55) ─────────────────────────────────────
+  // Turns the dead-end grade into a prioritized, quantified worklist: each lever
+  // is a single concrete move with its point delta and the grade it would reach
+  // ("Add a 6th screenshot → +10 pts · C → B"), sorted biggest-win-first. Honest
+  // by construction: the engine emits NO levers for the unreadable "?" set (#41)
+  // or an A-grade set (no headroom), so this returns null and no panel renders —
+  // never over-selling a finished or unreadable listing. CONVERSION framing only,
+  // no ranking claims. The count/aspect levers reuse the existing make-it skill
+  // linkout; the agent never generates or pushes assets.
+  function improvementPanel(sc) {
+    if (!sc) return null;
+    var levers = sc.levers || [];
+    if (!levers.length) return null; // no headroom / unreadable → no panel
+
+    var head = el("div", { class: "shots-head" }, [
+      el("span", { class: "shots-title" }, ["Improve your grade"]),
+      el("span", { class: "shots-count faint" }, [
+        "Shots: " + (sc.grade || "?") + " · " + levers.length + " lever" + (levers.length === 1 ? "" : "s"),
+      ]),
+    ]);
+
+    var rows = levers.map(function (lv) {
+      var children = [
+        el("div", { class: "lever-line" }, [
+          el("span", { class: "lever-label" }, [lv.label]),
+          el("span", { class: "lever-delta" }, ["+" + lv.delta + " pts"]),
+          el("span", { class: "lever-grade" }, [lv.fromGrade + " → " + lv.toGrade]),
+        ]),
+      ];
+      if (lv.detail) children.push(el("div", { class: "lever-detail faint" }, [lv.detail]));
+      if (lv.skill) {
+        children.push(el("div", { class: "lever-link" }, [
+          el("a", { href: SHOTS_SKILL, target: "_blank", rel: "noopener" }, ["Generate the missing shots with this skill →"]),
+          el("span", { class: "faint" }, [" (free MIT skill)"]),
+        ]));
+      }
+      return el("div", { class: "lever-row flip-in" }, children);
+    });
+
+    var note = el("div", { class: "lever-note faint" }, [
+      "Each lever shows the exact points it adds and the grade it reaches — a conversion signal for what store visitors see. Biggest win first.",
+    ]);
+    return el("div", { class: "shot-levers" }, [head].concat(rows).concat([note]));
+  }
+
   // No-key run detector: a public-data run carries the `asc_unlock` finding and
   // has NO ascContext (only the ASC-read path builds one). On such a run the live
   // subtitle/keywords are UNSEEN — never present them as a measured 0 (#56).
@@ -1200,7 +1505,7 @@
 
     var head = el("div", { class: "audit-head" }, [
       el("h3", { style: "margin:0" }, ["Listing audit"]),
-      el("span", { class: "audit-summary" }, [summary ? summary.label : (findings.length + " finding" + (findings.length === 1 ? "" : "s"))]),
+      el("span", { class: "audit-summary" }, [(summary && summary.label) ? summary.label : (findings.length + " finding" + (findings.length === 1 ? "" : "s"))]),
     ]);
     var gc = gradeChip(R);
     if (gc) head.appendChild(gc);
@@ -1245,10 +1550,26 @@
     // grade chip + findings so "what is being graded" is visible. Null when the
     // set is unreadable ("?"), so the honest empty-state finding stands alone (#41).
     var gallery = screenshotGallery(R.audit && R.audit.screenshots);
-    if (gallery) children.push(gallery);
+    if (gallery) {
+      children.push(gallery);
+    } else {
+      // #61: the gallery is null when we couldn't READ the screenshot set (the "?"
+      // grade slot). Render an honest inline 🔒 here so the gap reads as
+      // LOCKED-not-bad next to gradeChip's neutral "Shots: ?", routing to the same
+      // primary ASC run panel as the unlock CTA. Only on a no-key run that carries
+      // a screenshots lock; a keyed run locks nothing, so this stays absent.
+      var shotLock = lockForSurface(R, "screenshots");
+      if (shotLock) children.push(fieldLock(shotLock, appId));
+    }
+    // Screenshot improvement panel (#55) — prioritized, quantified C→B→A levers
+    // beside the gallery. Null (no panel) when the set is unreadable ("?") or
+    // already A-grade (no headroom): the engine's levers gate honesty, the UI just
+    // renders. Removing this one push fully reverts the feature.
+    var levers = improvementPanel(R.audit && R.audit.screenshots);
+    if (levers) children.push(levers);
     // Metadata coverage gauge (PRD 03) — a budget-efficiency read, ABOVE the
     // findings. Separate visual section; the findings card logic is untouched.
-    var cov = coverageSection(R.coverage, noKey);
+    var cov = coverageSection(R.coverage, noKey, R, appId);
     if (cov) children.push(cov);
     children.push(body);
     // No-key run → render the unlock CTA below the findings (PRD 04). Driven by the
@@ -1281,7 +1602,12 @@
   // bar. A field the run couldn't read (seen:false — e.g. a no-key run's subtitle
   // & keywords) is shown as UNSEEN, never a measured "0/limit" (false precision).
   var COV_FIELD_LABEL = { name: "Name", subtitle: "Subtitle", keywords: "Keywords" };
-  function coverageFieldBreakdown(cov) {
+  // #61: on an UNSEEN row, decorate the existing "unseen" tag with an inline
+  // "Connect to unlock" link so the honest #60 "unseen" state ALSO reads as the
+  // upgrade lever — the same locked-field pattern as the screenshot lock, routing
+  // to the same primary ASC run panel. R/appId are optional so legacy/standalone
+  // callers keep working (no link when we don't have a run/app to route to).
+  function coverageFieldBreakdown(cov, R, appId) {
     var fill = cov && cov.fieldFill;
     // Fallback for older payloads without fieldFill: synthesize seen rows from
     // usedChars (treats every field as seen — only used by legacy data).
@@ -1303,8 +1629,17 @@
       var barFill = r.seen && !isEmpty ? el("span", { class: "cov-bar-fill", style: "width:" + Math.round(r.fillPct) + "%" }) : null;
       var bar = el("div", { class: "cov-bar" + (r.seen ? (isEmpty ? " empty" : "") : " unseen") }, barFill ? [barFill] : []);
       var valueEl;
+      var unlockLink = null;
       if (!r.seen) {
         valueEl = el("span", { class: "cov-field-val unseen", title: "Connect App Store Connect to read this field" }, ["unseen"]);
+        // #61: the unseen field IS a locked surface — offer the unlock lever inline.
+        var lock = appId ? lockForSurface(R, r.field) : null;
+        if (lock) {
+          unlockLink = el("a", { class: "field-lock-link cov-field-unlock", href: "#/apps/" + appId + "?asc=1",
+            title: lock.unlockCopy || "Connect App Store Connect to read this field",
+            onclick: function (e) { if (e && e.preventDefault) e.preventDefault(); go("#/apps/" + appId + "?asc=1"); } },
+            ["🔒 Connect to unlock →"]);
+        }
       } else if (isEmpty) {
         valueEl = el("span", { class: "cov-field-val empty", title: "We read this field and it's empty — an unused ranking surface you can claim" }, ["empty · 0/" + r.limit]);
       } else {
@@ -1314,11 +1649,12 @@
         el("span", { class: "cov-field-name" }, [label]),
         bar,
         valueEl,
+        unlockLink,
       ]);
     });
     return el("div", { class: "cov-fields-list" }, rows);
   }
-  function coverageSection(cov, noKey) {
+  function coverageSection(cov, noKey, R, appId) {
     if (!cov || typeof cov.coverageScore !== "number") return null;
     var score = Math.round(cov.coverageScore);
     var band = coverageBand(score);
@@ -1355,7 +1691,7 @@
       ]));
       metaKids.push(el("div", { class: "cov-frame faint" }, ["A budget-efficiency heuristic — how hard your metadata works, not a rank score."]));
       // FILL breakdown — per-field, with subtitle/keywords shown as UNSEEN.
-      metaKids.push(coverageFieldBreakdown(cov));
+      metaKids.push(coverageFieldBreakdown(cov, R, appId));
       metaKids.push(el("div", { class: "cov-fields faint" }, [
         (cov.distinctTerms || 0) + " distinct term" + ((cov.distinctTerms === 1) ? "" : "s") + " in the name",
       ]));
@@ -1380,7 +1716,7 @@
       metaKids.push(el("div", { class: "cov-frame faint" }, ["A budget-efficiency heuristic — how hard your metadata works, not a rank score."]));
       // FILL breakdown — per-field used/limit with real bars (separate from the
       // efficiency score above; a near-empty field reads low here even at 100%).
-      metaKids.push(coverageFieldBreakdown(cov));
+      metaKids.push(coverageFieldBreakdown(cov, R, appId));
       metaKids.push(el("div", { class: "cov-fields faint" }, [
         (cov.distinctTerms || 0) + " distinct term" + ((cov.distinctTerms === 1) ? "" : "s"),
       ]));
@@ -1549,70 +1885,168 @@
 
   // PR-style diff: the live store value (before) → the proposed value (after),
   // per field, with char counts. Built for developers — reads like a code review.
-  function diffCard(current, proposed) {
+  // The "Proposed" side is now EDITABLE (#39 Part 1): each field the agent
+  // actually proposed becomes an input bound to the shared edit buffer, with a
+  // live char bar, a client-side (advisory) validation mirror, and a per-field
+  // "Reset to agent's proposal". Only fields present in the proposal are editable
+  // — editing can never fabricate an unseen field into existence (honesty guard).
+  function diffCard(current, proposed, edit) {
     var order = [["name", "App name"], ["subtitle", "Subtitle"], ["keywords", "Keyword field"], ["promo", "Promotional text"]];
-    // Stagger index for the text-reveal animation — counts only changed rows so
-    // the proposed values ease in one after another (CSS reads it as --i).
     var revealIndex = 0;
+    var summaryEl = el("span", { class: "diffsummary" }, []);
+
+    // recompute the "N fields changed" summary from the live edit buffer vs the
+    // current live copy (the honest diff is the buffer, not the static proposal).
+    function changedVsCurrent() {
+      var n = 0;
+      order.forEach(function (o) {
+        var f = o[0];
+        if (!edit.editable(f)) return;
+        var was = String(current[f] == null ? "" : current[f]);
+        var nowv = String(edit.buffer[f] == null ? "" : edit.buffer[f]);
+        if (was !== nowv) n++;
+      });
+      return n;
+    }
+    function refreshSummary() {
+      var n = changedVsCurrent();
+      summaryEl.textContent = n + " field" + (n === 1 ? "" : "s") + " changed";
+    }
+
+    // build a non-editable row for a field the agent did NOT propose (unseen on a
+    // no-key run) but where the diff still wants to show a difference. Rare —
+    // mostly the name on a no-key run, which IS proposed. Kept for completeness.
+    function readonlySide(kind, val, isEmpty, limit) {
+      var count = (val || "").length;
+      var pct = Math.min(100, Math.round((count / limit) * 100));
+      var barCls = count > limit ? "warn" : pct >= 90 ? "full" : "";
+      return el("div", { class: "diffside " + kind }, [
+        el("div", { class: "dlabel" }, [kind === "was" ? "Current" : "Proposed",
+          el("span", { class: "charcount", style: count > limit ? "color:var(--bad)" : "" }, [count + "/" + limit])]),
+        el("div", { class: "dval" }, [isEmpty ? el("span", { class: "faint" }, [kind === "was" ? "(not set)" : "(left unchanged)"]) : val]),
+        el("div", { class: "charbar " + barCls }, [el("i", { style: "width:" + pct + "%" })]),
+      ]);
+    }
+
     var rows = order.map(function (o) {
       var field = o[0], label = o[1];
-      var was = current[field], now = proposed[field];
+      var was = current[field];
       var limit = LIMITS[field];
-      var changed = (was || "") !== (now || "");
-      // An unchanged field is not a "proposed change" — don't render a row for
-      // it (#58). This also drops fields the proposal never touched (was===now,
-      // both empty). Only genuine changes survive into the diff.
-      if (!changed) return null;
       var emptyWas = was == null || was === "";
-      var emptyNow = now == null || now === "";
 
-      function side(kind, val, isEmpty) {
-        var count = (val || "").length;
-        var pct = Math.min(100, Math.round((count / limit) * 100));
-        var barCls = count > limit ? "warn" : pct >= 90 ? "full" : "";
-        return el("div", { class: "diffside " + kind }, [
-          el("div", { class: "dlabel" }, [kind === "was" ? "Current" : "Proposed",
-            el("span", { class: "charcount", style: count > limit ? "color:var(--bad)" : "" }, [count + "/" + limit])]),
-          el("div", { class: "dval" }, [isEmpty ? el("span", { class: "faint" }, [kind === "was" ? "(not set)" : "(left unchanged)"]) : val]),
-          el("div", { class: "charbar " + barCls }, [el("i", { style: "width:" + pct + "%" })]),
+      // The field the agent never proposed (unseen) → keep the honest read-only
+      // behavior: only render a row if there's a genuine static change.
+      if (!edit.editable(field)) {
+        var now = proposed[field];
+        var changed = (was || "") !== (now || "");
+        if (!changed) return null;
+        return el("div", { class: "diffrow is-changed", style: "--i:" + revealIndex++ }, [
+          el("div", { class: "dfield" }, [
+            el("span", { class: "fname" }, [label]),
+            el("span", { class: "dtag " + (emptyWas ? "added" : "modified") }, [emptyWas ? "added" : "changed"]),
+          ]),
+          el("div", { class: "diffcols" }, [
+            readonlySide("was", was, emptyWas, limit),
+            el("div", { class: "darrow" }, ["→"]),
+            readonlySide("now", now, now == null || now === "", limit),
+          ]),
         ]);
       }
 
-      // Every surviving row is a genuine change (unchanged ones were filtered
-      // out above), so the row is always is-changed and carries the stagger.
-      return el("div", { class: "diffrow is-changed", style: "--i:" + revealIndex++ }, [
+      // ── editable proposed field ──────────────────────────────────────────────
+      var multiline = field === "keywords" || field === "promo";
+      var input = el(multiline ? "textarea" : "input", {
+        class: "txt diff-edit" + (multiline ? " mono" : ""),
+        rows: multiline ? "2" : null,
+        spellcheck: field === "keywords" ? "false" : null,
+        "data-field": field,
+        "aria-label": label,
+        value: multiline ? null : (edit.buffer[field] == null ? "" : edit.buffer[field]),
+      });
+      if (multiline) input.value = edit.buffer[field] == null ? "" : edit.buffer[field];
+
+      var charcount = el("span", { class: "charcount" }, []);
+      var bar = el("i", {});
+      var barWrap = el("div", { class: "charbar" }, [bar]);
+      var issuesEl = el("div", { class: "diff-issues", style: "display:none" }, []);
+      var dtag = el("span", { class: "dtag" }, []);
+      var resetBtn = el("button", { class: "btn ghost diff-reset", title: "Reset to the agent's proposal",
+        onclick: function () { edit.reset(field); render(); } }, ["↺ Reset"]);
+
+      function render() {
+        var val = edit.buffer[field] == null ? "" : edit.buffer[field];
+        if (input.value !== val) input.value = val;
+        var count = val.length;
+        var pct = Math.min(100, Math.round((count / limit) * 100));
+        var check = clientFieldCheck(field, edit.buffer);
+        var over = count > limit;
+        barWrap.className = "charbar " + (over ? "warn" : pct >= 90 ? "full" : "");
+        bar.setAttribute("style", "width:" + pct + "%");
+        charcount.textContent = count + "/" + limit;
+        charcount.setAttribute("style", over ? "color:var(--bad)" : "");
+        // validation issues (advisory) — red when the field breaks a rule.
+        if (check.ok) {
+          issuesEl.style.display = "none";
+          issuesEl.textContent = "";
+          input.classList.remove("invalid");
+        } else {
+          issuesEl.style.display = "";
+          issuesEl.textContent = check.issues.join(" · ");
+          input.classList.add("invalid");
+        }
+        // changed-vs-current tag + dirty (edited-from-agent) indicator
+        var wasStr = String(current[field] == null ? "" : current[field]);
+        var changedNow = wasStr !== val;
+        dtag.className = "dtag " + (!changedNow ? "same" : emptyWas ? "added" : "modified");
+        dtag.textContent = !changedNow ? "no change" : emptyWas ? "added" : "changed";
+        resetBtn.style.display = edit.isDirty(field) ? "" : "none";
+        refreshSummary();
+      }
+
+      input.addEventListener("input", function () { edit.set(field, input.value); render(); });
+      // initial paint
+      render();
+
+      var nowSide = el("div", { class: "diffside now" }, [
+        el("div", { class: "dlabel" }, [
+          "Proposed",
+          el("span", { class: "edited-flag", style: "display:none" }, []),
+          charcount,
+        ]),
+        el("div", { class: "dval dval-edit" }, [input]),
+        barWrap,
+        issuesEl,
+      ]);
+
+      return el("div", { class: "diffrow is-changed is-editable", style: "--i:" + revealIndex++ }, [
         el("div", { class: "dfield" }, [
           el("span", { class: "fname" }, [label]),
-          el("span", { class: "dtag " + (emptyWas ? "added" : "modified") }, [emptyWas ? "added" : "changed"]),
+          dtag,
+          resetBtn,
         ]),
         el("div", { class: "diffcols" }, [
-          side("was", was, emptyWas),
+          readonlySide("was", was, emptyWas, limit),
           el("div", { class: "darrow" }, ["→"]),
-          side("now", now, emptyNow),
+          nowSide,
         ]),
       ]);
     }).filter(Boolean);
 
-    // Rendered rows ARE the changed fields (unchanged were filtered out), so the
-    // summary count is just the row count — no separate recompute to drift.
-    var changedCount = rows.length;
-
-    // All fields unchanged → no honest "proposed change" to show. Say so plainly
-    // and point at the real next step (an ASC read), rather than an empty diff or
-    // a fake row (#58). On a no-key run, subtitle/keywords are UNSEEN, not "same."
+    // No editable proposed fields AND nothing changed → honest "connect ASC" hint.
     if (!rows.length) {
       rows = [el("div", { class: "faint", style: "padding:6px 0" }, [
         "No metadata changes proposed — connect App Store Connect to let the agent read + improve your subtitle/keywords.",
       ])];
     }
 
+    refreshSummary();
     return el("div", { class: "card" }, [
       el("div", { class: "diffhead" }, [
         el("h3", { style: "margin:0" }, ["Proposed changes"]),
-        el("span", { class: "diffsummary" }, [changedCount + " field" + (changedCount === 1 ? "" : "s") + " changed"]),
+        summaryEl,
       ]),
       el("p", { class: "faint", style: "margin:4px 0 14px;font-size:13px" },
-        ["Your live listing on the left, the agent's proposal on the right. Review it like a PR — then approve below."]),
+        ["Your live listing on the left, the agent's proposal on the right — edit any field before you ship. We re-check Apple's limits on the server, so an invalid edit can't be staged."]),
       el("div", { class: "difflist" }, rows),
       el("div", { class: "faint", style: "font-size:12px;margin-top:10px" }, ["Keyword field is comma-joined with no spaces and shares no words with the title/subtitle — Apple's rules, enforced in code."]),
     ]);
@@ -1865,17 +2299,50 @@
       ]),
     ]);
 
-    // The selected set: start from what the seeded payload used, else all available.
+    // The selected set: start from what the seeded payload used; else default to
+    // the TOP MOVERS — the competitors that are ahead of you on the most/widest
+    // keywords (largest summed closeable gap), capped at MAX (#25 "defaulting to
+    // the top movers"). Deterministic name tie-break to match the builder.
+    var MAX_WAR_ROOM_COMPETITORS = 4;
     var selected = {};
-    var seedNames = (initial && initial.competitors) || available;
+    var seedNames = (initial && initial.competitors && initial.competitors.length)
+      ? initial.competitors
+      : topMovers((initial && initial.warRoom) || [], available, MAX_WAR_ROOM_COMPETITORS);
     seedNames.forEach(function (n) { selected[n] = true; });
 
+    // Rank available competitors by how much movement there is to chase: sum the
+    // positive gap (their rank ahead of yours) across keywords. Pure + deterministic.
+    function topMovers(rows, names, cap) {
+      if (!names.length) return [];
+      var score = {};
+      names.forEach(function (n) { score[n] = 0; });
+      (rows || []).forEach(function (r) {
+        if (r.you == null) return;
+        (r.competitors || []).forEach(function (cc) {
+          if (cc.rank == null || score[cc.name] == null) return;
+          var gap = r.you - cc.rank; // positive = competitor ahead of you
+          if (gap > 0) score[cc.name] += gap;
+        });
+      });
+      return names.slice().sort(function (a, b) {
+        if (score[b] !== score[a]) return score[b] - score[a]; // most movement first
+        return a < b ? -1 : a > b ? 1 : 0; // stable name tie-break
+      }).slice(0, cap);
+    }
+
     var gridWrap = el("div", { class: "war-grid-wrap" });
+    var asOf = el("div", { class: "war-asof faint" });
 
     function renderGrid(data) {
       clear(gridWrap);
       var rows = (data && data.warRoom) || [];
       var cols = (data && data.competitors) || [];
+      // Honest provenance: the live-checked competitor numbers are a point-in-time
+      // snapshot, not continuous tracking — stamp them with the endpoint's "as of".
+      clear(asOf);
+      if (data && data.checkedAt) {
+        asOf.appendChild(document.createTextNode("Competitor ranks live-checked as of " + (data.checkedAt || "").slice(0, 10) + "."));
+      }
       if (!rows.length) {
         gridWrap.appendChild(el("div", { class: "faint" }, [
           cols.length ? "No tracked keywords to compare yet — run the loop to capture ranks." : "Select a competitor to open the head-to-head.",
@@ -1886,23 +2353,36 @@
         .concat(cols.map(function (n) { return el("th", {}, [n]); }))
         .concat([el("th", {}, ["Gap"]), el("th", {}, ["Trend"])]));
       var tb = el("tbody", {});
-      rows.forEach(function (r) {
-        var tr = el("tr", { class: r.winning ? "winning" : "" }, []);
+      rows.forEach(function (r, i) {
+        var tr = el("tr", { class: "war-row flip-in" + (r.winning ? " winning" : ""), style: "--i:" + i }, []);
         tr.appendChild(el("td", { class: "war-kw" }, [r.keyword]));
-        tr.appendChild(el("td", {}, [el("span", { class: "pos " + rankClass(r.you) }, [rankText(r.you)])]));
+        // YOUR cell: animate your prev → cur count-up, pulsing green when you're
+        // gaining and red when you're losing/lost. youPrevious === null (single
+        // snapshot) → countUpRank skips the tween and just shows the current rank
+        // — no fabricated movement. prefers-reduced-motion jumps to final (handled
+        // inside countUpRank). The pulse class tracks YOUR trend, not the gap.
+        var trendPulse = (r.trend === "gaining" || r.trend === "new") ? " good"
+          : (r.trend === "losing" || r.trend === "lost") ? " bad" : "";
+        var youEl = el("span", { class: "pos rank-pop " + rankClass(r.you) + trendPulse, style: "--i:" + i }, [rankText(r.you)]);
+        countUpRank(youEl, r.youPrevious, r.you, 120 + i * 60);
+        tr.appendChild(el("td", {}, [youEl]));
+        // Competitor cells stay static honest current ranks ("—" when unchecked).
+        // We have no historical competitor rank to count up from (Track A), so we
+        // never animate a competitor — that would imply unmeasured movement.
         (r.competitors || []).forEach(function (cc) {
           tr.appendChild(el("td", {}, [el("span", { class: "pos " + rankClass(cc.rank) }, [rankText(cc.rank)])]));
         });
-        // Gap: red when you're behind (positive gap), green when you're winning.
+        // Gap: directional tint by YOUR trend so a closing gap reads as momentum.
         var gapCell;
         if (r.gapToBest == null) {
-          gapCell = el("span", { class: "war-gap " + (r.winning ? "good" : "neutral") }, [r.winning ? "winning" : "—"]);
+          gapCell = el("span", { class: "war-gap rank-pop " + (r.winning ? "good" : "neutral"), style: "--i:" + i }, [r.winning ? "winning" : "—"]);
         } else {
-          gapCell = el("span", { class: "war-gap bad", title: "Your rank minus the closest competitor's — the gap to close" }, ["+" + r.gapToBest]);
+          var gapTint = r.trend === "gaining" ? " good" : " bad";
+          gapCell = el("span", { class: "war-gap rank-pop" + gapTint, style: "--i:" + i, title: "Your rank minus the closest competitor's — the gap to close" }, ["+" + r.gapToBest]);
         }
         tr.appendChild(el("td", {}, [gapCell]));
         var tm = WAR_TREND[r.trend] || WAR_TREND.flat;
-        tr.appendChild(el("td", {}, [el("span", { class: "war-trend " + tm.cls }, [tm.txt])]));
+        tr.appendChild(el("td", {}, [el("span", { class: "war-trend rank-pop " + tm.cls, style: "--i:" + i }, [tm.txt])]));
         tb.appendChild(tr);
       });
       gridWrap.appendChild(el("table", { class: "war-grid" }, [el("thead", {}, [head]), tb]));
@@ -1935,6 +2415,7 @@
       card.appendChild(chips);
     }
     card.appendChild(gridWrap);
+    card.appendChild(asOf);
 
     // Seed from the run payload immediately (no flash), then it's selector-driven.
     if (initial && initial.warRoom) renderGrid(initial);
@@ -1942,15 +2423,40 @@
     return card;
   }
 
-  function gateCard(run, R) {
+  function gateCard(run, R, edit) {
+    // Tolerate older callers without an edit buffer (re-render fallbacks) by
+    // synthesizing one from the proposal — keeps the gate honest about scope.
+    if (!edit) edit = makeEditState(R.proposedCopy || {}, R.currentCopy || {});
     var card = el("div", { class: "card", style: "border-color:var(--brand-dim)" });
     card.appendChild(el("h3", {}, ["The approval gate"]));
 
     if (run.status === "awaiting_approval" || run.status === "detected" || run.status === "researching") {
       card.appendChild(el("p", { class: "muted", style: "margin-top:0" }, ["The push is the one irreversible step. The agent stopped here and is waiting on you."]));
-      var approve = el("button", { class: "btn ok", onclick: function () { decide(run.id, "approve", card, approve, run, R); } }, ["✓ Approve & reveal commands"]);
-      var reject = el("button", { class: "btn bad", onclick: function () { decide(run.id, "reject", card, reject, run, R); } }, ["✕ Reject"]);
+      var approve = el("button", { class: "btn ok", onclick: function () { decide(run.id, "approve", card, approve, run, R, edit); } }, ["✓ Approve & reveal commands"]);
+      var reject = el("button", { class: "btn bad", onclick: function () { decide(run.id, "reject", card, reject, run, R, edit); } }, ["✕ Reject"]);
+      // Block Approve while the client validator (advisory) reports any edited
+      // field invalid — the server re-checks and is authoritative, but we never
+      // let the user fire an approval we already know it will reject.
+      var invalidMsg = el("div", { class: "diff-invalid-msg", style: "display:none;margin-top:10px" }, []);
+      function syncApprove() {
+        var v = edit.validation();
+        if (v.pass) {
+          approve.disabled = false;
+          approve.title = "";
+          invalidMsg.style.display = "none";
+          invalidMsg.textContent = "";
+        } else {
+          approve.disabled = true;
+          approve.title = "Fix the edited fields above before approving";
+          invalidMsg.style.display = "";
+          var bad = v.checks.filter(function (c) { return !c.ok; }).map(function (c) { return c.field; });
+          invalidMsg.textContent = "Can't approve yet — fix " + bad.join(", ") + " above (over a limit or breaks Apple's keyword rules).";
+        }
+      }
+      edit.subscribe(syncApprove);
+      syncApprove();
       card.appendChild(el("div", { class: "btn-row" }, [approve, reject]));
+      card.appendChild(invalidMsg);
       card.appendChild(commandsLocked());
     } else if (run.status === "rejected") {
       card.appendChild(el("div", { class: "locked" }, [el("span", { class: "lock" }, ["✕"]), "You rejected this proposal. Nothing was pushed."]));
@@ -1958,11 +2464,11 @@
       card.appendChild(el("div", { class: "btn-row", style: "margin-top:12px" }, [
         el("button", { class: "btn primary", onclick: function () { go("#/apps/" + run.app_id); } }, ["▶ Run the agent again"]),
       ]));
-    } else if (isNoOpProposal(R.currentCopy || {}, R.proposedCopy || {})) {
-      // #76: the proposal doesn't actually change anything (or differs only by
-      // case/whitespace). Don't present a "push this" handoff for metadata that's
-      // already live — that reads as "you're showing me my own data as a change."
-      // Be honest: nothing to push.
+    } else if (isNoOpProposal(R.currentCopy || {}, edit.buffer || R.proposedCopy || {})) {
+      // #76: the (possibly edited) copy doesn't actually change anything vs live
+      // (or differs only by case/whitespace). Compare against the edit BUFFER so an
+      // edit back to the live value is honestly reported as a no-op, not a "change."
+      // Don't present a "push this" handoff for metadata that's already live.
       card.appendChild(el("div", { class: "locked", style: "margin-top:4px" }, [
         el("span", { class: "lock" }, ["✓"]),
         "Your metadata is already well-optimized — the agent found no changes worth pushing. Nothing to upload.",
@@ -1971,7 +2477,10 @@
         el("button", { class: "btn", onclick: function () { go("#/apps/" + run.app_id); } }, ["← Back to app"]),
       ]));
     } else {
-      // approved or shipped → reveal the handoff
+      // approved or shipped → reveal the handoff. After approval the server has
+      // staged the (possibly edited) copy + re-derived commands onto R, so the
+      // panels render the EDITED values that actually ship — not the agent's
+      // original proposal.
       card.appendChild(el("p", { class: "muted", style: "margin-top:0" }, ["Approved. Hand the metadata to your build pipeline (recommended) — that path is credential-free. Or upload straight to App Store Connect below; ShipASO uses your key once and never stores it."]));
       card.appendChild(ascPushCta(run.id));
       card.appendChild(commandsBox(R.pushCommands || [], run.id, R.proposedCopy || {}, R.currentCopy || {}));
@@ -2334,15 +2843,28 @@
     return lines.join("\n");
   }
 
-  function decide(runId, action, card, clicked, run, R) {
+  function decide(runId, action, card, clicked, run, R, edit) {
     // Disable both buttons, but show in-flight feedback on the one clicked so the
     // action never reads as a frozen UI (the busy-cursor-with-no-activity bug).
     var btns = card.querySelectorAll("button"); btns.forEach(function (b) { b.disabled = true; });
     var label = clicked && clicked.textContent;
     if (clicked) clicked.innerHTML = '<span class="spin"></span> ' + (action === "approve" ? "Approving…" : "Rejecting…");
-    api("POST", "/runs/" + runId + "/" + action)
-      .then(function () {
+    // On approve, send the human edit buffer so the edited copy is what ships.
+    // The server re-validates with the engine's validateCopy and is authoritative;
+    // an invalid edit returns 400 and no gate row is written.
+    var body = action === "approve"
+      ? { decision: "approve", editedCopy: (edit && edit.buffer) || {} }
+      : { decision: "reject" };
+    api("POST", "/runs/" + runId + "/" + action, body)
+      .then(function (res) {
         toast(action === "approve" ? "Approved — commands revealed." : "Rejected — nothing pushed.");
+        // The server returns the FINALIZED (edited) copy + re-derived commands on
+        // approval — fold them into R so the handoff panels render what actually
+        // ships, not the agent's original proposal.
+        if (action === "approve" && res) {
+          if (res.proposedCopy) R.proposedCopy = res.proposedCopy;
+          if (res.pushCommands) R.pushCommands = res.pushCommands;
+        }
         // Update the gate card IN PLACE rather than re-routing. A full route()
         // re-render scrolled the page to the top AND wiped any in-progress input
         // (e.g. a half-entered .p8 in the push panel) — a bad experience right at
@@ -2350,7 +2872,7 @@
         // with the new status and swap it, preserving scroll position.
         if (run && R && card.parentNode) {
           run.status = action === "approve" ? "approved" : "rejected";
-          var fresh = gateCard(run, R);
+          var fresh = gateCard(run, R, edit);
           card.parentNode.replaceChild(fresh, card);
           // Keep the header status badge in sync (it lives outside the gate card).
           var badge = document.querySelector("#view .badge");
@@ -2635,6 +3157,10 @@
       }
       route();
     });
+    // SPA freshness (#54): nudge a long-open tab to reload after a deploy. Gated
+    // prod-only (API_BASE + hashed bundle) inside startFreshnessChecks → inert
+    // in local/demo/E2E by default.
+    startFreshnessChecks();
   });
 
   // Pull + clear the pending-app intent stashed at the preview gate.
@@ -2662,6 +3188,49 @@
       });
   }
 
+  // RLHF opt-out toggle (#39 Part 2). Capture is ON by default; this lets a
+  // signed-in user opt OUT. Mirrors the agent-pause toggle pattern: read the live
+  // state from /auth/me (session.rlhf_opt_out), POST the flip, reflect it back.
+  // The disclosure line states the honest, anonymized + encrypted design.
+  function privacyToggle() {
+    var optedOut = !!(session && session.rlhf_opt_out);
+    var wrap = el("span", { id: "rlhfToggle", style: "display:flex;gap:6px;align-items:center" });
+    var link = el("a", {
+      href: "#", id: "rlhfToggleLink",
+      title: "We use anonymized, encrypted edits to improve ShipASO's suggestions. No account or app identifiers are stored. Toggle off to opt out.",
+      style: "color:inherit;text-decoration:underline;cursor:pointer",
+    }, [optedOut ? "Improve ShipASO: off" : "Improve ShipASO: on"]);
+    // When the session object didn't carry the flag (e.g. demo/local boot), pull
+    // the live value from the backend so the label reflects persisted state.
+    if (!(session && typeof session.rlhf_opt_out === "boolean")) {
+      api("GET", "/auth/me").then(function (me) {
+        if (me && typeof me.rlhf_opt_out === "boolean") {
+          optedOut = me.rlhf_opt_out;
+          if (session) session.rlhf_opt_out = optedOut;
+          link.textContent = optedOut ? "Improve ShipASO: off" : "Improve ShipASO: on";
+        }
+      }).catch(function () {});
+    }
+    link.onclick = function (e) {
+      e.preventDefault();
+      var next = !optedOut; // next opt-OUT state
+      link.style.pointerEvents = "none";
+      api("POST", "/account/rlhf-optout", { optOut: next })
+        .then(function (out) {
+          var v = !!out.rlhf_opt_out;
+          if (session) session.rlhf_opt_out = v;
+          link.textContent = v ? "Improve ShipASO: off" : "Improve ShipASO: on";
+          toast(v
+            ? "Opted out — your edits won't be used to improve ShipASO."
+            : "Thanks — anonymized, encrypted edits help improve ShipASO.");
+        })
+        .catch(function () { toast("Couldn't update that — try again."); })
+        .finally(function () { link.style.pointerEvents = ""; applyAuthHeader(); });
+    };
+    wrap.appendChild(link);
+    return wrap;
+  }
+
   // Reflect auth state in the header (see headerState):
   //   signedIn → email + Sign out (apps auto-load); hide the demo stub + label
   //   signIn   → a "Sign in" button (→ magic link); hide the demo stub + label
@@ -2680,6 +3249,12 @@
     if (st.mode === "demoStub") {
       if (input) input.style.display = "";
       if (label) { label.style.display = ""; label.textContent = "acting as"; }
+      // Surface the RLHF opt-out toggle in local/demo dev too (it routes through
+      // the mock backend), so the privacy control is exercisable end-to-end.
+      var demoSpan = el("span", { id: "authState", class: "faint", style: "display:flex;gap:8px;align-items:center" }, [
+        privacyToggle(),
+      ]);
+      who.insertBefore(demoSpan, document.getElementById("envpill"));
       return;
     }
 
@@ -2690,6 +3265,7 @@
     if (st.mode === "signedIn") {
       var span = el("span", { id: "authState", class: "faint", style: "display:flex;gap:8px;align-items:center" }, [
         el("span", {}, [st.email || ""]),
+        privacyToggle(),
         el("a", { href: "#", style: "color:inherit;text-decoration:underline;cursor:pointer", onclick: function (e) {
           e.preventDefault();
           fetch(API_BASE + "/auth/logout", { method: "POST", credentials: "include" })

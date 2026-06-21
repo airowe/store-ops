@@ -14,16 +14,21 @@ import type {
   AgentResult,
   AscContext,
   Change,
+  CopyFields,
   CoverageReport,
   Finding,
   KeywordGap,
   LocaleRecommendation,
   Opportunity,
   ProposedCopy,
+  PushCommand,
   Rank,
   ScoredKeyword,
+  SurfaceLock,
 } from "./engine/index.js";
 import type { RunStatus } from "./engine/constants.js";
+import { buildPreferenceRows } from "./engine/preferenceSignal.js";
+import { encryptField } from "./crypto/rlhfCrypto.js";
 
 // ── Row types (mirror schema.sql) ────────────────────────────────────────────
 
@@ -42,6 +47,7 @@ export type UserRow = {
   github_repo: string | null;
   /** owner paused the weekly autonomous sweep (issue #51). 0/1 in SQLite → boolean here. */
   agent_paused: boolean;
+  rlhf_opt_out: number; // 0 = capturing (default), 1 = opted out (#39 Part 2)
 };
 
 export type AppRow = {
@@ -123,6 +129,13 @@ export type ReasoningTrace = {
    */
   findings?: Finding[] | undefined;
   /**
+   * Locked-field upgrade surfaces (#61) — the surfaces a no-key run could NOT
+   * read, each rendered as an honest inline "unlock to see + improve" lock. Empty
+   * on a Mode-A run. Static capability/opportunity copy only (no ASC data) — safe
+   * to serve. Absent on older traces (the UI falls back to isNoKeyRun).
+   */
+  locks?: SurfaceLock[] | undefined;
+  /**
    * The slim, PII-safe display context for the findings card (category, counts,
    * version state) — present only on a Mode-A run. The full `ascSnapshot` is
    * deliberately NOT stored on the trace: it stays out of the client-served JSON.
@@ -182,12 +195,13 @@ const now = (): string => new Date().toISOString().replace("T", " ").slice(0, 19
 // ── users ────────────────────────────────────────────────────────────────────
 
 const USER_COLS =
-  "id, email, created_at, tier, status, stripe_customer_id, stripe_subscription_id, current_period_end, github_installation_id, github_repo, agent_paused";
+  "id, email, created_at, tier, status, stripe_customer_id, stripe_subscription_id, current_period_end, github_installation_id, github_repo, agent_paused, rlhf_opt_out";
 
 /**
  * Normalize a raw `users` row from D1 into a `UserRow`. SQLite has no boolean,
  * so `agent_paused` comes back as 0/1 (or undefined on a legacy pre-migration
  * row) — fold it to a real boolean so callers never compare against `1`.
+ * `rlhf_opt_out` (#39 Part 2) stays a 0/1 number and passes through unchanged.
  */
 function mapUserRow(raw: (Omit<UserRow, "agent_paused"> & { agent_paused?: number | null }) | null): UserRow | null {
   if (!raw) return null;
@@ -216,6 +230,7 @@ export async function upsertUser(db: D1Database, email: string): Promise<UserRow
     github_installation_id: null,
     github_repo: null,
     agent_paused: false,
+    rlhf_opt_out: 0, // capture is ON by default; the settings toggle sets this
   };
   await db
     .prepare("INSERT INTO users (id, email, created_at, tier, status) VALUES (?, ?, ?, ?, ?)")
@@ -300,6 +315,70 @@ export async function setTier(
     .prepare(`UPDATE users SET ${sets.join(", ")} WHERE id = ?`)
     .bind(...binds)
     .run();
+}
+
+/**
+ * Is this user opted OUT of RLHF capture? Capture is ON by default (returns
+ * false when the row is missing), so the privacy-honoring read is conservative
+ * only in that an opted-out user is never captured. Mirrors `getTier`.
+ */
+export async function getOptOut(db: D1Database, userId: string): Promise<boolean> {
+  const row = await db
+    .prepare("SELECT rlhf_opt_out FROM users WHERE id = ?")
+    .bind(userId)
+    .first<{ rlhf_opt_out: number }>();
+  return (row?.rlhf_opt_out ?? 0) === 1;
+}
+
+/** Set a user's RLHF opt-out flag (the settings toggle calls this). */
+export async function setOptOut(
+  db: D1Database,
+  args: { userId: string; optOut: boolean },
+): Promise<void> {
+  await db
+    .prepare("UPDATE users SET rlhf_opt_out = ? WHERE id = ?")
+    .bind(args.optOut ? 1 : 0, args.userId)
+    .run();
+}
+
+/**
+ * Build the ANONYMOUS, ENCRYPTED `proposal_edits` INSERT statements for a decided
+ * run (#39 Part 2), to be APPENDED to recordApproval's atomic batch so the
+ * captured signal can never disagree with the recorded gate decision.
+ *
+ * Privacy by construction:
+ *   • SAFE-DEGRADE — when `key` is null (env.RLHF_ENCRYPTION_KEY unset), returns
+ *     [] and writes nothing. The approval proceeds normally.
+ *   • ANONYMOUS — the INSERT carries NO user_id / NO app_id. A row cannot be
+ *     traced to a user or app. (The OPT-OUT is honored upstream at the call site:
+ *     an opted-out user never reaches this function, so it writes zero rows.)
+ *   • ENCRYPTED — `proposed`/`final` are AES-256-GCM sealed before binding; the
+ *     plaintext copy is never stored.
+ */
+export async function captureProposalEdits(
+  db: D1Database,
+  key: CryptoKey | null,
+  args: {
+    proposed: Partial<CopyFields>;
+    final: Partial<CopyFields>;
+    decision: "approved" | "rejected";
+  },
+): Promise<D1PreparedStatement[]> {
+  if (!key) return []; // safe-degrade: no key ⇒ no capture, no error
+  const rows = buildPreferenceRows(args);
+  const stmts: D1PreparedStatement[] = [];
+  for (const r of rows) {
+    const proposedEnc = await encryptField(key, r.proposed);
+    const finalEnc = await encryptField(key, r.final);
+    stmts.push(
+      db
+        .prepare(
+          "INSERT INTO proposal_edits (id, field, decision, edited, proposed_enc, final_enc, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+        )
+        .bind(uuid(), r.field, r.decision, r.edited ? 1 : 0, proposedEnc, finalEnc, now()),
+    );
+  }
+  return stmts;
 }
 
 /** Find a user by their Stripe customer id (webhook → local user resolution). */
@@ -522,6 +601,10 @@ export async function persistRun(
     // ONLY the slim ascContext — never the raw `ascSnapshot` (it's omitted here
     // on purpose so it can't reach the client via the trace).
     ...(result.findings !== undefined ? { findings: result.findings } : {}),
+    // Locked-field upgrade surfaces (#61) ride along when computed — static
+    // capability/opportunity copy only (no raw ASC). Persisted so the run page
+    // renders the inline 🔒 locks verbatim; empty on a keyed run.
+    ...(result.locks !== undefined ? { locks: result.locks } : {}),
     ...(result.ascContext !== undefined ? { ascContext: result.ascContext } : {}),
     ...(result.opportunities !== undefined ? { opportunities: result.opportunities } : {}),
     // Keyword gaps (PRD 01) ride along when computed — names-only attribution,
@@ -645,7 +728,17 @@ export async function getApproval(db: D1Database, runId: string): Promise<Approv
  */
 export async function recordApproval(
   db: D1Database,
-  args: { runId: string; decision: "approved" | "rejected" },
+  args: {
+    runId: string;
+    decision: "approved" | "rejected";
+    /**
+     * Extra statements to run in the SAME atomic batch as the gate decision
+     * (#39 Part 2: the anonymous, encrypted `proposal_edits` capture rows). They
+     * commit all-or-nothing with the approval, so the captured RLHF signal can
+     * never disagree with the recorded decision. Empty/absent → unchanged behavior.
+     */
+    extraStmts?: D1PreparedStatement[];
+  },
 ): Promise<ApprovalRow> {
   const row: ApprovalRow = {
     id: uuid(),
@@ -662,8 +755,71 @@ export async function recordApproval(
       )
       .bind(row.id, row.run_id, row.decision, row.decided_at),
     db.prepare("UPDATE runs SET status = ? WHERE id = ?").bind(nextStatus, args.runId),
+    ...(args.extraStmts ?? []),
   ]);
   return row;
+}
+
+/**
+ * Persist the FINALIZED copy onto a run after a human edited the proposal and
+ * cleared the gate (#39 Part 1, approach (a)). Rewrites the run trace's
+ * `proposedCopy` + `pushCommands` (additive — every other trace field is kept
+ * verbatim) and replaces the normalized `proposals` rows. Because the downstream
+ * handoffs all read `trace.proposedCopy` / `trace.pushCommands`, this is the only
+ * write needed for the edited copy to ship — no handoff route changes.
+ *
+ * The copy is the already-validated, already-merged result from
+ * `finalizeEditedCopy`; the caller MUST have confirmed `validation.pass` first.
+ * The whole rewrite runs in one atomic `db.batch` so the trace and the proposals
+ * rows can never disagree.
+ */
+export async function updateRunCopy(
+  db: D1Database,
+  args: { runId: string; copy: CopyFields; pushCommands: PushCommand[] },
+): Promise<void> {
+  const run = await db
+    .prepare("SELECT reasoning_json FROM runs WHERE id = ?")
+    .bind(args.runId)
+    .first<{ reasoning_json: string }>();
+  if (!run) return;
+
+  const trace = JSON.parse(run.reasoning_json) as ReasoningTrace;
+  // preserve the existing validation block's shape: it was already re-run by the
+  // caller (finalizeEditedCopy), so carry it onto the trace's ProposedCopy.
+  const prevValidation = trace.proposedCopy?.validation;
+  trace.proposedCopy = {
+    ...trace.proposedCopy,
+    ...args.copy,
+    ...(prevValidation !== undefined ? { validation: prevValidation } : {}),
+  } as ProposedCopy;
+  trace.pushCommands = args.pushCommands;
+
+  const stmts: D1PreparedStatement[] = [
+    db
+      .prepare("UPDATE runs SET reasoning_json = ? WHERE id = ?")
+      .bind(JSON.stringify(trace), args.runId),
+    db.prepare("DELETE FROM proposals WHERE run_id = ?").bind(args.runId),
+  ];
+
+  const fields: Array<[string, string | undefined]> = [
+    ["name", args.copy.name],
+    ["subtitle", args.copy.subtitle],
+    ["keywords", args.copy.keywords],
+    ["promo", args.copy.promo],
+    ["description", args.copy.description],
+  ];
+  for (const [field, value] of fields) {
+    if (value === undefined) continue;
+    stmts.push(
+      db
+        .prepare(
+          "INSERT INTO proposals (id, run_id, field, value, char_count) VALUES (?, ?, ?, ?, ?)",
+        )
+        .bind(uuid(), args.runId, field, value, value.length),
+    );
+  }
+
+  await db.batch(stmts);
 }
 
 export async function setRunStatus(

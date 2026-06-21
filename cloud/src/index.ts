@@ -55,6 +55,16 @@ export type Env = {
   // PEM) are ShipASO's own credential. Unset → the /github/pr endpoint is inert.
   GITHUB_APP_ID?: string;
   GITHUB_APP_PRIVATE_KEY?: string;
+  // RLHF capture of proposal edits (#39 Part 2). OPTIONAL: when unset, the edit
+  // capture is a SILENT no-op — no `proposal_edits` row is written and approval
+  // proceeds normally (exactly like the AI reasoner degrades without env.AI). When
+  // set, it must be a base64-encoded 32-byte key; proposal-edit values are
+  // AES-256-GCM encrypted at rest under it. Rows are anonymous (no user/app id).
+  RLHF_ENCRYPTION_KEY?: string;
+  // Owner gate for GET /admin/preference-data (the decrypt → JSONL export). When
+  // unset, the export route degrades CLOSED (403). Passed as the `x-rlhf-export`
+  // request header; must match exactly.
+  RLHF_EXPORT_TOKEN?: string;
 };
 
 export default {

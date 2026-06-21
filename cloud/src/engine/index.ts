@@ -32,7 +32,10 @@ export {
   type Listing as ScreenshotListing,
   type ShotScore,
   type Grade,
+  type Lever,
   score as scoreScreenshots,
+  shotLevers,
+  gradeFor,
   aspectFromUrl,
   aspectLabel,
 } from "./screenshotScore.js";
@@ -97,9 +100,11 @@ export {
   type FindingImpact,
   type FindingsSummary,
   type AuditFindingsInput,
+  type SurfaceLock,
   auditFindings,
   summarizeFindings,
   scoreFinding,
+  surfaceLocks,
 } from "./auditFindings.js";
 export { type AscContext, buildAscContext, FORBIDDEN_CONTEXT_KEYS } from "./ascContext.js";
 export {

@@ -321,18 +321,18 @@ test.describe("run page — PR-style diff (current → proposed)", () => {
     // The diff card still leads with the "Proposed changes" header.
     await expect(page.getByRole("heading", { name: /proposed changes/i })).toBeVisible();
 
-    // The animated layer applies to the proposed side of changed rows. With motion
-    // reduced, those values must be fully visible (opacity:1, not stuck at the
-    // animation's 0 start) and carry their real text — the static diff is the
-    // source of truth, the animation is purely additive.
-    const dvals = page.locator(".diffrow.is-changed .diffside.now .dval");
-    const count = await dvals.count();
+    // The proposed side is now editable inputs (#39 Part 1). With motion reduced,
+    // every proposed field renders an input fully visible (opacity:1, not stuck at
+    // the animation's 0 start) and carrying its real value — the editable diff is
+    // the source of truth, the animation is purely additive.
+    const inputs = page.locator(".diffrow.is-editable .diff-edit");
+    const count = await inputs.count();
     expect(count).toBeGreaterThan(0);
     for (let i = 0; i < count; i++) {
-      const opacity = await dvals.nth(i).evaluate((node) => getComputedStyle(node).opacity);
+      const opacity = await inputs.nth(i).evaluate((node) => getComputedStyle(node).opacity);
       expect(opacity).toBe("1");
-      const text = await dvals.nth(i).textContent();
-      expect(text?.trim()).toBeTruthy();
+      const val = await inputs.nth(i).inputValue();
+      expect(val.trim()).toBeTruthy();
     }
     await context.close();
   });
@@ -380,9 +380,11 @@ test.describe("run page — diff hides unchanged fields (#58)", () => {
     );
   }
 
-  test("unchanged fields render no diff row and the all-unchanged empty state shows", async ({ page }) => {
+  test("unchanged proposed fields render editable rows tagged 'no change' with a 0-changed summary (#58 honesty)", async ({ page }) => {
     await gotoMockDashboard(page);
-    const id = await seedAppWithRun(page);
+    // asc:true → subtitle/keywords are READ (so they're genuinely proposed +
+    // editable). Doctoring then makes proposed === current for every field.
+    const id = await seedAppWithRun(page, { asc: true });
     const runId = await page.evaluate(async (appId) => {
       const M = (window as any).STORE_OPS_MOCK;
       const detail = await (await M.handle("GET", `/apps/${appId}`, null, "demo@store-ops.dev")).json();
@@ -393,15 +395,33 @@ test.describe("run page — diff hides unchanged fields (#58)", () => {
 
     // The diff card still leads with its header…
     await expect(page.getByRole("heading", { name: /proposed changes/i })).toBeVisible();
-    // …but NOT a single field row renders, because nothing changed.
-    await expect(page.locator(".diffrow")).toHaveCount(0);
-    // The honest empty state names the real next step (connect ASC), never an
-    // empty diff or a fake "0 changed" row.
-    await expect(
-      page.getByText(/no metadata changes proposed.*connect app store connect/i),
-    ).toBeVisible();
+    // …and the proposed fields are now EDITABLE inputs (the feature: tweak even an
+    // unchanged field before shipping) — but each is honestly tagged "no change",
+    // never a fabricated "changed"/"added".
+    await expect(page.locator(".diffrow.is-editable")).not.toHaveCount(0);
+    await expect(page.locator(".diffrow .dtag.modified, .diffrow .dtag.added")).toHaveCount(0);
+    await expect(page.locator(".diffrow .dtag.same")).not.toHaveCount(0);
     // The summary reports zero fields changed (no invented count).
     await expect(page.locator(".diffsummary")).toContainText(/0 fields changed/i);
+  });
+
+  test("a no-key run never fabricates subtitle/keywords into editable fields (#39 §6.1)", async ({ page }) => {
+    await gotoMockDashboard(page);
+    // default (no asc) run: subtitle/keywords are UNSEEN — the agent couldn't read
+    // them, so they must NOT appear as editable inputs (no fabricating a field).
+    const id = await seedAppWithRun(page);
+    const runId = await page.evaluate(async (appId) => {
+      const M = (window as any).STORE_OPS_MOCK;
+      const detail = await (await M.handle("GET", `/apps/${appId}`, null, "demo@store-ops.dev")).json();
+      return detail.runs[0].id as string;
+    }, id);
+    await page.goto(`/index.html#/runs/${runId}`);
+
+    await expect(page.getByRole("heading", { name: /proposed changes/i })).toBeVisible();
+    // subtitle + keywords stay non-editable (unseen); name is always editable.
+    await expect(page.locator('.diff-edit[data-field="subtitle"]')).toHaveCount(0);
+    await expect(page.locator('.diff-edit[data-field="keywords"]')).toHaveCount(0);
+    await expect(page.locator('.diff-edit[data-field="name"]')).not.toHaveCount(0);
   });
 });
 
@@ -426,7 +446,12 @@ test.describe("run page — Listing audit card (ASC findings, PRD 03)", () => {
     const card = page.locator(".audit-card");
     await expect(card).toBeVisible();
     await expect(card.getByRole("heading", { name: /listing audit/i })).toBeVisible();
-    await expect(card.locator(".audit-summary")).toBeVisible();
+    // The header reads the richer label ("N fixes available · M critical" /
+    // "No fixes found"), NOT a bare "N findings" count fallback. This is the
+    // assertion that would have caught the mock/production `label` divergence (#45).
+    const summaryEl = card.locator(".audit-summary");
+    await expect(summaryEl).toBeVisible();
+    await expect(summaryEl).toHaveText(/^\d+ fixe?s? available( · \d+ critical)?$|^No fixes found$/);
 
     // It sits ABOVE the diff card (audit → proposed changes → reasoning).
     const auditTop = await card.evaluate((n) => n.getBoundingClientRect().top);
@@ -920,6 +945,85 @@ test.describe("run page — no-key honesty nits (#56)", () => {
   });
 });
 
+test.describe("run page — locked-field upgrade surface (#61)", () => {
+  // A no-key run with an UNREADABLE screenshot set (bundle id flags it) → the "?"
+  // grade slot is empty, so the screenshot field-lock renders there. The coverage
+  // subtitle/keyword rows are unseen on any no-key run, so they carry the unlock
+  // link regardless of bundle.
+  async function seedNoKeyBlindRun(page: import("@playwright/test").Page): Promise<string> {
+    await gotoMockDashboard(page);
+    const id = await seedAppWithRun(page, { name: "Mangia", bundleId: "com.mangia.noshots" });
+    const runId = await page.evaluate(async (appId) => {
+      const M = (window as any).STORE_OPS_MOCK;
+      const detail = await (await M.handle("GET", `/apps/${appId}`, null, "demo@store-ops.dev")).json();
+      return detail.runs[0].id as string;
+    }, id);
+    await page.goto(`/index.html#/runs/${runId}`);
+    await expect(page.locator(".audit-card")).toBeVisible();
+    return runId;
+  }
+
+  test("renders an inline 🔒 field-lock in the unreadable screenshot slot, locked-not-bad", async ({ page }) => {
+    await seedNoKeyBlindRun(page);
+    // The gallery is null (no real shots), so the screenshot lock takes its place.
+    await expect(page.locator(".audit-card .shots-gallery")).toHaveCount(0);
+    const lock = page.locator(".audit-card .field-lock").first();
+    await expect(lock).toBeVisible();
+    await expect(lock).toContainText("🔒");
+    // Honest capability framing — NOT a deficiency, NOT a grade.
+    await expect(lock).toContainText(/can.?t (see|read)/i);
+    await expect(lock).not.toContainText(/empty|missing|0\/30/i);
+    // No grade letter leaks into the locked slot (it's unread, not graded A–F).
+    await expect(lock).not.toContainText(/\bgrade [A-F]\b/);
+    // The neutral "Shots: ?" chip still reads as unknown, beside the lock.
+    await expect(page.locator(".audit-card .grade-chip")).toContainText(/Shots: \?/);
+  });
+
+  test("the screenshot field-lock routes to the primary ASC run panel and flashes it", async ({ page }) => {
+    await seedNoKeyBlindRun(page);
+    const link = page.locator(".audit-card .field-lock .field-lock-link").first();
+    await expect(link).toBeVisible();
+    await link.click();
+    await expect(page).toHaveURL(/#\/apps\//);
+    const panel = page.locator(".asc-run-panel");
+    await expect(panel).toBeVisible();
+    await expect(panel).toHaveClass(/asc-flash/);
+  });
+
+  test("the unseen coverage subtitle/keyword rows carry an inline 'Connect to unlock' link", async ({ page }) => {
+    await seedNoKeyBlindRun(page);
+    const cov = page.locator(".cov-card");
+    await expect(cov).toBeVisible();
+    const subRow = cov.locator(".cov-field-row", { hasText: "Subtitle" });
+    const kwRow = cov.locator(".cov-field-row", { hasText: "Keywords" });
+    // Still honestly "unseen" (#60) — the lock decorates it, never replaces it
+    // with a measured 0/limit.
+    await expect(subRow.locator(".cov-field-val.unseen")).toHaveText(/unseen/i);
+    await expect(subRow).not.toContainText(/0\/30/);
+    // …and now ALSO offers the upgrade lever inline.
+    await expect(subRow.locator(".field-lock-link")).toContainText(/connect to unlock/i);
+    await expect(kwRow.locator(".field-lock-link")).toContainText(/connect to unlock/i);
+    // Clicking it routes to the same primary ASC run panel.
+    await subRow.locator(".field-lock-link").click();
+    await expect(page).toHaveURL(/#\/apps\//);
+    await expect(page.locator(".asc-run-panel")).toHaveClass(/asc-flash/);
+  });
+
+  test("the reading-lock (.field-lock) is distinct from the action-gate lock (.locked)", async ({ page }) => {
+    await seedNoKeyBlindRun(page);
+    // Both selectors exist on the run page but are separate semantics + copy: the
+    // field-lock marks a READING we can't take; .locked gates the approve action.
+    await expect(page.locator(".field-lock").first()).toBeVisible();
+    const actionGate = page.locator(".locked");
+    if (await actionGate.count()) {
+      await expect(actionGate).toContainText(/approve/i);
+      await expect(actionGate).not.toContainText(/can.?t (see|read)/i);
+    }
+    // The field-lock never carries the action-gate's "approve" copy.
+    await expect(page.locator(".field-lock").first()).not.toContainText(/approve/i);
+  });
+});
+
 test.describe("connect — 402 tier-limit paywall (#27)", () => {
   test("connecting past the plan's app limit shows a visible upgrade modal, not a silent fail", async ({
     page,
@@ -1020,5 +1124,139 @@ test.describe("try-before-signup preview (logged-out, raw /preview fetch)", () =
 
     await expect(page.getByText(/Calm/).first()).toBeVisible({ timeout: 10_000 });
     await expect(page.getByText(/#12/).first()).toBeVisible();
+  });
+});
+
+test.describe("dashboard 'Run now' button (#50)", () => {
+  // The dashboard "Run now" is the BLIND (public-data) run: it reuses the
+  // existing POST /apps/:id/run endpoint, produces an awaiting_approval proposal,
+  // and routes to the approval gate. It must never imply a push or an ASC read.
+  test("the card shows a 'Run now' button on a connected app", async ({ page }) => {
+    await gotoMockDashboard(page);
+    await seedAppWithRun(page);
+    // Re-render the dashboard in-place via the SPA router (a full reload would
+    // re-render before loadSession() settles — a boot race, not a real bug).
+    await page.evaluate(() => { location.hash = "#/_"; location.hash = "#/"; });
+
+    const card = page.locator("#view .appcard").first();
+    await expect(card).toBeVisible();
+    await expect(card.getByRole("button", { name: /run now/i })).toBeVisible();
+  });
+
+  test("clicking 'Run now' triggers a run and lands on the approval gate (awaiting_approval, not pushed)", async ({
+    page,
+  }) => {
+    await gotoMockDashboard(page);
+    const id = await seedAppWithRun(page);
+    await page.evaluate(() => { location.hash = "#/_"; location.hash = "#/"; });
+
+    // Count runs before — clicking must create exactly one new awaiting_approval run.
+    const before = await page.evaluate(async (appId) => {
+      const M = (window as any).STORE_OPS_MOCK;
+      const detail = await (await M.handle("GET", `/apps/${appId}`, null, "demo@store-ops.dev")).json();
+      return detail.runs.length as number;
+    }, id);
+
+    await page
+      .locator("#view .appcard")
+      .first()
+      .getByRole("button", { name: /run now/i })
+      .click();
+
+    // The run settles and routes to the run detail / approval gate.
+    await expect(page).toHaveURL(/#\/runs\//, { timeout: 10_000 });
+    await expect(page.getByRole("heading", { name: /approval gate/i })).toBeVisible();
+
+    // The new run is awaiting_approval — push/upload commands are NOT shown until
+    // a human approves (mirrors the approval-gate invariant elsewhere).
+    await expect(
+      page.getByRole("button", { name: /upload to app store connect/i }),
+    ).toHaveCount(0);
+
+    const after = await page.evaluate(async (appId) => {
+      const M = (window as any).STORE_OPS_MOCK;
+      const detail = await (await M.handle("GET", `/apps/${appId}`, null, "demo@store-ops.dev")).json();
+      const latest = detail.runs[0];
+      return { count: detail.runs.length as number, status: latest.status as string };
+    }, id);
+    expect(after.count).toBe(before + 1);
+    expect(after.status).toBe("awaiting_approval");
+  });
+
+  test("clicking 'Run now' does not navigate to app detail (stopPropagation)", async ({
+    page,
+  }) => {
+    await gotoMockDashboard(page);
+    const id = await seedAppWithRun(page);
+    await page.evaluate(() => { location.hash = "#/_"; location.hash = "#/"; });
+
+    await page
+      .locator("#view .appcard")
+      .first()
+      .getByRole("button", { name: /run now/i })
+      .click();
+
+    // We must land on the run screen, never bounce to the app-detail route — the
+    // card's navigate-to-detail onclick must not fire when the button is clicked.
+    await expect(page).toHaveURL(/#\/runs\//, { timeout: 10_000 });
+    await expect(page).not.toHaveURL(new RegExp(`#/apps/${id}$`));
+  });
+
+  test("the control is honestly framed: read+prepare only, you still approve, no push/ship copy", async ({
+    page,
+  }) => {
+    await gotoMockDashboard(page);
+    await seedAppWithRun(page);
+    await page.evaluate(() => { location.hash = "#/_"; location.hash = "#/"; });
+
+    const card = page.locator("#view .appcard").first();
+    // Honest helper copy near the control: you still approve before anything ships.
+    await expect(card.getByText(/you (still )?approve/i)).toBeVisible();
+
+    // The control must NOT promise a push, a ship, or an ASC read from the card.
+    await expect(card.getByText(/push now|update your listing|ships your|pushed/i)).toHaveCount(0);
+  });
+
+  test("failure path: the retry interstitial appears, 'Back' returns to the dashboard, label restores", async ({
+    page,
+  }) => {
+    await gotoMockDashboard(page);
+    const id = await seedAppWithRun(page);
+    await page.evaluate(() => { location.hash = "#/_"; location.hash = "#/"; });
+
+    // Force the blind run endpoint to fail (no mock-level failure toggle exists;
+    // wrap handle() the same way other specs doctor a single response).
+    await page.evaluate((appId) => {
+      const M = (window as any).STORE_OPS_MOCK;
+      const orig = M.handle.bind(M);
+      M.handle = function (method: string, path: string, b: unknown, email: string) {
+        if (method === "POST" && path === `/apps/${appId}/run`) {
+          return new Response(JSON.stringify({ error: "forced failure" }), {
+            status: 500,
+            headers: { "content-type": "application/json" },
+          });
+        }
+        return orig(method, path, b, email);
+      };
+    }, id);
+
+    await page
+      .locator("#view .appcard")
+      .first()
+      .getByRole("button", { name: /run now/i })
+      .click();
+
+    // The recoverable error card appears (not a frozen progress screen).
+    await expect(page.getByText(/the run didn't finish/i)).toBeVisible({ timeout: 10_000 });
+
+    // "Back" returns to the dashboard (#/), not the app-detail route.
+    await page.getByRole("button", { name: /back/i }).click();
+    await expect(page.getByRole("heading", { name: /your apps/i })).toBeVisible({ timeout: 10_000 });
+    await expect(page).not.toHaveURL(new RegExp(`#/apps/${id}$`));
+
+    // And the card's "Run now" button is back to its idle label.
+    await expect(
+      page.locator("#view .appcard").first().getByRole("button", { name: /run now/i }),
+    ).toBeVisible();
   });
 });

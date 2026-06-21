@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { serializeRunResult } from "./index.js";
-import { auditFindings, summarizeFindings } from "../engine/auditFindings.js";
+import { auditFindings, summarizeFindings, surfaceLocks } from "../engine/auditFindings.js";
 import { buildAscContext } from "../engine/ascContext.js";
 import { metadataCoverage } from "../engine/metadataCoverage.js";
 import type { ReasoningTrace } from "../d1.js";
@@ -64,8 +64,8 @@ function audit(grade: "A" | "?"): Audit {
     bundleId: "com.weatherly.app",
     liveName: APP_NAME,
     screenshots: grade === "?"
-      ? { app: "weatherly", iphoneCount: 0, ipadCount: 0, score: null, grade: "?", findings: [], aspectHint: "", screenshotUrls: [], ipadScreenshotUrls: [] }
-      : { app: "weatherly", iphoneCount: 6, ipadCount: 2, score: 90, grade: "A", findings: [], aspectHint: "1290x2796", screenshotUrls: [], ipadScreenshotUrls: [] },
+      ? { app: "weatherly", iphoneCount: 0, ipadCount: 0, score: null, grade: "?", findings: [], aspectHint: "", screenshotUrls: [], ipadScreenshotUrls: [], levers: [] }
+      : { app: "weatherly", iphoneCount: 6, ipadCount: 2, score: 90, grade: "A", findings: [], aspectHint: "1290x2796", screenshotUrls: [], ipadScreenshotUrls: [], levers: [] },
   };
 }
 
@@ -91,6 +91,7 @@ function modeATrace(): ReasoningTrace {
     proposedCopy: { name: APP_NAME, subtitle: "", keywords: "", validation: { pass: true, checks: [] } },
     pushCommands: [],
     findings,
+    locks: surfaceLocks({ snapshot, audit: audit("A"), ranks: RANKS, appName: APP_NAME, hasAscKey: true }),
     coverage,
     ...(ascContext !== undefined ? { ascContext } : {}),
     trigger: { source: "manual", reasons: ["test"] },
@@ -108,6 +109,7 @@ function noKeyTrace(): ReasoningTrace {
     proposedCopy: { name: APP_NAME, subtitle: "", keywords: "", validation: { pass: true, checks: [] } },
     pushCommands: [],
     findings,
+    locks: surfaceLocks({ audit: audit("?"), ranks: RANKS, appName: APP_NAME, hasAscKey: false }),
     trigger: { source: "manual", reasons: ["test"] },
   };
 }
@@ -131,6 +133,13 @@ describe("serializeRunResult — Mode-A (ASC) run", () => {
   it("includes a findingsSummary with counts matching the findings", () => {
     expect(result.findingsSummary).toEqual(summarizeFindings(result.findings));
     expect(result.findingsSummary.total).toBe(result.findings.length);
+  });
+
+  it("ships a non-empty findingsSummary.label (production parity with the mock)", () => {
+    expect(typeof result.findingsSummary.label).toBe("string");
+    expect(result.findingsSummary.label.length).toBeGreaterThan(0);
+    // it must read as the richer label, not a bare "N findings" count fallback.
+    expect(result.findingsSummary.label).toMatch(/^(\d+ fixe?s? available( · \d+ critical)?|No fixes found)$/);
   });
 
   it("includes a slim ascContext with exactly the expected safe keys", () => {
@@ -173,6 +182,11 @@ describe("serializeRunResult — Mode-A (ASC) run", () => {
     const serialized = JSON.stringify(result.coverage);
     expect(serialized).not.toContain("weather,forecast,rain"); // never the comma-joined field
   });
+
+  // ── #61: a keyed run can read every surface ⇒ it locks NOTHING ──────────────
+  it("carries an empty locks[] on a keyed run (nothing is unreadable)", () => {
+    expect(result.locks).toEqual([]);
+  });
 });
 
 describe("serializeRunResult — no-key run", () => {
@@ -194,18 +208,36 @@ describe("serializeRunResult — no-key run", () => {
     expect(result.findings.length).toBeGreaterThan(0);
     expect(result.findingsSummary.total).toBe(result.findings.length);
   });
+
+  // ── #61: a no-key run carries the canonical locked surfaces, copy-safe ───────
+  it("carries the canonical surface locks (the per-surface upgrade contract)", () => {
+    expect(Array.isArray(result.locks)).toBe(true);
+    expect((result.locks ?? []).length).toBeGreaterThan(0);
+    const surfaces = (result.locks ?? []).map((l: { surface: string }) => l.surface);
+    expect(surfaces).toEqual(["subtitle", "keywords", "screenshots", "previews", "privacy", "category", "locales"]);
+  });
+
+  it("lock copy frames opportunity, never a deficiency or raw ASC data", () => {
+    const serialized = JSON.stringify(result.locks);
+    // honest capability/opportunity copy only — no false metrics, no urgency.
+    expect(serialized).not.toMatch(/\b0\/(30|100)\b/);
+    expect(serialized).not.toMatch(/costing you|losing|urgent/i);
+  });
 });
 
 describe("serializeRunResult — legacy trace (pre-PRD 02)", () => {
   it("defaults findings to [] and omits ascContext + coverage, never throwing", () => {
     const legacy = noKeyTrace();
     delete (legacy as { findings?: unknown }).findings;
+    delete (legacy as { locks?: unknown }).locks;
     const result = serializeRunResult(legacy, false);
     expect(result.findings).toEqual([]);
     expect(result.findingsSummary.total).toBe(0);
     expect("ascContext" in result).toBe(false);
     // A trace with no coverage (older or no-copy run) omits it cleanly.
     expect("coverage" in result).toBe(false);
+    // #61: a legacy trace with no locks omits the field (UI falls back to isNoKeyRun).
+    expect("locks" in result).toBe(false);
   });
 });
 

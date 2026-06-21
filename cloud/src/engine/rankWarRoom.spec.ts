@@ -51,6 +51,51 @@ describe("buildWarRoom", () => {
     expect(result[0]?.competitors).toHaveLength(2);
     expect(result[0]?.competitors[0]).toEqual({ name: "Money Lover", rank: 8 });
     expect(result[0]?.competitors[1]).toEqual({ name: "Goodbudget", rank: 12 });
+    // #25: your prior-distinct-snapshot rank is surfaced so the UI can animate
+    // your prev → cur count-up without recomputing it client-side. Newest is
+    // 06-10 (#18), next-distinct is 06-03 (#15) → youPrevious 15, trend gaining
+    // (you climbed 18 → 15... lower is better, so 18→15 is gaining; here newest
+    // checked_at is 06-10 at #18, prior 06-03 at #15, so 15 → 18 = losing).
+    expect(result[0]?.youPrevious).toBe(15);
+    expect(result[0]?.trend).toBe("losing");
+  });
+
+  it("surfaces youPrevious as the prior DISTINCT-snapshot rank for an animated count-up", () => {
+    const yourRanks: RankSnapshot[] = [
+      { keyword: "budget app", rank: 18, checked_at: "2026-06-03" },
+      { keyword: "budget app", rank: 15, checked_at: "2026-06-10" },
+    ];
+    const result = buildWarRoom({ yourRanks, competitorRanks: [] });
+    const row = result.find((r) => r.keyword === "budget app");
+    // newest 06-10 (#15), prior distinct 06-03 (#18) → you 15, youPrevious 18,
+    // gaining (18 → 15, lower is better).
+    expect(row?.you).toBe(15);
+    expect(row?.youPrevious).toBe(18);
+    expect(row?.trend).toBe("gaining");
+  });
+
+  it("HONESTY: youPrevious is null (never 0) for a single-snapshot keyword", () => {
+    const yourRanks: RankSnapshot[] = [
+      { keyword: "fresh", rank: 60, checked_at: "2026-06-10" }, // only one snapshot
+    ];
+    const result = buildWarRoom({ yourRanks, competitorRanks: [] });
+    const row = result.find((r) => r.keyword === "fresh");
+    expect(row?.you).toBe(60);
+    expect(row?.youPrevious).toBeNull(); // no measured prior — UI skips the count-up
+    expect(row?.youPrevious).not.toBe(0); // never coerce unknown to zero
+  });
+
+  it("youPrevious uses the two-DISTINCT rule (same-day duplicates collapse)", () => {
+    const yourRanks: RankSnapshot[] = [
+      { keyword: "dupe", rank: 40, checked_at: "2026-06-01" },
+      { keyword: "dupe", rank: 22, checked_at: "2026-06-10" }, // same newest day…
+      { keyword: "dupe", rank: 20, checked_at: "2026-06-10" }, // …collapses to current
+    ];
+    const result = buildWarRoom({ yourRanks, competitorRanks: [] });
+    const row = result.find((r) => r.keyword === "dupe");
+    // current is the last 06-10 row (#20); previous is the next DISTINCT day 06-01 (#40).
+    expect(row?.you).toBe(20);
+    expect(row?.youPrevious).toBe(40);
   });
 
   it("computes trend over the window (gaining / lost)", () => {
