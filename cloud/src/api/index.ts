@@ -1125,7 +1125,31 @@ async function appDeltas(env: Env, userId: string, appId: string): Promise<unkno
   // proposed copy + their approval timestamps + the rank history. No new ASC
   // read, no raw listing data — just the terms WE proposed (privacy boundary).
   const pushes = await derivePushes(env, appId);
-  return rankDeltasView(history, { appName: app.name, pushes });
+  // #74: restrict rank movement to the CURRENTLY-targeted keywords (the latest
+  // run's set), so keywords we've since dropped (e.g. pre-#57 'manager'/'mangia'
+  // tombstoned in old snapshots) don't resurface in the most prominent surface on
+  // the app page. Mirrors the #73 fix for the opportunities card.
+  const targeted = await latestRunKeywords(env, appId);
+  return rankDeltasView(history, {
+    appName: app.name,
+    pushes,
+    ...(targeted.length ? { keywords: targeted } : {}),
+  });
+}
+
+/**
+ * The keyword set the app's MOST RECENT run targeted (its rank-checked keywords).
+ * Used to scope rank-movement / trend views to what the app currently targets,
+ * not every keyword ever checked (#74). Empty when there's no run yet.
+ */
+async function latestRunKeywords(env: Env, appId: string): Promise<string[]> {
+  const runs = await listRunsForApp(env.DB, appId);
+  const latest = runs[0];
+  if (!latest) return [];
+  const run = await getRun(env.DB, latest.id);
+  if (!run) return [];
+  const trace = JSON.parse(run.reasoning_json) as ReasoningTrace;
+  return (trace.ranks ?? []).map((r) => r.keyword);
 }
 
 /**
