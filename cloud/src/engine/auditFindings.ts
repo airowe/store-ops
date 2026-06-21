@@ -48,6 +48,28 @@ export type Finding = {
   evidence?: string | undefined;
 };
 
+/**
+ * A surface a run could NOT read — rendered as an honest inline 🔒 "unlock to
+ * see + improve" lock (#61). The label states a CAPABILITY gap ("we can't see
+ * this without access"), never a deficiency; `unlockCopy` frames the opportunity
+ * behind the lock ("connect to read + improve"). The catalog (copy) lives HERE,
+ * in the engine, so the UI never re-derives "is this surface readable".
+ */
+export type SurfaceLock = {
+  surface:
+    | "subtitle"
+    | "keywords"
+    | "screenshots"
+    | "previews"
+    | "privacy"
+    | "category"
+    | "locales";
+  /** honest one-liner: "we can't SEE this without access" — never a deficiency. */
+  label: string;
+  /** opportunity framing behind the lock: "unlock to read + improve". */
+  unlockCopy: string;
+};
+
 export type AuditFindingsInput = {
   /** undefined on a no-key run. */
   snapshot?: AscSnapshot | undefined;
@@ -707,6 +729,67 @@ export function auditFindings(input: AuditFindingsInput): Finding[] {
   ];
 
   return sortFindings(findings);
+}
+
+// ── Locked-field upgrade surface (#61) ───────────────────────────────────────
+//
+// The canonical no-key blind-spot catalog: each App Store Connect-only surface
+// that the public iTunes API can't expose, rendered as an honest inline lock.
+// Copy is CAPABILITY + OPPORTUNITY only — it states what we can't SEE and what
+// connecting would unlock, NEVER a deficiency ("0/30", "empty", "missing") or
+// urgency ("costing you", "losing"). That honesty is enforced as a unit-test
+// invariant (#56's "never assert a deficiency in an unseen field").
+const NO_KEY_SURFACE_LOCKS: readonly SurfaceLock[] = [
+  {
+    surface: "subtitle",
+    label: "We can't see your subtitle without access",
+    unlockCopy: "Connect App Store Connect to read your live subtitle and improve it.",
+  },
+  {
+    surface: "keywords",
+    label: "We can't see your keyword field without access",
+    unlockCopy: "Connect App Store Connect to read your keyword field and improve it.",
+  },
+  {
+    surface: "screenshots",
+    label: "We can't read your real screenshots without access",
+    unlockCopy: "Connect App Store Connect to grade your real screenshot set and improve it.",
+  },
+  {
+    surface: "previews",
+    label: "We can't see your app preview video without access",
+    unlockCopy: "Connect App Store Connect to read your preview coverage and improve it.",
+  },
+  {
+    surface: "privacy",
+    label: "We can't see your privacy policy without access",
+    unlockCopy: "Connect App Store Connect to read your privacy policy and category and improve them.",
+  },
+  {
+    surface: "category",
+    label: "We can't see your full category setup without access",
+    unlockCopy: "Connect App Store Connect to read your primary and secondary categories and improve them.",
+  },
+  {
+    surface: "locales",
+    label: "We can't see your per-locale keyword surfaces without access",
+    unlockCopy: "Connect App Store Connect to read every locale's keyword surface and improve it.",
+  },
+];
+
+/**
+ * The surfaces a run could NOT read — the per-surface data contract behind the
+ * inline 🔒 "unlock to see + improve" pattern (#61). A keyed run reads every
+ * surface ⇒ locks NOTHING; a no-key run returns the canonical blind-spot list.
+ *
+ * Pure + deterministic: same input → deep-equal output. Keys off the SAME
+ * `hasAscKey` boolean that `asc_unlock` already uses — no new signal invented,
+ * and the data (a stray snapshot) never changes the answer: the gap is keyed-ness.
+ */
+export function surfaceLocks(input: AuditFindingsInput): SurfaceLock[] {
+  if (input.hasAscKey) return [];
+  // Return fresh clones so callers can't mutate the shared catalog.
+  return NO_KEY_SURFACE_LOCKS.map((l) => ({ ...l }));
 }
 
 /** Stable sort by weight desc, then impact weight desc, then id asc. */

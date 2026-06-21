@@ -136,7 +136,7 @@ import { mintAscJwt } from "../engine/ascJwt.js";
 import { findAscAppId, applyAscMetadata, readAscLocalization, AscWriteError } from "../engine/ascWrite.js";
 import { readAscSnapshot, ascScreenshotsToListing, type AscSnapshot } from "../engine/ascRead.js";
 import { score as scoreScreenshots } from "../engine/screenshotScore.js";
-import { auditFindings, summarizeFindings } from "../engine/auditFindings.js";
+import { auditFindings, summarizeFindings, surfaceLocks } from "../engine/auditFindings.js";
 import { buildAscContext } from "../engine/ascContext.js";
 import { metadataCoverage } from "../engine/metadataCoverage.js";
 import { recommendLocales } from "../engine/localizationExpansion.js";
@@ -265,6 +265,12 @@ export function serializeRunResult(trace: ReasoningTrace, approved: boolean) {
     // is sorted by the engine; summary feeds the card header.
     findings,
     findingsSummary: summarizeFindings(findings),
+    // Locked-field upgrade surfaces (#61): the per-surface "unlock to see +
+    // improve" data the no-key UI renders as inline 🔒 locks. Static capability/
+    // opportunity copy only (no raw ASC) — the same privacy boundary as findings.
+    // Present only when the trace carried them (older traces omit it; the UI then
+    // falls back to isNoKeyRun) so the response shape stays stable + truthful.
+    ...(trace.locks !== undefined ? { locks: trace.locks } : {}),
     ...(trace.ascContext !== undefined ? { ascContext: trace.ascContext } : {}),
     // Winnability opportunities (PRD 06) — "where to push next." Curated copy +
     // drivers only; safe to serve. Older traces have none → empty array.
@@ -885,6 +891,15 @@ async function runApp(
     appName: app.name,
     hasAscKey: false,
   });
+  // #61: the per-surface "unlock to see + improve" locks. On a no-key run this is
+  // the canonical blind-spot list (subtitle, keywords, screenshots, …); the UI
+  // renders each as an honest inline 🔒. Static copy only — no ASC data crosses.
+  result.locks = surfaceLocks({
+    audit: result.audit,
+    ranks: result.ranks,
+    appName: app.name,
+    hasAscKey: false,
+  });
   // PRD 06: winnability opportunities — "where to push next." Computed from the
   // run's keyword scores + rank history; no raw ASC data (safe to serve).
   await attachOpportunities(env, app.id, result);
@@ -998,6 +1013,16 @@ async function runAppWithAsc(
   // ascContext. The raw snapshot stays server-side; ONLY findings + ascContext
   // reach the client (PRD 02 privacy boundary).
   result.findings = auditFindings({
+    snapshot: ascSnapshot,
+    audit: result.audit,
+    ranks: result.ranks,
+    appName: app.name,
+    hasAscKey: true,
+  });
+  // #61: a keyed run reads every surface ⇒ it locks NOTHING. We still set the
+  // field (to []) so the serializer is symmetric and the client never re-derives
+  // "is this readable" — a connected run simply carries no locks.
+  result.locks = surfaceLocks({
     snapshot: ascSnapshot,
     audit: result.audit,
     ranks: result.ranks,

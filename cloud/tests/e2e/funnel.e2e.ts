@@ -266,6 +266,17 @@ test.describe("dashboard funnel (mock backend)", () => {
     await expect(covCard.locator(".cov-field-row", { hasText: "Keywords" })).toContainText(/\d+\/100/);
     await expect(covCard.locator(".cov-field-val.unseen")).toHaveCount(0);
 
+    // (#61) A keyed run can READ every surface ⇒ it locks NOTHING. No inline
+    // field-lock renders anywhere on the run page (parallel to the unseen guard
+    // above), and the run payload carries an empty locks[].
+    await expect(page.locator(".field-lock")).toHaveCount(0);
+    const locks = await page.evaluate(async (rid) => {
+      const M = (window as any).STORE_OPS_MOCK;
+      const r = await (await M.handle("GET", `/runs/${rid}`, null, "demo@store-ops.dev")).json();
+      return r.result.locks as unknown[];
+    }, runId);
+    expect(locks).toEqual([]);
+
     // The coverage report served to the client must match what renders, and must
     // never carry the raw comma-joined keyword field (the privacy boundary).
     const cov = await page.evaluate(async (rid) => {

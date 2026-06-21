@@ -22,6 +22,7 @@ import type {
   ProposedCopy,
   Rank,
   ScoredKeyword,
+  SurfaceLock,
 } from "./engine/index.js";
 import type { RunStatus } from "./engine/constants.js";
 
@@ -120,6 +121,13 @@ export type ReasoningTrace = {
    * Mode-A run. Served to the client; safe (curated copy, no raw ASC data).
    */
   findings?: Finding[] | undefined;
+  /**
+   * Locked-field upgrade surfaces (#61) — the surfaces a no-key run could NOT
+   * read, each rendered as an honest inline "unlock to see + improve" lock. Empty
+   * on a Mode-A run. Static capability/opportunity copy only (no ASC data) — safe
+   * to serve. Absent on older traces (the UI falls back to isNoKeyRun).
+   */
+  locks?: SurfaceLock[] | undefined;
   /**
    * The slim, PII-safe display context for the findings card (category, counts,
    * version state) — present only on a Mode-A run. The full `ascSnapshot` is
@@ -449,6 +457,10 @@ export async function persistRun(
     // ONLY the slim ascContext — never the raw `ascSnapshot` (it's omitted here
     // on purpose so it can't reach the client via the trace).
     ...(result.findings !== undefined ? { findings: result.findings } : {}),
+    // Locked-field upgrade surfaces (#61) ride along when computed — static
+    // capability/opportunity copy only (no raw ASC). Persisted so the run page
+    // renders the inline 🔒 locks verbatim; empty on a keyed run.
+    ...(result.locks !== undefined ? { locks: result.locks } : {}),
     ...(result.ascContext !== undefined ? { ascContext: result.ascContext } : {}),
     ...(result.opportunities !== undefined ? { opportunities: result.opportunities } : {}),
     // Keyword gaps (PRD 01) ride along when computed — names-only attribution,

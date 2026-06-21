@@ -100,9 +100,11 @@ export {
   type FindingImpact,
   type FindingsSummary,
   type AuditFindingsInput,
+  type SurfaceLock,
   auditFindings,
   summarizeFindings,
   scoreFinding,
+  surfaceLocks,
 } from "./auditFindings.js";
 export { type AscContext, buildAscContext, FORBIDDEN_CONTEXT_KEYS } from "./ascContext.js";
 export {
