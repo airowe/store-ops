@@ -1022,3 +1022,137 @@ test.describe("try-before-signup preview (logged-out, raw /preview fetch)", () =
     await expect(page.getByText(/#12/).first()).toBeVisible();
   });
 });
+
+test.describe("dashboard 'Run now' button (#50)", () => {
+  // The dashboard "Run now" is the BLIND (public-data) run: it reuses the
+  // existing POST /apps/:id/run endpoint, produces an awaiting_approval proposal,
+  // and routes to the approval gate. It must never imply a push or an ASC read.
+  test("the card shows a 'Run now' button on a connected app", async ({ page }) => {
+    await gotoMockDashboard(page);
+    await seedAppWithRun(page);
+    // Re-render the dashboard in-place via the SPA router (a full reload would
+    // re-render before loadSession() settles — a boot race, not a real bug).
+    await page.evaluate(() => { location.hash = "#/_"; location.hash = "#/"; });
+
+    const card = page.locator("#view .appcard").first();
+    await expect(card).toBeVisible();
+    await expect(card.getByRole("button", { name: /run now/i })).toBeVisible();
+  });
+
+  test("clicking 'Run now' triggers a run and lands on the approval gate (awaiting_approval, not pushed)", async ({
+    page,
+  }) => {
+    await gotoMockDashboard(page);
+    const id = await seedAppWithRun(page);
+    await page.evaluate(() => { location.hash = "#/_"; location.hash = "#/"; });
+
+    // Count runs before — clicking must create exactly one new awaiting_approval run.
+    const before = await page.evaluate(async (appId) => {
+      const M = (window as any).STORE_OPS_MOCK;
+      const detail = await (await M.handle("GET", `/apps/${appId}`, null, "demo@store-ops.dev")).json();
+      return detail.runs.length as number;
+    }, id);
+
+    await page
+      .locator("#view .appcard")
+      .first()
+      .getByRole("button", { name: /run now/i })
+      .click();
+
+    // The run settles and routes to the run detail / approval gate.
+    await expect(page).toHaveURL(/#\/runs\//, { timeout: 10_000 });
+    await expect(page.getByRole("heading", { name: /approval gate/i })).toBeVisible();
+
+    // The new run is awaiting_approval — push/upload commands are NOT shown until
+    // a human approves (mirrors the approval-gate invariant elsewhere).
+    await expect(
+      page.getByRole("button", { name: /upload to app store connect/i }),
+    ).toHaveCount(0);
+
+    const after = await page.evaluate(async (appId) => {
+      const M = (window as any).STORE_OPS_MOCK;
+      const detail = await (await M.handle("GET", `/apps/${appId}`, null, "demo@store-ops.dev")).json();
+      const latest = detail.runs[0];
+      return { count: detail.runs.length as number, status: latest.status as string };
+    }, id);
+    expect(after.count).toBe(before + 1);
+    expect(after.status).toBe("awaiting_approval");
+  });
+
+  test("clicking 'Run now' does not navigate to app detail (stopPropagation)", async ({
+    page,
+  }) => {
+    await gotoMockDashboard(page);
+    const id = await seedAppWithRun(page);
+    await page.evaluate(() => { location.hash = "#/_"; location.hash = "#/"; });
+
+    await page
+      .locator("#view .appcard")
+      .first()
+      .getByRole("button", { name: /run now/i })
+      .click();
+
+    // We must land on the run screen, never bounce to the app-detail route — the
+    // card's navigate-to-detail onclick must not fire when the button is clicked.
+    await expect(page).toHaveURL(/#\/runs\//, { timeout: 10_000 });
+    await expect(page).not.toHaveURL(new RegExp(`#/apps/${id}$`));
+  });
+
+  test("the control is honestly framed: read+prepare only, you still approve, no push/ship copy", async ({
+    page,
+  }) => {
+    await gotoMockDashboard(page);
+    await seedAppWithRun(page);
+    await page.evaluate(() => { location.hash = "#/_"; location.hash = "#/"; });
+
+    const card = page.locator("#view .appcard").first();
+    // Honest helper copy near the control: you still approve before anything ships.
+    await expect(card.getByText(/you (still )?approve/i)).toBeVisible();
+
+    // The control must NOT promise a push, a ship, or an ASC read from the card.
+    await expect(card.getByText(/push now|update your listing|ships your|pushed/i)).toHaveCount(0);
+  });
+
+  test("failure path: the retry interstitial appears, 'Back' returns to the dashboard, label restores", async ({
+    page,
+  }) => {
+    await gotoMockDashboard(page);
+    const id = await seedAppWithRun(page);
+    await page.evaluate(() => { location.hash = "#/_"; location.hash = "#/"; });
+
+    // Force the blind run endpoint to fail (no mock-level failure toggle exists;
+    // wrap handle() the same way other specs doctor a single response).
+    await page.evaluate((appId) => {
+      const M = (window as any).STORE_OPS_MOCK;
+      const orig = M.handle.bind(M);
+      M.handle = function (method: string, path: string, b: unknown, email: string) {
+        if (method === "POST" && path === `/apps/${appId}/run`) {
+          return new Response(JSON.stringify({ error: "forced failure" }), {
+            status: 500,
+            headers: { "content-type": "application/json" },
+          });
+        }
+        return orig(method, path, b, email);
+      };
+    }, id);
+
+    await page
+      .locator("#view .appcard")
+      .first()
+      .getByRole("button", { name: /run now/i })
+      .click();
+
+    // The recoverable error card appears (not a frozen progress screen).
+    await expect(page.getByText(/the run didn't finish/i)).toBeVisible({ timeout: 10_000 });
+
+    // "Back" returns to the dashboard (#/), not the app-detail route.
+    await page.getByRole("button", { name: /back/i }).click();
+    await expect(page.getByRole("heading", { name: /your apps/i })).toBeVisible({ timeout: 10_000 });
+    await expect(page).not.toHaveURL(new RegExp(`#/apps/${id}$`));
+
+    // And the card's "Run now" button is back to its idle label.
+    await expect(
+      page.locator("#view .appcard").first().getByRole("button", { name: /run now/i }),
+    ).toBeVisible();
+  });
+});

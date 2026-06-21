@@ -239,6 +239,16 @@ p.lead.mono, .mono { font-family: var(--mono); }
 .appcard .meta .k { font-family: var(--mono); font-size: 11px; color: var(--faint); text-transform: uppercase; letter-spacing: .05em; }
 .appcard .meta .v { font-family: var(--mono); font-size: 19px; font-weight: 700; margin-top: 3px; color: var(--ink); }
 
+/* #50: card-level "Run now" control + honest helper copy. The default cursor
+   override stops the card's pointer:cursor reading like the foot is a nav target;
+   the button keeps its own pointer. */
+.appcard-foot {
+  margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--line);
+  display: flex; flex-direction: column; gap: 6px; cursor: default;
+}
+.appcard-foot .run-now { align-self: flex-start; }
+.appcard-foot .run-now-note { font-size: 11.5px; line-height: 1.45; }
+
 /* ── status badges ───────────────────────────────────────────── */
 .badge {
   display: inline-flex; align-items: center; gap: 6px;
