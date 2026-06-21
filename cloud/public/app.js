@@ -20,6 +20,17 @@
   var API_BASE = (CFG.API_BASE || "").replace(/\/$/, "");
   var LIMITS = { name: 30, subtitle: 30, keywords: 100, promo: 170, description: 4000 };
 
+  // The bundle the browser actually executed. In the deployed dist/ this is
+  // app.<hash>.js (content-hashed by scripts/stampAssets.mjs); in local/public
+  // (un-hashed, no build step) it's app.js. document.currentScript is the
+  // running <script>'s element at top-level IIFE execution time — app.js is a
+  // classic (non-module) script (index.html:40) so this is available here.
+  // Used by the SPA-freshness check (#54) to tell which bundle is live.
+  // CFG.SELF_SCRIPT is a test-only seam (E2E simulates a hashed deploy against
+  // the un-hashed local public/); config.js never sets it in prod, so the real
+  // running bundle's URL is the source of truth.
+  var SELF_SCRIPT = CFG.SELF_SCRIPT || (document.currentScript && document.currentScript.src) || "";
+
   // ── auth ──────────────────────────────────────────────────────────────────
   // Real path: a signed-in session cookie (magic-link). Demo path (when the
   // backend runs APP_ENV=demo): an email in localStorage sent as X-User-Email.
@@ -143,6 +154,94 @@
   async function copyText(s, label) {
     try { await navigator.clipboard.writeText(s); toast((label || "Copied") + " ✓"); }
     catch (e) { toast("Copy failed — select & ⌘C"); }
+  }
+
+  // ── SPA freshness (#54) ─────────────────────────────────────────────────────
+  // A tab left open across a deploy keeps running the OLD app.<hash>.js — the
+  // hash router re-renders #view in place and never re-requests app.js. We
+  // detect a newer deploy by re-fetching the always-no-cache /index.html
+  // (_headers:13-14) and comparing the app bundle it references against the
+  // bundle the browser actually ran (SELF_SCRIPT). On a difference we show a
+  // gentle, dismissible banner — we NEVER auto-reload (an at-the-wrong-moment
+  // reload could drop an in-flight approval or the in-memory .p8). The two pure
+  // functions below MIRROR scripts/freshness.mjs (tested spec) — keep in sync.
+  var FRESHNESS_POLL_MS = 15 * 60 * 1000; // backstop for an always-foreground tab
+
+  // Extract the referenced app bundle (app.<hash>.js or bare app.js) from an
+  // index.html string; null if none. Scoped to app.* so config/mock/styles can
+  // never match. Mirrors bundleRefFromHtml in scripts/freshness.mjs.
+  function bundleRefFromHtml(html) {
+    if (!html) return null;
+    var m = String(html).match(/src="(app(?:\.[0-9a-f]+)?\.js)"/);
+    return m ? m[1] : null;
+  }
+  function freshnessBasename(url) {
+    if (!url) return "";
+    var s = String(url).split("?")[0].split("#")[0];
+    var slash = s.lastIndexOf("/");
+    return slash >= 0 ? s.slice(slash + 1) : s;
+  }
+  // Is the running bundle older than what /index.html now references? Honest
+  // "don't know" → false (never nag): unknown self, failed fetch (null ref), or
+  // an un-hashed local/E2E bundle (bare app.js) all return false. Compares
+  // basenames only (origin-independent). Mirrors isStale in scripts/freshness.mjs.
+  function isStale(selfScriptUrl, liveBundleRef) {
+    if (!selfScriptUrl || !liveBundleRef) return false;
+    var self = freshnessBasename(selfScriptUrl);
+    var live = freshnessBasename(liveBundleRef);
+    if (!self || !live) return false;
+    if (self === "app.js") return false; // un-hashed dev bundle → dormant
+    return self !== live;
+  }
+
+  var freshnessBannerShown = false; // once shown, stop polling (state is monotonic)
+  var freshnessTimer = null;
+
+  // Re-fetch the no-cache /index.html and diff its bundle ref against SELF_SCRIPT.
+  // Deliberately uses its OWN fetch (NOT api()) so a probe failure can never flip
+  // the app into mock mode (liveMode) or toast an error — it must fail silently.
+  async function checkFreshness() {
+    if (freshnessBannerShown) return;
+    try {
+      var res = await fetch("/index.html", { cache: "no-store" });
+      if (!res || !res.ok) return; // silent: an unreachable probe is "don't know"
+      var html = await res.text();
+      if (isStale(SELF_SCRIPT, bundleRefFromHtml(html))) showFreshnessBanner();
+    } catch (e) { /* offline / parse error → silent, never nag, never flip mode */ }
+  }
+
+  function dismissFreshnessBanner() {
+    var bar = document.getElementById("freshness");
+    if (bar) bar.classList.remove("show");
+    // Keep freshnessBannerShown = true: we don't re-nag the SAME detected
+    // version this session. A FURTHER deploy can show it again — but we've also
+    // stopped polling, which is fine: a returning user gets a fresh index.html
+    // (and the latest bundle) on their next real reload anyway.
+  }
+
+  function showFreshnessBanner() {
+    if (freshnessBannerShown) return;
+    freshnessBannerShown = true;
+    if (freshnessTimer != null) { clearInterval(freshnessTimer); freshnessTimer = null; }
+    var bar = document.getElementById("freshness");
+    if (!bar) return;
+    clear(bar);
+    bar.appendChild(el("span", { class: "fresh-msg" }, ["A new version of ShipASO is available — refresh to update."]));
+    bar.appendChild(el("button", { class: "btn", id: "freshnessReload", onclick: function () { location.reload(); } }, ["Refresh"]));
+    bar.appendChild(el("button", { class: "fresh-x", id: "freshnessDismiss", "aria-label": "Dismiss", onclick: dismissFreshnessBanner }, ["×"]));
+    bar.classList.add("show");
+  }
+
+  // Start freshness detection — focus (cheapest, highest-signal: user returned
+  // to the tab) + a 15-min interval backstop. Gated to PROD-only: API_BASE set
+  // AND a hashed bundle (SELF_SCRIPT !== app.js), so it's inert in local/demo/E2E
+  // unless a test explicitly drives it. No route-change trigger (focus already
+  // covers "came back to the tab" without a network hop per hash navigation).
+  function startFreshnessChecks() {
+    if (!API_BASE) return;
+    if (freshnessBasename(SELF_SCRIPT) === "app.js") return; // un-hashed → dormant
+    window.addEventListener("focus", checkFreshness);
+    freshnessTimer = setInterval(checkFreshness, FRESHNESS_POLL_MS);
   }
 
   // Debounced, race-safe auto-search controller for the app-search boxes — the
@@ -2590,6 +2689,10 @@
       }
       route();
     });
+    // SPA freshness (#54): nudge a long-open tab to reload after a deploy. Gated
+    // prod-only (API_BASE + hashed bundle) inside startFreshnessChecks → inert
+    // in local/demo/E2E by default.
+    startFreshnessChecks();
   });
 
   // Pull + clear the pending-app intent stashed at the preview gate.

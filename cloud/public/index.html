@@ -34,6 +34,11 @@
 
     <div class="toast" id="toast"></div>
 
+    <!-- SPA freshness nudge (#54): shown only when a newer app.<hash>.js has
+         deployed while this tab was open. Non-blocking, dismissible, never
+         auto-reloads. Populated + toggled (.show) by app.js. -->
+    <div class="freshness-banner" id="freshness" role="status" aria-live="polite"></div>
+
     <!-- config first (sets window.STORE_OPS), then the demo backend, then the app -->
     <script src="config.js"></script>
     <script src="mock.js"></script>
