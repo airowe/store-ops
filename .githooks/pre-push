@@ -1,0 +1,100 @@
+#!/usr/bin/env bash
+#
+# pre-push gate — runs the SAME checks the deploy workflow runs (typecheck →
+# unit → e2e) BEFORE anything reaches GitHub, so a broken branch never gets
+# pushed. Mirrors .github/workflows/deploy.yml (which gates merge-to-main).
+#
+# typecheck + unit ALWAYS run. e2e runs only when the push actually touches UI
+# (cloud/public/** or cloud/tests/e2e/**) — pure-backend pushes stay fast.
+# Override with PREPUSH_E2E=always (force) or PREPUSH_E2E=skip (never).
+#
+# Enable once per clone:   git config core.hooksPath .githooks
+# Skip the whole gate:     git push --no-verify   (or PREPUSH_SKIP=1 git push)
+#
+# Scope: all checks run in cloud/ (the only package). Playwright spins up its
+# own static server on :8793 — we free that port first so a stale listener
+# from another worktree can't poison the run (a real footgun in this repo).
+
+set -euo pipefail
+
+if [ "${PREPUSH_SKIP:-0}" = "1" ]; then
+  echo "pre-push: PREPUSH_SKIP=1 set — skipping gate."
+  exit 0
+fi
+
+REPO_ROOT="$(git rev-parse --show-toplevel)"
+CLOUD_DIR="$REPO_ROOT/cloud"
+
+if [ ! -d "$CLOUD_DIR/node_modules" ]; then
+  echo "pre-push: cloud/node_modules missing — run 'npm ci' in cloud/ first." >&2
+  exit 1
+fi
+
+# ── Decide whether the e2e suite is needed ───────────────────────────────────
+# git feeds pre-push "<local-ref> <local-sha> <remote-ref> <remote-sha>" lines on
+# stdin — the exact ranges being pushed. We collect every file changed across
+# those ranges and run e2e only if any is UI (cloud/public/** | cloud/tests/e2e/**).
+# New branch (remote all-zeros) → diff vs origin/main. Branch delete → skip.
+ZERO="0000000000000000000000000000000000000000"
+needs_e2e=0
+saw_range=0
+
+if [ "${PREPUSH_E2E:-auto}" = "always" ]; then
+  needs_e2e=1
+elif [ "${PREPUSH_E2E:-auto}" = "skip" ]; then
+  needs_e2e=0
+else
+  while read -r local_ref local_sha remote_ref remote_sha; do
+    [ -z "${local_sha:-}" ] && continue
+    [ "$local_sha" = "$ZERO" ] && continue   # branch deletion — nothing to test
+    saw_range=1
+    if [ "$remote_sha" = "$ZERO" ]; then
+      base="$(git merge-base "$local_sha" origin/main 2>/dev/null || echo "")"
+      range="${base:+$base..}$local_sha"
+    else
+      range="$remote_sha..$local_sha"
+    fi
+    changed="$(git diff --name-only $range 2>/dev/null || true)"
+    if printf '%s\n' "$changed" | grep -qE '^cloud/(public/|tests/e2e/)'; then
+      needs_e2e=1
+    fi
+  done
+  # No range info on stdin (e.g. up-to-date push or manual invocation): be safe
+  # and run e2e rather than silently skipping the strongest check.
+  [ "$saw_range" = "0" ] && needs_e2e=1
+fi
+
+cd "$CLOUD_DIR"
+
+run() {
+  echo ""
+  echo "▶ pre-push: $1"
+  shift
+  if ! "$@"; then
+    echo "" >&2
+    echo "✖ pre-push gate failed at: $*" >&2
+    echo "  Fix it, or bypass intentionally with: git push --no-verify" >&2
+    exit 1
+  fi
+}
+
+run "typecheck (tsc --noEmit)"        npm run typecheck
+run "unit tests (vitest run)"         npm test
+
+if [ "$needs_e2e" = "1" ]; then
+  # Free Playwright's static-server port so a stale listener can't break e2e.
+  if command -v lsof >/dev/null 2>&1; then
+    lsof -ti :8793 2>/dev/null | xargs -r kill -9 2>/dev/null || true
+  fi
+  # e2e runs SERIAL (--workers=1) on purpose: a few specs (picker pagination)
+  # are flaky under Playwright's default parallelism + the shared :8793 static
+  # server — they pass deterministically serially. A local gate should never
+  # false-block a push, so we trade ~20s of wall-clock for a reliable verdict.
+  run "e2e tests (playwright, serial)"  ./node_modules/.bin/playwright test --workers=1
+  echo ""
+  echo "✓ pre-push gate passed (typecheck + unit + e2e). Pushing."
+else
+  echo ""
+  echo "✓ pre-push gate passed (typecheck + unit). No UI changes → e2e skipped."
+  echo "  Force it with: PREPUSH_E2E=always git push"
+fi

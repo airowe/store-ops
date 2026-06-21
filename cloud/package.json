@@ -5,6 +5,7 @@
   "description": "Cloudflare-native autonomous ASO agent (store-ops). Workers + D1 + Cron + Pages.",
   "type": "module",
   "scripts": {
+    "prepare": "git -C \"$(git rev-parse --show-toplevel)\" config core.hooksPath .githooks || true",
     "dev": "wrangler dev",
     "deploy": "wrangler deploy",
     "test": "vitest run",
