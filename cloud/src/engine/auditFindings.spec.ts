@@ -25,6 +25,7 @@ function shot(over: Partial<ShotScore> = {}): ShotScore {
     aspectHint: "tall phone",
     screenshotUrls: [],
     ipadScreenshotUrls: [],
+    levers: [],
     ...over,
   };
 }
