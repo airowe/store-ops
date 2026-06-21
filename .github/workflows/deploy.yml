@@ -59,7 +59,13 @@ jobs:
         run: ./node_modules/.bin/playwright install --with-deps chromium
 
       - name: E2E (dashboard funnel vs mock backend)
-        run: npm run test:e2e
+        # Serial + 1 retry: a few specs (the picker "Show more" pagination) race
+        # the result-list re-render under Playwright's default parallelism + the
+        # shared :8793 static server, detaching the button mid-click. They pass
+        # deterministically serially — this matches the local pre-push gate
+        # (.githooks/pre-push also runs --workers=1). The retry absorbs any
+        # residual one-off flake without masking a real failure.
+        run: ./node_modules/.bin/playwright test --workers=1 --retries=1
 
       # ── deploy gate: only deploy when the Cloudflare secrets are configured.
       # Keeps the workflow green (gates still run) before one-time secret setup,
