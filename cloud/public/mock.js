@@ -985,6 +985,21 @@
       return json(200, { tier: db.tier });
     }
 
+    // GET /auth/me — the dashboard's boot check. Mirrors the Worker's shape,
+    // carrying the per-user pause flag (#51) so the banner renders real state.
+    if (method === "GET" && path === "/auth/me") {
+      return json(200, { authed: true, via: "demo", email: email, paused: !!db.agentPaused });
+    }
+
+    // POST /agent/pause | /agent/resume (#51) — the per-user master switch for the
+    // weekly sweep. Persists the flag and returns the canonical new state (matches
+    // the Worker), so the dashboard re-renders from the server, not a guess.
+    if (method === "POST" && (path === "/agent/pause" || path === "/agent/resume")) {
+      db.agentPaused = path === "/agent/pause";
+      ctx.commit();
+      return json(200, { paused: db.agentPaused });
+    }
+
     // GET /apps — list apps + latest run status
     if (method === "GET" && path === "/apps") {
       var list = Object.keys(db.apps).map(function (k) { return appSummary(db.apps[k]); });

@@ -40,6 +40,8 @@ export type UserRow = {
   current_period_end: string | null;
   github_installation_id: string | null;
   github_repo: string | null;
+  /** owner paused the weekly autonomous sweep (issue #51). 0/1 in SQLite → boolean here. */
+  agent_paused: boolean;
 };
 
 export type AppRow = {
@@ -180,14 +182,26 @@ const now = (): string => new Date().toISOString().replace("T", " ").slice(0, 19
 // ── users ────────────────────────────────────────────────────────────────────
 
 const USER_COLS =
-  "id, email, created_at, tier, status, stripe_customer_id, stripe_subscription_id, current_period_end, github_installation_id, github_repo";
+  "id, email, created_at, tier, status, stripe_customer_id, stripe_subscription_id, current_period_end, github_installation_id, github_repo, agent_paused";
+
+/**
+ * Normalize a raw `users` row from D1 into a `UserRow`. SQLite has no boolean,
+ * so `agent_paused` comes back as 0/1 (or undefined on a legacy pre-migration
+ * row) — fold it to a real boolean so callers never compare against `1`.
+ */
+function mapUserRow(raw: (Omit<UserRow, "agent_paused"> & { agent_paused?: number | null }) | null): UserRow | null {
+  if (!raw) return null;
+  return { ...raw, agent_paused: raw.agent_paused === 1 };
+}
 
 /** Get-or-create a user by email (magic-link/session resolves to this). Idempotent. */
 export async function upsertUser(db: D1Database, email: string): Promise<UserRow> {
-  const existing = await db
-    .prepare(`SELECT ${USER_COLS} FROM users WHERE email = ?`)
-    .bind(email)
-    .first<UserRow>();
+  const existing = mapUserRow(
+    await db
+      .prepare(`SELECT ${USER_COLS} FROM users WHERE email = ?`)
+      .bind(email)
+      .first<Omit<UserRow, "agent_paused"> & { agent_paused?: number | null }>(),
+  );
   if (existing) return existing;
 
   const row: UserRow = {
@@ -201,6 +215,7 @@ export async function upsertUser(db: D1Database, email: string): Promise<UserRow
     current_period_end: null,
     github_installation_id: null,
     github_repo: null,
+    agent_paused: false,
   };
   await db
     .prepare("INSERT INTO users (id, email, created_at, tier, status) VALUES (?, ?, ?, ?, ?)")
@@ -210,10 +225,12 @@ export async function upsertUser(db: D1Database, email: string): Promise<UserRow
 }
 
 export async function getUser(db: D1Database, userId: string): Promise<UserRow | null> {
-  return db
-    .prepare(`SELECT ${USER_COLS} FROM users WHERE id = ?`)
-    .bind(userId)
-    .first<UserRow>();
+  return mapUserRow(
+    await db
+      .prepare(`SELECT ${USER_COLS} FROM users WHERE id = ?`)
+      .bind(userId)
+      .first<Omit<UserRow, "agent_paused"> & { agent_paused?: number | null }>(),
+  );
 }
 
 /** Save (or clear) a user's GitHub App connection — installation id + target repo. */
@@ -290,10 +307,68 @@ export async function getUserByStripeCustomer(
   db: D1Database,
   customerId: string,
 ): Promise<UserRow | null> {
-  return db
-    .prepare(`SELECT ${USER_COLS} FROM users WHERE stripe_customer_id = ?`)
-    .bind(customerId)
-    .first<UserRow>();
+  return mapUserRow(
+    await db
+      .prepare(`SELECT ${USER_COLS} FROM users WHERE stripe_customer_id = ?`)
+      .bind(customerId)
+      .first<Omit<UserRow, "agent_paused"> & { agent_paused?: number | null }>(),
+  );
+}
+
+/**
+ * Is the autonomous weekly sweep paused for this target (issue #51)? Per-user by
+ * default; pass an `appId` to OR-fold the per-app flag with the owner's master
+ * switch (the per-app column is additive — until it exists this still reads the
+ * user flag, so a paused owner silences every app they own). Defaults to NOT
+ * paused on a missing row, preserving today's behavior for everyone.
+ */
+export async function isAgentPaused(
+  db: D1Database,
+  target: { userId: string; appId?: string },
+): Promise<boolean> {
+  if (target.appId !== undefined) {
+    // OR-fold: paused when EITHER the app OR its owner is paused. One query so the
+    // per-app override and the per-user master switch are checked together.
+    const row = await db
+      .prepare(
+        `SELECT MAX(CASE WHEN a.agent_paused = 1 OR u.agent_paused = 1 THEN 1 ELSE 0 END) AS paused
+         FROM apps a JOIN users u ON u.id = a.user_id
+         WHERE a.id = ?`,
+      )
+      .bind(target.appId)
+      .first<{ paused: number | null }>();
+    return row?.paused === 1;
+  }
+  const row = await db
+    .prepare("SELECT agent_paused FROM users WHERE id = ?")
+    .bind(target.userId)
+    .first<{ agent_paused: number | null }>();
+  return row?.agent_paused === 1;
+}
+
+/**
+ * Pause or resume the autonomous sweep (issue #51). Writes the boolean as 0/1 to
+ * the scoped table — per-user when given a `userId`, per-app when given an
+ * `appId`. Modeled on `setTier`'s partial-update shape. A no-op if neither id is
+ * provided (nothing to scope the write to).
+ */
+export async function setAgentPaused(
+  db: D1Database,
+  args: { userId?: string; appId?: string; paused: boolean },
+): Promise<void> {
+  const flag = args.paused ? 1 : 0;
+  if (args.userId !== undefined) {
+    await db
+      .prepare("UPDATE users SET agent_paused = ? WHERE id = ?")
+      .bind(flag, args.userId)
+      .run();
+  }
+  if (args.appId !== undefined) {
+    await db
+      .prepare("UPDATE apps SET agent_paused = ? WHERE id = ?")
+      .bind(flag, args.appId)
+      .run();
+  }
 }
 
 /** How many apps this user has connected (for the per-tier app-count gate). */
