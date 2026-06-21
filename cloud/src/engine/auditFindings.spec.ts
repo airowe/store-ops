@@ -587,6 +587,7 @@ describe("summarizeFindings", () => {
       good: 1,
       total: 4,
       topImpact: "completeness",
+      label: "2 fixes available · 1 critical",
     });
   });
   it("empty findings → zeroed counts and null topImpact", () => {
@@ -597,6 +598,7 @@ describe("summarizeFindings", () => {
       good: 0,
       total: 0,
       topImpact: null,
+      label: "No fixes found",
     });
   });
   it("topImpact follows the highest-weighted finding", () => {
@@ -605,6 +607,53 @@ describe("summarizeFindings", () => {
     const summary = summarizeFindings(auditFindings(input({ snapshot: snap })));
     expect(summary.topImpact).toBe("completeness");
     expect(summary.critical).toBe(1);
+  });
+});
+
+// ── summarizeFindings.label (PRD #45 — mock/production parity) ────────────────
+
+describe("summarizeFindings label", () => {
+  const f = (severity: FindingSeverity): Finding => ({
+    id: "x",
+    surface: "s",
+    severity,
+    impact: "conversion",
+    title: "t",
+    detail: "d",
+    fix: "fx",
+  });
+
+  it("counts critical + warn as fixes and appends the critical count", () => {
+    expect(summarizeFindings([f("critical"), f("warn"), f("warn")]).label).toBe(
+      "3 fixes available · 1 critical",
+    );
+  });
+
+  it("uses the singular 'fix' for a single actionable finding", () => {
+    expect(summarizeFindings([f("warn")]).label).toBe("1 fix available");
+  });
+
+  it("does NOT append a critical clause when there are no criticals", () => {
+    expect(summarizeFindings([f("warn"), f("warn")]).label).toBe("2 fixes available");
+  });
+
+  it("falls back to 'No fixes found' for an all-info/good set (info/good are not fixes)", () => {
+    expect(summarizeFindings([f("info"), f("good")]).label).toBe("No fixes found");
+  });
+
+  it("falls back to 'No fixes found' for an empty array", () => {
+    expect(summarizeFindings([]).label).toBe("No fixes found");
+  });
+
+  it("counts critical-only as a fix and pluralizes both clauses", () => {
+    expect(summarizeFindings([f("critical"), f("critical")]).label).toBe(
+      "2 fixes available · 2 critical",
+    );
+  });
+
+  it("is deterministic — same input → deep-equal summary including label", () => {
+    const set = [f("critical"), f("warn"), f("info")];
+    expect(summarizeFindings(set)).toEqual(summarizeFindings(set));
   });
 });
 

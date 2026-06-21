@@ -133,6 +133,13 @@ describe("serializeRunResult — Mode-A (ASC) run", () => {
     expect(result.findingsSummary.total).toBe(result.findings.length);
   });
 
+  it("ships a non-empty findingsSummary.label (production parity with the mock)", () => {
+    expect(typeof result.findingsSummary.label).toBe("string");
+    expect(result.findingsSummary.label.length).toBeGreaterThan(0);
+    // it must read as the richer label, not a bare "N findings" count fallback.
+    expect(result.findingsSummary.label).toMatch(/^(\d+ fixe?s? available( · \d+ critical)?|No fixes found)$/);
+  });
+
   it("includes a slim ascContext with exactly the expected safe keys", () => {
     expect(result.ascContext).toEqual({
       category: "Weather",
