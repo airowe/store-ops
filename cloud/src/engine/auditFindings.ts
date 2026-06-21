@@ -502,15 +502,21 @@ function ageRatingFindings(snapshot: AscSnapshot | undefined): Finding[] {
   const out: Finding[] = [];
 
   if (!ageRating.ageRating) {
+    // #71-A3: an empty parsed rating does NOT prove "not declared". We may have
+    // read the declaration but failed to parse Apple's value (format drift), or
+    // hit a restricted field. Asserting "not declared — can block submission" on
+    // a live app is alarming AND almost certainly wrong (a READY_FOR_SALE app
+    // necessarily HAS a rating). So we don't claim it's missing — we say plainly
+    // that we couldn't confirm it, at info level, never a false blocker warning.
     out.push(
       mk({
-        id: "age_rating_missing",
+        id: "age_rating_unconfirmed",
         surface: "ageRating",
-        severity: "warn",
+        severity: "info",
         impact: "completeness",
-        title: "Age rating not declared",
-        detail: "An undeclared age rating can block submission.",
-        fix: "Complete the age rating questionnaire in App Store Connect.",
+        title: "Age rating not confirmed",
+        detail: "We couldn't read a declared age rating from App Store Connect — that may be a read limitation, not a missing rating.",
+        fix: "Confirm your age rating is set in App Store Connect (it's required to ship).",
       }),
     );
   } else {

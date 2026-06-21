@@ -286,10 +286,11 @@ const RULES: RuleCase[] = [
     surface: "pricing",
     trigger: (b) => b, // always (if read)
   },
-  // ageRating
+  // ageRating — #71-A3: an unparsed/empty rating is "unconfirmed" (info), NOT a
+  // false "not declared — can block submission" warning.
   {
-    id: "age_rating_missing",
-    severity: "warn",
+    id: "age_rating_unconfirmed",
+    severity: "info",
     impact: "completeness",
     surface: "ageRating",
     trigger: (b) => {
