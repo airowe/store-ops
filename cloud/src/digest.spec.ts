@@ -150,6 +150,31 @@ describe("rankDeltasView — the API payload that feeds the animated dashboard",
     expect(view.entries[view.entries.length - 1]!.keyword).toBe("flat");
   });
 
+  // #74: when a `keywords` allowlist is passed (the CURRENT targeted set), the
+  // view must drop history-only keywords no longer targeted — e.g. 'manager'/
+  // 'mangia' tombstoned in pre-#57 snapshots must not resurface in rank movement.
+  it("filters out keywords not in the current targeted set (#74)", () => {
+    const history = [
+      snap("recipe", 200, WEEK1),
+      snap("recipe", 200, WEEK2),
+      snap("manager", 175, WEEK1), // dropped pre-#57 keyword — must NOT appear
+      snap("manager", 175, WEEK2),
+      snap("mangia", 168, WEEK1), // brand token — must NOT appear
+      snap("mangia", 168, WEEK2),
+    ];
+    const view = rankDeltasView(history, { appName: "Mangia", keywords: ["recipe", "meal", "pantry"] });
+    const kws = view.entries.map((e) => e.keyword);
+    expect(kws).toContain("recipe");
+    expect(kws).not.toContain("manager");
+    expect(kws).not.toContain("mangia");
+  });
+
+  it("returns ALL keywords when no allowlist is passed (back-compat)", () => {
+    const history = [snap("a", 10, WEEK1), snap("a", 10, WEEK2), snap("b", 20, WEEK1), snap("b", 20, WEEK2)];
+    const view = rankDeltasView(history, { appName: "Acme" });
+    expect(view.entries.map((e) => e.keyword).sort()).toEqual(["a", "b"]);
+  });
+
   it("falls back to the on-render shape (previous null) for single-snapshot keywords", () => {
     const history = [snap("brand new", 55, WEEK1)];
     const view = rankDeltasView(history, { appName: "Acme" });

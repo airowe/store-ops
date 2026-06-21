@@ -209,10 +209,22 @@ function movementWeight(e: DigestEntry): number {
  */
 export function rankDeltasView(
   rankHistory: RankSnapshotRow[],
-  opts: BuildDigestOpts & { pushes?: PushInput[] },
+  opts: BuildDigestOpts & {
+    pushes?: PushInput[];
+    /**
+     * #74: the CURRENT targeted keyword set. When provided, entries are filtered
+     * to these keywords so history-only keywords no longer targeted (e.g. a
+     * pre-#57 'manager'/'mangia' tombstoned in old snapshots) don't resurface in
+     * rank movement. Omitted → all keywords (back-compat for the email digest,
+     * which should still report everything it observed).
+     */
+    keywords?: string[];
+  },
 ): RankDeltaView {
   const { appName, entries, anyMovement } = buildDigest(rankHistory, opts);
-  const ordered: RankDeltaEntry[] = [...entries].sort(
+  const allow = opts.keywords && opts.keywords.length ? new Set(opts.keywords) : null;
+  const filtered = allow ? entries.filter((e) => allow.has(e.keyword)) : entries;
+  const ordered: RankDeltaEntry[] = [...filtered].sort(
     (a, b) => movementWeight(b) - movementWeight(a),
   );
 
@@ -233,7 +245,11 @@ export function rankDeltasView(
     }
   }
 
-  return { appName, entries: ordered, anyMovement };
+  // Recompute movement off the FILTERED set: if every moved keyword was filtered
+  // out, the (remaining) view honestly reads "held steady" rather than inheriting
+  // movement from keywords we no longer surface.
+  const filteredMovement = allow ? ordered.some((e) => e.direction !== "same") : anyMovement;
+  return { appName, entries: ordered, anyMovement: filteredMovement };
 }
 
 // ── rendering ────────────────────────────────────────────────────────────────
