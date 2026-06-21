@@ -47,14 +47,15 @@ crons = ["0 9 * * 1"]
 # run derives keywords with the deterministic classifier instead — a missing
 # binding never breaks a run.
 #
-# DISABLED FOR LAUNCH (deliberate): the deterministic classifier already fixes
-# the #57 honesty bug (drops "manager", classifies brand, mines real intent from
-# the description) with zero new infra. The LLM layer is a post-launch feature —
-# enable it then by uncommenting the two lines below. With the binding absent,
-# every run path falls through to classifyDeterministic (see reasonerForEnv →
-# undefined → deterministic floor). No code change needed to flip it on.
-# [ai]
-# binding = "AI"
+# ENABLED: the LLM reasons over the app's description to propose grounded intent
+# keywords for ANY app (including ones whose name doesn't describe what they do).
+# Safety: every model error degrades to the deterministic classifier (run never
+# breaks), and the guardrails (no invention — targets must be substantiated by
+# the description/keyword field; rank-checked before shown) keep it honest. The
+# real ASC keyword field still takes precedence (#75) — the LLM enriches, it
+# doesn't override the user's own curated keywords.
+[ai]
+binding = "AI"
 
 # ── Vars (non-secret config) ─────────────────────────────────────────────────
 [vars]
