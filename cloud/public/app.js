@@ -679,6 +679,24 @@
     ]);
     var badge = findingBadge(a.findings_summary);
     if (badge) row1.appendChild(badge);
+    // #50: a card-level "Run now" so the dashboard's "agent active" line has an
+    // adjacent control. This is the BLIND (public-data) run — it never reads ASC
+    // and never pushes; it ends in awaiting_approval at the human gate. The
+    // handler stopPropagation()s so the click doesn't bubble to the card's
+    // navigate-to-detail onclick below. The helper copy stays honest: read+prepare
+    // only, you still approve, and the ASC read lives on the app page.
+    var runNowBtn = el("button", {
+      class: "btn small run-now",
+      onclick: function (ev) {
+        ev.stopPropagation();
+        triggerRun(a.id, this, { label: "▶ Run now", backHash: "#/" });
+      },
+    }, ["▶ Run now"]);
+    var runNowFoot = el("div", { class: "appcard-foot", onclick: function (ev) { ev.stopPropagation(); } }, [
+      runNowBtn,
+      el("span", { class: "faint run-now-note" }, ["Re-checks ranks & drafts changes on public data — you still approve before anything ships. Connect App Store Connect (on the app page) to also read your subtitle & keywords."]),
+    ]);
+
     var card = el("div", { class: "card appcard", onclick: function () { go("#/apps/" + a.id); } }, [
       row1,
       el("div", { class: "bundle" }, [a.bundle_id]),
@@ -687,6 +705,7 @@
         el("div", {}, [el("div", { class: "k" }, ["Lead rank"]), el("div", { class: "v" }, [rs ? rankText(rs.lead_rank) : "—"])]),
         el("div", {}, [el("div", { class: "k" }, ["Top-10 kw"]), el("div", { class: "v" }, [rs ? String(rs.top10) + "/" + rs.tracked : "—"])]),
       ]),
+      runNowFoot,
     ]);
     return card;
   }
@@ -943,7 +962,15 @@
           el("div", { class: "faint", style: "margin:8px 0 16px" }, [message || "Something went wrong running the agent."]),
           el("div", { class: "btn-row" }, [
             el("button", { class: "btn primary", onclick: function () { if (onRetry) onRetry(); } }, ["↻ Try again"]),
-            el("button", { class: "btn ghost", onclick: function () { go(backHash || "#/"); } }, ["← Back"]),
+            // "Back" returns to backHash. When that hash equals the current one
+            // (e.g. a dashboard "Run now" fails while we're still at #/), setting
+            // location.hash is a no-op that wouldn't re-fire the router — so call
+            // route() directly to rebuild the view we replaced with this card.
+            el("button", { class: "btn ghost", onclick: function () {
+              var target = backHash || "#/";
+              if (location.hash === target || (!location.hash && target === "#/")) route();
+              else go(target);
+            } }, ["← Back"]),
           ]),
         ]));
       },
@@ -959,12 +986,20 @@
     "Preparing the change for your review",
   ];
 
-  function triggerRun(appId, btn) {
+  // The blind (public-data) run. Reused from two call sites: the app-detail
+  // opt-out button and the dashboard card's "Run now" (#50). `opts` lets each
+  // caller restore its own idle label on error and choose where the error card's
+  // "Back" returns to. Defaults reproduce the app-detail caller's behavior, so
+  // existing callers can keep passing nothing.
+  function triggerRun(appId, btn, opts) {
+    opts = opts || {};
+    var label = opts.label || "▶ Run agent now";
+    var backHash = opts.backHash || ("#/apps/" + appId);
     btn.disabled = true; btn.innerHTML = '<span class="spin"></span> Agent running…';
     var inter = runInterstitial(RUN_STEPS);
     api("POST", "/apps/" + appId + "/run")
       .then(function (r) { inter.settle(); toast("Agent finished — review the proposal."); go("#/runs/" + r.id); })
-      .catch(function (e) { btn.disabled = false; btn.textContent = "▶ Run agent now"; inter.fail(e.message || "The agent run failed.", function () { triggerRun(appId, btn); }, "#/apps/" + appId); });
+      .catch(function (e) { btn.disabled = false; btn.textContent = label; inter.fail(e.message || "The agent run failed.", function () { triggerRun(appId, btn, opts); }, backHash); });
   }
 
   // Read a .p8 file client-side and fill the textarea (paste stays a fallback).
