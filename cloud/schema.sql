@@ -31,7 +31,8 @@ CREATE TABLE IF NOT EXISTS users (
   stripe_subscription_id  TEXT,
   current_period_end      TEXT,                         -- ISO; NULL for free / one-time
   github_installation_id  TEXT,                         -- GitHub App installation id (not sensitive)
-  github_repo             TEXT                          -- "owner/name" target for metadata PRs
+  github_repo             TEXT,                         -- "owner/name" target for metadata PRs
+  rlhf_opt_out            INTEGER NOT NULL DEFAULT 0     -- 1 ⇒ do NOT capture this user's proposal edits (#39 Part 2)
 );
 
 -- Migration for an EXISTING db (the CREATE above only fires on a fresh db). Run
@@ -43,6 +44,7 @@ CREATE TABLE IF NOT EXISTS users (
 --   npx wrangler d1 execute store_ops --command "ALTER TABLE users ADD COLUMN current_period_end TEXT"
 --   npx wrangler d1 execute store_ops --command "ALTER TABLE users ADD COLUMN github_installation_id TEXT"
 --   npx wrangler d1 execute store_ops --command "ALTER TABLE users ADD COLUMN github_repo TEXT"
+--   npx wrangler d1 execute store_ops --command "ALTER TABLE users ADD COLUMN rlhf_opt_out INTEGER NOT NULL DEFAULT 0"
 -- (add `--local` to each for the local D1; drop it for remote.)
 
 -- ── apps ─────────────────────────────────────────────────────────────────────
@@ -137,4 +139,33 @@ CREATE TABLE IF NOT EXISTS subscribers (
   email       TEXT NOT NULL UNIQUE,
   source      TEXT,                                   -- where they signed up (e.g. 'landing')
   created_at  TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+-- ── proposal_edits ───────────────────────────────────────────────────────────
+-- RLHF capture (#39 Part 2): the (agent proposal → human-shipped final, decision)
+-- preference signal, one row per editable field, written ATOMICALLY inside the
+-- recordApproval batch so the captured signal can never disagree with the gate.
+--
+-- PRIVACY BY CONSTRUCTION:
+--   • FULLY ANONYMOUS — there is deliberately NO user_id and NO app_id column. A
+--     row cannot be traced back to a user or an app. (Honored at write time:
+--     opted-out users produce ZERO rows; since rows are anonymous they could not
+--     be selectively deleted later, so capture must never start for them.)
+--   • ENCRYPTED AT REST — proposed_enc / final_enc hold AES-256-GCM ciphertext
+--     (random 12-byte IV ++ ciphertext, base64), keyed by env.RLHF_ENCRYPTION_KEY.
+--     The copy text is NEVER stored in plaintext. With no key set, capture is a
+--     silent no-op (safe-degrade) — no row is written and the approval proceeds.
+--   • edited = 1 when the human changed the field, 0 when it shipped unchanged.
+--     decision ∈ {approved, rejected} — a rejection is a negative preference.
+-- Migration for an existing db (the CREATE above only fires on a fresh db):
+--   npx wrangler d1 execute store_ops --command "CREATE TABLE IF NOT EXISTS proposal_edits (id TEXT PRIMARY KEY, field TEXT NOT NULL, decision TEXT NOT NULL, edited INTEGER NOT NULL, proposed_enc TEXT NOT NULL, final_enc TEXT NOT NULL, created_at TEXT NOT NULL DEFAULT (datetime('now')))"
+-- (add `--local` for the local D1; drop it for remote.)
+CREATE TABLE IF NOT EXISTS proposal_edits (
+  id            TEXT PRIMARY KEY,                     -- uuid
+  field         TEXT NOT NULL,                        -- name|subtitle|keywords|promo|description|whatsNew
+  decision      TEXT NOT NULL,                        -- 'approved' | 'rejected'
+  edited        INTEGER NOT NULL,                     -- 1 if the human changed it, else 0
+  proposed_enc  TEXT NOT NULL,                        -- AES-256-GCM(IV++ciphertext, base64) of the agent's value
+  final_enc     TEXT NOT NULL,                        -- AES-256-GCM(IV++ciphertext, base64) of the shipped value
+  created_at    TEXT NOT NULL DEFAULT (datetime('now'))
 );

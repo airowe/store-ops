@@ -27,6 +27,8 @@ import type {
   SurfaceLock,
 } from "./engine/index.js";
 import type { RunStatus } from "./engine/constants.js";
+import { buildPreferenceRows } from "./engine/preferenceSignal.js";
+import { encryptField } from "./crypto/rlhfCrypto.js";
 
 // ── Row types (mirror schema.sql) ────────────────────────────────────────────
 
@@ -43,6 +45,7 @@ export type UserRow = {
   current_period_end: string | null;
   github_installation_id: string | null;
   github_repo: string | null;
+  rlhf_opt_out: number; // 0 = capturing (default), 1 = opted out (#39 Part 2)
 };
 
 export type AppRow = {
@@ -190,7 +193,7 @@ const now = (): string => new Date().toISOString().replace("T", " ").slice(0, 19
 // ── users ────────────────────────────────────────────────────────────────────
 
 const USER_COLS =
-  "id, email, created_at, tier, status, stripe_customer_id, stripe_subscription_id, current_period_end, github_installation_id, github_repo";
+  "id, email, created_at, tier, status, stripe_customer_id, stripe_subscription_id, current_period_end, github_installation_id, github_repo, rlhf_opt_out";
 
 /** Get-or-create a user by email (magic-link/session resolves to this). Idempotent. */
 export async function upsertUser(db: D1Database, email: string): Promise<UserRow> {
@@ -211,6 +214,7 @@ export async function upsertUser(db: D1Database, email: string): Promise<UserRow
     current_period_end: null,
     github_installation_id: null,
     github_repo: null,
+    rlhf_opt_out: 0, // capture is ON by default; the settings toggle sets this
   };
   await db
     .prepare("INSERT INTO users (id, email, created_at, tier, status) VALUES (?, ?, ?, ?, ?)")
@@ -293,6 +297,70 @@ export async function setTier(
     .prepare(`UPDATE users SET ${sets.join(", ")} WHERE id = ?`)
     .bind(...binds)
     .run();
+}
+
+/**
+ * Is this user opted OUT of RLHF capture? Capture is ON by default (returns
+ * false when the row is missing), so the privacy-honoring read is conservative
+ * only in that an opted-out user is never captured. Mirrors `getTier`.
+ */
+export async function getOptOut(db: D1Database, userId: string): Promise<boolean> {
+  const row = await db
+    .prepare("SELECT rlhf_opt_out FROM users WHERE id = ?")
+    .bind(userId)
+    .first<{ rlhf_opt_out: number }>();
+  return (row?.rlhf_opt_out ?? 0) === 1;
+}
+
+/** Set a user's RLHF opt-out flag (the settings toggle calls this). */
+export async function setOptOut(
+  db: D1Database,
+  args: { userId: string; optOut: boolean },
+): Promise<void> {
+  await db
+    .prepare("UPDATE users SET rlhf_opt_out = ? WHERE id = ?")
+    .bind(args.optOut ? 1 : 0, args.userId)
+    .run();
+}
+
+/**
+ * Build the ANONYMOUS, ENCRYPTED `proposal_edits` INSERT statements for a decided
+ * run (#39 Part 2), to be APPENDED to recordApproval's atomic batch so the
+ * captured signal can never disagree with the recorded gate decision.
+ *
+ * Privacy by construction:
+ *   • SAFE-DEGRADE — when `key` is null (env.RLHF_ENCRYPTION_KEY unset), returns
+ *     [] and writes nothing. The approval proceeds normally.
+ *   • ANONYMOUS — the INSERT carries NO user_id / NO app_id. A row cannot be
+ *     traced to a user or app. (The OPT-OUT is honored upstream at the call site:
+ *     an opted-out user never reaches this function, so it writes zero rows.)
+ *   • ENCRYPTED — `proposed`/`final` are AES-256-GCM sealed before binding; the
+ *     plaintext copy is never stored.
+ */
+export async function captureProposalEdits(
+  db: D1Database,
+  key: CryptoKey | null,
+  args: {
+    proposed: Partial<CopyFields>;
+    final: Partial<CopyFields>;
+    decision: "approved" | "rejected";
+  },
+): Promise<D1PreparedStatement[]> {
+  if (!key) return []; // safe-degrade: no key ⇒ no capture, no error
+  const rows = buildPreferenceRows(args);
+  const stmts: D1PreparedStatement[] = [];
+  for (const r of rows) {
+    const proposedEnc = await encryptField(key, r.proposed);
+    const finalEnc = await encryptField(key, r.final);
+    stmts.push(
+      db
+        .prepare(
+          "INSERT INTO proposal_edits (id, field, decision, edited, proposed_enc, final_enc, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+        )
+        .bind(uuid(), r.field, r.decision, r.edited ? 1 : 0, proposedEnc, finalEnc, now()),
+    );
+  }
+  return stmts;
 }
 
 /** Find a user by their Stripe customer id (webhook → local user resolution). */
@@ -586,7 +654,17 @@ export async function getApproval(db: D1Database, runId: string): Promise<Approv
  */
 export async function recordApproval(
   db: D1Database,
-  args: { runId: string; decision: "approved" | "rejected" },
+  args: {
+    runId: string;
+    decision: "approved" | "rejected";
+    /**
+     * Extra statements to run in the SAME atomic batch as the gate decision
+     * (#39 Part 2: the anonymous, encrypted `proposal_edits` capture rows). They
+     * commit all-or-nothing with the approval, so the captured RLHF signal can
+     * never disagree with the recorded decision. Empty/absent → unchanged behavior.
+     */
+    extraStmts?: D1PreparedStatement[];
+  },
 ): Promise<ApprovalRow> {
   const row: ApprovalRow = {
     id: uuid(),
@@ -603,6 +681,7 @@ export async function recordApproval(
       )
       .bind(row.id, row.run_id, row.decision, row.decided_at),
     db.prepare("UPDATE runs SET status = ? WHERE id = ?").bind(nextStatus, args.runId),
+    ...(args.extraStmts ?? []),
   ]);
   return row;
 }
