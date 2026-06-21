@@ -654,6 +654,36 @@
   // dataReliable:false + an empty set → the honest "?" (unknown) grade (#41):
   // we couldn't read the real screenshots, so we carry NO urls — never a fake
   // gallery. Mirrors src/engine/screenshotScore.ts's "?" branch.
+  function gradeForMock(pts) {
+    return pts >= 85 ? "A" : pts >= 70 ? "B" : pts >= 50 ? "C" : pts >= 30 ? "D" : "F";
+  }
+
+  // Port of src/engine/screenshotScore.ts shotLevers() (#55) — the SAME budget,
+  // so the offline dashboard renders the same prioritized C→B→A levers the engine
+  // computes. The engine is the TDD'd source of truth; this mirrors it for the
+  // no-backend demo. Honesty gates identical: "?"/null → [], no no-op, sorted.
+  function shotLeversMock(sc) {
+    if (sc.grade === "?" || sc.score === null) return [];
+    var base = sc.score, levers = [];
+    function add(id, label, detail, delta, skill) {
+      if (delta <= 0) return;
+      var lv = { id: id, label: label, detail: detail, delta: delta,
+        fromGrade: sc.grade, toGrade: gradeForMock(Math.min(100, base + delta)) };
+      if (skill) lv.skill = true;
+      levers.push(lv);
+    }
+    var n = sc.iphoneCount;
+    if (n === 0) add("count", "Add 4+ screenshots", "An empty deck can't convert. Fill at least 4 of your 10 slots — the first 3 carry most installs.", 40, true);
+    else if (n < 4) add("count", "Fill up to 4–5 slots", "You're using " + n + " of 10 slots — reaching 4–5 jumps the count tier. The first 3 carry most installs.", 20, true);
+    else if (n < 6) add("count", "Add a 6th screenshot", n + " shots is solid, but a 6th uses your slot budget fully — 6+ scores higher than 4–5.", 10, true);
+    // aspect — the mock always emits tall 1290×2796 shots, so no aspect lever fires
+    // (the engine reads the size token; here it's always tall). Kept for parity.
+    if (sc.ipadCount === 0) add("ipad", "Add iPad screenshots", "If you ship a universal (iPad) app, an empty iPad deck leaves that surface blank. Skip this if you're iPhone-only.", 10, false);
+    var ORDER = { count: 0, aspect: 1, ipad: 2 };
+    levers.sort(function (a, b) { return (b.delta - a.delta) || (ORDER[a.id] - ORDER[b.id]); });
+    return levers;
+  }
+
   function scoreShots(app, iphone, ipad, dataReliable) {
     var iUrls = shotUrls(app + ":iphone", iphone, "1290x2796");
     var pUrls = shotUrls(app + ":ipad", ipad, "2048x2732");
@@ -661,7 +691,7 @@
       return {
         app: app, iphoneCount: 0, ipadCount: ipad, score: null, grade: "?",
         findings: ["ℹ Couldn't read your screenshots from public App Store data — connect App Store Connect to audit your real screenshot set."],
-        aspectHint: "", screenshotUrls: [], ipadScreenshotUrls: [],
+        aspectHint: "", screenshotUrls: [], ipadScreenshotUrls: [], levers: [],
       };
     }
     var score = 0, findings = [];
@@ -674,8 +704,10 @@
     score += 20; findings.push("Tall 1290×2796 aspect detected — optimal for modern iPhones.");
     score += 8;
     score = Math.min(100, score);
-    var grade = score >= 85 ? "A" : score >= 70 ? "B" : score >= 50 ? "C" : score >= 30 ? "D" : "F";
-    return { app: app, iphoneCount: iphone, ipadCount: ipad, score: score, grade: grade, findings: findings, aspectHint: "1290x2796", screenshotUrls: iUrls, ipadScreenshotUrls: pUrls };
+    var grade = gradeForMock(score);
+    var sc = { app: app, iphoneCount: iphone, ipadCount: ipad, score: score, grade: grade, findings: findings, aspectHint: "1290x2796", screenshotUrls: iUrls, ipadScreenshotUrls: pUrls, levers: [] };
+    sc.levers = shotLeversMock(sc);
+    return sc;
   }
 
   // ── rank opportunity score (PRD 06) — mirrors src/engine/rankOpportunity.ts ─

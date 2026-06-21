@@ -32,7 +32,10 @@ export {
   type Listing as ScreenshotListing,
   type ShotScore,
   type Grade,
+  type Lever,
   score as scoreScreenshots,
+  shotLevers,
+  gradeFor,
   aspectFromUrl,
   aspectLabel,
 } from "./screenshotScore.js";

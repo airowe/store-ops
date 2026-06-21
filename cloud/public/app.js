@@ -1144,6 +1144,12 @@
     c.appendChild(gateCard(run, R));
   }
 
+  // The make-it tool for the screenshot levers (#55) + the findings linkout. The
+  // free MIT app-store-screenshots skill — the agent NEVER generates/pushes assets;
+  // this is a linkout for the human to act on. Module-scope so both the findings
+  // fix-link AND the improvement panel reuse the same URL.
+  var SHOTS_SKILL = "https://github.com/ParthJadhav/app-store-screenshots";
+
   // The "Listing audit" card: the engine's findings, prioritized (biggest wins
   // first, as returned), each labeled by impact lane with a concrete fix. Findings
   // ONLY — never raw ASC data. Empty list → an honest green "great shape" state.
@@ -1207,7 +1213,6 @@
   // Curated, honest: real tools we'd recommend + the exact App Store Connect spot.
   function fixLinkFor(id) {
     var ASC = "https://appstoreconnect.apple.com";
-    var SHOTS_SKILL = "https://github.com/ParthJadhav/app-store-screenshots";
     var map = {
       screenshots_grade_low: [
         el("a", { href: SHOTS_SKILL, target: "_blank", rel: "noopener" }, ["Generate a better shot deck →"]),
@@ -1269,6 +1274,51 @@
       "The real shots we graded above — a conversion signal, not ranking. This is what your store visitors see.",
     ]);
     return el("div", { class: "shots-gallery" }, [head, strip, note]);
+  }
+
+  // ── Screenshot improvement panel (#55) ─────────────────────────────────────
+  // Turns the dead-end grade into a prioritized, quantified worklist: each lever
+  // is a single concrete move with its point delta and the grade it would reach
+  // ("Add a 6th screenshot → +10 pts · C → B"), sorted biggest-win-first. Honest
+  // by construction: the engine emits NO levers for the unreadable "?" set (#41)
+  // or an A-grade set (no headroom), so this returns null and no panel renders —
+  // never over-selling a finished or unreadable listing. CONVERSION framing only,
+  // no ranking claims. The count/aspect levers reuse the existing make-it skill
+  // linkout; the agent never generates or pushes assets.
+  function improvementPanel(sc) {
+    if (!sc) return null;
+    var levers = sc.levers || [];
+    if (!levers.length) return null; // no headroom / unreadable → no panel
+
+    var head = el("div", { class: "shots-head" }, [
+      el("span", { class: "shots-title" }, ["Improve your grade"]),
+      el("span", { class: "shots-count faint" }, [
+        "Shots: " + (sc.grade || "?") + " · " + levers.length + " lever" + (levers.length === 1 ? "" : "s"),
+      ]),
+    ]);
+
+    var rows = levers.map(function (lv) {
+      var children = [
+        el("div", { class: "lever-line" }, [
+          el("span", { class: "lever-label" }, [lv.label]),
+          el("span", { class: "lever-delta" }, ["+" + lv.delta + " pts"]),
+          el("span", { class: "lever-grade" }, [lv.fromGrade + " → " + lv.toGrade]),
+        ]),
+      ];
+      if (lv.detail) children.push(el("div", { class: "lever-detail faint" }, [lv.detail]));
+      if (lv.skill) {
+        children.push(el("div", { class: "lever-link" }, [
+          el("a", { href: SHOTS_SKILL, target: "_blank", rel: "noopener" }, ["Generate the missing shots with this skill →"]),
+          el("span", { class: "faint" }, [" (free MIT skill)"]),
+        ]));
+      }
+      return el("div", { class: "lever-row flip-in" }, children);
+    });
+
+    var note = el("div", { class: "lever-note faint" }, [
+      "Each lever shows the exact points it adds and the grade it reaches — a conversion signal for what store visitors see. Biggest win first.",
+    ]);
+    return el("div", { class: "shot-levers" }, [head].concat(rows).concat([note]));
   }
 
   // No-key run detector: a public-data run carries the `asc_unlock` finding and
@@ -1335,6 +1385,12 @@
     // set is unreadable ("?"), so the honest empty-state finding stands alone (#41).
     var gallery = screenshotGallery(R.audit && R.audit.screenshots);
     if (gallery) children.push(gallery);
+    // Screenshot improvement panel (#55) — prioritized, quantified C→B→A levers
+    // beside the gallery. Null (no panel) when the set is unreadable ("?") or
+    // already A-grade (no headroom): the engine's levers gate honesty, the UI just
+    // renders. Removing this one push fully reverts the feature.
+    var levers = improvementPanel(R.audit && R.audit.screenshots);
+    if (levers) children.push(levers);
     // Metadata coverage gauge (PRD 03) — a budget-efficiency read, ABOVE the
     // findings. Separate visual section; the findings card logic is untouched.
     var cov = coverageSection(R.coverage, noKey);

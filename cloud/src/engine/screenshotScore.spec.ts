@@ -2,8 +2,11 @@ import { describe, expect, it } from "vitest";
 import {
   aspectFromUrl,
   aspectLabel,
+  gradeFor,
   resolveShotUrl,
   score,
+  shotLevers,
+  type Lever,
   type Listing,
 } from "./screenshotScore.js";
 
@@ -176,5 +179,117 @@ describe("screenshot scoring — carries the real screenshot urls (#47)", () => 
     const res = score("x", {});
     expect(Array.isArray(res.screenshotUrls)).toBe(true);
     expect(Array.isArray(res.ipadScreenshotUrls)).toBe(true);
+  });
+});
+
+// #55: convert the (otherwise dead-end) grade into prioritized, quantified,
+// grade-aware levers — each a single concrete move with its precise point delta
+// and the grade it would reach. Honesty gates: no levers for the unreadable "?"
+// case (#41), none for an A-grade set (no headroom), never a no-op, and the
+// aspect lever asserts the TARGET ratio, never the thumbnail's literal pixels.
+describe("shot levers (#55)", () => {
+  const lever = (ls: Lever[], id: Lever["id"]): Lever | undefined => ls.find((l) => l.id === id);
+
+  it("Mangia case (5 iPhone, 0 iPad, wide) → C with a count + aspect lever", () => {
+    const s = score("Mangia", listing(5, 0, WIDE));
+    expect(s.grade).toBe("C"); // 40 + 5 + 10 + 8 = 63
+    const ls = shotLevers(s);
+    const count = lever(ls, "count");
+    const aspect = lever(ls, "aspect");
+    expect(count).toBeDefined();
+    expect(count!.delta).toBe(10); // 5 → 6th screenshot
+    expect(count!.fromGrade).toBe("C");
+    expect(count!.toGrade).toBe("B"); // 63 + 10 = 73
+    expect(aspect).toBeDefined();
+    expect(aspect!.delta).toBe(10);
+  });
+
+  it("toGrade is computed via the real gradeFor (boundary: C@63 + 10 crosses 70 → B)", () => {
+    const s = score("x", listing(5, 0, WIDE));
+    const count = lever(shotLevers(s), "count")!;
+    expect(count.toGrade).toBe(gradeFor(Math.min(100, s.score! + count.delta)));
+    expect(count.toGrade).toBe("B");
+  });
+
+  it("sorts levers by point delta descending (biggest win first)", () => {
+    // 2 iPhone, 0 iPad, tall → count lever (+20) and iPad lever (+10).
+    const ls = shotLevers(score("x", listing(2, 0, TALL)));
+    expect(ls.length).toBeGreaterThanOrEqual(2);
+    for (let i = 1; i < ls.length; i++) {
+      expect(ls[i - 1]!.delta).toBeGreaterThanOrEqual(ls[i]!.delta);
+    }
+    expect(ls[0]!.id).toBe("count");
+    expect(ls[0]!.delta).toBe(20);
+  });
+
+  it("emits NO no-op levers for a full tall iPad-backed set (grade A, no headroom)", () => {
+    const s = score("x", listing(8, 4, TALL));
+    expect(s.grade).toBe("A");
+    expect(shotLevers(s)).toEqual([]);
+  });
+
+  it("honesty: returns [] for the unreadable '?' / null-score case (#41)", () => {
+    const s = score("x", { screenshotUrls: [], ipadScreenshotUrls: [], dataReliable: false });
+    expect(s.grade).toBe("?");
+    expect(s.score).toBeNull();
+    expect(shotLevers(s)).toEqual([]);
+  });
+
+  it("never emits a lever with delta <= 0", () => {
+    for (const n of [0, 1, 2, 3, 4, 5, 6, 8]) {
+      for (const lv of shotLevers(score("x", listing(n, 0, n % 2 ? WIDE : TALL)))) {
+        expect(lv.delta).toBeGreaterThan(0);
+      }
+    }
+  });
+
+  it("aspect lever asserts the TARGET ratio (1290×2796), not the user's literal pixels", () => {
+    // The wide URL's size token is the iTunes THUMBNAIL (392×696), not the upload
+    // resolution — the ratio is reliable, the pixel size is not (#55 honesty rule).
+    const aspect = lever(shotLevers(score("x", listing(5, 0, WIDE))), "aspect")!;
+    expect(aspect.label + " " + aspect.detail).toContain("1290×2796");
+    // Must NOT claim the thumbnail dims (392×696) are the true upload size.
+    expect(aspect.label + " " + aspect.detail).not.toContain("392");
+    expect(aspect.label + " " + aspect.detail).not.toContain("696");
+  });
+
+  it("suppresses the aspect lever when the first shot has no readable dims", () => {
+    // A URL with no size token → aspectFromUrl returns null → we can't claim a
+    // deficit we can't see, so no aspect lever is emitted.
+    const noDims = "https://is1.mzstatic.com/image/thumb/x/v4/a/b/c/no-size-here.png";
+    const s = score("x", { screenshotUrls: Array.from({ length: 5 }, () => noDims) });
+    expect(aspectFromUrl(noDims)).toBeNull();
+    expect(lever(shotLevers(s), "aspect")).toBeUndefined();
+  });
+
+  it.each<[number, string, number]>([
+    [0, "Add 4+", 40],
+    [2, "Fill up to 4", 20],
+    [5, "Add a 6th", 10],
+  ])("count tier: %i iPhone → action contains %s, delta %i", (n, action, delta) => {
+    const count = lever(shotLevers(score("x", listing(n, 1, TALL))), "count")!;
+    expect(count).toBeDefined();
+    expect(count.label).toContain(action);
+    expect(count.delta).toBe(delta);
+  });
+
+  it("emits NO count lever once the slot budget is full (6+ iPhone)", () => {
+    expect(lever(shotLevers(score("x", listing(6, 1, TALL))), "count")).toBeUndefined();
+  });
+
+  it("iPad lever gating: empty iPad set emits a +10 lever; present → none", () => {
+    const empty = lever(shotLevers(score("x", listing(5, 0, TALL))), "ipad");
+    expect(empty).toBeDefined();
+    expect(empty!.delta).toBe(10);
+    expect(empty!.skill).toBeFalsy(); // iPad CTA is ASC, not the iPhone-deck skill
+    const present = lever(shotLevers(score("x", listing(5, 2, TALL))), "ipad");
+    expect(present).toBeUndefined();
+  });
+
+  it("count + aspect levers offer the make-it skill linkout; iPad does not", () => {
+    const ls = shotLevers(score("x", listing(2, 0, WIDE)));
+    expect(lever(ls, "count")!.skill).toBe(true);
+    expect(lever(ls, "aspect")!.skill).toBe(true);
+    expect(lever(ls, "ipad")!.skill).toBeFalsy();
   });
 });

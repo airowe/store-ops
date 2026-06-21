@@ -868,6 +868,31 @@ svg.spark .lbl { fill: var(--faint); font-family: var(--mono); font-size: 10px; 
 }
 .shots-note { font-size: 12px; font-style: italic; }
 
+/* ── Screenshot improvement panel (#55) ───────────────────────────────────────
+   Prioritized, quantified C→B→A levers next to the gallery. Each row: the action,
+   a point-delta badge, the grade transition, an honest caveat, and (where it
+   applies) the make-it skill linkout. Conversion-framed; no ranking claims. */
+.shot-levers { margin: 4px 0 16px; }
+.shot-levers .shots-head { margin-bottom: 8px; }
+.lever-row {
+  padding: 10px 12px; margin-bottom: 8px;
+  background: var(--line-soft); border: 1px solid var(--line); border-radius: 12px;
+}
+.lever-row:last-of-type { margin-bottom: 8px; }
+.lever-line { display: flex; align-items: baseline; flex-wrap: wrap; gap: 10px; }
+.lever-label { font-weight: 600; color: var(--ink); }
+.lever-delta {
+  font-family: var(--mono); font-size: 12px; font-weight: 700;
+  color: var(--signal); background: var(--signal-glow);
+  border: 1px solid var(--signal-dim); border-radius: 6px; padding: 1px 7px;
+}
+.lever-grade {
+  font-family: var(--mono); font-size: 12px; font-weight: 600; color: var(--dim);
+}
+.lever-detail { font-size: 12.5px; margin-top: 4px; line-height: 1.45; }
+.lever-link { font-size: 12.5px; margin-top: 6px; }
+.lever-note { font-size: 12px; font-style: italic; margin-top: 2px; }
+
 /* ===== ranking-feature styles: b75150b ===== */
 .impact-chip.good    { color: var(--signal); background: var(--signal-glow); border-color: var(--signal-dim); }
 
