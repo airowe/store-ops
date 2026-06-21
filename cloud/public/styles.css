@@ -599,6 +599,28 @@ svg.spark .lbl { fill: var(--faint); font-family: var(--mono); font-size: 10px; 
   font-size: 14px; font-family: var(--mono);
 }
 .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+/* SPA freshness nudge (#54): a top, persistent, dismissible bar shown when a
+   newer app.<hash>.js has deployed while the tab was open. Non-blocking — it's
+   a centered pill that never covers #view; only the bar itself takes pointer
+   events. Modeled on .toast, reusing the same tokens. */
+.freshness-banner {
+  position: fixed; top: 14px; left: 50%; transform: translateX(-50%) translateY(-16px);
+  display: none; align-items: center; gap: 14px;
+  background: linear-gradient(180deg, var(--panel-2), var(--panel)); border: 1px solid var(--line); color: var(--ink);
+  padding: 9px 12px 9px 16px; border-radius: 12px; box-shadow: var(--shadow);
+  opacity: 0; transition: opacity .2s, transform .2s; z-index: 70;
+  font-size: 14px; max-width: calc(100vw - 28px);
+}
+.freshness-banner.show { display: flex; opacity: 1; transform: translateX(-50%) translateY(0); }
+.freshness-banner .fresh-msg { color: var(--dim); }
+.freshness-banner .btn { padding: 5px 12px; font-size: 13px; background: var(--signal); border-color: var(--signal); color: #04140d; }
+.freshness-banner .btn:hover { transform: translateY(-1px); box-shadow: 0 12px 30px -8px var(--signal-glow); border-color: var(--signal); }
+.freshness-banner .fresh-x {
+  background: transparent; border: 0; color: var(--faint); cursor: pointer;
+  font-size: 18px; line-height: 1; padding: 2px 6px; border-radius: 8px;
+}
+.freshness-banner .fresh-x:hover { color: var(--ink); }
 .backlink { display: inline-flex; align-items: center; gap: 6px; color: var(--dim); font-family: var(--mono); font-size: 13px; margin: 18px 0 4px; cursor: pointer; }
 .backlink:hover { color: var(--ink); }
 .split { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
