@@ -59,6 +59,12 @@
 
   // ── API client ────────────────────────────────────────────────────────────
   var liveMode = !!API_BASE; // becomes false if the live Worker errors out
+  // Ephemeral ASC credentials from the current session's READ — held ONLY in JS
+  // memory so the PUSH step (same run, minutes later) doesn't re-prompt for the
+  // key the user just entered. NEVER persisted to disk/localStorage/server, and
+  // cleared on every route() so it can't linger across apps. Honors the standing
+  // "never store the .p8" rule while killing the same-run double-entry friction.
+  var ascCredsMemory = null; // { issuerId, keyId, p8 } | null
   async function api(method, path, body) {
     var headers = {};
     // Session cookie is the real auth; only add the demo header when the user
@@ -920,7 +926,12 @@
     btn.disabled = true; btn.innerHTML = '<span class="spin"></span> Reading your listing & running…';
     var inter = runInterstitial(["Reading your live subtitle & keywords from App Store Connect"].concat(RUN_STEPS.slice(1)));
     api("POST", "/apps/" + appId + "/run-asc", creds)
-      .then(function (r) { inter.settle(); toast("Read your live listing — review the proposal."); go("#/runs/" + r.id); })
+      .then(function (r) {
+        // Remember the creds in-memory for THIS session so the push step doesn't
+        // re-prompt (never persisted; cleared on the next route()).
+        ascCredsMemory = { issuerId: creds.issuerId, keyId: creds.keyId, p8: creds.p8 };
+        inter.settle(); toast("Read your live listing — review the proposal."); go("#/runs/" + r.id);
+      })
       .catch(function (e) { btn.disabled = false; btn.textContent = "▶ Run with ASC read"; inter.fail(e.message || "The App Store Connect run failed.", function () { triggerRunAsc(appId, btn, creds); }, "#/apps/" + appId); });
   }
 
@@ -1889,6 +1900,18 @@
       card.appendChild(el("div", { class: "btn-row", style: "margin-top:12px" }, [
         el("button", { class: "btn primary", onclick: function () { go("#/apps/" + run.app_id); } }, ["▶ Run the agent again"]),
       ]));
+    } else if (isNoOpProposal(R.currentCopy || {}, R.proposedCopy || {})) {
+      // #76: the proposal doesn't actually change anything (or differs only by
+      // case/whitespace). Don't present a "push this" handoff for metadata that's
+      // already live — that reads as "you're showing me my own data as a change."
+      // Be honest: nothing to push.
+      card.appendChild(el("div", { class: "locked", style: "margin-top:4px" }, [
+        el("span", { class: "lock" }, ["✓"]),
+        "Your metadata is already well-optimized — the agent found no changes worth pushing. Nothing to upload.",
+      ]));
+      card.appendChild(el("div", { class: "btn-row", style: "margin-top:12px" }, [
+        el("button", { class: "btn", onclick: function () { go("#/apps/" + run.app_id); } }, ["← Back to app"]),
+      ]));
     } else {
       // approved or shipped → reveal the handoff
       card.appendChild(el("p", { class: "muted", style: "margin-top:0" }, ["Approved. Hand the metadata to your build pipeline (recommended) — that path is credential-free. Or upload straight to App Store Connect below; ShipASO uses your key once and never stores it."]));
@@ -1896,6 +1919,24 @@
       card.appendChild(commandsBox(R.pushCommands || [], run.id, R.proposedCopy || {}, R.currentCopy || {}));
     }
     return card;
+  }
+
+  // #76: true when the proposal changes NOTHING the user would care about vs the
+  // current live copy — every field equal ignoring case + surrounding whitespace.
+  // (App Store keyword matching is case-insensitive, so a lone "MRI"→"mri" fold is
+  // not a real change and must not be presented as one.) Compares only fields the
+  // push would write: name, subtitle, keywords, promo.
+  function isNoOpProposal(current, proposed) {
+    var fields = ["name", "subtitle", "keywords", "promo"];
+    var norm = function (v) { return String(v == null ? "" : v).toLowerCase().replace(/\s+/g, " ").trim(); };
+    for (var i = 0; i < fields.length; i++) {
+      var f = fields[i];
+      // Only compare a field the proposal actually carries (an unread field is
+      // absent, not "changed").
+      if (proposed[f] === undefined) continue;
+      if (norm(current[f]) !== norm(proposed[f])) return false;
+    }
+    return true;
   }
 
   function commandsLocked() {
@@ -1969,6 +2010,14 @@
     var keyId = el("input", { class: "txt mono", type: "text", placeholder: "Key ID (e.g. ABC123DEFG)", autocomplete: "off", spellcheck: "false" });
     var p8 = el("textarea", { class: "txt mono", rows: "4", placeholder: "-----BEGIN PRIVATE KEY-----\n…paste your .p8 contents…\n-----END PRIVATE KEY-----", autocomplete: "off", spellcheck: "false" });
     var status = el("span", { class: "faint", style: "font-size:12.5px" }, []);
+    // Reuse the key the user entered for THIS session's read so they don't re-type
+    // it minutes later (#76 friction). In-memory only, never persisted.
+    if (ascCredsMemory) {
+      issuer.value = ascCredsMemory.issuerId || "";
+      keyId.value = ascCredsMemory.keyId || "";
+      p8.value = ascCredsMemory.p8 || "";
+      status.textContent = "Using the key from your read — never stored.";
+    }
     var creds = function () { return { issuerId: issuer.value, keyId: keyId.value, p8: p8.value }; };
     var pushBtn = el("button", { class: "btn primary", onclick: function () { pushAsc(runId, creds(), pushBtn, status); } }, ["↥ Upload to App Store Connect"]);
     sec.appendChild(el("label", { class: "fld", style: "margin-top:12px" }, [el("span", { class: "lab" }, ["Issuer ID"]), issuer]));
@@ -2490,8 +2539,9 @@
     var h = location.hash.replace(/^#/, "") || "/";
     var m;
     // #/apps/:id (optionally ?asc=1 → scroll to + flash the ASC run panel, PRD 04).
-    if ((m = h.match(/^\/apps\/([^/?]+)(?:\?(.*))?$/))) return viewApp(m[1], parseQuery(m[2]));
+    if ((m = h.match(/^\/apps\/([^/?]+)(?:\?(.*))?$/))) { ascCredsMemory = null; return viewApp(m[1], parseQuery(m[2])); }
     if ((m = h.match(/^\/runs\/([^/]+)$/))) return viewRun(m[1]);
+    ascCredsMemory = null; // leaving the read→run→push flow → drop the in-memory key
     return viewDashboard();
   }
 

@@ -137,13 +137,17 @@ export function buildKeywordField(
   const seen = new Set<string>();
   const picked: string[] = [];
   for (const raw of candidates) {
-    const term = raw.trim().toLowerCase();
-    if (!term || seen.has(term)) continue;
+    const term = raw.trim();
+    if (!term) continue;
+    // #76: case-fold for dedupe/comparison ONLY — emit the original casing so a
+    // deliberate acronym like "MRI" is preserved (lowercasing it is a fake change).
+    const key = term.toLowerCase();
+    if (seen.has(key)) continue;
     if ([...words(term)].some((w) => banned.has(w))) continue;
     const candidate = picked.length ? `${picked.join(",")},${term}` : term;
     if (candidate.length > CHAR_LIMITS.keywords) continue;
     picked.push(term);
-    seen.add(term);
+    seen.add(key);
   }
   return picked.join(",");
 }
