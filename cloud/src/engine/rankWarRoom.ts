@@ -47,6 +47,14 @@ export type HeadToHead = {
   keyword: string;
   /** your current rank for this keyword, or null if unranked. */
   you: number | null;
+  /**
+   * your rank at the prior DISTINCT snapshot (the same "previous" `trend` is
+   * derived from), or null when there is only one snapshot for this keyword.
+   * Surfaced so the UI can animate your prev → cur count-up without recomputing
+   * it client-side. HONESTY: null means "no measured prior" — the UI must skip
+   * the count-up rather than invent a start value; it is NEVER coerced to 0.
+   */
+  youPrevious: number | null;
   /** one entry per selected competitor, in the order they were supplied. */
   competitors: Array<{
     name: string;
@@ -204,7 +212,7 @@ export function buildWarRoom(input: BuildWarRoomInput): HeadToHead[] {
       gapToBest = gap > 0 ? gap : null;
     }
 
-    rows.push({ keyword, you, competitors, gapToBest, trend, winning });
+    rows.push({ keyword, you, youPrevious: previous, competitors, gapToBest, trend, winning });
   }
 
   // Sort by CLOSEABILITY, not vanity (the suite's winnability mandate + the PRD
