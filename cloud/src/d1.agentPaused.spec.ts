@@ -1,15 +1,17 @@
 /**
  * Agent pause/resume persistence (issue #51) — the standing-autonomy off switch.
  *
- * `setAgentPaused` must write the boolean as SQLite's 0/1 to the RIGHT scope:
- *   • per-user  → UPDATE users SET agent_paused = ? WHERE id = ?
- *   • per-app   → UPDATE apps  SET agent_paused = ? WHERE id = ?   (additive scope)
+ * Pause is PER-USER: `setAgentPaused` writes the boolean as SQLite's 0/1 to
+ *   users.agent_paused  (UPDATE users SET agent_paused = ? WHERE id = ?)
+ * and `isAgentPaused` reads + normalizes that 0/1 back to a real boolean. The
+ * cron also calls isAgentPaused with an `appId`; that resolves the app to its
+ * OWNER and reads the same per-user flag (a per-app override is an additive
+ * follow-up — there is no apps.agent_paused column today).
  *
- * `isAgentPaused` must READ + NORMALIZE the 0/1 column to a real boolean, and —
- * for the per-app variant — treat the target as paused when EITHER the app OR its
- * owner is paused (so a per-user master switch silences everything the user owns).
- *
- * Both use the same fake-D1 capture pattern as d1.recordApproval.spec.ts.
+ * These tests use the fake-D1 capture pattern (SQL + bound args) for the SQL
+ * shape. The real-schema behavior (incl. the appId→owner JOIN that must not
+ * reference a nonexistent column) is pinned separately in
+ * d1.agentPausedSchema.spec.ts against an actual SQLite built from schema.sql.
  */
 import { describe, expect, it } from "vitest";
 import { isAgentPaused, setAgentPaused } from "./d1.js";
@@ -69,14 +71,10 @@ describe("setAgentPaused — writes 0/1 to the right scope", () => {
     expect(upd!.args).toEqual([0, "user-1"]);
   });
 
-  it("per-app: UPDATE apps SET agent_paused = ? WHERE id = ? when given an appId", async () => {
+  it("never writes the apps table (pause is per-user; no apps.agent_paused column)", async () => {
     const { db, captured } = fakeDb();
-    await setAgentPaused(db, { appId: "app-9", paused: true });
-
-    const upd = find(captured, /UPDATE apps SET agent_paused/);
-    expect(upd).toBeDefined();
-    expect(upd!.args).toEqual([1, "app-9"]);
-    expect(find(captured, /UPDATE users/)).toBeUndefined();
+    await setAgentPaused(db, { userId: "user-1", paused: true });
+    expect(find(captured, /UPDATE apps/)).toBeUndefined();
   });
 });
 
@@ -96,14 +94,16 @@ describe("isAgentPaused — reads + normalizes 0/1 to boolean", () => {
     expect(await isAgentPaused(db, { userId: "ghost" })).toBe(false);
   });
 
-  it("per-app: paused when the OWNER is paused even if the app is not", async () => {
-    // The single query OR-folds app + owner; the fake returns the folded result.
-    const { db } = fakeDb([{ paused: 1 }]);
+  // The appId variant resolves the app to its owner and reads users.agent_paused
+  // (column aliased back to agent_paused). Real JOIN behavior + the
+  // must-not-reference-apps.agent_paused invariant live in the schema spec.
+  it("per-app: paused when the owner is paused (resolved via the app→owner join)", async () => {
+    const { db } = fakeDb([{ agent_paused: 1 }]);
     expect(await isAgentPaused(db, { userId: "user-1", appId: "app-1" })).toBe(true);
   });
 
-  it("per-app: not paused when neither the app nor the owner is paused", async () => {
-    const { db } = fakeDb([{ paused: 0 }]);
+  it("per-app: not paused when the owner is not paused", async () => {
+    const { db } = fakeDb([{ agent_paused: 0 }]);
     expect(await isAgentPaused(db, { userId: "user-1", appId: "app-1" })).toBe(false);
   });
 });

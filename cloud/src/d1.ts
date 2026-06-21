@@ -316,28 +316,32 @@ export async function getUserByStripeCustomer(
 }
 
 /**
- * Is the autonomous weekly sweep paused for this target (issue #51)? Per-user by
- * default; pass an `appId` to OR-fold the per-app flag with the owner's master
- * switch (the per-app column is additive — until it exists this still reads the
- * user flag, so a paused owner silences every app they own). Defaults to NOT
- * paused on a missing row, preserving today's behavior for everyone.
+ * Is the autonomous weekly sweep paused for this target (issue #51)? Pause is
+ * PER-USER today: the only persisted flag is `users.agent_paused`, set via the
+ * /agent/pause|/resume routes. `appId` is accepted as an extension point — the
+ * cron passes it so a future per-app override (an additive `apps.agent_paused`
+ * column + an OR-fold here) needs no call-site change — but until that column
+ * exists we resolve the app to its OWNER and read the per-user flag. This must
+ * NOT reference `apps.agent_paused`: that column isn't in the schema, and doing
+ * so threw `no such column` on every cron sweep. Defaults to NOT paused on a
+ * missing row, preserving today's behavior for everyone.
  */
 export async function isAgentPaused(
   db: D1Database,
   target: { userId: string; appId?: string },
 ): Promise<boolean> {
   if (target.appId !== undefined) {
-    // OR-fold: paused when EITHER the app OR its owner is paused. One query so the
-    // per-app override and the per-user master switch are checked together.
+    // Resolve the app to its owner and read the per-user flag. (When a per-app
+    // column lands, OR-fold it in here — the cron call site stays unchanged.)
     const row = await db
       .prepare(
-        `SELECT MAX(CASE WHEN a.agent_paused = 1 OR u.agent_paused = 1 THEN 1 ELSE 0 END) AS paused
-         FROM apps a JOIN users u ON u.id = a.user_id
-         WHERE a.id = ?`,
+        `SELECT u.agent_paused AS agent_paused
+           FROM apps a JOIN users u ON u.id = a.user_id
+          WHERE a.id = ?`,
       )
       .bind(target.appId)
-      .first<{ paused: number | null }>();
-    return row?.paused === 1;
+      .first<{ agent_paused: number | null }>();
+    return row?.agent_paused === 1;
   }
   const row = await db
     .prepare("SELECT agent_paused FROM users WHERE id = ?")
@@ -347,28 +351,22 @@ export async function isAgentPaused(
 }
 
 /**
- * Pause or resume the autonomous sweep (issue #51). Writes the boolean as 0/1 to
- * the scoped table — per-user when given a `userId`, per-app when given an
- * `appId`. Modeled on `setTier`'s partial-update shape. A no-op if neither id is
- * provided (nothing to scope the write to).
+ * Pause or resume the autonomous sweep (issue #51). Per-user: writes the boolean
+ * as 0/1 to `users.agent_paused`. Modeled on `setTier`'s partial-update shape.
+ *
+ * Per-app pause is a deliberate non-goal here (see the PRD): the schema has no
+ * `apps.agent_paused` column, so this never writes one — a per-app override is an
+ * additive follow-up (add the column, extend isAgentPaused's OR-fold, add a
+ * per-app route). Until then a paused owner silences every app they own.
  */
 export async function setAgentPaused(
   db: D1Database,
-  args: { userId?: string; appId?: string; paused: boolean },
+  args: { userId: string; paused: boolean },
 ): Promise<void> {
-  const flag = args.paused ? 1 : 0;
-  if (args.userId !== undefined) {
-    await db
-      .prepare("UPDATE users SET agent_paused = ? WHERE id = ?")
-      .bind(flag, args.userId)
-      .run();
-  }
-  if (args.appId !== undefined) {
-    await db
-      .prepare("UPDATE apps SET agent_paused = ? WHERE id = ?")
-      .bind(flag, args.appId)
-      .run();
-  }
+  await db
+    .prepare("UPDATE users SET agent_paused = ? WHERE id = ?")
+    .bind(args.paused ? 1 : 0, args.userId)
+    .run();
 }
 
 /** How many apps this user has connected (for the per-tier app-count gate). */
