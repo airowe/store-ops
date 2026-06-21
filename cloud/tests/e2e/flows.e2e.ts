@@ -426,7 +426,12 @@ test.describe("run page — Listing audit card (ASC findings, PRD 03)", () => {
     const card = page.locator(".audit-card");
     await expect(card).toBeVisible();
     await expect(card.getByRole("heading", { name: /listing audit/i })).toBeVisible();
-    await expect(card.locator(".audit-summary")).toBeVisible();
+    // The header reads the richer label ("N fixes available · M critical" /
+    // "No fixes found"), NOT a bare "N findings" count fallback. This is the
+    // assertion that would have caught the mock/production `label` divergence (#45).
+    const summaryEl = card.locator(".audit-summary");
+    await expect(summaryEl).toBeVisible();
+    await expect(summaryEl).toHaveText(/^\d+ fixe?s? available( · \d+ critical)?$|^No fixes found$/);
 
     // It sits ABOVE the diff card (audit → proposed changes → reasoning).
     const auditTop = await card.evaluate((n) => n.getBoundingClientRect().top);

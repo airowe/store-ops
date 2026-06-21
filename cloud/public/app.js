@@ -1155,7 +1155,7 @@
 
     var head = el("div", { class: "audit-head" }, [
       el("h3", { style: "margin:0" }, ["Listing audit"]),
-      el("span", { class: "audit-summary" }, [summary ? summary.label : (findings.length + " finding" + (findings.length === 1 ? "" : "s"))]),
+      el("span", { class: "audit-summary" }, [(summary && summary.label) ? summary.label : (findings.length + " finding" + (findings.length === 1 ? "" : "s"))]),
     ]);
     var gc = gradeChip(R);
     if (gc) head.appendChild(gc);

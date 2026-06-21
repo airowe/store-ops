@@ -46,7 +46,7 @@ Legend — severity: `crit`/`warn`/`good`/`info`; impact: `rank`/`conv`/`trust`/
 ## ageRating (`snapshot.ageRating`) — low-signal
 | id | trigger | sev | impact | title / fix | slice |
 |----|---------|-----|--------|-------------|-------|
-| `age_rating_missing` | no declared rating | warn | comp | "Age rating not declared" / "Complete it in App Store Connect — it can block submission." | ff |
+| `age_rating_unconfirmed` | parsed rating empty (read may have failed, NOT proof it's missing) | info | comp | "Age rating not confirmed" / "Confirm your age rating is set in App Store Connect (it's required to ship)." — honesty (#71-A3): never assert "missing/can block submission" on a live app; an empty parse may be a read limit. | ff |
 | `age_rating_context` | declared | info | comp | "Age rating: {rating}" / context only. | ff |
 
 ## customProductPages (`snapshot.customProductPages.pages[]`)
@@ -78,3 +78,10 @@ Legend — severity: `crit`/`warn`/`good`/`info`; impact: `rank`/`conv`/`trust`/
   `privacy_policy_missing`, `secondary_category_missing`, `primary_category_context`,
   `version_in_review`, `version_no_draft`, `locale_single`, `asc_unlock`. The rest
   are fast-follow.
+- **Keep this catalog in sync with the engine.** Any new/renamed finding id in
+  `src/engine/auditFindings.ts` must add/update its row here in the SAME PR — this
+  file is the catalog of record. As of #45 the engine emits 24 ids and they all
+  appear above; the `ff`-tagged rows already ship (they're honest, non-alarming
+  `info`/`good`/`warn` context), so "launch slice" describes priority, not what's
+  live. The owner decision on whether to trim the live `ff` rows is tracked in
+  PRD #45 §8 (recommendation: ratify current state).

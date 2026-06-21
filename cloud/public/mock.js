@@ -365,9 +365,13 @@
     return f;
   }
 
+  // mirrors src/engine/auditFindings.ts summarizeFindings + findingsLabel —
+  // keep the `label` format byte-identical to the engine (source of truth there)
+  // so the demo never promises header copy the real product doesn't deliver.
   function summarizeFindings(findings) {
     var c = { total: findings.length, critical: 0, warn: 0, good: 0, info: 0 };
     findings.forEach(function (x) { if (c[x.severity] != null) c[x.severity] += 1; });
+    // "fixes" = critical + warn (actionable); info/good context never counts.
     var parts = [];
     var fixes = c.critical + c.warn;
     if (fixes > 0) parts.push(fixes + " fix" + (fixes === 1 ? "" : "es") + " available");

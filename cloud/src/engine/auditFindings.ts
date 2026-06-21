@@ -73,6 +73,14 @@ export type FindingsSummary = {
   total: number;
   /** the impact lane of the highest-weighted finding, or null when there are none. */
   topImpact: FindingImpact | null;
+  /**
+   * Human one-liner for the audit-card header and dashboard badge, e.g.
+   * "3 fixes available · 1 critical" or "No fixes found". A "fix" is an
+   * actionable finding (critical + warn); info/good context is never counted,
+   * so the header never inflates urgency. This is the source of truth for the
+   * format — `public/mock.js` mirrors it byte-for-byte.
+   */
+  label: string;
 };
 
 // ── Scoring ──────────────────────────────────────────────────────────────────
@@ -112,6 +120,7 @@ export function summarizeFindings(findings: Finding[]): FindingsSummary {
     info: 0,
     total: findings.length,
     topImpact: null,
+    label: "",
   };
   let topWeight = -1;
   for (const f of findings) {
@@ -122,7 +131,21 @@ export function summarizeFindings(findings: Finding[]): FindingsSummary {
       summary.topImpact = f.impact;
     }
   }
+  summary.label = findingsLabel(summary.critical, summary.warn);
   return summary;
+}
+
+/**
+ * The audit-card / badge one-liner. "Fixes" = critical + warn (actionable);
+ * info/good context never counts. Pure — no time/random. Mirrored in
+ * `public/mock.js`; keep the two byte-identical.
+ */
+export function findingsLabel(critical: number, warn: number): string {
+  const fixes = critical + warn;
+  const parts: string[] = [];
+  if (fixes > 0) parts.push(`${fixes} fix${fixes === 1 ? "" : "es"} available`);
+  if (critical > 0) parts.push(`${critical} critical`);
+  return parts.length ? parts.join(" · ") : "No fixes found";
 }
 
 // ── Rule helpers ─────────────────────────────────────────────────────────────
