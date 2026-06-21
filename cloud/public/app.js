@@ -96,6 +96,12 @@
   // ── tiny DOM helpers ───────────────────────────────────────────────────────
   function el(tag, attrs, kids) {
     var n = document.createElement(tag);
+    // A <button> with no explicit type defaults to type="submit" per the HTML
+    // spec — so a button placed anywhere inside a <form> submits it on click,
+    // triggering a FULL PAGE RELOAD (wiping SPA state + entered credentials and
+    // jumping to the top). Default every button to type="button"; the few real
+    // submit buttons (Search / Send link / Preview) set type="submit" explicitly.
+    if (tag === "button" && !(attrs && attrs.type)) n.setAttribute("type", "button");
     if (attrs) for (var k in attrs) {
       if (k === "class") n.className = attrs[k];
       else if (k === "html") n.innerHTML = attrs[k];
