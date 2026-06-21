@@ -11,6 +11,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:e2e": "playwright test",
+    "smoke": "node scripts/smoke.mjs",
     "typecheck": "tsc --noEmit",
     "build:dashboard": "node scripts/stamp-assets.mjs",
     "deploy:dashboard": "npm run build:dashboard && wrangler pages deploy dist --project-name store-ops-dashboard",
