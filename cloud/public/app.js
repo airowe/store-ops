@@ -65,6 +65,7 @@
   // cleared on every route() so it can't linger across apps. Honors the standing
   // "never store the .p8" rule while killing the same-run double-entry friction.
   var ascCredsMemory = null; // { issuerId, keyId, p8 } | null
+  var connectInFlight = false; // #77: re-entry guard so a connect can't double-fire
   async function api(method, path, body) {
     var headers = {};
     // Session cookie is the real auth; only add the demo header when the user
@@ -446,16 +447,28 @@
   function connectCard() {
     var queryInput, results, submitBtn;
 
-    // Connect a chosen app by exact bundle id, then run the first audit.
+    // Connect a chosen app by exact bundle id, then land on the app page so the
+    // user can run a KEYED (ASC-read) pass for a real result.
     function connect(bundleId, displayName) {
+      // #77: guard against repeat clicks. The candidate rows (not submitBtn) call
+      // this, and a silent landing used to make users click again — spawning
+      // duplicate apps + blind runs. Block re-entry while a connect is in flight.
+      if (connectInFlight) return;
+      connectInFlight = true;
       submitBtn.disabled = true;
       submitBtn.innerHTML = '<span class="spin"></span> Connecting…';
       api("POST", "/apps", { bundle_id: bundleId, name: displayName })
         .then(function (r) {
-          toast("App connected — running first audit…");
-          return api("POST", "/apps/" + r.id + "/run").then(function () { go("#/"); viewDashboard(); });
+          // #77: route to the APP PAGE (not a silent dashboard bounce, and NOT an
+          // auto-blind-run that produces low-quality name-token keywords). The app
+          // page's primary CTA is the ASC read — the user runs keyed for a real
+          // result, or opts into the blind run explicitly.
+          toast("App connected — run a read to audit it.");
+          connectInFlight = false;
+          go("#/apps/" + r.id);
         })
         .catch(function (e) {
+          connectInFlight = false;
           submitBtn.disabled = false; submitBtn.textContent = "Search";
           // A 402 is the tier-limit paywall — surface it loudly (a friendly upsell
           // dialog), not as a below-the-fold toast that's easy to miss (#27).
