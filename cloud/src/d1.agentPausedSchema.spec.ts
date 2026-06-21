@@ -19,10 +19,21 @@ import { fileURLToPath } from "node:url";
 import { beforeEach, describe, expect, it } from "vitest";
 import { isAgentPaused, setAgentPaused } from "./d1.js";
 
-// Load node:sqlite via require at runtime: Vite's static resolver mangles the
-// `node:sqlite` import specifier (it strips the `node:` prefix and looks for a
-// nonexistent "sqlite" module). createRequire defers to Node's real loader.
-const { DatabaseSync } = createRequire(import.meta.url)("node:sqlite") as typeof import("node:sqlite");
+// `node:sqlite` is a Node builtin only from 22.5+ (stable in 24/26). CI runs on
+// Node 20, where requiring it throws ERR_UNKNOWN_BUILTIN_MODULE. So load it
+// LAZILY behind a guard: when present (a dev on Node 22.5+/24/26) this suite runs
+// the real-schema regression; when absent (CI Node 20) it cleanly SKIPS rather
+// than crashing the whole test run. The mock-based d1.agentPaused.spec.ts still
+// runs everywhere — this is the extra, environment-gated layer.
+// createRequire defers to Node's real loader (Vite's resolver mangles the
+// `node:sqlite` specifier otherwise).
+let DatabaseSync: typeof import("node:sqlite").DatabaseSync | null = null;
+try {
+  ({ DatabaseSync } = createRequire(import.meta.url)("node:sqlite") as typeof import("node:sqlite"));
+} catch {
+  DatabaseSync = null; // Node < 22.5 (e.g. CI Node 20) — suite skips below.
+}
+const sqliteAvailable = DatabaseSync !== null;
 
 const SCHEMA_PATH = fileURLToPath(new URL("../schema.sql", import.meta.url).href);
 
@@ -32,7 +43,8 @@ const SCHEMA_PATH = fileURLToPath(new URL("../schema.sql", import.meta.url).href
  * throws exactly as production D1 would.
  */
 function d1FromSchema(): D1Database {
-  const sqlite = new DatabaseSync(":memory:");
+  // Guarded by sqliteAvailable / describe.skipIf — never reached on Node < 22.5.
+  const sqlite = new DatabaseSync!(":memory:");
   sqlite.exec(readFileSync(SCHEMA_PATH, "utf8"));
   return {
     prepare(sql: string) {
@@ -78,7 +90,7 @@ async function seed(opts: { userPaused?: boolean; withApp?: boolean } = {}) {
   }
 }
 
-describe("isAgentPaused against the real schema (#51 regression)", () => {
+describe.skipIf(!sqliteAvailable)("isAgentPaused against the real schema (#51 regression)", () => {
   it("per-user: reads users.agent_paused (true when 1)", async () => {
     await seed({ userPaused: true });
     expect(await isAgentPaused(db, { userId: "user-1" })).toBe(true);
@@ -107,7 +119,7 @@ describe("isAgentPaused against the real schema (#51 regression)", () => {
   });
 });
 
-describe("setAgentPaused against the real schema (#51 regression)", () => {
+describe.skipIf(!sqliteAvailable)("setAgentPaused against the real schema (#51 regression)", () => {
   it("per-user write round-trips through users.agent_paused", async () => {
     await seed();
     await setAgentPaused(db, { userId: "user-1", paused: true });
