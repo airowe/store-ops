@@ -1607,6 +1607,16 @@
       ])]);
     }
 
+    // A numeric score is only meaningful when it DIFFERENTIATES keywords. Early on,
+    // every driver is a default (distance 0 = unranked, competitorWeakness 100 =
+    // no competitor data, momentum 50 = no history), so every keyword scores
+    // identically — and an identical number across all rows is false precision.
+    // Hide the number until real signals (rank movement / competitor data) spread
+    // the scores; the qualitative reachability chip ("Soon") still carries honest
+    // signal. The number returns the moment the scores actually differ.
+    var scores = opportunities.map(function (o) { return Math.round(o.opportunityScore); });
+    var differentiated = new Set(scores).size > 1;
+
     var list = el("div", { class: "opps" });
     opportunities.slice(0, 5).forEach(function (o, i) {
       var reach = REACH_META[o.reachability] || REACH_META.longshot;
@@ -1618,24 +1628,33 @@
           el("span", { class: "opp-bar" }, [el("span", { class: "opp-bar-fill", style: "width:" + v + "%" })]),
         ]));
       });
+      var rowtop = [el("span", { class: "opp-kw" }, [o.keyword])];
+      // Only render the numeric score when it differentiates keywords (#73-followup).
+      if (differentiated) {
+        rowtop.push(el("span", { class: "opp-score", title: "Opportunity score (0–100)" }, [String(Math.round(o.opportunityScore))]));
+      }
+      rowtop.push(el("span", { class: "reach-chip " + reach.cls }, [reach.label]));
       list.appendChild(el("div", { class: "opp flip-in", style: "--i:" + i }, [
-        el("div", { class: "opp-rowtop" }, [
-          el("span", { class: "opp-kw" }, [o.keyword]),
-          el("span", { class: "opp-score", title: "Opportunity score (0–100)" }, [String(Math.round(o.opportunityScore))]),
-          el("span", { class: "reach-chip " + reach.cls }, [reach.label]),
-        ]),
+        el("div", { class: "opp-rowtop" }, rowtop),
         el("div", { class: "opp-why" }, [o.why || ""]),
         bars,
       ]));
     });
 
-    return el("div", { class: "card opp-card" }, [
-      head,
+    var notes = [
       el("div", { class: "faint", style: "font-size:12px;margin:6px 0 12px" }, [
         "Reachability = distance-to-top·0.5 + competitor-weakness·0.35 + momentum·0.15 — all from your measured organic rank (no estimated search volume). A heuristic for the most reachable next move, not a guarantee. “Now”/“Soon” terms feed the optimizer's targets.",
       ]),
-      list,
-    ]);
+    ];
+    // When scores haven't differentiated yet, say so plainly instead of showing a
+    // wall of identical numbers that reads as broken/fake.
+    if (!differentiated) {
+      notes.push(el("div", { class: "faint", style: "font-size:12px;margin:-6px 0 12px;color:var(--warn)" }, [
+        "These are all equally reachable right now — there isn't enough signal to rank them yet. As your ranks move (and competitors are added), the most winnable ones rise to the top.",
+      ]));
+    }
+
+    return el("div", { class: "card opp-card" }, [head].concat(notes, [list]));
   }
 
   // Keyword table — MEASURED columns only (#65). We show each target keyword's
