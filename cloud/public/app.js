@@ -3143,6 +3143,49 @@
       });
   }
 
+  // RLHF opt-out toggle (#39 Part 2). Capture is ON by default; this lets a
+  // signed-in user opt OUT. Mirrors the agent-pause toggle pattern: read the live
+  // state from /auth/me (session.rlhf_opt_out), POST the flip, reflect it back.
+  // The disclosure line states the honest, anonymized + encrypted design.
+  function privacyToggle() {
+    var optedOut = !!(session && session.rlhf_opt_out);
+    var wrap = el("span", { id: "rlhfToggle", style: "display:flex;gap:6px;align-items:center" });
+    var link = el("a", {
+      href: "#", id: "rlhfToggleLink",
+      title: "We use anonymized, encrypted edits to improve ShipASO's suggestions. No account or app identifiers are stored. Toggle off to opt out.",
+      style: "color:inherit;text-decoration:underline;cursor:pointer",
+    }, [optedOut ? "Improve ShipASO: off" : "Improve ShipASO: on"]);
+    // When the session object didn't carry the flag (e.g. demo/local boot), pull
+    // the live value from the backend so the label reflects persisted state.
+    if (!(session && typeof session.rlhf_opt_out === "boolean")) {
+      api("GET", "/auth/me").then(function (me) {
+        if (me && typeof me.rlhf_opt_out === "boolean") {
+          optedOut = me.rlhf_opt_out;
+          if (session) session.rlhf_opt_out = optedOut;
+          link.textContent = optedOut ? "Improve ShipASO: off" : "Improve ShipASO: on";
+        }
+      }).catch(function () {});
+    }
+    link.onclick = function (e) {
+      e.preventDefault();
+      var next = !optedOut; // next opt-OUT state
+      link.style.pointerEvents = "none";
+      api("POST", "/account/rlhf-optout", { optOut: next })
+        .then(function (out) {
+          var v = !!out.rlhf_opt_out;
+          if (session) session.rlhf_opt_out = v;
+          link.textContent = v ? "Improve ShipASO: off" : "Improve ShipASO: on";
+          toast(v
+            ? "Opted out — your edits won't be used to improve ShipASO."
+            : "Thanks — anonymized, encrypted edits help improve ShipASO.");
+        })
+        .catch(function () { toast("Couldn't update that — try again."); })
+        .finally(function () { link.style.pointerEvents = ""; applyAuthHeader(); });
+    };
+    wrap.appendChild(link);
+    return wrap;
+  }
+
   // Reflect auth state in the header (see headerState):
   //   signedIn → email + Sign out (apps auto-load); hide the demo stub + label
   //   signIn   → a "Sign in" button (→ magic link); hide the demo stub + label
@@ -3161,6 +3204,12 @@
     if (st.mode === "demoStub") {
       if (input) input.style.display = "";
       if (label) { label.style.display = ""; label.textContent = "acting as"; }
+      // Surface the RLHF opt-out toggle in local/demo dev too (it routes through
+      // the mock backend), so the privacy control is exercisable end-to-end.
+      var demoSpan = el("span", { id: "authState", class: "faint", style: "display:flex;gap:8px;align-items:center" }, [
+        privacyToggle(),
+      ]);
+      who.insertBefore(demoSpan, document.getElementById("envpill"));
       return;
     }
 
@@ -3171,6 +3220,7 @@
     if (st.mode === "signedIn") {
       var span = el("span", { id: "authState", class: "faint", style: "display:flex;gap:8px;align-items:center" }, [
         el("span", {}, [st.email || ""]),
+        privacyToggle(),
         el("a", { href: "#", style: "color:inherit;text-decoration:underline;cursor:pointer", onclick: function (e) {
           e.preventDefault();
           fetch(API_BASE + "/auth/logout", { method: "POST", credentials: "include" })

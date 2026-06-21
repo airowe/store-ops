@@ -82,10 +82,12 @@ import {
 import type { ReasoningTrace, AppRow, FindingsSummary } from "../d1.js";
 import { buildPreview } from "../engine/preview.js";
 import {
+  captureProposalEdits,
   countAppsForUser,
   createApp,
   deleteApp,
   getApp,
+  getOptOut,
   getUser,
   getApproval,
   getLatestCompetitorMap,
@@ -100,11 +102,13 @@ import {
   recordApproval,
   recordSubscriber,
   setGithubConnection,
+  setOptOut,
   setTier,
   updateRunCopy,
   upsertUser,
 } from "../d1.js";
 import { finalizeEditedCopy } from "./proposalEdit.js";
+import { decryptField, importKeyFromBase64 } from "../crypto/rlhfCrypto.js";
 import {
   mintMagicToken,
   mintSessionToken,
@@ -506,15 +510,103 @@ async function authMe(req: Request, env: Env, origin: string | null): Promise<Re
   const token = jar[SESSION_COOKIE];
   if (token) {
     const res = await verifySessionToken(sessionSecret(env), token);
-    if (res.ok) return json({ authed: true, via: "session", email: res.email }, 200, origin, env);
+    if (res.ok) {
+      // Surface the RLHF opt-out so the settings toggle reflects the live state
+      // (#39 Part 2). get-or-create keeps a first-login session consistent.
+      const user = await upsertUser(env.DB, res.email);
+      return json(
+        { authed: true, via: "session", email: res.email, rlhf_opt_out: user.rlhf_opt_out === 1 },
+        200,
+        origin,
+        env,
+      );
+    }
   }
   if (env.APP_ENV === "demo") {
     const email = req.headers.get("x-user-email")?.trim().toLowerCase();
     if (email && email.includes("@")) {
-      return json({ authed: true, via: "demo", email }, 200, origin, env);
+      const user = await upsertUser(env.DB, email);
+      return json(
+        { authed: true, via: "demo", email, rlhf_opt_out: user.rlhf_opt_out === 1 },
+        200,
+        origin,
+        env,
+      );
     }
   }
   return json({ authed: false }, 200, origin, env);
+}
+
+/**
+ * POST /account/rlhf-optout {optOut:boolean} — flip this user's RLHF capture
+ * opt-out (#39 Part 2). Capture is ON by default; opting out means NO further
+ * `proposal_edits` rows are written for this user (honored at write time). Returns
+ * the new state. requireUser-gated (the caller decides for their own account).
+ */
+async function rlhfOptOutRoute(req: Request, env: Env, userId: string): Promise<unknown> {
+  const body = await readJson<{ optOut?: unknown }>(req);
+  if (typeof body.optOut !== "boolean") {
+    throw new HttpError(400, "optOut must be a boolean");
+  }
+  await setOptOut(env.DB, { userId, optOut: body.optOut });
+  return { rlhf_opt_out: body.optOut };
+}
+
+/**
+ * GET /admin/preference-data — OWNER-ONLY export of the RLHF dataset (#39 Part 2).
+ * Decrypts every anonymous `proposal_edits` row → JSONL of
+ * `{field, decision, edited, proposed, final, created_at}` (still NO user/app id).
+ *
+ * Degrades CLOSED:
+ *   • RLHF_EXPORT_TOKEN unset OR header mismatch → 403 (no admin-role system, so
+ *     the secret IS the gate; unset means nobody can call it).
+ *   • RLHF_ENCRYPTION_KEY unset/invalid → 503 with an honest message (the rows are
+ *     encrypted; without the key there is nothing to export). Never crashes.
+ */
+async function preferenceDataExport(req: Request, env: Env, origin: string | null): Promise<Response> {
+  const token = env.RLHF_EXPORT_TOKEN;
+  const presented = req.headers.get("x-rlhf-export");
+  if (!token || presented !== token) {
+    return json({ error: "forbidden" }, 403, origin, env);
+  }
+  const key = await rlhfKey(env);
+  if (!key) {
+    return json(
+      { error: "RLHF_ENCRYPTION_KEY is not configured — encrypted rows cannot be exported" },
+      503,
+      origin,
+      env,
+    );
+  }
+  const { results } = await env.DB.prepare(
+    "SELECT field, decision, edited, proposed_enc, final_enc, created_at FROM proposal_edits ORDER BY created_at, id",
+  ).all<{
+    field: string;
+    decision: string;
+    edited: number;
+    proposed_enc: string;
+    final_enc: string;
+    created_at: string;
+  }>();
+
+  const lines: string[] = [];
+  for (const r of results ?? []) {
+    const proposed = await decryptField(key, r.proposed_enc);
+    const final = await decryptField(key, r.final_enc);
+    lines.push(
+      JSON.stringify({
+        field: r.field,
+        decision: r.decision,
+        edited: r.edited === 1,
+        proposed,
+        final,
+        created_at: r.created_at,
+      }),
+    );
+  }
+  const headers = corsHeaders(origin, env);
+  headers["content-type"] = "application/x-ndjson";
+  return new Response(lines.length ? lines.join("\n") + "\n" : "", { status: 200, headers });
 }
 
 /** Load an app and assert it belongs to this user. */
@@ -1317,6 +1409,24 @@ async function getRunRoute(env: Env, userId: string, runId: string): Promise<unk
   return runView(env, runId);
 }
 
+/**
+ * Import the RLHF AES key from env, or return null (SAFE-DEGRADE). Returns null
+ * when env.RLHF_ENCRYPTION_KEY is unset OR malformed (wrong length / bad base64),
+ * so capture silently no-ops instead of throwing — a misconfigured key must never
+ * break an approval. (The export route surfaces a missing/bad key as an honest
+ * error instead.)
+ */
+async function rlhfKey(env: Env): Promise<CryptoKey | null> {
+  const b64 = env.RLHF_ENCRYPTION_KEY;
+  if (!b64) return null;
+  try {
+    return await importKeyFromBase64(b64);
+  } catch (e) {
+    console.error("RLHF_ENCRYPTION_KEY invalid — capture disabled:", e);
+    return null;
+  }
+}
+
 type ApproveBody = {
   decision?: string;
   /**
@@ -1394,7 +1504,33 @@ async function decideRun(
     finalized = { copy, pushCommands };
   }
 
-  await recordApproval(env.DB, { runId, decision });
+  // RLHF capture (#39 Part 2): build the ANONYMOUS, ENCRYPTED preference rows and
+  // append them to the SAME atomic batch as the gate decision, so the captured
+  // signal can never disagree with the recorded approval. Gated two ways:
+  //   • SAFE-DEGRADE — no env.RLHF_ENCRYPTION_KEY ⇒ key is null ⇒ zero rows, no
+  //     throw, approval proceeds (like the AI reasoner degrades without env.AI).
+  //   • OPT-OUT (on by default OFF; honored at WRITE time) — an opted-out user
+  //     never gets a row written. Since rows are anonymous they can't be deleted
+  //     later, so we simply never capture them.
+  // Rejected decisions ARE captured (a rejection is negative preference signal).
+  // The whole block is best-effort: any capture error must NEVER block approval.
+  let captureStmts: D1PreparedStatement[] = [];
+  try {
+    const key = await rlhfKey(env);
+    if (key && !(await getOptOut(env.DB, userId))) {
+      const finalCopy = finalized ? finalized.copy : trace.proposedCopy;
+      captureStmts = await captureProposalEdits(env.DB, key, {
+        proposed: trace.proposedCopy,
+        final: finalCopy,
+        decision,
+      });
+    }
+  } catch (e) {
+    console.error("rlhf capture skipped (non-fatal):", e);
+    captureStmts = [];
+  }
+
+  await recordApproval(env.DB, { runId, decision, extraStmts: captureStmts });
 
   if (decision === "rejected") {
     return { id: runId, status: "rejected", pushCommands: [] };
@@ -1910,6 +2046,12 @@ export async function handleApi(req: Request, env: Env): Promise<Response> {
     if (seg[0] === "preview" && seg.length === 1 && method === "POST") {
       return json(await previewApp(req, env), 200, origin, env);
     }
+    // Owner-only RLHF export (#39 Part 2). NOT session-gated — it has its own
+    // secret-token gate (x-rlhf-export === env.RLHF_EXPORT_TOKEN) and degrades
+    // CLOSED (403) when the token is unset, so it lives outside requireUser.
+    if (seg[0] === "admin" && seg[1] === "preference-data" && seg.length === 2 && method === "GET") {
+      return preferenceDataExport(req, env, origin);
+    }
   } catch (e) {
     if (e instanceof HttpError) return json({ error: e.message }, e.status, origin, env);
     // Log the real error server-side; return a generic message so unexpected
@@ -1939,6 +2081,16 @@ export async function handleApi(req: Request, env: Env): Promise<Response> {
     // /portfolio — the Fleet roll-up across all of the user's apps
     if (seg[0] === "portfolio" && seg.length === 1 && method === "GET") {
       return json(await portfolioView(env, user.id), 200, origin, env);
+    }
+
+    // /account/rlhf-optout — flip this user's RLHF capture opt-out (#39 Part 2)
+    if (
+      seg[0] === "account" &&
+      seg[1] === "rlhf-optout" &&
+      seg.length === 2 &&
+      method === "POST"
+    ) {
+      return json(await rlhfOptOutRoute(req, env, user.id), 200, origin, env);
     }
 
     // /runs/approve-all — bulk-approve every pending run (matched BEFORE /runs/:id)

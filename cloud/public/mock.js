@@ -1001,6 +1001,21 @@
     var db = ctx.db;
     var m;
 
+    // GET /auth/me — surface the RLHF opt-out so the toggle reflects live state
+    // (#39 Part 2). The mock is always "authed as" the acting email.
+    if (method === "GET" && path === "/auth/me") {
+      return json(200, { authed: true, via: "demo", email: email, rlhf_opt_out: !!db.rlhf_opt_out });
+    }
+
+    // POST /account/rlhf-optout {optOut} — flip RLHF capture opt-out (#39 Part 2).
+    // Persisted in the mock db so a re-render reflects it (mirrors the Worker,
+    // which writes users.rlhf_opt_out and honors it at capture write time).
+    if (method === "POST" && path === "/account/rlhf-optout") {
+      if (!body || typeof body.optOut !== "boolean") return json(400, { error: "optOut must be a boolean" });
+      db.rlhf_opt_out = body.optOut; ctx.commit();
+      return json(200, { rlhf_opt_out: db.rlhf_opt_out });
+    }
+
     // POST /resolve — name / link / id → connectable candidates (demo catalog)
     if (method === "POST" && path === "/resolve") {
       var q = (body.query || "").trim();
