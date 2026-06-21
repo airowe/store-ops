@@ -70,6 +70,20 @@ describe("buildKeywordField — compliant construction", () => {
     const field = buildKeywordField(many);
     expect(field.length).toBeLessThanOrEqual(CHAR_LIMITS.keywords);
   });
+
+  // #76: preserve the user's original casing (e.g. the acronym "MRI"). We
+  // case-fold only for dedupe/comparison, NOT in the emitted field — lowercasing
+  // "MRI"→"mri" is a fake "change" (Apple matching is case-insensitive) that made
+  // a no-op proposal look like an improvement.
+  it("preserves original casing of kept terms (MRI stays MRI)", () => {
+    const field = buildKeywordField(["healthcare", "MRI", "insurance"]);
+    expect(field).toBe("healthcare,MRI,insurance");
+  });
+
+  it("still de-dupes case-insensitively while keeping the first casing", () => {
+    const field = buildKeywordField(["MRI", "mri", "healthcare"]);
+    expect(field).toBe("MRI,healthcare"); // dup dropped, original casing kept
+  });
 });
 
 describe("optimizeCopy — never emits over-limit copy", () => {
