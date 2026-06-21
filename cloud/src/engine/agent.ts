@@ -32,7 +32,7 @@ import { findKeywordGaps, type KeywordGap } from "./keywordGap.js";
 import { optimizeCopy, type ProposedCopy } from "./optimize.js";
 import { type Rank, ranksFor } from "./rankCheck.js";
 import { score as scoreScreenshots, type ShotScore } from "./screenshotScore.js";
-import type { Finding } from "./auditFindings.js";
+import type { Finding, SurfaceLock } from "./auditFindings.js";
 import type { AscContext } from "./ascContext.js";
 import type { Opportunity } from "./rankOpportunity.js";
 import type { CoverageReport } from "./metadataCoverage.js";
@@ -88,6 +88,13 @@ export type AgentResult = {
    * trace. Optional so callers that don't compute them (older paths) stay valid.
    */
   findings?: Finding[] | undefined;
+  /**
+   * Surfaces a run could NOT read (#61) — the per-surface "unlock to see +
+   * improve" lock data. Empty on a Mode-A run (everything readable); the canonical
+   * no-key blind-spot list on a public-only run. Static capability/opportunity
+   * copy only (no ASC data) — safe to serve. Optional so older callers stay valid.
+   */
+  locks?: SurfaceLock[] | undefined;
   /**
    * The slim, PII-safe display context a findings card references (category,
    * counts, version state). Present only on a Mode-A (ASC) run. The raw snapshot

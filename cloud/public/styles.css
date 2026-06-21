@@ -469,6 +469,28 @@ input.mono { font-family: var(--mono); }
 .asc-unlock-list li { margin: 2px 0; }
 @media (max-width: 560px) { .asc-unlock-list { columns: 1; } }
 
+/* Locked-field upgrade surface (#61) — an inline, honest 🔒 lock on a surface we
+   couldn't READ on a no-key run. Reuses the dashed/--signal "unseen" visual
+   language (same family as .cov-bar.unseen) so it reads as a capability gap, NOT
+   an alarm. Distinct from .locked (the approve-an-action gate) and quieter than
+   .asc-unlock (the one bottom CTA) so 5–7 of these don't read as a paywall wall. */
+.field-lock {
+  display: flex; align-items: flex-start; gap: 10px;
+  margin: 12px 0; padding: 12px 14px; border-radius: 10px;
+  border: 1px dashed var(--signal-dim); background: rgba(52, 211, 153, 0.05);
+}
+.field-lock-ico { font-size: 15px; line-height: 1.4; flex: none; opacity: .85; }
+.field-lock-body { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.field-lock-label { color: var(--ink); font-size: 13.5px; font-weight: 600; }
+.field-lock-copy { font-size: 12.5px; }
+.field-lock-link {
+  align-self: flex-start; margin-top: 4px;
+  font-family: var(--mono); font-size: 11.5px; color: var(--signal);
+}
+.field-lock-link:hover { text-decoration: underline; }
+/* Inline variant inside a coverage field row — sits under the "unseen" tag. */
+.cov-field-unlock { grid-column: 1 / -1; margin-top: 2px; justify-self: end; }
+
 /* The primary ASC run panel pulses when reached from the unlock CTA. */
 .asc-run-panel.asc-flash {
   border-radius: 12px;

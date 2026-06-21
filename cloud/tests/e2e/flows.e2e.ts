@@ -925,6 +925,85 @@ test.describe("run page — no-key honesty nits (#56)", () => {
   });
 });
 
+test.describe("run page — locked-field upgrade surface (#61)", () => {
+  // A no-key run with an UNREADABLE screenshot set (bundle id flags it) → the "?"
+  // grade slot is empty, so the screenshot field-lock renders there. The coverage
+  // subtitle/keyword rows are unseen on any no-key run, so they carry the unlock
+  // link regardless of bundle.
+  async function seedNoKeyBlindRun(page: import("@playwright/test").Page): Promise<string> {
+    await gotoMockDashboard(page);
+    const id = await seedAppWithRun(page, { name: "Mangia", bundleId: "com.mangia.noshots" });
+    const runId = await page.evaluate(async (appId) => {
+      const M = (window as any).STORE_OPS_MOCK;
+      const detail = await (await M.handle("GET", `/apps/${appId}`, null, "demo@store-ops.dev")).json();
+      return detail.runs[0].id as string;
+    }, id);
+    await page.goto(`/index.html#/runs/${runId}`);
+    await expect(page.locator(".audit-card")).toBeVisible();
+    return runId;
+  }
+
+  test("renders an inline 🔒 field-lock in the unreadable screenshot slot, locked-not-bad", async ({ page }) => {
+    await seedNoKeyBlindRun(page);
+    // The gallery is null (no real shots), so the screenshot lock takes its place.
+    await expect(page.locator(".audit-card .shots-gallery")).toHaveCount(0);
+    const lock = page.locator(".audit-card .field-lock").first();
+    await expect(lock).toBeVisible();
+    await expect(lock).toContainText("🔒");
+    // Honest capability framing — NOT a deficiency, NOT a grade.
+    await expect(lock).toContainText(/can.?t (see|read)/i);
+    await expect(lock).not.toContainText(/empty|missing|0\/30/i);
+    // No grade letter leaks into the locked slot (it's unread, not graded A–F).
+    await expect(lock).not.toContainText(/\bgrade [A-F]\b/);
+    // The neutral "Shots: ?" chip still reads as unknown, beside the lock.
+    await expect(page.locator(".audit-card .grade-chip")).toContainText(/Shots: \?/);
+  });
+
+  test("the screenshot field-lock routes to the primary ASC run panel and flashes it", async ({ page }) => {
+    await seedNoKeyBlindRun(page);
+    const link = page.locator(".audit-card .field-lock .field-lock-link").first();
+    await expect(link).toBeVisible();
+    await link.click();
+    await expect(page).toHaveURL(/#\/apps\//);
+    const panel = page.locator(".asc-run-panel");
+    await expect(panel).toBeVisible();
+    await expect(panel).toHaveClass(/asc-flash/);
+  });
+
+  test("the unseen coverage subtitle/keyword rows carry an inline 'Connect to unlock' link", async ({ page }) => {
+    await seedNoKeyBlindRun(page);
+    const cov = page.locator(".cov-card");
+    await expect(cov).toBeVisible();
+    const subRow = cov.locator(".cov-field-row", { hasText: "Subtitle" });
+    const kwRow = cov.locator(".cov-field-row", { hasText: "Keywords" });
+    // Still honestly "unseen" (#60) — the lock decorates it, never replaces it
+    // with a measured 0/limit.
+    await expect(subRow.locator(".cov-field-val.unseen")).toHaveText(/unseen/i);
+    await expect(subRow).not.toContainText(/0\/30/);
+    // …and now ALSO offers the upgrade lever inline.
+    await expect(subRow.locator(".field-lock-link")).toContainText(/connect to unlock/i);
+    await expect(kwRow.locator(".field-lock-link")).toContainText(/connect to unlock/i);
+    // Clicking it routes to the same primary ASC run panel.
+    await subRow.locator(".field-lock-link").click();
+    await expect(page).toHaveURL(/#\/apps\//);
+    await expect(page.locator(".asc-run-panel")).toHaveClass(/asc-flash/);
+  });
+
+  test("the reading-lock (.field-lock) is distinct from the action-gate lock (.locked)", async ({ page }) => {
+    await seedNoKeyBlindRun(page);
+    // Both selectors exist on the run page but are separate semantics + copy: the
+    // field-lock marks a READING we can't take; .locked gates the approve action.
+    await expect(page.locator(".field-lock").first()).toBeVisible();
+    const actionGate = page.locator(".locked");
+    if (await actionGate.count()) {
+      await expect(actionGate).toContainText(/approve/i);
+      await expect(actionGate).not.toContainText(/can.?t (see|read)/i);
+    }
+    // The field-lock never carries the action-gate's "approve" copy.
+    await expect(page.locator(".field-lock").first()).not.toContainText(/approve/i);
+  });
+});
+
 test.describe("connect — 402 tier-limit paywall (#27)", () => {
   test("connecting past the plan's app limit shows a visible upgrade modal, not a silent fail", async ({
     page,

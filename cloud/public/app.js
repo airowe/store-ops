@@ -1208,6 +1208,52 @@
     ]);
   }
 
+  // ── Locked-field upgrade surface (#61) ────────────────────────────────────
+  // An inline, honest 🔒 lock for a surface we couldn't READ on a no-key run.
+  // "We can't see this without access" — a CAPABILITY gap, never a deficiency,
+  // never urgency. Routes to the SAME primary ASC run panel as the unlock CTA
+  // (go("#/apps/:id?asc=1") → viewApp flashes it), so it builds NO new credential
+  // surface. It deliberately does NOT reuse the .locked class (commandsLocked):
+  // THAT lock gates an ACTION (approve to reveal a push command); THIS one marks a
+  // READING we can't take. The distinct .field-lock class keeps the two semantics
+  // clearly distinguished (the issue's non-negotiable).
+  function fieldLock(lock, appId) {
+    return el("div", { class: "field-lock", role: "note" }, [
+      el("span", { class: "field-lock-ico", "aria-hidden": "true" }, ["🔒"]),
+      el("div", { class: "field-lock-body" }, [
+        el("div", { class: "field-lock-label" }, [lock.label || "We can't see this without access"]),
+        lock.unlockCopy ? el("div", { class: "field-lock-copy faint" }, [lock.unlockCopy]) : null,
+        el("a", { class: "field-lock-link", href: "#/apps/" + appId + "?asc=1", onclick: function (e) {
+          if (e && e.preventDefault) e.preventDefault();
+          go("#/apps/" + appId + "?asc=1");
+        } }, ["Connect to unlock →"]),
+      ]),
+    ]);
+  }
+
+  // The surface-lock data the run carries (#61), or a graceful fallback for older
+  // stored runs that predate result.locks: synthesize the canonical no-key list
+  // from isNoKeyRun(R) (mirrors the fieldFill legacy fallback). A keyed run → [].
+  var LEGACY_NO_KEY_LOCKS = [
+    { surface: "subtitle",    label: "We can't see your subtitle without access",          unlockCopy: "Connect App Store Connect to read your live subtitle and improve it." },
+    { surface: "keywords",    label: "We can't see your keyword field without access",     unlockCopy: "Connect App Store Connect to read your keyword field and improve it." },
+    { surface: "screenshots", label: "We can't read your real screenshots without access", unlockCopy: "Connect App Store Connect to grade your real screenshot set and improve it." },
+    { surface: "previews",    label: "We can't see your app preview video without access", unlockCopy: "Connect App Store Connect to read your preview coverage and improve it." },
+    { surface: "privacy",     label: "We can't see your privacy policy without access",    unlockCopy: "Connect App Store Connect to read your privacy policy and category and improve them." },
+    { surface: "category",    label: "We can't see your full category setup without access", unlockCopy: "Connect App Store Connect to read your primary and secondary categories and improve them." },
+    { surface: "locales",     label: "We can't see your per-locale keyword surfaces without access", unlockCopy: "Connect App Store Connect to read every locale's keyword surface and improve it." },
+  ];
+  function locksFor(R) {
+    if (R && Array.isArray(R.locks)) return R.locks;
+    // Legacy run (no locks field): a no-key run is blind to the same surfaces.
+    return isNoKeyRun(R) ? LEGACY_NO_KEY_LOCKS : [];
+  }
+  function lockForSurface(R, surface) {
+    var all = locksFor(R);
+    for (var i = 0; i < all.length; i++) { if (all[i].surface === surface) return all[i]; }
+    return null;
+  }
+
   // A finding's "fix path" — so no finding is a dead end. Returns DOM children
   // (links/notes) for findings that have an actionable external path, or null.
   // Curated, honest: real tools we'd recommend + the exact App Store Connect spot.
@@ -1384,7 +1430,17 @@
     // grade chip + findings so "what is being graded" is visible. Null when the
     // set is unreadable ("?"), so the honest empty-state finding stands alone (#41).
     var gallery = screenshotGallery(R.audit && R.audit.screenshots);
-    if (gallery) children.push(gallery);
+    if (gallery) {
+      children.push(gallery);
+    } else {
+      // #61: the gallery is null when we couldn't READ the screenshot set (the "?"
+      // grade slot). Render an honest inline 🔒 here so the gap reads as
+      // LOCKED-not-bad next to gradeChip's neutral "Shots: ?", routing to the same
+      // primary ASC run panel as the unlock CTA. Only on a no-key run that carries
+      // a screenshots lock; a keyed run locks nothing, so this stays absent.
+      var shotLock = lockForSurface(R, "screenshots");
+      if (shotLock) children.push(fieldLock(shotLock, appId));
+    }
     // Screenshot improvement panel (#55) — prioritized, quantified C→B→A levers
     // beside the gallery. Null (no panel) when the set is unreadable ("?") or
     // already A-grade (no headroom): the engine's levers gate honesty, the UI just
@@ -1393,7 +1449,7 @@
     if (levers) children.push(levers);
     // Metadata coverage gauge (PRD 03) — a budget-efficiency read, ABOVE the
     // findings. Separate visual section; the findings card logic is untouched.
-    var cov = coverageSection(R.coverage, noKey);
+    var cov = coverageSection(R.coverage, noKey, R, appId);
     if (cov) children.push(cov);
     children.push(body);
     // No-key run → render the unlock CTA below the findings (PRD 04). Driven by the
@@ -1426,7 +1482,12 @@
   // bar. A field the run couldn't read (seen:false — e.g. a no-key run's subtitle
   // & keywords) is shown as UNSEEN, never a measured "0/limit" (false precision).
   var COV_FIELD_LABEL = { name: "Name", subtitle: "Subtitle", keywords: "Keywords" };
-  function coverageFieldBreakdown(cov) {
+  // #61: on an UNSEEN row, decorate the existing "unseen" tag with an inline
+  // "Connect to unlock" link so the honest #60 "unseen" state ALSO reads as the
+  // upgrade lever — the same locked-field pattern as the screenshot lock, routing
+  // to the same primary ASC run panel. R/appId are optional so legacy/standalone
+  // callers keep working (no link when we don't have a run/app to route to).
+  function coverageFieldBreakdown(cov, R, appId) {
     var fill = cov && cov.fieldFill;
     // Fallback for older payloads without fieldFill: synthesize seen rows from
     // usedChars (treats every field as seen — only used by legacy data).
@@ -1448,8 +1509,17 @@
       var barFill = r.seen && !isEmpty ? el("span", { class: "cov-bar-fill", style: "width:" + Math.round(r.fillPct) + "%" }) : null;
       var bar = el("div", { class: "cov-bar" + (r.seen ? (isEmpty ? " empty" : "") : " unseen") }, barFill ? [barFill] : []);
       var valueEl;
+      var unlockLink = null;
       if (!r.seen) {
         valueEl = el("span", { class: "cov-field-val unseen", title: "Connect App Store Connect to read this field" }, ["unseen"]);
+        // #61: the unseen field IS a locked surface — offer the unlock lever inline.
+        var lock = appId ? lockForSurface(R, r.field) : null;
+        if (lock) {
+          unlockLink = el("a", { class: "field-lock-link cov-field-unlock", href: "#/apps/" + appId + "?asc=1",
+            title: lock.unlockCopy || "Connect App Store Connect to read this field",
+            onclick: function (e) { if (e && e.preventDefault) e.preventDefault(); go("#/apps/" + appId + "?asc=1"); } },
+            ["🔒 Connect to unlock →"]);
+        }
       } else if (isEmpty) {
         valueEl = el("span", { class: "cov-field-val empty", title: "We read this field and it's empty — an unused ranking surface you can claim" }, ["empty · 0/" + r.limit]);
       } else {
@@ -1459,11 +1529,12 @@
         el("span", { class: "cov-field-name" }, [label]),
         bar,
         valueEl,
+        unlockLink,
       ]);
     });
     return el("div", { class: "cov-fields-list" }, rows);
   }
-  function coverageSection(cov, noKey) {
+  function coverageSection(cov, noKey, R, appId) {
     if (!cov || typeof cov.coverageScore !== "number") return null;
     var score = Math.round(cov.coverageScore);
     var band = coverageBand(score);
@@ -1500,7 +1571,7 @@
       ]));
       metaKids.push(el("div", { class: "cov-frame faint" }, ["A budget-efficiency heuristic — how hard your metadata works, not a rank score."]));
       // FILL breakdown — per-field, with subtitle/keywords shown as UNSEEN.
-      metaKids.push(coverageFieldBreakdown(cov));
+      metaKids.push(coverageFieldBreakdown(cov, R, appId));
       metaKids.push(el("div", { class: "cov-fields faint" }, [
         (cov.distinctTerms || 0) + " distinct term" + ((cov.distinctTerms === 1) ? "" : "s") + " in the name",
       ]));
@@ -1525,7 +1596,7 @@
       metaKids.push(el("div", { class: "cov-frame faint" }, ["A budget-efficiency heuristic — how hard your metadata works, not a rank score."]));
       // FILL breakdown — per-field used/limit with real bars (separate from the
       // efficiency score above; a near-empty field reads low here even at 100%).
-      metaKids.push(coverageFieldBreakdown(cov));
+      metaKids.push(coverageFieldBreakdown(cov, R, appId));
       metaKids.push(el("div", { class: "cov-fields faint" }, [
         (cov.distinctTerms || 0) + " distinct term" + ((cov.distinctTerms === 1) ? "" : "s"),
       ]));

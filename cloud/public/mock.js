@@ -204,6 +204,10 @@
     };
     var findings = buildFindings(app, sc, ascRead, { category: ascContext.category, cppCount: cppCount });
     var findingsSummary = summarizeFindings(findings);
+    // Locked-field upgrade surfaces (#61) — mirrors src/engine/auditFindings.ts
+    // surfaceLocks(): a keyed run reads everything ⇒ [], a no-key run carries the
+    // canonical blind-spot list with honest capability/opportunity copy.
+    var locks = buildLocks(ascRead);
 
     // PRD 06: winnability opportunities — "where to push next." Mirrors the pure
     // rankOpportunities() engine. Deterministic competitor ranks per keyword (from
@@ -250,6 +254,7 @@
       audit: { app: app.name, bundleId: app.bundleId, screenshots: sc, liveName: app.name },
       findings: findings,
       findingsSummary: findingsSummary,
+      locks: locks,
       opportunities: opportunities,
       coverage: coverage,
       ranks: ranks,
@@ -291,6 +296,24 @@
   // "Listing audit" card renders end-to-end with no key. Sorted biggest-win-first.
   var SEV_ORDER = { critical: 0, warn: 1, good: 2, info: 3 };
   var IMPACT_ORDER = { ranking: 0, conversion: 1, trust: 2, completeness: 3 };
+
+  // Locked-field upgrade surfaces (#61) — mirrors src/engine/auditFindings.ts
+  // surfaceLocks(). A keyed run reads everything ⇒ []; a no-key run is blind to
+  // these App Store Connect-only surfaces, each rendered as an honest inline 🔒.
+  // Copy is CAPABILITY + OPPORTUNITY only — never a deficiency or urgency.
+  var NO_KEY_LOCKS = [
+    { surface: "subtitle",    label: "We can't see your subtitle without access",          unlockCopy: "Connect App Store Connect to read your live subtitle and improve it." },
+    { surface: "keywords",    label: "We can't see your keyword field without access",     unlockCopy: "Connect App Store Connect to read your keyword field and improve it." },
+    { surface: "screenshots", label: "We can't read your real screenshots without access", unlockCopy: "Connect App Store Connect to grade your real screenshot set and improve it." },
+    { surface: "previews",    label: "We can't see your app preview video without access", unlockCopy: "Connect App Store Connect to read your preview coverage and improve it." },
+    { surface: "privacy",     label: "We can't see your privacy policy without access",    unlockCopy: "Connect App Store Connect to read your privacy policy and category and improve them." },
+    { surface: "category",    label: "We can't see your full category setup without access", unlockCopy: "Connect App Store Connect to read your primary and secondary categories and improve them." },
+    { surface: "locales",     label: "We can't see your per-locale keyword surfaces without access", unlockCopy: "Connect App Store Connect to read every locale's keyword surface and improve it." },
+  ];
+  function buildLocks(ascRead) {
+    if (ascRead) return [];
+    return NO_KEY_LOCKS.map(function (l) { return { surface: l.surface, label: l.label, unlockCopy: l.unlockCopy }; });
+  }
 
   function buildFindings(app, sc, ascRead, ctx) {
     var f = [];
