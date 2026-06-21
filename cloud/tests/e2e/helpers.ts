@@ -19,6 +19,13 @@ export async function gotoMockDashboard(page: Page, hash = "#/"): Promise<void> 
   await page.route("https://fonts.googleapis.com/**", (route) => route.abort());
   await page.route("https://fonts.gstatic.com/**", (route) => route.abort());
 
+  // Hermetic state: clear the mock DB (localStorage) BEFORE the page boots so no
+  // app/run a prior test connected leaks into this one. Tests that need state
+  // seed it explicitly via seedAppWithRun.
+  await page.addInitScript(() => {
+    try { localStorage.removeItem("store-ops:mockdb:v1"); } catch { /* no-op */ }
+  });
+
   await page.goto(`/index.html${hash}`);
   // app.js boots after config.js + mock.js; wait for the mock to be installed.
   await page.waitForFunction(() => !!(window as any).STORE_OPS_MOCK);

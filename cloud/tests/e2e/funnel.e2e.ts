@@ -10,21 +10,26 @@ import { gotoMockDashboard, seedAppWithRun, readDeltaRows } from "./helpers.js";
  */
 
 test.describe("dashboard funnel (mock backend)", () => {
-  test("connect-by-name resolves a catalog app, runs the first audit, lands on the dashboard", async ({
+  test("connect-by-name resolves a catalog app and lands on the APP PAGE (not a silent dashboard bounce) (#77)", async ({
     page,
   }) => {
     await gotoMockDashboard(page);
 
     // The connect form: search a name that resolves to a single catalog app
-    // ("Calm" is unique in the mock catalog), which auto-connects + runs. Target
+    // ("Calm" is unique in the mock catalog). Picking it connects the app. Target
     // the connect search box by its placeholder (NOT input.first(), which is the
     // header "act as…" email field).
     const search = page.getByPlaceholder(/app name, app store .* link, or bundle id/i);
     await search.fill("Calm");
     await page.getByRole("button", { name: /^search$/i }).click();
 
-    // After connect + auto-run, the dashboard shows the app card with its name.
-    await expect(page.locator(".appcard", { hasText: "Calm" })).toBeVisible({ timeout: 10_000 });
+    // #77: after connect, land on the APP PAGE (#/apps/:id) — where the ASC-read
+    // panel is the primary CTA — NOT a silent dashboard bounce (which read as
+    // "nothing happened") and NOT an auto-blind-run (low-quality name tokens).
+    await expect(page).toHaveURL(/#\/apps\//, { timeout: 10_000 });
+    await expect(page.locator("h1", { hasText: /Calm/i })).toBeVisible({ timeout: 10_000 });
+    // The ASC read-and-improve run is the primary CTA on the app page.
+    await expect(page.getByRole("button", { name: /run with asc read/i })).toBeVisible();
   });
 
   test("typing 3+ chars auto-searches (no button click) and shows the picker", async ({
