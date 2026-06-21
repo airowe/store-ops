@@ -171,8 +171,20 @@ async function reasonedKeywords(
   app: AppRow,
   description: string | undefined,
   reasoner?: Reasoner,
+  liveKeywordField?: string,
 ): Promise<KeywordInput[]> {
   const name = app.name || app.bundle_id;
+
+  // #75 (Option A): when we've READ a real ASC keyword field, those are the
+  // user's OWN curated target keywords (e.g. Clear Cost → "healthcare,medical,
+  // MRI,insurance,price comparison,…"). Target THOSE — they're honest, real, and
+  // intentional — instead of tokenizing the brand name into "clear"+"cost".
+  // Real data beats any heuristic; this is the strongest, LLM-free floor.
+  const liveTargets = parseKeywordField(liveKeywordField);
+  if (liveTargets.length > 0) {
+    return targetsToKeywordInputs(liveTargets);
+  }
+
   if (!description || !description.trim()) {
     // No description to reason over → keep the deterministic name seeder as the
     // floor so a bare connect still produces a real (if coarser) keyword set.
@@ -186,6 +198,15 @@ async function reasonedKeywords(
   // Defensive: if reasoning somehow yields nothing targetable, don't ship an
   // empty keyword set — fall back to the name seeder.
   return targets.length > 0 ? targets : seedKeywordsFromName(name);
+}
+
+/** Split a live ASC keyword field ("a,b,c") into trimmed, non-empty terms. */
+function parseKeywordField(field: string | undefined): string[] {
+  if (!field) return [];
+  return field
+    .split(",")
+    .map((t) => t.trim())
+    .filter((t) => t.length > 0);
 }
 
 /**
@@ -203,7 +224,14 @@ export async function buildAppInput(
   const keywords =
     clean.length > 0
       ? clean
-      : await reasonedKeywords(app, overrides.baseCopy?.description, overrides.reasoner);
+      : await reasonedKeywords(
+          app,
+          overrides.baseCopy?.description,
+          overrides.reasoner,
+          // #75: the real ASC keyword field (read with the key) is the user's own
+          // curated target set — prefer it over name tokenization when present.
+          overrides.ascMetadataRead ? overrides.baseCopy?.keywords : undefined,
+        );
 
   const input: AppInput = {
     app: app.name || app.bundle_id,
