@@ -1879,8 +1879,8 @@
 
     if (run.status === "awaiting_approval" || run.status === "detected" || run.status === "researching") {
       card.appendChild(el("p", { class: "muted", style: "margin-top:0" }, ["The push is the one irreversible step. The agent stopped here and is waiting on you."]));
-      var approve = el("button", { class: "btn ok", onclick: function () { decide(run.id, "approve", card, approve); } }, ["✓ Approve & reveal commands"]);
-      var reject = el("button", { class: "btn bad", onclick: function () { decide(run.id, "reject", card, reject); } }, ["✕ Reject"]);
+      var approve = el("button", { class: "btn ok", onclick: function () { decide(run.id, "approve", card, approve, run, R); } }, ["✓ Approve & reveal commands"]);
+      var reject = el("button", { class: "btn bad", onclick: function () { decide(run.id, "reject", card, reject, run, R); } }, ["✕ Reject"]);
       card.appendChild(el("div", { class: "btn-row" }, [approve, reject]));
       card.appendChild(commandsLocked());
     } else if (run.status === "rejected") {
@@ -2227,14 +2227,31 @@
     return lines.join("\n");
   }
 
-  function decide(runId, action, card, clicked) {
+  function decide(runId, action, card, clicked, run, R) {
     // Disable both buttons, but show in-flight feedback on the one clicked so the
     // action never reads as a frozen UI (the busy-cursor-with-no-activity bug).
     var btns = card.querySelectorAll("button"); btns.forEach(function (b) { b.disabled = true; });
     var label = clicked && clicked.textContent;
     if (clicked) clicked.innerHTML = '<span class="spin"></span> ' + (action === "approve" ? "Approving…" : "Rejecting…");
     api("POST", "/runs/" + runId + "/" + action)
-      .then(function () { toast(action === "approve" ? "Approved — commands revealed." : "Rejected — nothing pushed."); route(); })
+      .then(function () {
+        toast(action === "approve" ? "Approved — commands revealed." : "Rejected — nothing pushed.");
+        // Update the gate card IN PLACE rather than re-routing. A full route()
+        // re-render scrolled the page to the top AND wiped any in-progress input
+        // (e.g. a half-entered .p8 in the push panel) — a bad experience right at
+        // the approval moment. We have run + R already, so rebuild just this card
+        // with the new status and swap it, preserving scroll position.
+        if (run && R && card.parentNode) {
+          run.status = action === "approve" ? "approved" : "rejected";
+          var fresh = gateCard(run, R);
+          card.parentNode.replaceChild(fresh, card);
+          // Keep the header status badge in sync (it lives outside the gate card).
+          var badge = document.querySelector("#view .badge");
+          if (badge) { var nb = statusBadge(run.status); badge.parentNode.replaceChild(nb, badge); }
+        } else {
+          route(); // fallback (older callers without run/R) — keeps behavior safe
+        }
+      })
       .catch(function (e) { btns.forEach(function (b) { b.disabled = false; }); if (clicked && label) clicked.textContent = label; toast(e.message || "Failed"); });
   }
 
