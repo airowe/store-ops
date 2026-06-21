@@ -103,8 +103,14 @@
   function fieldCheck(field, value) {
     var limit = CHAR_LIMITS[field];
     var issues = [];
-    if (value.length > limit) issues.push("over limit by " + (value.length - limit));
-    if (field === "keywords" && /\s/.test(value)) issues.push("keyword field must not contain spaces");
+    value = String(value == null ? "" : value);
+    if (value.length > limit) issues.push("over limit by " + (value.length - limit) + " (" + value.length + "/" + limit + ")");
+    // keyword field rules mirror the engine's validateCopy (src/engine/optimize.ts)
+    // AND the client mirror: comma-separated, NO spaces around commas, no
+    // title/subtitle word dupes. (A space INSIDE a multi-word term is allowed.)
+    if (field === "keywords") {
+      if (/,\s/.test(value) || /\s,/.test(value)) issues.push("keyword field must be comma-separated with NO spaces around commas");
+    }
     return { field: field, value: value, count: value.length, limit: limit, ok: issues.length === 0, issues: issues };
   }
 
@@ -1085,9 +1091,50 @@
     if (method === "POST" && (m = path.match(/^\/runs\/([^/]+)\/(approve|reject)$/))) {
       var run = db.runs[m[1]];
       if (!run) return json(404, { error: "run not found" });
+      var app = db.apps[run.app_id];
+
+      // Editable proposals (#39 Part 1): on approve with an edit buffer, merge the
+      // editable fields over the agent's proposal, RE-VALIDATE (mirror of the
+      // engine's validateCopy), and reflect the edited copy back. An invalid edit
+      // 400s and the gate is NOT crossed (status stays awaiting_approval) — mirrors
+      // the Worker, where server validation is authoritative.
+      if (m[2] === "approve" && body && body.editedCopy && Object.keys(body.editedCopy).length) {
+        var proposed = (run.result && run.result.proposedCopy) || {};
+        var editable = ["name", "subtitle", "keywords", "promo"];
+        var finalCopy = {};
+        editable.forEach(function (f) { if (proposed[f] !== undefined) finalCopy[f] = proposed[f]; });
+        editable.forEach(function (f) {
+          if (proposed[f] !== undefined && typeof body.editedCopy[f] === "string") finalCopy[f] = body.editedCopy[f];
+        });
+        var checks = editable
+          .filter(function (f) { return finalCopy[f] !== undefined; })
+          .map(function (f) { return fieldCheck(f, finalCopy[f]); });
+        var pass = checks.every(function (c) { return c.ok; });
+        if (!pass) {
+          var bad = checks.filter(function (c) { return !c.ok; })
+            .map(function (c) { return c.field + " (" + c.issues.join("; ") + ")"; }).join(", ");
+          return json(400, { error: "edited copy fails validation: " + bad });
+        }
+        // re-derive push commands from the edited copy (mirrors buildPushCommands)
+        var bundleId = (app && app.bundleId) || "";
+        var esc = function (s) { return "'" + String(s == null ? "" : s).replace(/'/g, "'\\''") + "'"; };
+        var newPush = [
+          { store: "appstore", tool: "asc", description: "Stage App Store name + subtitle + keyword field (review-gated).",
+            command: "asc metadata set --bundle " + bundleId + " --name " + esc(finalCopy.name) + " --subtitle " + esc(finalCopy.subtitle) + " --keywords " + esc(finalCopy.keywords) },
+        ];
+        if (finalCopy.promo !== undefined) {
+          newPush.push({ store: "appstore", tool: "asc", description: "Stage promotional text (editable without resubmission).",
+            command: "asc metadata set --bundle " + bundleId + " --promo " + esc(finalCopy.promo) });
+        }
+        newPush.push({ store: "googleplay", tool: "gplay", description: "Stage Play Store title + short description (no keyword field on Play).",
+          command: "gplay listing update --package " + bundleId + " --title " + esc(finalCopy.name) + " --short-description " + esc(finalCopy.subtitle) });
+        // stage the edited copy onto the run (every downstream read sees it)
+        run.result.proposedCopy = Object.assign({}, proposed, finalCopy, { validation: { pass: true, checks: checks } });
+        run.result.pushCommands = newPush;
+      }
+
       run.status = m[2] === "approve" ? "approved" : "rejected";
       run.decided_at = nowISO();
-      var app = db.apps[run.app_id];
       if (app && app.latestRunSummary && app.latestRunSummary.id === run.id) app.latestRunSummary.status = run.status;
       // PRD 02: on approval, record the push (the terms WE proposed + the baseline
       // + the timestamp) so the next rank-check can (correlationally) attribute a
@@ -1103,6 +1150,15 @@
         }]);
       }
       ctx.commit();
+      // On approve, return the FINALIZED (possibly edited) copy + re-derived
+      // commands so the client renders what actually ships (mirrors the Worker).
+      if (m[2] === "approve") {
+        return json(200, {
+          id: run.id, status: run.status,
+          proposedCopy: run.result.proposedCopy,
+          pushCommands: run.result.pushCommands,
+        });
+      }
       return json(200, { id: run.id, status: run.status });
     }
 

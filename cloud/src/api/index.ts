@@ -65,9 +65,12 @@
 import {
   type AgentResult,
   type AppCandidate,
+  type CopyFields,
   type ProposedCopy,
+  type PushCommand,
   type PushInput,
   type WarRoomRankSnapshot,
+  buildPushCommands,
   buildWarRoom,
   lookup,
   rankOpportunities,
@@ -98,8 +101,10 @@ import {
   recordSubscriber,
   setGithubConnection,
   setTier,
+  updateRunCopy,
   upsertUser,
 } from "../d1.js";
+import { finalizeEditedCopy } from "./proposalEdit.js";
 import {
   mintMagicToken,
   mintSessionToken,
@@ -1287,7 +1292,16 @@ async function getRunRoute(env: Env, userId: string, runId: string): Promise<unk
   return runView(env, runId);
 }
 
-type ApproveBody = { decision?: string };
+type ApproveBody = {
+  decision?: string;
+  /**
+   * Editable proposals (#39 Part 1). When approving, the client may send the human
+   * edit buffer — only the editable fields (name/subtitle/keywords/promo) are
+   * honored; the server re-validates with the engine's `validateCopy` before
+   * staging anything. The client mirror is advisory only.
+   */
+  editedCopy?: Partial<CopyFields>;
+};
 
 /**
  * POST /runs/:id/approve  and  POST /runs/:id/reject — the human gate.
@@ -1307,7 +1321,7 @@ async function decideRun(
 ): Promise<unknown> {
   const run = await getRun(env.DB, runId);
   if (!run) throw new HttpError(404, "run not found");
-  await requireOwnedApp(env, run.app_id, userId);
+  const app = await requireOwnedApp(env, run.app_id, userId);
 
   if (run.status !== "awaiting_approval") {
     throw new HttpError(409, `run is not awaiting approval (status=${run.status})`);
@@ -1328,21 +1342,62 @@ async function decideRun(
             throw new HttpError(400, "decision must be 'approve' or 'reject'");
           })();
 
+  const trace = JSON.parse(run.reasoning_json) as ReasoningTrace;
+
+  // Editable proposals (#39 Part 1): when approving WITH a human edit buffer,
+  // merge the editable fields over the agent's proposal and re-validate with the
+  // engine's authoritative `validateCopy` BEFORE we record the approval. An
+  // over-limit / keyword-rule-violating edit can NEVER be staged — we throw 400
+  // and the gate row is never written (gate not crossed). Validation runs first so
+  // an invalid edit leaves the run untouched.
+  let finalized: { copy: CopyFields; pushCommands: PushCommand[] } | null = null;
+  if (decision === "approved" && body.editedCopy && Object.keys(body.editedCopy).length > 0) {
+    const { copy, validation } = finalizeEditedCopy(trace.proposedCopy, body.editedCopy);
+    if (!validation.pass) {
+      const failing = validation.checks.filter((c) => !c.ok);
+      throw new HttpError(
+        400,
+        `edited copy fails validation: ${failing
+          .map((c) => `${c.field} (${c.issues.join("; ")})`)
+          .join(", ")}`,
+      );
+    }
+    // re-derive the push-command handoff from the edited copy with the engine's
+    // own builder (the one used at run time) — the validation block is carried
+    // through so `buildPushCommands`'s ProposedCopy input is well-formed.
+    const pushCommands = buildPushCommands(app.bundle_id, { ...copy, validation });
+    finalized = { copy, pushCommands };
+  }
+
   await recordApproval(env.DB, { runId, decision });
 
   if (decision === "rejected") {
     return { id: runId, status: "rejected", pushCommands: [] };
   }
 
+  // Persist the finalized (edited) copy onto the trace + proposals so every
+  // downstream handoff reads the edited values (approach (a)). With no edits this
+  // is a no-op and the agent's original proposal stands.
+  if (finalized) {
+    await updateRunCopy(env.DB, {
+      runId,
+      copy: finalized.copy,
+      pushCommands: finalized.pushCommands,
+    });
+  }
+
   // approved → status is now 'approved' (NOT 'shipped' — nothing has reached
   // App Store Connect yet); return the generated, NON-executed push command
-  // handoff so the client can copy + run it on a credentialed box.
-  const trace = JSON.parse(run.reasoning_json) as ReasoningTrace;
+  // handoff so the client can copy + run it on a credentialed box. The returned
+  // copy/commands reflect any human edits staged above.
+  const finalPush = finalized ? finalized.pushCommands : trace.pushCommands;
+  const finalCopy = finalized ? finalized.copy : trace.proposedCopy;
   return {
     id: runId,
     status: "approved",
     note: "Approved. Hand the metadata to your build pipeline (credential-free), or apply it yourself — ShipASO never stores your store credentials.",
-    pushCommands: trace.pushCommands,
+    proposedCopy: finalCopy,
+    pushCommands: finalPush,
   };
 }
 
