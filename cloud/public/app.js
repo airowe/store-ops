@@ -19,6 +19,77 @@
   var CFG = window.STORE_OPS || {};
   var API_BASE = (CFG.API_BASE || "").replace(/\/$/, "");
   var LIMITS = { name: 30, subtitle: 30, keywords: 100, promo: 170, description: 4000 };
+  // The fields a human may edit on the run page (#39 Part 1) — mirrors the diff
+  // card + the server's EDITABLE_FIELDS. description/whatsNew are out of scope.
+  var EDITABLE_FIELDS = ["name", "subtitle", "keywords", "promo"];
+
+  // ── client mirror of the engine's validateCopy (src/engine/optimize.ts) ─────
+  // ADVISORY ONLY: gives the user instant red/green before they approve. The
+  // server re-runs the REAL validateCopy at the gate and is authoritative — an
+  // invalid edit can never be staged regardless of what this says. Kept a thin
+  // 1:1 port so the two never disagree on the cases that matter.
+  function kwWords(s) {
+    return String(s == null ? "" : s).toLowerCase().split(/\s+/)
+      .map(function (w) { return w.replace(/[^a-z0-9]/g, ""); })
+      .filter(Boolean);
+  }
+  function clientFieldCheck(field, copy) {
+    var value = String(copy[field] == null ? "" : copy[field]);
+    var limit = LIMITS[field];
+    var issues = [];
+    if (value.length > limit) issues.push("over limit by " + (value.length - limit) + " (" + value.length + "/" + limit + ")");
+    if (field === "keywords") {
+      if (/,\s/.test(value) || /\s,/.test(value)) issues.push("keyword field must be comma-separated with NO spaces around commas");
+      var banned = {};
+      kwWords(copy.name).concat(kwWords(copy.subtitle)).forEach(function (w) { banned[w] = 1; });
+      var terms = value.split(",").map(function (t) { return t.trim(); }).filter(Boolean);
+      var dupes = terms.filter(function (t) { return kwWords(t).some(function (w) { return banned[w]; }); });
+      if (dupes.length) issues.push("keyword field duplicates title/subtitle word(s): " + dupes.join(", "));
+    }
+    return { field: field, value: value, count: value.length, limit: limit, ok: issues.length === 0, issues: issues };
+  }
+  // Validate only the editable fields the proposal actually carries (never
+  // fabricate an unseen field into a check).
+  function clientValidateCopy(copy) {
+    var checks = EDITABLE_FIELDS
+      .filter(function (f) { return copy[f] !== undefined; })
+      .map(function (f) { return clientFieldCheck(f, copy); });
+    return { pass: checks.every(function (c) { return c.ok; }), checks: checks };
+  }
+
+  // A per-run edit buffer shared between the diff card (the inputs) and the gate
+  // card (Approve enablement + handoff render). Only fields the agent actually
+  // proposed AND could SEE are editable — editing can never fabricate an unseen
+  // field into existence (honesty guard #39 §6.1). subtitle/keywords are unseen on
+  // a no-key run: the proposal carries them as "" but the live value is unknown
+  // (absent from currentCopy), so we must NOT expose them as editable inputs.
+  function makeEditState(proposed, current) {
+    var p = proposed || {};
+    var cur = current || {};
+    // name + promo are always authored by the agent; subtitle/keywords are only
+    // genuinely proposed when the run could READ the live value (currentCopy carries
+    // the field). Otherwise they're unseen and stay non-editable.
+    var seen = function (f) {
+      if (p[f] === undefined) return false;
+      if (f === "subtitle" || f === "keywords") return cur[f] !== undefined;
+      return true;
+    };
+    var buffer = {};
+    EDITABLE_FIELDS.forEach(function (f) { if (seen(f)) buffer[f] = p[f]; });
+    var subs = [];
+    return {
+      buffer: buffer,
+      original: p,
+      editable: function (f) { return seen(f); },
+      set: function (f, v) { buffer[f] = v; this.notify(); },
+      reset: function (f) { buffer[f] = p[f]; this.notify(); },
+      isDirty: function (f) { return String(buffer[f] == null ? "" : buffer[f]) !== String(p[f] == null ? "" : p[f]); },
+      validation: function () { return clientValidateCopy(buffer); },
+      isValid: function () { return this.validation().pass; },
+      subscribe: function (fn) { subs.push(fn); },
+      notify: function () { subs.forEach(function (fn) { fn(); }); },
+    };
+  }
 
   // The bundle the browser actually executed. In the deployed dist/ this is
   // app.<hash>.js (content-hashed by scripts/stampAssets.mjs); in local/public
@@ -1115,8 +1186,12 @@
     var locCard = localizationExpansionCard(R, run.app_id);
     if (locCard) c.appendChild(locCard);
 
-    // 2) THE DIFF — lead with current → proposed, like a PR review (devs).
-    c.appendChild(diffCard(R.currentCopy || {}, R.proposedCopy || {}));
+    // 2) THE DIFF — lead with current → proposed, like a PR review (devs). The
+    //    proposal is now EDITABLE (#39 Part 1): a per-run edit buffer is shared
+    //    between the diff card (the inputs) and the gate card (Approve + handoff),
+    //    so a tweak flows straight to what ships.
+    var edit = makeEditState(R.proposedCopy || {}, R.currentCopy || {});
+    c.appendChild(diffCard(R.currentCopy || {}, R.proposedCopy || {}, edit));
 
     // 2) PLAIN-ENGLISH REASONING (what makes this read as an agent)
     c.appendChild(reasoningCard(R));
@@ -1140,8 +1215,8 @@
     // 4) keyword reasoning table
     c.appendChild(keywordCard(R.reasoning || [], R.ranks || []));
 
-    // 5) THE APPROVAL GATE + commands
-    c.appendChild(gateCard(run, R));
+    // 5) THE APPROVAL GATE + commands (reads the shared edit buffer)
+    c.appendChild(gateCard(run, R, edit));
   }
 
   // The make-it tool for the screenshot levers (#55) + the findings linkout. The
@@ -1765,70 +1840,168 @@
 
   // PR-style diff: the live store value (before) → the proposed value (after),
   // per field, with char counts. Built for developers — reads like a code review.
-  function diffCard(current, proposed) {
+  // The "Proposed" side is now EDITABLE (#39 Part 1): each field the agent
+  // actually proposed becomes an input bound to the shared edit buffer, with a
+  // live char bar, a client-side (advisory) validation mirror, and a per-field
+  // "Reset to agent's proposal". Only fields present in the proposal are editable
+  // — editing can never fabricate an unseen field into existence (honesty guard).
+  function diffCard(current, proposed, edit) {
     var order = [["name", "App name"], ["subtitle", "Subtitle"], ["keywords", "Keyword field"], ["promo", "Promotional text"]];
-    // Stagger index for the text-reveal animation — counts only changed rows so
-    // the proposed values ease in one after another (CSS reads it as --i).
     var revealIndex = 0;
+    var summaryEl = el("span", { class: "diffsummary" }, []);
+
+    // recompute the "N fields changed" summary from the live edit buffer vs the
+    // current live copy (the honest diff is the buffer, not the static proposal).
+    function changedVsCurrent() {
+      var n = 0;
+      order.forEach(function (o) {
+        var f = o[0];
+        if (!edit.editable(f)) return;
+        var was = String(current[f] == null ? "" : current[f]);
+        var nowv = String(edit.buffer[f] == null ? "" : edit.buffer[f]);
+        if (was !== nowv) n++;
+      });
+      return n;
+    }
+    function refreshSummary() {
+      var n = changedVsCurrent();
+      summaryEl.textContent = n + " field" + (n === 1 ? "" : "s") + " changed";
+    }
+
+    // build a non-editable row for a field the agent did NOT propose (unseen on a
+    // no-key run) but where the diff still wants to show a difference. Rare —
+    // mostly the name on a no-key run, which IS proposed. Kept for completeness.
+    function readonlySide(kind, val, isEmpty, limit) {
+      var count = (val || "").length;
+      var pct = Math.min(100, Math.round((count / limit) * 100));
+      var barCls = count > limit ? "warn" : pct >= 90 ? "full" : "";
+      return el("div", { class: "diffside " + kind }, [
+        el("div", { class: "dlabel" }, [kind === "was" ? "Current" : "Proposed",
+          el("span", { class: "charcount", style: count > limit ? "color:var(--bad)" : "" }, [count + "/" + limit])]),
+        el("div", { class: "dval" }, [isEmpty ? el("span", { class: "faint" }, [kind === "was" ? "(not set)" : "(left unchanged)"]) : val]),
+        el("div", { class: "charbar " + barCls }, [el("i", { style: "width:" + pct + "%" })]),
+      ]);
+    }
+
     var rows = order.map(function (o) {
       var field = o[0], label = o[1];
-      var was = current[field], now = proposed[field];
+      var was = current[field];
       var limit = LIMITS[field];
-      var changed = (was || "") !== (now || "");
-      // An unchanged field is not a "proposed change" — don't render a row for
-      // it (#58). This also drops fields the proposal never touched (was===now,
-      // both empty). Only genuine changes survive into the diff.
-      if (!changed) return null;
       var emptyWas = was == null || was === "";
-      var emptyNow = now == null || now === "";
 
-      function side(kind, val, isEmpty) {
-        var count = (val || "").length;
-        var pct = Math.min(100, Math.round((count / limit) * 100));
-        var barCls = count > limit ? "warn" : pct >= 90 ? "full" : "";
-        return el("div", { class: "diffside " + kind }, [
-          el("div", { class: "dlabel" }, [kind === "was" ? "Current" : "Proposed",
-            el("span", { class: "charcount", style: count > limit ? "color:var(--bad)" : "" }, [count + "/" + limit])]),
-          el("div", { class: "dval" }, [isEmpty ? el("span", { class: "faint" }, [kind === "was" ? "(not set)" : "(left unchanged)"]) : val]),
-          el("div", { class: "charbar " + barCls }, [el("i", { style: "width:" + pct + "%" })]),
+      // The field the agent never proposed (unseen) → keep the honest read-only
+      // behavior: only render a row if there's a genuine static change.
+      if (!edit.editable(field)) {
+        var now = proposed[field];
+        var changed = (was || "") !== (now || "");
+        if (!changed) return null;
+        return el("div", { class: "diffrow is-changed", style: "--i:" + revealIndex++ }, [
+          el("div", { class: "dfield" }, [
+            el("span", { class: "fname" }, [label]),
+            el("span", { class: "dtag " + (emptyWas ? "added" : "modified") }, [emptyWas ? "added" : "changed"]),
+          ]),
+          el("div", { class: "diffcols" }, [
+            readonlySide("was", was, emptyWas, limit),
+            el("div", { class: "darrow" }, ["→"]),
+            readonlySide("now", now, now == null || now === "", limit),
+          ]),
         ]);
       }
 
-      // Every surviving row is a genuine change (unchanged ones were filtered
-      // out above), so the row is always is-changed and carries the stagger.
-      return el("div", { class: "diffrow is-changed", style: "--i:" + revealIndex++ }, [
+      // ── editable proposed field ──────────────────────────────────────────────
+      var multiline = field === "keywords" || field === "promo";
+      var input = el(multiline ? "textarea" : "input", {
+        class: "txt diff-edit" + (multiline ? " mono" : ""),
+        rows: multiline ? "2" : null,
+        spellcheck: field === "keywords" ? "false" : null,
+        "data-field": field,
+        "aria-label": label,
+        value: multiline ? null : (edit.buffer[field] == null ? "" : edit.buffer[field]),
+      });
+      if (multiline) input.value = edit.buffer[field] == null ? "" : edit.buffer[field];
+
+      var charcount = el("span", { class: "charcount" }, []);
+      var bar = el("i", {});
+      var barWrap = el("div", { class: "charbar" }, [bar]);
+      var issuesEl = el("div", { class: "diff-issues", style: "display:none" }, []);
+      var dtag = el("span", { class: "dtag" }, []);
+      var resetBtn = el("button", { class: "btn ghost diff-reset", title: "Reset to the agent's proposal",
+        onclick: function () { edit.reset(field); render(); } }, ["↺ Reset"]);
+
+      function render() {
+        var val = edit.buffer[field] == null ? "" : edit.buffer[field];
+        if (input.value !== val) input.value = val;
+        var count = val.length;
+        var pct = Math.min(100, Math.round((count / limit) * 100));
+        var check = clientFieldCheck(field, edit.buffer);
+        var over = count > limit;
+        barWrap.className = "charbar " + (over ? "warn" : pct >= 90 ? "full" : "");
+        bar.setAttribute("style", "width:" + pct + "%");
+        charcount.textContent = count + "/" + limit;
+        charcount.setAttribute("style", over ? "color:var(--bad)" : "");
+        // validation issues (advisory) — red when the field breaks a rule.
+        if (check.ok) {
+          issuesEl.style.display = "none";
+          issuesEl.textContent = "";
+          input.classList.remove("invalid");
+        } else {
+          issuesEl.style.display = "";
+          issuesEl.textContent = check.issues.join(" · ");
+          input.classList.add("invalid");
+        }
+        // changed-vs-current tag + dirty (edited-from-agent) indicator
+        var wasStr = String(current[field] == null ? "" : current[field]);
+        var changedNow = wasStr !== val;
+        dtag.className = "dtag " + (!changedNow ? "same" : emptyWas ? "added" : "modified");
+        dtag.textContent = !changedNow ? "no change" : emptyWas ? "added" : "changed";
+        resetBtn.style.display = edit.isDirty(field) ? "" : "none";
+        refreshSummary();
+      }
+
+      input.addEventListener("input", function () { edit.set(field, input.value); render(); });
+      // initial paint
+      render();
+
+      var nowSide = el("div", { class: "diffside now" }, [
+        el("div", { class: "dlabel" }, [
+          "Proposed",
+          el("span", { class: "edited-flag", style: "display:none" }, []),
+          charcount,
+        ]),
+        el("div", { class: "dval dval-edit" }, [input]),
+        barWrap,
+        issuesEl,
+      ]);
+
+      return el("div", { class: "diffrow is-changed is-editable", style: "--i:" + revealIndex++ }, [
         el("div", { class: "dfield" }, [
           el("span", { class: "fname" }, [label]),
-          el("span", { class: "dtag " + (emptyWas ? "added" : "modified") }, [emptyWas ? "added" : "changed"]),
+          dtag,
+          resetBtn,
         ]),
         el("div", { class: "diffcols" }, [
-          side("was", was, emptyWas),
+          readonlySide("was", was, emptyWas, limit),
           el("div", { class: "darrow" }, ["→"]),
-          side("now", now, emptyNow),
+          nowSide,
         ]),
       ]);
     }).filter(Boolean);
 
-    // Rendered rows ARE the changed fields (unchanged were filtered out), so the
-    // summary count is just the row count — no separate recompute to drift.
-    var changedCount = rows.length;
-
-    // All fields unchanged → no honest "proposed change" to show. Say so plainly
-    // and point at the real next step (an ASC read), rather than an empty diff or
-    // a fake row (#58). On a no-key run, subtitle/keywords are UNSEEN, not "same."
+    // No editable proposed fields AND nothing changed → honest "connect ASC" hint.
     if (!rows.length) {
       rows = [el("div", { class: "faint", style: "padding:6px 0" }, [
         "No metadata changes proposed — connect App Store Connect to let the agent read + improve your subtitle/keywords.",
       ])];
     }
 
+    refreshSummary();
     return el("div", { class: "card" }, [
       el("div", { class: "diffhead" }, [
         el("h3", { style: "margin:0" }, ["Proposed changes"]),
-        el("span", { class: "diffsummary" }, [changedCount + " field" + (changedCount === 1 ? "" : "s") + " changed"]),
+        summaryEl,
       ]),
       el("p", { class: "faint", style: "margin:4px 0 14px;font-size:13px" },
-        ["Your live listing on the left, the agent's proposal on the right. Review it like a PR — then approve below."]),
+        ["Your live listing on the left, the agent's proposal on the right — edit any field before you ship. We re-check Apple's limits on the server, so an invalid edit can't be staged."]),
       el("div", { class: "difflist" }, rows),
       el("div", { class: "faint", style: "font-size:12px;margin-top:10px" }, ["Keyword field is comma-joined with no spaces and shares no words with the title/subtitle — Apple's rules, enforced in code."]),
     ]);
@@ -2205,15 +2378,40 @@
     return card;
   }
 
-  function gateCard(run, R) {
+  function gateCard(run, R, edit) {
+    // Tolerate older callers without an edit buffer (re-render fallbacks) by
+    // synthesizing one from the proposal — keeps the gate honest about scope.
+    if (!edit) edit = makeEditState(R.proposedCopy || {}, R.currentCopy || {});
     var card = el("div", { class: "card", style: "border-color:var(--brand-dim)" });
     card.appendChild(el("h3", {}, ["The approval gate"]));
 
     if (run.status === "awaiting_approval" || run.status === "detected" || run.status === "researching") {
       card.appendChild(el("p", { class: "muted", style: "margin-top:0" }, ["The push is the one irreversible step. The agent stopped here and is waiting on you."]));
-      var approve = el("button", { class: "btn ok", onclick: function () { decide(run.id, "approve", card, approve, run, R); } }, ["✓ Approve & reveal commands"]);
-      var reject = el("button", { class: "btn bad", onclick: function () { decide(run.id, "reject", card, reject, run, R); } }, ["✕ Reject"]);
+      var approve = el("button", { class: "btn ok", onclick: function () { decide(run.id, "approve", card, approve, run, R, edit); } }, ["✓ Approve & reveal commands"]);
+      var reject = el("button", { class: "btn bad", onclick: function () { decide(run.id, "reject", card, reject, run, R, edit); } }, ["✕ Reject"]);
+      // Block Approve while the client validator (advisory) reports any edited
+      // field invalid — the server re-checks and is authoritative, but we never
+      // let the user fire an approval we already know it will reject.
+      var invalidMsg = el("div", { class: "diff-invalid-msg", style: "display:none;margin-top:10px" }, []);
+      function syncApprove() {
+        var v = edit.validation();
+        if (v.pass) {
+          approve.disabled = false;
+          approve.title = "";
+          invalidMsg.style.display = "none";
+          invalidMsg.textContent = "";
+        } else {
+          approve.disabled = true;
+          approve.title = "Fix the edited fields above before approving";
+          invalidMsg.style.display = "";
+          var bad = v.checks.filter(function (c) { return !c.ok; }).map(function (c) { return c.field; });
+          invalidMsg.textContent = "Can't approve yet — fix " + bad.join(", ") + " above (over a limit or breaks Apple's keyword rules).";
+        }
+      }
+      edit.subscribe(syncApprove);
+      syncApprove();
       card.appendChild(el("div", { class: "btn-row" }, [approve, reject]));
+      card.appendChild(invalidMsg);
       card.appendChild(commandsLocked());
     } else if (run.status === "rejected") {
       card.appendChild(el("div", { class: "locked" }, [el("span", { class: "lock" }, ["✕"]), "You rejected this proposal. Nothing was pushed."]));
@@ -2221,11 +2419,11 @@
       card.appendChild(el("div", { class: "btn-row", style: "margin-top:12px" }, [
         el("button", { class: "btn primary", onclick: function () { go("#/apps/" + run.app_id); } }, ["▶ Run the agent again"]),
       ]));
-    } else if (isNoOpProposal(R.currentCopy || {}, R.proposedCopy || {})) {
-      // #76: the proposal doesn't actually change anything (or differs only by
-      // case/whitespace). Don't present a "push this" handoff for metadata that's
-      // already live — that reads as "you're showing me my own data as a change."
-      // Be honest: nothing to push.
+    } else if (isNoOpProposal(R.currentCopy || {}, edit.buffer || R.proposedCopy || {})) {
+      // #76: the (possibly edited) copy doesn't actually change anything vs live
+      // (or differs only by case/whitespace). Compare against the edit BUFFER so an
+      // edit back to the live value is honestly reported as a no-op, not a "change."
+      // Don't present a "push this" handoff for metadata that's already live.
       card.appendChild(el("div", { class: "locked", style: "margin-top:4px" }, [
         el("span", { class: "lock" }, ["✓"]),
         "Your metadata is already well-optimized — the agent found no changes worth pushing. Nothing to upload.",
@@ -2234,7 +2432,10 @@
         el("button", { class: "btn", onclick: function () { go("#/apps/" + run.app_id); } }, ["← Back to app"]),
       ]));
     } else {
-      // approved or shipped → reveal the handoff
+      // approved or shipped → reveal the handoff. After approval the server has
+      // staged the (possibly edited) copy + re-derived commands onto R, so the
+      // panels render the EDITED values that actually ship — not the agent's
+      // original proposal.
       card.appendChild(el("p", { class: "muted", style: "margin-top:0" }, ["Approved. Hand the metadata to your build pipeline (recommended) — that path is credential-free. Or upload straight to App Store Connect below; ShipASO uses your key once and never stores it."]));
       card.appendChild(ascPushCta(run.id));
       card.appendChild(commandsBox(R.pushCommands || [], run.id, R.proposedCopy || {}, R.currentCopy || {}));
@@ -2597,15 +2798,28 @@
     return lines.join("\n");
   }
 
-  function decide(runId, action, card, clicked, run, R) {
+  function decide(runId, action, card, clicked, run, R, edit) {
     // Disable both buttons, but show in-flight feedback on the one clicked so the
     // action never reads as a frozen UI (the busy-cursor-with-no-activity bug).
     var btns = card.querySelectorAll("button"); btns.forEach(function (b) { b.disabled = true; });
     var label = clicked && clicked.textContent;
     if (clicked) clicked.innerHTML = '<span class="spin"></span> ' + (action === "approve" ? "Approving…" : "Rejecting…");
-    api("POST", "/runs/" + runId + "/" + action)
-      .then(function () {
+    // On approve, send the human edit buffer so the edited copy is what ships.
+    // The server re-validates with the engine's validateCopy and is authoritative;
+    // an invalid edit returns 400 and no gate row is written.
+    var body = action === "approve"
+      ? { decision: "approve", editedCopy: (edit && edit.buffer) || {} }
+      : { decision: "reject" };
+    api("POST", "/runs/" + runId + "/" + action, body)
+      .then(function (res) {
         toast(action === "approve" ? "Approved — commands revealed." : "Rejected — nothing pushed.");
+        // The server returns the FINALIZED (edited) copy + re-derived commands on
+        // approval — fold them into R so the handoff panels render what actually
+        // ships, not the agent's original proposal.
+        if (action === "approve" && res) {
+          if (res.proposedCopy) R.proposedCopy = res.proposedCopy;
+          if (res.pushCommands) R.pushCommands = res.pushCommands;
+        }
         // Update the gate card IN PLACE rather than re-routing. A full route()
         // re-render scrolled the page to the top AND wiped any in-progress input
         // (e.g. a half-entered .p8 in the push panel) — a bad experience right at
@@ -2613,7 +2827,7 @@
         // with the new status and swap it, preserving scroll position.
         if (run && R && card.parentNode) {
           run.status = action === "approve" ? "approved" : "rejected";
-          var fresh = gateCard(run, R);
+          var fresh = gateCard(run, R, edit);
           card.parentNode.replaceChild(fresh, card);
           // Keep the header status badge in sync (it lives outside the gate card).
           var badge = document.querySelector("#view .badge");

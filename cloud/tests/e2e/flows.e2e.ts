@@ -321,18 +321,18 @@ test.describe("run page — PR-style diff (current → proposed)", () => {
     // The diff card still leads with the "Proposed changes" header.
     await expect(page.getByRole("heading", { name: /proposed changes/i })).toBeVisible();
 
-    // The animated layer applies to the proposed side of changed rows. With motion
-    // reduced, those values must be fully visible (opacity:1, not stuck at the
-    // animation's 0 start) and carry their real text — the static diff is the
-    // source of truth, the animation is purely additive.
-    const dvals = page.locator(".diffrow.is-changed .diffside.now .dval");
-    const count = await dvals.count();
+    // The proposed side is now editable inputs (#39 Part 1). With motion reduced,
+    // every proposed field renders an input fully visible (opacity:1, not stuck at
+    // the animation's 0 start) and carrying its real value — the editable diff is
+    // the source of truth, the animation is purely additive.
+    const inputs = page.locator(".diffrow.is-editable .diff-edit");
+    const count = await inputs.count();
     expect(count).toBeGreaterThan(0);
     for (let i = 0; i < count; i++) {
-      const opacity = await dvals.nth(i).evaluate((node) => getComputedStyle(node).opacity);
+      const opacity = await inputs.nth(i).evaluate((node) => getComputedStyle(node).opacity);
       expect(opacity).toBe("1");
-      const text = await dvals.nth(i).textContent();
-      expect(text?.trim()).toBeTruthy();
+      const val = await inputs.nth(i).inputValue();
+      expect(val.trim()).toBeTruthy();
     }
     await context.close();
   });
@@ -380,9 +380,11 @@ test.describe("run page — diff hides unchanged fields (#58)", () => {
     );
   }
 
-  test("unchanged fields render no diff row and the all-unchanged empty state shows", async ({ page }) => {
+  test("unchanged proposed fields render editable rows tagged 'no change' with a 0-changed summary (#58 honesty)", async ({ page }) => {
     await gotoMockDashboard(page);
-    const id = await seedAppWithRun(page);
+    // asc:true → subtitle/keywords are READ (so they're genuinely proposed +
+    // editable). Doctoring then makes proposed === current for every field.
+    const id = await seedAppWithRun(page, { asc: true });
     const runId = await page.evaluate(async (appId) => {
       const M = (window as any).STORE_OPS_MOCK;
       const detail = await (await M.handle("GET", `/apps/${appId}`, null, "demo@store-ops.dev")).json();
@@ -393,15 +395,33 @@ test.describe("run page — diff hides unchanged fields (#58)", () => {
 
     // The diff card still leads with its header…
     await expect(page.getByRole("heading", { name: /proposed changes/i })).toBeVisible();
-    // …but NOT a single field row renders, because nothing changed.
-    await expect(page.locator(".diffrow")).toHaveCount(0);
-    // The honest empty state names the real next step (connect ASC), never an
-    // empty diff or a fake "0 changed" row.
-    await expect(
-      page.getByText(/no metadata changes proposed.*connect app store connect/i),
-    ).toBeVisible();
+    // …and the proposed fields are now EDITABLE inputs (the feature: tweak even an
+    // unchanged field before shipping) — but each is honestly tagged "no change",
+    // never a fabricated "changed"/"added".
+    await expect(page.locator(".diffrow.is-editable")).not.toHaveCount(0);
+    await expect(page.locator(".diffrow .dtag.modified, .diffrow .dtag.added")).toHaveCount(0);
+    await expect(page.locator(".diffrow .dtag.same")).not.toHaveCount(0);
     // The summary reports zero fields changed (no invented count).
     await expect(page.locator(".diffsummary")).toContainText(/0 fields changed/i);
+  });
+
+  test("a no-key run never fabricates subtitle/keywords into editable fields (#39 §6.1)", async ({ page }) => {
+    await gotoMockDashboard(page);
+    // default (no asc) run: subtitle/keywords are UNSEEN — the agent couldn't read
+    // them, so they must NOT appear as editable inputs (no fabricating a field).
+    const id = await seedAppWithRun(page);
+    const runId = await page.evaluate(async (appId) => {
+      const M = (window as any).STORE_OPS_MOCK;
+      const detail = await (await M.handle("GET", `/apps/${appId}`, null, "demo@store-ops.dev")).json();
+      return detail.runs[0].id as string;
+    }, id);
+    await page.goto(`/index.html#/runs/${runId}`);
+
+    await expect(page.getByRole("heading", { name: /proposed changes/i })).toBeVisible();
+    // subtitle + keywords stay non-editable (unseen); name is always editable.
+    await expect(page.locator('.diff-edit[data-field="subtitle"]')).toHaveCount(0);
+    await expect(page.locator('.diff-edit[data-field="keywords"]')).toHaveCount(0);
+    await expect(page.locator('.diff-edit[data-field="name"]')).not.toHaveCount(0);
   });
 });
 

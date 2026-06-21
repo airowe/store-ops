@@ -14,12 +14,14 @@ import type {
   AgentResult,
   AscContext,
   Change,
+  CopyFields,
   CoverageReport,
   Finding,
   KeywordGap,
   LocaleRecommendation,
   Opportunity,
   ProposedCopy,
+  PushCommand,
   Rank,
   ScoredKeyword,
   SurfaceLock,
@@ -603,6 +605,68 @@ export async function recordApproval(
     db.prepare("UPDATE runs SET status = ? WHERE id = ?").bind(nextStatus, args.runId),
   ]);
   return row;
+}
+
+/**
+ * Persist the FINALIZED copy onto a run after a human edited the proposal and
+ * cleared the gate (#39 Part 1, approach (a)). Rewrites the run trace's
+ * `proposedCopy` + `pushCommands` (additive — every other trace field is kept
+ * verbatim) and replaces the normalized `proposals` rows. Because the downstream
+ * handoffs all read `trace.proposedCopy` / `trace.pushCommands`, this is the only
+ * write needed for the edited copy to ship — no handoff route changes.
+ *
+ * The copy is the already-validated, already-merged result from
+ * `finalizeEditedCopy`; the caller MUST have confirmed `validation.pass` first.
+ * The whole rewrite runs in one atomic `db.batch` so the trace and the proposals
+ * rows can never disagree.
+ */
+export async function updateRunCopy(
+  db: D1Database,
+  args: { runId: string; copy: CopyFields; pushCommands: PushCommand[] },
+): Promise<void> {
+  const run = await db
+    .prepare("SELECT reasoning_json FROM runs WHERE id = ?")
+    .bind(args.runId)
+    .first<{ reasoning_json: string }>();
+  if (!run) return;
+
+  const trace = JSON.parse(run.reasoning_json) as ReasoningTrace;
+  // preserve the existing validation block's shape: it was already re-run by the
+  // caller (finalizeEditedCopy), so carry it onto the trace's ProposedCopy.
+  const prevValidation = trace.proposedCopy?.validation;
+  trace.proposedCopy = {
+    ...trace.proposedCopy,
+    ...args.copy,
+    ...(prevValidation !== undefined ? { validation: prevValidation } : {}),
+  } as ProposedCopy;
+  trace.pushCommands = args.pushCommands;
+
+  const stmts: D1PreparedStatement[] = [
+    db
+      .prepare("UPDATE runs SET reasoning_json = ? WHERE id = ?")
+      .bind(JSON.stringify(trace), args.runId),
+    db.prepare("DELETE FROM proposals WHERE run_id = ?").bind(args.runId),
+  ];
+
+  const fields: Array<[string, string | undefined]> = [
+    ["name", args.copy.name],
+    ["subtitle", args.copy.subtitle],
+    ["keywords", args.copy.keywords],
+    ["promo", args.copy.promo],
+    ["description", args.copy.description],
+  ];
+  for (const [field, value] of fields) {
+    if (value === undefined) continue;
+    stmts.push(
+      db
+        .prepare(
+          "INSERT INTO proposals (id, run_id, field, value, char_count) VALUES (?, ?, ?, ?, ?)",
+        )
+        .bind(uuid(), args.runId, field, value, value.length),
+    );
+  }
+
+  await db.batch(stmts);
 }
 
 export async function setRunStatus(

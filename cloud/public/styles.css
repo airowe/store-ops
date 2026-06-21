@@ -692,6 +692,17 @@ svg.spark .lbl { fill: var(--faint); font-family: var(--mono); font-size: 10px; 
   .darrow { transform: rotate(90deg); justify-content: center; }
 }
 
+/* ── editable proposal (#39 Part 1): the "Proposed" side becomes inputs ────── */
+.dfield { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.diff-reset { padding: 2px 8px; font-size: 11.5px; margin-left: auto; }
+.dval-edit { padding: 0; background: none !important; border: none !important; min-height: 0; }
+.diffside.now .dval-edit { background: none !important; border: none !important; }
+.txt.diff-edit { width: 100%; padding: 8px 10px; font-size: 14px; line-height: 1.4; box-sizing: border-box; resize: vertical; }
+.txt.diff-edit.invalid { border-color: var(--bad); box-shadow: 0 0 0 2px rgba(248,113,113,.18); }
+.diff-issues { color: var(--bad); font-size: 12px; margin-top: 6px; line-height: 1.35; }
+.diff-invalid-msg { color: var(--bad); font-size: 13px; }
+.dtag.same { color: var(--faint); border-color: var(--line); }
+
 /* ── animated text reveal: the proposed value of a CHANGED field eases in,
    staggered per row (--i). This is layered ON TOP of the static diff — the
    value is in the DOM and readable regardless; the animation only times its
