@@ -18,6 +18,7 @@
 import type { AscSnapshot, InAppPurchase } from "./ascRead.js";
 import type { Audit } from "./agent.js";
 import type { Rank } from "./rankCheck.js";
+import type { ReviewSentiment } from "./reviewSentiment.js";
 
 /**
  * `snapshot.locales` is typed `LiveListingCopy[]` on the snapshot, but the reader
@@ -85,6 +86,13 @@ export type AuditFindingsInput = {
    * diagnostic, not a user lever. Flip on for an operator/debug view.
    */
   includeReadErrors?: boolean | undefined;
+  /**
+   * PUBLIC-review sentiment (#95). Undefined when reviews weren't fetched (or
+   * the fetch came back empty) — the `reviews` surface then emits NOTHING, like
+   * every other absent surface. When present it carries the honest sample size
+   * and a SUPPRESSED score below threshold (#78).
+   */
+  reviews?: ReviewSentiment | undefined;
 };
 
 export type FindingsSummary = {
@@ -705,6 +713,58 @@ function metaFindings(input: AuditFindingsInput): Finding[] {
   return out;
 }
 
+/**
+ * reviews — PUBLIC review sentiment (#95). Low-signal surface: NEVER critical.
+ *   • absent (undefined) → no findings (graceful, like every other surface).
+ *   • n < threshold (score SUPPRESSED) → an honest "too few reviews" info finding
+ *     that carries the sample size and presents NO confident numeric score (#78).
+ *   • otherwise → a sentiment-summary finding (info) that surfaces the OBSERVED
+ *     top topics; counts are sample frequencies, never extrapolated to "% of users".
+ */
+function reviewFindings(input: AuditFindingsInput): Finding[] {
+  const reviews = input.reviews;
+  if (!reviews) return [];
+  const out: Finding[] = [];
+
+  // Honest empty-vs-low-vs-confident handling.
+  if (reviews.score === null || reviews.confidence === "low") {
+    out.push(
+      mk({
+        id: "reviews_low_sample",
+        surface: "reviews",
+        severity: "info",
+        impact: "trust",
+        title: "Too few reviews to summarize sentiment reliably",
+        detail:
+          "We read the public reviews but the sample is too small to summarize sentiment with confidence — so we don't put a number on it.",
+        fix: "Grow your review volume (in-app prompts at the right moment); we'll summarize sentiment once there's enough signal.",
+        evidence: `n=${reviews.n}`,
+      }),
+    );
+    return out;
+  }
+
+  // n >= threshold: a confident summary + the observed top topics.
+  const topTopics = reviews.topics.slice(0, 3);
+  const topicList = topTopics.map((t) => `${t.topic} (${t.count}, ${t.sentiment})`).join("; ");
+  out.push(
+    mk({
+      id: "reviews_sentiment_summary",
+      surface: "reviews",
+      severity: "info",
+      impact: "trust",
+      title: `Review sentiment: ${reviews.label} (n=${reviews.n})`,
+      detail:
+        topTopics.length > 0
+          ? `Top topics users mention (observed in your ${reviews.n}-review sample): ${topicList}.`
+          : `Overall public-review sentiment across ${reviews.n} reviews.`,
+      fix: "Use these recurring topics to guide your roadmap and store-listing language.",
+      evidence: topicList || `score ${reviews.score}/100`,
+    }),
+  );
+  return out;
+}
+
 // ── Public entrypoint ────────────────────────────────────────────────────────
 
 /**
@@ -725,6 +785,7 @@ export function auditFindings(input: AuditFindingsInput): Finding[] {
     ...ageRatingFindings(input.snapshot),
     ...cppFindings(input.snapshot),
     ...localeFindings(input.snapshot),
+    ...reviewFindings(input),
     ...metaFindings(input),
   ];
 

@@ -767,3 +767,59 @@ describe("surfaceLocks", () => {
     expect(withSnap).toEqual(noSnap);
   });
 });
+
+// ── reviews surface (#95) ────────────────────────────────────────────────────
+
+import type { ReviewSentiment, Topic } from "./reviewSentiment.js";
+
+function topic(over: Partial<Topic> & { topic: string }): Topic {
+  return { topic: over.topic, count: over.count ?? 3, sentiment: over.sentiment ?? "mixed", sampleQuotes: over.sampleQuotes ?? ["a quote"] };
+}
+
+describe("reviews surface (#95)", () => {
+  it("emits ZERO 'reviews' findings and does not throw when reviews are absent", () => {
+    const findings = auditFindings(input({ reviews: undefined }));
+    expect(findings.filter((f) => f.surface === "reviews")).toEqual([]);
+  });
+
+  it("n<20 emits an honest low-sample finding and presents NO confident numeric score", () => {
+    const reviews: ReviewSentiment = {
+      n: 7,
+      score: null,
+      confidence: "low",
+      label: "too few reviews to summarize reliably",
+      note: "too few reviews to summarize reliably (n=7)",
+      topics: [],
+    };
+    const findings = auditFindings(input({ reviews }));
+    const rv = findings.filter((f) => f.surface === "reviews");
+    expect(rv.length).toBe(1);
+    expect(rv[0]?.id).toBe("reviews_low_sample");
+    // honest: carries the sample size, never a fabricated score.
+    expect(rv[0]?.evidence).toContain("n=7");
+    expect(rv.some((f) => /\b\d{2,3}%\b/.test(f.detail))).toBe(false);
+    // the low-signal reviews surface NEVER emits a critical.
+    expect(rv.every((f) => f.severity !== "critical")).toBe(true);
+  });
+
+  it("n>=20 with >=3 topics emits a reviews finding surfacing REAL topics, never critical", () => {
+    const reviews: ReviewSentiment = {
+      n: 48,
+      score: 72,
+      confidence: "ok",
+      label: "mostly positive",
+      topics: [
+        topic({ topic: "sync", count: 9, sentiment: "negative" }),
+        topic({ topic: "design", count: 6, sentiment: "positive" }),
+        topic({ topic: "pricing", count: 4, sentiment: "mixed" }),
+      ],
+    };
+    const findings = auditFindings(input({ reviews }));
+    const rv = findings.filter((f) => f.surface === "reviews");
+    expect(rv.length).toBeGreaterThanOrEqual(1);
+    // surfaces real observed topics in the copy.
+    const blob = rv.map((f) => `${f.title} ${f.detail} ${f.evidence ?? ""}`).join(" ");
+    expect(blob).toContain("sync");
+    expect(rv.every((f) => f.severity !== "critical")).toBe(true);
+  });
+});

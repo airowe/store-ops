@@ -266,6 +266,43 @@ describe("serializeRunResult — rank opportunities (PRD 06)", () => {
   });
 });
 
+describe("serializeRunResult — review sentiment (#95)", () => {
+  it("surfaces the trace's PUBLIC review sentiment to the client (sample size carried)", () => {
+    const trace = modeATrace();
+    trace.reviews = {
+      n: 42,
+      score: 78,
+      confidence: "ok",
+      label: "mostly positive",
+      topics: [{ topic: "sync", count: 9, sentiment: "negative", sampleQuotes: ["sync keeps failing"] }],
+    };
+    const result = serializeRunResult(trace, false) as { reviews?: typeof trace.reviews };
+    expect(result.reviews).toEqual(trace.reviews);
+    // the honest sample size always rides through.
+    expect(result.reviews?.n).toBe(42);
+  });
+
+  it("rides through the SUPPRESSED low-sample read (score:null) verbatim (#78)", () => {
+    const trace = modeATrace();
+    trace.reviews = {
+      n: 6,
+      score: null,
+      confidence: "low",
+      label: "too few reviews to summarize reliably",
+      note: "too few reviews to summarize reliably (n=6)",
+      topics: [],
+    };
+    const result = serializeRunResult(trace, false) as { reviews?: typeof trace.reviews };
+    expect(result.reviews?.score).toBeNull();
+    expect(result.reviews?.confidence).toBe("low");
+  });
+
+  it("omits `reviews` entirely on a trace that fetched none (older/no-review runs)", () => {
+    const result = serializeRunResult(noKeyTrace(), false) as Record<string, unknown>;
+    expect("reviews" in result).toBe(false);
+  });
+});
+
 describe("serializeRunResult — approval gate still holds", () => {
   it("withholds pushCommands until approved (unchanged by PRD 02)", () => {
     const trace = modeATrace();

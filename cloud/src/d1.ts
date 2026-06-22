@@ -23,6 +23,7 @@ import type {
   ProposedCopy,
   PushCommand,
   Rank,
+  ReviewSentiment,
   ScoredKeyword,
   SurfaceLock,
 } from "./engine/index.js";
@@ -181,6 +182,13 @@ export type ReasoningTrace = {
    * to serve to the client. Present only on a Mode-A run that read the locale set.
    */
   localizationExpansion?: LocaleRecommendation[] | undefined;
+  /**
+   * PUBLIC review sentiment (#95) — overall sentiment + ranked OBSERVED topics
+   * from Apple's free RSS customer-reviews feed. Sample size `n` ALWAYS carried;
+   * the score is SUPPRESSED below threshold (#78). Public data only — safe to
+   * serve. Absent on older traces + runs that fetched no reviews.
+   */
+  reviews?: ReviewSentiment | undefined;
   /** why this run was opened (cron threshold reasons, or "manual"/"connect"). */
   trigger: { source: "manual" | "cron" | "connect"; reasons: string[] };
 };
@@ -662,6 +670,9 @@ export async function persistRun(
     ...(result.localizationExpansion !== undefined
       ? { localizationExpansion: result.localizationExpansion }
       : {}),
+    // PUBLIC review sentiment (#95): sample-size-honest sentiment + observed
+    // topics from the free RSS feed. Public data only — safe to persist + serve.
+    ...(result.reviews !== undefined ? { reviews: result.reviews } : {}),
     trigger: args.trigger,
   };
 

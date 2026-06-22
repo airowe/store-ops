@@ -174,3 +174,25 @@ CREATE TABLE IF NOT EXISTS proposal_edits (
   final_enc     TEXT NOT NULL,                        -- AES-256-GCM(IV++ciphertext, base64) of the shipped value
   created_at    TEXT NOT NULL DEFAULT (datetime('now'))
 );
+
+-- ── review_snapshots ─────────────────────────────────────────────────────────
+-- OPTIONAL best-effort cache of PUBLIC App Store reviews (#95). Reviews change
+-- slowly, so caching the RSS-feed read avoids re-fetching every audit (PRD 03
+-- open question). PUBLIC data only — never ASC/private review data. The engine
+-- works WITHOUT this table (the cache is best-effort and the API run fetches
+-- live), so it is purely additive; no code path depends on it yet.
+-- Migration for an existing db (the CREATE above only fires on a fresh db):
+--   npx wrangler d1 execute store_ops --command "CREATE TABLE IF NOT EXISTS review_snapshots (id TEXT PRIMARY KEY, app_id TEXT NOT NULL, review_id TEXT NOT NULL, rating INTEGER, title TEXT NOT NULL DEFAULT '', content TEXT NOT NULL DEFAULT '', version TEXT NOT NULL DEFAULT '', country TEXT NOT NULL DEFAULT 'us', fetched_at TEXT NOT NULL DEFAULT (datetime('now')))"
+-- (add `--local` for the local D1; drop it for remote.)
+CREATE TABLE IF NOT EXISTS review_snapshots (
+  id          TEXT PRIMARY KEY,                       -- uuid
+  app_id      TEXT NOT NULL REFERENCES apps(id) ON DELETE CASCADE,
+  review_id   TEXT NOT NULL,                          -- the public RSS review id
+  rating      INTEGER,                                -- 1–5 stars, NULL when the feed omitted it
+  title       TEXT NOT NULL DEFAULT '',
+  content     TEXT NOT NULL DEFAULT '',
+  version     TEXT NOT NULL DEFAULT '',
+  country     TEXT NOT NULL DEFAULT 'us',
+  fetched_at  TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_reviews_app ON review_snapshots(app_id, fetched_at);

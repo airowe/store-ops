@@ -37,6 +37,7 @@ import type { AscContext } from "./ascContext.js";
 import type { Opportunity } from "./rankOpportunity.js";
 import type { CoverageReport } from "./metadataCoverage.js";
 import type { LocaleRecommendation } from "./localizationExpansion.js";
+import type { ReviewSentiment } from "./reviewSentiment.js";
 
 /** Everything the agent needs to run one app's loop. Pure data in. */
 export type AppInput = {
@@ -131,6 +132,14 @@ export type AgentResult = {
    * the client. Present on a Mode-A (ASC) run where we read all locales + category.
    */
   localizationExpansion?: LocaleRecommendation[] | undefined;
+  /**
+   * PUBLIC review sentiment (#95) — overall sentiment + ranked OBSERVED topics
+   * from Apple's free RSS customer-reviews feed. Computed best-effort in the API
+   * run path (a fetch failure leaves this undefined, never strands the run). The
+   * sample size `n` is ALWAYS carried and the score is SUPPRESSED below threshold
+   * (#78). Safe to serialize (public data only). Optional so older paths stay valid.
+   */
+  reviews?: ReviewSentiment | undefined;
 };
 
 export type PushCommand = {
