@@ -34,6 +34,14 @@ import { encryptField } from "./crypto/rlhfCrypto.js";
 
 export type Tier = "free" | "launch" | "autopilot" | "fleet";
 
+/**
+ * How often the cron snapshots an app's ranks (issue #94). 'weekly' (the default)
+ * records ranks during the Monday autonomous sweep only; 'daily' adds a separate
+ * lightweight daily rank snapshot WITHOUT running the draft/threshold/open-run
+ * logic. The autonomous DRAFT cadence stays weekly/threshold-governed either way.
+ */
+export type RankCadence = "daily" | "weekly";
+
 export type UserRow = {
   id: string;
   email: string;
@@ -48,6 +56,8 @@ export type UserRow = {
   /** owner paused the weekly autonomous sweep (issue #51). 0/1 in SQLite → boolean here. */
   agent_paused: boolean;
   rlhf_opt_out: number; // 0 = capturing (default), 1 = opted out (#39 Part 2)
+  /** how often the cron snapshots ranks (issue #94). 'weekly' default; 'daily' adds the lightweight daily snapshot. */
+  rank_cadence: RankCadence;
 };
 
 export type AppRow = {
@@ -195,17 +205,25 @@ const now = (): string => new Date().toISOString().replace("T", " ").slice(0, 19
 // ── users ────────────────────────────────────────────────────────────────────
 
 const USER_COLS =
-  "id, email, created_at, tier, status, stripe_customer_id, stripe_subscription_id, current_period_end, github_installation_id, github_repo, agent_paused, rlhf_opt_out";
+  "id, email, created_at, tier, status, stripe_customer_id, stripe_subscription_id, current_period_end, github_installation_id, github_repo, agent_paused, rlhf_opt_out, rank_cadence";
+
+/** SQLite stores `agent_paused` as 0/1 and may be missing `rank_cadence` on a legacy row. */
+type RawUserRow = Omit<UserRow, "agent_paused" | "rank_cadence"> & {
+  agent_paused?: number | null;
+  rank_cadence?: RankCadence | null;
+};
 
 /**
  * Normalize a raw `users` row from D1 into a `UserRow`. SQLite has no boolean,
  * so `agent_paused` comes back as 0/1 (or undefined on a legacy pre-migration
  * row) — fold it to a real boolean so callers never compare against `1`.
  * `rlhf_opt_out` (#39 Part 2) stays a 0/1 number and passes through unchanged.
+ * `rank_cadence` (#94) defaults to 'weekly' when null/absent (pre-migration row),
+ * preserving today's weekly behavior for everyone.
  */
-function mapUserRow(raw: (Omit<UserRow, "agent_paused"> & { agent_paused?: number | null }) | null): UserRow | null {
+function mapUserRow(raw: RawUserRow | null): UserRow | null {
   if (!raw) return null;
-  return { ...raw, agent_paused: raw.agent_paused === 1 };
+  return { ...raw, agent_paused: raw.agent_paused === 1, rank_cadence: raw.rank_cadence ?? "weekly" };
 }
 
 /** Get-or-create a user by email (magic-link/session resolves to this). Idempotent. */
@@ -214,7 +232,7 @@ export async function upsertUser(db: D1Database, email: string): Promise<UserRow
     await db
       .prepare(`SELECT ${USER_COLS} FROM users WHERE email = ?`)
       .bind(email)
-      .first<Omit<UserRow, "agent_paused"> & { agent_paused?: number | null }>(),
+      .first<RawUserRow>(),
   );
   if (existing) return existing;
 
@@ -231,6 +249,7 @@ export async function upsertUser(db: D1Database, email: string): Promise<UserRow
     github_repo: null,
     agent_paused: false,
     rlhf_opt_out: 0, // capture is ON by default; the settings toggle sets this
+    rank_cadence: "weekly", // weekly snapshotting by default (#94); the settings toggle opts into daily
   };
   await db
     .prepare("INSERT INTO users (id, email, created_at, tier, status) VALUES (?, ?, ?, ?, ?)")
@@ -244,7 +263,7 @@ export async function getUser(db: D1Database, userId: string): Promise<UserRow |
     await db
       .prepare(`SELECT ${USER_COLS} FROM users WHERE id = ?`)
       .bind(userId)
-      .first<Omit<UserRow, "agent_paused"> & { agent_paused?: number | null }>(),
+      .first<RawUserRow>(),
   );
 }
 
@@ -390,7 +409,7 @@ export async function getUserByStripeCustomer(
     await db
       .prepare(`SELECT ${USER_COLS} FROM users WHERE stripe_customer_id = ?`)
       .bind(customerId)
-      .first<Omit<UserRow, "agent_paused"> & { agent_paused?: number | null }>(),
+      .first<RawUserRow>(),
   );
 }
 
@@ -445,6 +464,33 @@ export async function setAgentPaused(
   await db
     .prepare("UPDATE users SET agent_paused = ? WHERE id = ?")
     .bind(args.paused ? 1 : 0, args.userId)
+    .run();
+}
+
+/**
+ * This user's rank-snapshot cadence (issue #94). Per-user, modeled on `getTier`:
+ * defaults to 'weekly' on a missing/null row so legacy users keep today's weekly
+ * behavior. The daily snapshot cron reads this to decide which apps to snapshot.
+ */
+export async function getRankCadence(db: D1Database, userId: string): Promise<RankCadence> {
+  const row = await db
+    .prepare("SELECT rank_cadence FROM users WHERE id = ?")
+    .bind(userId)
+    .first<{ rank_cadence: RankCadence | null }>();
+  return row?.rank_cadence ?? "weekly";
+}
+
+/**
+ * Set this user's rank-snapshot cadence (the settings toggle calls this). Per-user:
+ * writes the enum to `users.rank_cadence`. Mirrors `setAgentPaused`/`setOptOut`.
+ */
+export async function setRankCadence(
+  db: D1Database,
+  args: { userId: string; cadence: RankCadence },
+): Promise<void> {
+  await db
+    .prepare("UPDATE users SET rank_cadence = ? WHERE id = ?")
+    .bind(args.cadence, args.userId)
     .run();
 }
 
@@ -828,6 +874,36 @@ export async function setRunStatus(
   status: RunStatus,
 ): Promise<void> {
   await db.prepare("UPDATE runs SET status = ? WHERE id = ?").bind(status, runId).run();
+}
+
+// ── snapshots: lightweight writes (daily cadence) + reads ────────────────────
+
+/**
+ * Append dated rank rows for an app WITHOUT opening a run (issue #94). The daily
+ * snapshot cron uses this: it records the same `rank_snapshots` time-series the
+ * weekly sweep does (via persistRun), but skips the run/proposals/threshold logic
+ * entirely — a snapshot, not a draft. Errored keyword fetches are skipped so we
+ * never persist a fabricated row for a term whose rank we couldn't read (#78); an
+ * honest `null` rank (in top-N but unranked) IS persisted. Atomic via DB.batch.
+ */
+export async function persistRankSnapshots(
+  db: D1Database,
+  args: { appId: string; ranks: Rank[] },
+): Promise<void> {
+  const checkedAt = now();
+  const stmts: D1PreparedStatement[] = [];
+  for (const r of args.ranks) {
+    if (r.error) continue; // honesty: a failed fetch is NOT a measured rank — record nothing
+    stmts.push(
+      db
+        .prepare(
+          "INSERT INTO rank_snapshots (id, app_id, keyword, rank, total, checked_at) VALUES (?, ?, ?, ?, ?, ?)",
+        )
+        .bind(uuid(), args.appId, r.keyword, r.rank, r.total, checkedAt),
+    );
+  }
+  if (stmts.length === 0) return;
+  await db.batch(stmts);
 }
 
 // ── snapshots: reads for trend charts + cron diffing ─────────────────────────

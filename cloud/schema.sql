@@ -33,7 +33,9 @@ CREATE TABLE IF NOT EXISTS users (
   github_installation_id  TEXT,                         -- GitHub App installation id (not sensitive)
   github_repo             TEXT,                         -- "owner/name" target for metadata PRs
   agent_paused            INTEGER NOT NULL DEFAULT 0,   -- 0/1: owner paused the weekly autonomous sweep (issue #51)
-  rlhf_opt_out            INTEGER NOT NULL DEFAULT 0    -- 1 ⇒ do NOT capture this user's proposal edits (#39 Part 2)
+  rlhf_opt_out            INTEGER NOT NULL DEFAULT 0,    -- 1 ⇒ do NOT capture this user's proposal edits (#39 Part 2)
+  rank_cadence            TEXT NOT NULL DEFAULT 'weekly' -- 'daily'|'weekly': how often the cron snapshots ranks (issue #94)
+                            CHECK (rank_cadence IN ('daily', 'weekly'))
 );
 
 -- Migration for an EXISTING db (the CREATE above only fires on a fresh db). Run
@@ -47,6 +49,7 @@ CREATE TABLE IF NOT EXISTS users (
 --   npx wrangler d1 execute store_ops --command "ALTER TABLE users ADD COLUMN github_repo TEXT"
 --   npx wrangler d1 execute store_ops --command "ALTER TABLE users ADD COLUMN agent_paused INTEGER NOT NULL DEFAULT 0"
 --   npx wrangler d1 execute store_ops --command "ALTER TABLE users ADD COLUMN rlhf_opt_out INTEGER NOT NULL DEFAULT 0"
+--   npx wrangler d1 execute store_ops --command "ALTER TABLE users ADD COLUMN rank_cadence TEXT NOT NULL DEFAULT 'weekly' CHECK (rank_cadence IN ('daily','weekly'))"
 -- (add `--local` to each for the local D1; drop it for remote.)
 
 -- ── apps ─────────────────────────────────────────────────────────────────────

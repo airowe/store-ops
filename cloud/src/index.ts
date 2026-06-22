@@ -11,6 +11,10 @@
  */
 import { handleApi } from "./api/index.js";
 import { handleScheduled } from "./cron/scheduled.js";
+import { handleDailySnapshot } from "./cron/snapshot.js";
+
+/** The daily snapshot cron expression (wrangler.toml). Branch target in scheduled(). */
+const DAILY_SNAPSHOT_CRON = "0 8 * * *";
 
 export type Env = {
   DB: D1Database;
@@ -73,12 +77,23 @@ export default {
     return handleApi(request, env);
   },
 
-  /** Weekly cron (Mon 09:00 UTC) — the autonomous loop. */
+  /**
+   * Two cron triggers (#94), dispatched on `event.cron`:
+   *   "0 8 * * *" (daily 08:00 UTC) → the lightweight rank SNAPSHOT (snapshot-only,
+   *                                   never opens an approval run, never pushes).
+   *   "0 9 * * 1" (Mon 09:00 UTC)   → the weekly autonomous sweep (unchanged).
+   * Any other/unknown expression falls back to the weekly sweep — the SAFE default
+   * (it never runs the snapshot-only path by accident, and never auto-pushes).
+   */
   async scheduled(
-    _event: ScheduledController,
+    event: ScheduledController,
     env: Env,
     ctx: ExecutionContext,
   ): Promise<void> {
+    if (event.cron === DAILY_SNAPSHOT_CRON) {
+      ctx.waitUntil(handleDailySnapshot(env));
+      return;
+    }
     ctx.waitUntil(handleScheduled(env));
   },
 } satisfies ExportedHandler<Env>;

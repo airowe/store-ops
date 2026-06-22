@@ -104,6 +104,7 @@ import {
   setAgentPaused,
   setGithubConnection,
   setOptOut,
+  setRankCadence,
   setTier,
   updateRunCopy,
   upsertUser,
@@ -542,6 +543,7 @@ async function authMe(req: Request, env: Env, origin: string | null): Promise<Re
           email: user.email,
           paused: user.agent_paused,
           rlhf_opt_out: user.rlhf_opt_out === 1,
+          rank_cadence: user.rank_cadence,
         },
         200,
         origin,
@@ -560,6 +562,7 @@ async function authMe(req: Request, env: Env, origin: string | null): Promise<Re
           email,
           paused: user.agent_paused,
           rlhf_opt_out: user.rlhf_opt_out === 1,
+          rank_cadence: user.rank_cadence,
         },
         200,
         origin,
@@ -583,6 +586,23 @@ async function rlhfOptOutRoute(req: Request, env: Env, userId: string): Promise<
   }
   await setOptOut(env.DB, { userId, optOut: body.optOut });
   return { rlhf_opt_out: body.optOut };
+}
+
+/**
+ * POST /account/rank-cadence {cadence:'daily'|'weekly'} — set how often the cron
+ * snapshots this user's ranks (#94). 'weekly' (the default) records ranks during
+ * the Monday autonomous sweep only; 'daily' adds the lightweight daily snapshot
+ * WITHOUT changing the autonomous draft cadence (still weekly/threshold-governed).
+ * Returns the new state. requireUser-gated (the caller decides for their own
+ * account); a value outside the enum is rejected 400 (never silently coerced).
+ */
+async function rankCadenceRoute(req: Request, env: Env, userId: string): Promise<unknown> {
+  const body = await readJson<{ cadence?: unknown }>(req);
+  if (body.cadence !== "daily" && body.cadence !== "weekly") {
+    throw new HttpError(400, "cadence must be 'daily' or 'weekly'");
+  }
+  await setRankCadence(env.DB, { userId, cadence: body.cadence });
+  return { rank_cadence: body.cadence };
 }
 
 /**
@@ -2150,6 +2170,16 @@ export async function handleApi(req: Request, env: Env): Promise<Response> {
       method === "POST"
     ) {
       return json(await rlhfOptOutRoute(req, env, user.id), 200, origin, env);
+    }
+
+    // /account/rank-cadence — set this user's rank snapshot cadence (daily|weekly) (#94)
+    if (
+      seg[0] === "account" &&
+      seg[1] === "rank-cadence" &&
+      seg.length === 2 &&
+      method === "POST"
+    ) {
+      return json(await rankCadenceRoute(req, env, user.id), 200, origin, env);
     }
 
     // /runs/approve-all — bulk-approve every pending run (matched BEFORE /runs/:id)
