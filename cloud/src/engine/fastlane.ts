@@ -7,15 +7,18 @@ const DEFAULT_LOCALE = "en-US";
 
 /**
  * Build the `fastlane/metadata/` file tree that Fastlane `deliver` (App Store)
- * and `supply` (Google Play) read directly. This is the metadata handoff that
- * ties into the user's existing build pipeline: they commit this tree (or merge
- * the PR that writes it) and their CI — which already holds the store
- * credentials — runs `fastlane deliver` / `fastlane supply`. ShipASO produces
- * the artifact; it never holds credentials and never pushes.
+ * reads directly. This is the metadata handoff that ties into the user's
+ * existing build pipeline: they commit this tree (or merge the PR that writes
+ * it) and their CI — which already holds the store credentials — runs
+ * `fastlane deliver`. ShipASO produces the artifact; it never holds credentials
+ * and never pushes.
+ *
+ * ShipASO is iOS-only: it does not connect to Google Play, runs no Play audit,
+ * and Play indexes copy differently. So we deliberately emit NO `metadata/android`
+ * (`fastlane supply`) tree — presenting an unsupported store as supported would
+ * be dishonest. Android support is gated on real Play integration (PRD-05).
  *
  * App Store (deliver):  fastlane/metadata/<locale>/{name,subtitle,keywords,promotional_text,description}.txt
- * Google Play (supply): fastlane/metadata/android/<locale>/{title,short_description,full_description}.txt
- *                       (Play has no keyword field.)
  */
 export function buildFastlaneBundle(
   copy: CopyFields,
@@ -41,12 +44,6 @@ export function buildFastlaneBundle(
   add(`${ios}/description.txt`, copy.description);
   add(`${ios}/release_notes.txt`, copy.whatsNew); // What's New / release notes (#46)
 
-  // ── Google Play · supply (no keyword field) ──
-  const android = `fastlane/metadata/android/${locale}`;
-  add(`${android}/title.txt`, copy.name);
-  add(`${android}/short_description.txt`, copy.subtitle);
-  add(`${android}/full_description.txt`, copy.description);
-
   // ── README ──
   add("fastlane/metadata/SHIPASO_README.md", fastlaneReadme(locale));
 
@@ -66,8 +63,6 @@ export function fastlaneReadme(locale: string): string {
     "",
     "- **App Store** (`fastlane deliver`): `metadata/" + locale + "/*.txt`",
     "  — `name`, `subtitle`, `keywords`, `promotional_text`, `description`, `release_notes`.",
-    "- **Google Play** (`fastlane supply`): `metadata/android/" + locale + "/*.txt`",
-    "  — `title`, `short_description`, `full_description` (Play has no keyword field).",
     "",
     "## How to apply it",
     "",
@@ -78,9 +73,6 @@ export function fastlaneReadme(locale: string): string {
     "   ```bash",
     "   # App Store (metadata only; safe to run without uploading a build)",
     "   fastlane deliver --skip_binary_upload --skip_screenshots --force",
-    "",
-    "   # Google Play",
-    "   fastlane supply --skip_upload_apk --skip_upload_aab",
     "   ```",
     "",
     "3. The credentialed step lives in your pipeline, not in ShipASO.",

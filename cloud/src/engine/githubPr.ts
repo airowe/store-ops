@@ -32,7 +32,6 @@ export function prBody(appName: string, files: BundleFile[]): string {
     "",
     "```bash",
     "fastlane deliver --skip_binary_upload --skip_screenshots --force   # App Store",
-    "fastlane supply --skip_upload_apk --skip_upload_aab                 # Google Play",
     "```",
     "",
     "ShipASO never holds your store credentials — the credentialed step stays in",

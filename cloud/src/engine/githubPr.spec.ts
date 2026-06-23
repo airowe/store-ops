@@ -19,13 +19,14 @@ describe("prTitle / prBody", () => {
     expect(prTitle("Calm").toLowerCase()).toContain("aso");
   });
 
-  it("body explains what to do (review + CI runs deliver/supply) and lists the files", () => {
+  it("body explains what to do (review + CI runs deliver) and lists the files", () => {
     const body = prBody("Calm", [
       { path: "fastlane/metadata/en-US/name.txt", content: "Calm" },
       { path: "fastlane/metadata/en-US/keywords.txt", content: "sleep,calm" },
     ]);
     expect(body.toLowerCase()).toContain("deliver");
-    expect(body.toLowerCase()).toContain("supply");
+    // iOS-only: the PR body must not reference Google Play / supply
+    expect(body.toLowerCase()).not.toContain("supply");
     expect(body).toContain("fastlane/metadata/en-US/name.txt");
     // doesn't dump full file CONTENT into the PR body (just the paths)
     expect(body).not.toContain("sleep,calm");
