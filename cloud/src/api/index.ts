@@ -152,6 +152,7 @@ import { metadataCoverage } from "../engine/metadataCoverage.js";
 import { recommendLocales } from "../engine/localizationExpansion.js";
 import { mintAppJwt, installationToken, GithubAppError } from "../engine/githubApp.js";
 import { openMetadataPr } from "../engine/githubPr.js";
+import { handleMcp } from "../mcp/server.js";
 import type { Env } from "../index.js";
 
 // ── token + cookie lifetimes ───────────────────────────────────────────────────
@@ -383,10 +384,14 @@ function sessionSecret(env: Env): string {
 /**
  * Identify the request's user. Precedence:
  *   1. a valid signed session cookie (the real auth path), else
- *   2. the X-User-Email header — ONLY in APP_ENV==="demo" (keeps the live demo +
+ *   2. an `Authorization: Bearer <session-token>` header — the SAME signed
+ *      session token, just carried in a header instead of a cookie. This is how
+ *      non-browser clients (the MCP server, #93) authenticate, since they can't
+ *      send cookies. Fail-closed: an invalid bearer falls through, never grants.
+ *   3. the X-User-Email header — ONLY in APP_ENV==="demo" (keeps the live demo +
  *      existing tests working), else
- *   3. 401.
- * In both valid paths the email get-or-creates the `users` row.
+ *   4. 401.
+ * In every valid path the email get-or-creates the `users` row.
  */
 async function requireUser(req: Request, env: Env): Promise<{ id: string; email: string }> {
   // (1) session cookie
@@ -400,7 +405,21 @@ async function requireUser(req: Request, env: Env): Promise<{ id: string; email:
     }
   }
 
-  // (2) demo-only header fallback
+  // (2) Authorization: Bearer <session-token> — the cookieless path for MCP/API
+  // clients. We verify the very same signed session token; nothing weaker.
+  const authz = req.headers.get("Authorization");
+  if (authz && /^Bearer\s+/i.test(authz)) {
+    const bearer = authz.replace(/^Bearer\s+/i, "").trim();
+    if (bearer) {
+      const res = await verifySessionToken(sessionSecret(env), bearer);
+      if (res.ok) {
+        const user = await upsertUser(env.DB, res.email);
+        return { id: user.id, email: user.email };
+      }
+    }
+  }
+
+  // (3) demo-only header fallback
   if (env.APP_ENV === "demo") {
     const email = req.headers.get("x-user-email")?.trim().toLowerCase();
     if (email && email.includes("@")) {
@@ -2093,6 +2112,15 @@ export async function handleApi(req: Request, env: Env): Promise<Response> {
 
   try {
     const user = await requireUser(req, env);
+
+    // /mcp — the ShipASO MCP server (#93). Read-only/draft tools over Streamable
+    // HTTP for agent IDEs (Claude Code / Cursor). Gated by requireUser above
+    // (cookie OR Bearer session token), so an unauthed call never reaches a tool.
+    // The transport owns its own JSON-RPC response (status, content-type), so we
+    // return it verbatim rather than wrapping it in json().
+    if (seg[0] === "mcp" && seg.length === 1) {
+      return handleMcp(req, { env, user });
+    }
 
     // /billing/checkout — authenticated (the buyer is the signed-in user)
     if (seg[0] === "billing" && seg[1] === "checkout" && seg.length === 2 && method === "POST") {
