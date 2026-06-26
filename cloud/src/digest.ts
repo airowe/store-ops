@@ -408,14 +408,14 @@ export type DigestAppInput = {
   rankHistory: RankSnapshotRow[];
 };
 
-/** Only the recurring tiers pay for standing autonomy → only they get a digest. */
+/** Only the paid tiers pay for standing autonomy → only they get a digest. */
 function digestEligible(tier: Tier): boolean {
-  return tier === "autopilot" || tier === "fleet";
+  return tier === "indie" || tier === "startup" || tier === "scale";
 }
 
 /**
  * PURE: turn the swept apps into the list of digest emails to send. Gates on tier
- * (autopilot/fleet only), builds each digest from its rank history, and composes
+ * (indie/startup/scale only), builds each digest from its rank history, and composes
  * subject/html/text. No DB, no network — the caller (the cron) does the I/O. An
  * eligible app is ALWAYS emailed, even with no movement (the held-steady line),
  * because the weekly touch is the retention mechanism.

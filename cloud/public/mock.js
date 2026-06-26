@@ -28,9 +28,9 @@
   // the offline backend trips the SAME 402 paywall the real Worker enforces.
   function appLimitForTier(tier) {
     switch (tier) {
-      case "launch": return 1;
-      case "autopilot": return 3;
-      case "fleet": return 50;
+      case "indie": return 3;
+      case "startup": return 10;
+      case "scale": return 50;
       case "free":
       default: return 1;
     }

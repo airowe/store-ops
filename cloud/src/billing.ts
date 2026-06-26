@@ -7,10 +7,12 @@
  * is pure or fetch-injected so it tests without the real Stripe API or a DB.
  *
  * Tiers (see commercial/OFFER.md):
- *   free      — run-it-yourself; manual runs only, 1 app, NO cron autonomy
- *   launch    — $49 one-time optimization pass; 1 app, still no standing autonomy
- *   autopilot — $19/mo; weekly cron autonomy, small fleet
- *   fleet     — $149/mo; portfolio across many apps
+ *   free    — run-it-yourself; manual runs only, 1 app, NO cron autonomy
+ *   indie   — $7/mo; weekly cron autonomy, small portfolio
+ *   startup — $19/mo; weekly cron autonomy, mid portfolio
+ *   scale   — $65/mo; portfolio across many apps
+ *
+ * All paid tiers are recurring subscriptions — there is no one-time tier.
  */
 import type { Tier } from "./d1.js";
 import { constantTimeEqual } from "./auth.js";
@@ -27,36 +29,37 @@ export function appLimitForTier(tier: Tier): number {
   switch (tier) {
     case "free":
       return 1;
-    case "launch":
-      return 1; // one-time optimization pass, single app
-    case "autopilot":
+    case "indie":
       return 3;
-    case "fleet":
+    case "startup":
+      return 10;
+    case "scale":
       return 50;
   }
 }
 
-/** Only the recurring tiers get the weekly autonomous sweep. */
+/** Only the recurring (paid) tiers get the weekly autonomous sweep. */
 export function canRunCron(tier: Tier): boolean {
-  return tier === "autopilot" || tier === "fleet";
+  return tier === "indie" || tier === "startup" || tier === "scale";
 }
 
 // ── tier ⇄ Stripe price mapping ───────────────────────────────────────────────────
 
 export type StripePriceEnv = {
-  STRIPE_PRICE_LAUNCH?: string;
-  STRIPE_PRICE_AUTOPILOT?: string;
-  STRIPE_PRICE_FLEET?: string;
+  STRIPE_PRICE_INDIE?: string;
+  STRIPE_PRICE_STARTUP?: string;
+  STRIPE_PRICE_SCALE?: string;
 };
 
 type PaidTier = Exclude<Tier, "free">;
 type CheckoutMode = "payment" | "subscription";
 
-/** Static per-tier checkout shape: which env price + which Stripe mode. */
+/** Static per-tier checkout shape: which env price + which Stripe mode. All
+ * paid tiers are recurring subscriptions. */
 const TIER_CONFIG: Record<PaidTier, { envKey: keyof StripePriceEnv; mode: CheckoutMode }> = {
-  launch: { envKey: "STRIPE_PRICE_LAUNCH", mode: "payment" }, // $49 one-time
-  autopilot: { envKey: "STRIPE_PRICE_AUTOPILOT", mode: "subscription" }, // $19/mo
-  fleet: { envKey: "STRIPE_PRICE_FLEET", mode: "subscription" }, // $149/mo
+  indie: { envKey: "STRIPE_PRICE_INDIE", mode: "subscription" }, // $7/mo
+  startup: { envKey: "STRIPE_PRICE_STARTUP", mode: "subscription" }, // $19/mo
+  scale: { envKey: "STRIPE_PRICE_SCALE", mode: "subscription" }, // $65/mo
 };
 
 /** Resolve a paid tier to its concrete Stripe price id + checkout mode. */
@@ -73,9 +76,9 @@ export function stripeCheckoutParams(
 
 /** Reverse map a Stripe price id back to a tier (for webhook → tier resolution). */
 export function tierForPriceId(priceId: string, prices: StripePriceEnv): Tier | null {
-  if (priceId && priceId === prices.STRIPE_PRICE_LAUNCH) return "launch";
-  if (priceId && priceId === prices.STRIPE_PRICE_AUTOPILOT) return "autopilot";
-  if (priceId && priceId === prices.STRIPE_PRICE_FLEET) return "fleet";
+  if (priceId && priceId === prices.STRIPE_PRICE_INDIE) return "indie";
+  if (priceId && priceId === prices.STRIPE_PRICE_STARTUP) return "startup";
+  if (priceId && priceId === prices.STRIPE_PRICE_SCALE) return "scale";
   return null;
 }
 

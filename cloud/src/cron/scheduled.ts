@@ -81,7 +81,7 @@ export function evaluateThreshold(result: AgentResult): ThresholdDecision {
 export type CronReport = {
   appsProcessed: number;
   runsOpened: number;
-  /** apps skipped because their owner's tier has no standing autonomy (free/launch). */
+  /** apps skipped because their owner's tier has no standing autonomy (free). */
   skippedTier: number;
   /** apps skipped because the owner explicitly paused the autonomous sweep (#51). */
   skippedPaused: number;
@@ -112,7 +112,7 @@ export async function runWeeklySweep(env: Env): Promise<CronReport> {
   for (const app of apps) {
     report.appsProcessed++;
     try {
-      // Tier gate: standing autonomy is an autopilot/fleet feature. Free + launch
+      // Tier gate: standing autonomy is a paid feature (indie/startup/scale). Free
       // apps are NOT swept — they run manually from the dashboard only.
       const tier = await getTier(env.DB, app.user_id);
       if (!canRunCron(tier)) {
@@ -216,7 +216,7 @@ export async function runWeeklySweep(env: Env): Promise<CronReport> {
 
 /**
  * After the sweep has persisted this week's snapshots, email the "what moved"
- * digest to every autopilot/fleet app's owner. Gating + composition is the pure
+ * digest to every paid (indie/startup/scale) app's owner. Gating + composition is the pure
  * `planDigests`; here we just gather each app's inputs from D1 and send. Failures
  * are isolated per-message and never abort the run. Returns the count sent.
  */
@@ -233,7 +233,7 @@ export async function sendWeeklyDigests(env: Env, report: CronReport): Promise<n
     const app = byId.get(entry.appId);
     if (!app) continue;
     const tier = await getTier(env.DB, app.user_id);
-    if (tier !== "autopilot" && tier !== "fleet") continue; // skip the gate early (saves the reads)
+    if (tier !== "indie" && tier !== "startup" && tier !== "scale") continue; // skip the gate early (saves the reads)
     const user = await getUser(env.DB, app.user_id);
     if (!user?.email) continue;
     inputs.push({

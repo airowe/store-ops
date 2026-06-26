@@ -17,7 +17,7 @@
  * BILLING (Stripe, see src/billing.ts + commercial/OFFER.md): POST
  * /billing/checkout mints a Stripe Checkout Session for a tier; POST
  * /billing/webhook applies subscription state to the user's tier (signature
- * verified). Tier gates: free/launch = manual only + 1 app; autopilot/fleet =
+ * verified). Tier gates: free = manual only + 1 app; indie/startup/scale =
  * cron autonomy + more apps. A blocked gate returns 402.
  *
  * CORS: echoes the dashboard origin (not "*") and allows credentials so the
@@ -32,7 +32,7 @@
  *   GET  /auth/me           { authed, via:"session"|"demo", email? } — the
  *                           dashboard's boot check (login screen vs app).
  *   POST /billing/checkout  {tier} → create a Stripe Checkout Session, return
- *                           {url}. tier ∈ launch|autopilot|fleet.
+ *                           {url}. tier ∈ indie|startup|scale.
  *   POST /billing/webhook   Stripe events → update the user's tier/status. The
  *                           Stripe-Signature header is verified (raw body HMAC).
  *   POST /subscribe         public launch-list capture (HTML form → 303 back, or
@@ -41,8 +41,8 @@
  *                           for the landing). No app/user data. Cached 1h.
  *   GET  /health            authed production-readiness audit (200 ready / 503
  *                           when an error-severity check fails). Not public.
- *   GET  /portfolio         Fleet-tier roll-up: every app's grade / lead rank /
- *                           pending-approval + summary counts (402 below Fleet).
+ *   GET  /portfolio         Scale-tier roll-up: every app's grade / lead rank /
+ *                           pending-approval + summary counts (402 below Scale).
  *   POST /runs/approve-all  bulk-approve every pending run across the user's apps.
  *   POST /resolve           {query} → connectable candidates (name / App Store or
  *                           Play URL / numeric id / bundle id). No connect, no run.
@@ -859,15 +859,15 @@ async function proofStats(env: Env, origin: string | null): Promise<Response> {
 }
 
 /**
- * GET /portfolio — the Fleet "one glance" roll-up: every app with its grade,
- * lead rank, and pending-approval flag, plus the summary counts. Fleet-tier
+ * GET /portfolio — the Scale "one glance" roll-up: every app with its grade,
+ * lead rank, and pending-approval flag, plus the summary counts. Scale-tier
  * gated (it's the agency/multi-app view). Pure shaping is summarizePortfolio;
  * here we assemble the cards from each app's latest run.
  */
 async function portfolioView(env: Env, userId: string): Promise<unknown> {
   const tier = await getTier(env.DB, userId);
-  if (tier !== "fleet") {
-    throw new HttpError(402, "the portfolio view is a Fleet feature — upgrade to Fleet Autopilot");
+  if (tier !== "scale") {
+    throw new HttpError(402, "the portfolio view is a Scale feature — upgrade to Scale");
   }
   const rows = await listAppsForUser(env.DB, userId);
   const cards: AppCard[] = await Promise.all(
@@ -897,7 +897,7 @@ async function portfolioView(env: Env, userId: string): Promise<unknown> {
 
 /**
  * POST /runs/approve-all — approve every run currently at the gate across the
- * user's apps (a Fleet ergonomic). planBulkApprove decides approvability
+ * user's apps (a Scale ergonomic). planBulkApprove decides approvability
  * (strictly awaiting_approval); we recordApproval each, ownership already
  * guaranteed by only gathering the caller's own runs.
  */
@@ -1928,10 +1928,10 @@ function stripeSecretKey(env: Env): string | undefined {
 /** Pull the Stripe price-env slice off the worker Env. */
 function priceEnv(env: Env): StripePriceEnv {
   const prices: StripePriceEnv = {};
-  if (env.STRIPE_PRICE_LAUNCH !== undefined) prices.STRIPE_PRICE_LAUNCH = env.STRIPE_PRICE_LAUNCH;
-  if (env.STRIPE_PRICE_AUTOPILOT !== undefined)
-    prices.STRIPE_PRICE_AUTOPILOT = env.STRIPE_PRICE_AUTOPILOT;
-  if (env.STRIPE_PRICE_FLEET !== undefined) prices.STRIPE_PRICE_FLEET = env.STRIPE_PRICE_FLEET;
+  if (env.STRIPE_PRICE_INDIE !== undefined) prices.STRIPE_PRICE_INDIE = env.STRIPE_PRICE_INDIE;
+  if (env.STRIPE_PRICE_STARTUP !== undefined)
+    prices.STRIPE_PRICE_STARTUP = env.STRIPE_PRICE_STARTUP;
+  if (env.STRIPE_PRICE_SCALE !== undefined) prices.STRIPE_PRICE_SCALE = env.STRIPE_PRICE_SCALE;
   return prices;
 }
 
@@ -1950,8 +1950,8 @@ async function billingCheckout(
   if (!secretKey) throw new HttpError(503, "billing is not configured");
   const body = await readJson<CheckoutBody>(req);
   const tier = body.tier?.trim();
-  if (tier !== "launch" && tier !== "autopilot" && tier !== "fleet") {
-    throw new HttpError(400, "tier must be one of: launch, autopilot, fleet");
+  if (tier !== "indie" && tier !== "startup" && tier !== "scale") {
+    throw new HttpError(400, "tier must be one of: indie, startup, scale");
   }
   const base = authBaseUrl(req, env);
   try {
@@ -2025,15 +2025,12 @@ async function billingWebhook(req: Request, env: Env, origin: string | null): Pr
   if (event.type === "checkout.session.completed") {
     const userId = obj.client_reference_id;
     // The bare checkout.session does not include line items, so we can't read the
-    // price here. For the one-time LAUNCH purchase (mode=payment) we set the tier
-    // now (it has no subscription to sync later). Subscription tiers
-    // (autopilot/fleet) are set authoritatively from customer.subscription.updated,
-    // which fires right after with the price; here we just persist the Stripe ids.
-    const tier = obj.mode === "payment" ? "launch" : null;
+    // price here. Every paid tier (indie/startup/scale) is a recurring subscription,
+    // so the tier is set authoritatively from customer.subscription.updated, which
+    // fires right after with the price; here we just persist the Stripe ids + status.
     if (userId) {
       await setTier(env.DB, {
         userId,
-        ...(tier ? { tier } : {}),
         status: "active",
         ...(obj.customer ? { stripeCustomerId: obj.customer } : {}),
         ...(obj.subscription ? { stripeSubscriptionId: obj.subscription } : {}),
@@ -2206,7 +2203,7 @@ export async function handleApi(req: Request, env: Env): Promise<Response> {
       return json(report, report.ready ? 200 : 503, origin, env);
     }
 
-    // /portfolio — the Fleet roll-up across all of the user's apps
+    // /portfolio — the Scale roll-up across all of the user's apps
     if (seg[0] === "portfolio" && seg.length === 1 && method === "GET") {
       return json(await portfolioView(env, user.id), 200, origin, env);
     }

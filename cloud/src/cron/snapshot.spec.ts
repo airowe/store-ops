@@ -14,7 +14,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Rank } from "../engine/rankCheck.js";
 
 const isAgentPaused = vi.fn(async (_db: unknown, _t: { userId: string; appId?: string }): Promise<boolean> => false);
-const getTier = vi.fn(async (_db: unknown, _userId: string): Promise<string> => "autopilot");
+const getTier = vi.fn(async (_db: unknown, _userId: string): Promise<string> => "indie");
 const getRankCadence = vi.fn(async (_db: unknown, _userId: string): Promise<string> => "daily");
 const listAllApps = vi.fn(async (): Promise<Array<Record<string, string>>> => []);
 const getLatestCompetitorMap = vi.fn(async () => ({}));
@@ -47,7 +47,7 @@ const env = { DB: {}, AI: undefined } as unknown as Env;
 
 beforeEach(() => {
   vi.clearAllMocks();
-  getTier.mockResolvedValue("autopilot");
+  getTier.mockResolvedValue("indie");
   getRankCadence.mockResolvedValue("daily");
   isAgentPaused.mockResolvedValue(false);
   ranksFor.mockResolvedValue([aRank()]);

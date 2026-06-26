@@ -38,9 +38,10 @@ export type Env = {
   STRIPE_TEST_KEY?: string; // deprecated alias for STRIPE_SECRET_KEY; read as a fallback during migration
   STRIPE_WEBHOOK_SECRET?: string; // verifies the Stripe-Signature on /billing/webhook
   // Stripe Price ids per tier (test mode). tier → price lookup for Checkout.
-  STRIPE_PRICE_LAUNCH?: string; // $49 one-time (mode=payment)
-  STRIPE_PRICE_AUTOPILOT?: string; // $19/mo (mode=subscription)
-  STRIPE_PRICE_FLEET?: string; // $149/mo (mode=subscription)
+  // All paid tiers are recurring subscriptions (mode=subscription).
+  STRIPE_PRICE_INDIE?: string; // $7/mo
+  STRIPE_PRICE_STARTUP?: string; // $19/mo
+  STRIPE_PRICE_SCALE?: string; // $65/mo
   // When set, iTunes calls route through TinyFish Fetch (clean egress) to dodge
   // Apple's 403 on Cloudflare datacenter IPs. Unset → direct fetch (local/dev).
   TINYFISH_API_KEY?: string;

@@ -754,7 +754,7 @@ test.describe("dashboard — finding-count badge (PRD 04)", () => {
     await page.evaluate(async () => {
       const M = (window as any).STORE_OPS_MOCK;
       const EM = "demo@store-ops.dev";
-      await M.handle("POST", "/_tier", { tier: "fleet" }, EM);
+      await M.handle("POST", "/_tier", { tier: "scale" }, EM);
       await M.handle("POST", "/apps", { bundle_id: "com.norun.app", name: "NoRun", keywords: ["x"] }, EM);
     });
     await page.evaluate(() => { location.hash = "#/_"; location.hash = "#/"; });

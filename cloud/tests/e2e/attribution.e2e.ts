@@ -14,14 +14,14 @@ import { gotoMockDashboard } from "./helpers.js";
 const EM = "demo@store-ops.dev";
 
 /**
- * Seed a fleet-tier app, run an ASC (Mode-A) pass so the proposal fills the
+ * Seed a scale-tier app, run an ASC (Mode-A) pass so the proposal fills the
  * keyword field, APPROVE it (records the push), and return the app id + the
  * approved run id + the deltas payload (now carrying attribution).
  */
 async function seedApprovedPush(page: import("@playwright/test").Page) {
   return await page.evaluate(async (em) => {
     const M = (window as any).STORE_OPS_MOCK;
-    await M.handle("POST", "/_tier", { tier: "fleet" }, em);
+    await M.handle("POST", "/_tier", { tier: "scale" }, em);
     const keywords = [
       "stoic", "meditation", "sleep sounds", "breathing exercises",
       "anxiety relief", "focus music",
@@ -99,7 +99,7 @@ test.describe("rank attribution (mock backend)", () => {
     await gotoMockDashboard(page);
     const id = await page.evaluate(async (em) => {
       const M = (window as any).STORE_OPS_MOCK;
-      await M.handle("POST", "/_tier", { tier: "fleet" }, em);
+      await M.handle("POST", "/_tier", { tier: "scale" }, em);
       const conn = await M.handle(
         "POST",
         "/apps",

@@ -511,9 +511,9 @@
     document.addEventListener("keydown", onKey);
     overlay.addEventListener("click", function (ev) { if (ev.target === overlay) dismiss(); });
 
-    // The next tier up from where they are (free→launch→autopilot→fleet).
-    var NEXT_TIER = { current: "launch", free: "launch", launch: "autopilot", autopilot: "fleet", fleet: "fleet" };
-    var targetTier = NEXT_TIER[info.tier] || "launch";
+    // The next tier up from where they are (free→indie→startup→scale).
+    var NEXT_TIER = { current: "indie", free: "indie", indie: "startup", startup: "scale", scale: "scale" };
+    var targetTier = NEXT_TIER[info.tier] || "indie";
     var upgradeBtn = el("button", { class: "btn primary", onclick: function () {
       // Mint a real Stripe Checkout Session and send the browser there. On failure
       // we keep the modal open with an inline message — never a silent dead end.

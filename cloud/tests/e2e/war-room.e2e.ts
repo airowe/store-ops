@@ -17,11 +17,11 @@ import { gotoMockDashboard } from "./helpers.js";
 
 const EM = "demo@store-ops.dev";
 
-/** Seed a fleet-tier app + one run, returning { appId, runId }. */
+/** Seed a scale-tier app + one run, returning { appId, runId }. */
 async function seedRun(page: import("@playwright/test").Page) {
   return await page.evaluate(async (em) => {
     const M = (window as any).STORE_OPS_MOCK;
-    await M.handle("POST", "/_tier", { tier: "fleet" }, em);
+    await M.handle("POST", "/_tier", { tier: "scale" }, em);
     const keywords = [
       "meditation", "sleep sounds", "breathing exercises",
       "anxiety relief", "focus music", "habit tracker",

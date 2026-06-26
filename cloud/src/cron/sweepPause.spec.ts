@@ -14,7 +14,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 // ── module mocks (declared before importing the unit under test) ──────────────
 const isAgentPaused = vi.fn(async (_db: unknown, _t: { userId: string; appId?: string }): Promise<boolean> => false);
-const getTier = vi.fn(async (_db: unknown, _userId: string): Promise<string> => "autopilot");
+const getTier = vi.fn(async (_db: unknown, _userId: string): Promise<string> => "indie");
 const listAllApps = vi.fn(async (): Promise<Array<Record<string, string>>> => []);
 const persistRun = vi.fn(async (): Promise<string> => "run-x");
 const getLatestCompetitorMap = vi.fn(async () => ({}));
@@ -53,7 +53,7 @@ const crossingResult = {
 
 beforeEach(() => {
   vi.clearAllMocks();
-  getTier.mockResolvedValue("autopilot");
+  getTier.mockResolvedValue("indie");
   isAgentPaused.mockResolvedValue(false);
   persistRun.mockResolvedValue("run-x");
   runAgent.mockResolvedValue(crossingResult);

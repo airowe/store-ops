@@ -18,67 +18,67 @@ import {
 } from "./billing.js";
 
 const PRICES: StripePriceEnv = {
-  STRIPE_PRICE_LAUNCH: "price_launch",
-  STRIPE_PRICE_AUTOPILOT: "price_autopilot",
-  STRIPE_PRICE_FLEET: "price_fleet",
+  STRIPE_PRICE_INDIE: "price_indie",
+  STRIPE_PRICE_STARTUP: "price_startup",
+  STRIPE_PRICE_SCALE: "price_scale",
 };
 
 describe("appLimitForTier", () => {
   it("limits free to a single connected app", () => {
     expect(appLimitForTier("free")).toBe(1);
   });
-  it("gives launch a single app (one-time pass, not autonomous)", () => {
-    expect(appLimitForTier("launch")).toBe(1);
+  it("gives indie a small portfolio", () => {
+    expect(appLimitForTier("indie")).toBe(3);
   });
-  it("gives autopilot a small fleet", () => {
-    expect(appLimitForTier("autopilot")).toBe(3);
+  it("gives startup a mid portfolio", () => {
+    expect(appLimitForTier("startup")).toBe(10);
   });
-  it("gives fleet a large allowance", () => {
-    expect(appLimitForTier("fleet")).toBeGreaterThanOrEqual(25);
+  it("gives scale a large allowance", () => {
+    expect(appLimitForTier("scale")).toBeGreaterThanOrEqual(25);
   });
 });
 
 describe("canRunCron", () => {
-  it("excludes free + launch from the autonomous sweep", () => {
+  it("excludes free from the autonomous sweep", () => {
     expect(canRunCron("free")).toBe(false);
-    expect(canRunCron("launch")).toBe(false);
   });
-  it("includes the recurring tiers", () => {
-    expect(canRunCron("autopilot")).toBe(true);
-    expect(canRunCron("fleet")).toBe(true);
+  it("includes every paid (recurring) tier", () => {
+    expect(canRunCron("indie")).toBe(true);
+    expect(canRunCron("startup")).toBe(true);
+    expect(canRunCron("scale")).toBe(true);
   });
 });
 
 describe("stripeCheckoutParams", () => {
-  it("maps launch → the launch price in payment mode (one-time)", () => {
-    const p = stripeCheckoutParams("launch", PRICES);
-    expect(p).toMatchObject({ priceId: "price_launch", mode: "payment" });
+  it("maps indie → the indie price in subscription mode", () => {
+    const p = stripeCheckoutParams("indie", PRICES);
+    expect(p).toMatchObject({ priceId: "price_indie", mode: "subscription" });
   });
-  it("maps autopilot → the autopilot price in subscription mode", () => {
-    const p = stripeCheckoutParams("autopilot", PRICES);
-    expect(p).toMatchObject({ priceId: "price_autopilot", mode: "subscription" });
+  it("maps startup → the startup price in subscription mode", () => {
+    const p = stripeCheckoutParams("startup", PRICES);
+    expect(p).toMatchObject({ priceId: "price_startup", mode: "subscription" });
   });
-  it("maps fleet → the fleet price in subscription mode", () => {
-    const p = stripeCheckoutParams("fleet", PRICES);
-    expect(p).toMatchObject({ priceId: "price_fleet", mode: "subscription" });
+  it("maps scale → the scale price in subscription mode", () => {
+    const p = stripeCheckoutParams("scale", PRICES);
+    expect(p).toMatchObject({ priceId: "price_scale", mode: "subscription" });
   });
   it("rejects 'free' (nothing to buy)", () => {
     expect(() => stripeCheckoutParams("free", PRICES)).toThrow();
   });
   it("throws a clear error when the price env for the tier is unset", () => {
-    const noAutopilot: StripePriceEnv = {
-      STRIPE_PRICE_LAUNCH: "price_launch",
-      STRIPE_PRICE_FLEET: "price_fleet",
+    const noStartup: StripePriceEnv = {
+      STRIPE_PRICE_INDIE: "price_indie",
+      STRIPE_PRICE_SCALE: "price_scale",
     };
-    expect(() => stripeCheckoutParams("autopilot", noAutopilot)).toThrow(/STRIPE_PRICE_AUTOPILOT/);
+    expect(() => stripeCheckoutParams("startup", noStartup)).toThrow(/STRIPE_PRICE_STARTUP/);
   });
 });
 
 describe("tierForPriceId (webhook reverse-map)", () => {
   it("maps each configured price id back to its tier", () => {
-    expect(tierForPriceId("price_launch", PRICES)).toBe("launch");
-    expect(tierForPriceId("price_autopilot", PRICES)).toBe("autopilot");
-    expect(tierForPriceId("price_fleet", PRICES)).toBe("fleet");
+    expect(tierForPriceId("price_indie", PRICES)).toBe("indie");
+    expect(tierForPriceId("price_startup", PRICES)).toBe("startup");
+    expect(tierForPriceId("price_scale", PRICES)).toBe("scale");
   });
   it("returns null for an unknown price id", () => {
     expect(tierForPriceId("price_nope", PRICES)).toBeNull();
@@ -100,7 +100,7 @@ describe("createCheckoutSession", () => {
 
     const res = await createCheckoutSession(fetchMock as unknown as typeof fetch, {
       secretKey: "sk_test_abc",
-      tier: "autopilot",
+      tier: "indie",
       prices: PRICES,
       customerEmail: "buyer@example.com",
       successUrl: "https://app/ok",
@@ -118,17 +118,17 @@ describe("createCheckoutSession", () => {
     expect(headers["Content-Type"]).toBe("application/x-www-form-urlencoded");
     // idempotency: a retried checkout for the same user+tier reuses the session
     // instead of creating a duplicate. Key is derived from those, not random.
-    expect(headers["Idempotency-Key"]).toBe("checkout:user-1:autopilot");
+    expect(headers["Idempotency-Key"]).toBe("checkout:user-1:indie");
 
     const body = String(call.init.body);
     expect(body).toContain("mode=subscription");
-    expect(body).toContain(encodeURIComponent("price_autopilot"));
+    expect(body).toContain(encodeURIComponent("price_indie"));
     expect(body).toContain("line_items%5B0%5D%5Bquantity%5D=1");
     expect(body).toContain("client_reference_id=user-1");
     expect(body).toContain(`customer_email=${encodeURIComponent("buyer@example.com")}`);
   });
 
-  it("uses payment mode for the one-time launch tier", async () => {
+  it("uses subscription mode for the startup tier", async () => {
     const fetchMock = vi.fn(async (_url: string, _init: RequestInit) => ({
       ok: true,
       status: 200,
@@ -138,7 +138,7 @@ describe("createCheckoutSession", () => {
 
     await createCheckoutSession(fetchMock as unknown as typeof fetch, {
       secretKey: "sk_test_abc",
-      tier: "launch",
+      tier: "startup",
       prices: PRICES,
       customerEmail: "buyer@example.com",
       successUrl: "https://app/ok",
@@ -147,8 +147,8 @@ describe("createCheckoutSession", () => {
     });
     const init = fetchMock.mock.calls[0]![1];
     const body = String(init.body);
-    expect(body).toContain("mode=payment");
-    expect(body).toContain(encodeURIComponent("price_launch"));
+    expect(body).toContain("mode=subscription");
+    expect(body).toContain(encodeURIComponent("price_startup"));
   });
 
   it("throws when Stripe returns a non-2xx", async () => {
@@ -162,7 +162,7 @@ describe("createCheckoutSession", () => {
     await expect(
       createCheckoutSession(fetchMock as unknown as typeof fetch, {
         secretKey: "sk_test_abc",
-        tier: "fleet",
+        tier: "scale",
         prices: PRICES,
         customerEmail: "b@e.com",
         successUrl: "https://app/ok",
