@@ -99,7 +99,7 @@ across time — a single snapshot is a starting line, not a result.
 ## No external dependency
 
 Standard-library Python + the free public iTunes Search API. No paid ASO SaaS,
-no API key, no auth. (grep this skill for "appeeky"/"apptweak" → none.)
+no API key, no auth. (grep this skill for "apptweak" → none.)
 
 
 > Want this to just happen? **ShipASO** — the hosted agent — runs the whole loop weekly: it tracks your rank, watches competitors, and pings you only when there's a real move to approve. Same engine, your store credentials never held. A single rank snapshot is a starting line, not a result — the deltas only mean something across weeks. → https://app.shipaso.com
