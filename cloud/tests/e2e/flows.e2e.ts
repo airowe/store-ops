@@ -228,7 +228,7 @@ test.describe("File upload: .p8 (#33)", () => {
     await expect(page.getByPlaceholder(/key id/i)).toHaveValue("ABC123DEFG");
   });
 
-  test("uploading a .p8 file populates the verify-panel textarea on the run page", async ({
+  test("uploading a .p8 file populates the push-panel textarea on the run page", async ({
     page,
   }) => {
     await gotoMockDashboard(page);
@@ -240,22 +240,21 @@ test.describe("File upload: .p8 (#33)", () => {
     }, id);
     await page.goto(`/index.html#/runs/${runId}`);
 
-    // The verify/push panel only renders after approval — approve to reveal it.
+    // The "Upload to App Store Connect" push panel only renders after approval.
     await page.getByRole("button", { name: /approve & reveal commands/i }).click();
-
-    // Expand the advanced "connect App Store Connect directly" panel.
-    await page.getByText(/connect app store connect directly/i).click();
-    await expect(page.getByRole("button", { name: /verify credential/i })).toBeVisible();
+    await expect(
+      page.locator(".asc-cta").getByRole("button", { name: /upload to app store connect/i }),
+    ).toBeVisible();
 
     const p8Body = "-----BEGIN PRIVATE KEY-----\nVERIFYMOCK\n-----END PRIVATE KEY-----";
-    await page.locator('.asc-verify input[type="file"][accept=".p8"]').setInputFiles({
+    await page.locator('.asc-cta input[type="file"][accept=".p8"]').setInputFiles({
       name: "AuthKey_XYZ789QRS.p8",
       mimeType: "application/x-pem-file",
       buffer: Buffer.from(p8Body),
     });
 
-    await expect(page.locator(".asc-verify").getByPlaceholder(/begin private key/i)).toHaveValue(p8Body);
-    await expect(page.locator(".asc-verify").getByPlaceholder(/key id/i)).toHaveValue("XYZ789QRS");
+    await expect(page.locator(".asc-cta").getByPlaceholder(/begin private key/i)).toHaveValue(p8Body);
+    await expect(page.locator(".asc-cta").getByPlaceholder(/key id/i)).toHaveValue("XYZ789QRS");
   });
 });
 

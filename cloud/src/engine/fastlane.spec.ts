@@ -52,14 +52,14 @@ describe("buildFastlaneBundle — fastlane/metadata tree from proposed copy", ()
     expect(m["fastlane/metadata/en-US/release_notes.txt"]).toBe(fullCopy.whatsNew); // (#46)
   });
 
-  it("writes the Google Play supply files under metadata/android/<locale>", () => {
+  it("emits NO Google Play (android) files — ShipASO is iOS-only", () => {
+    // ShipASO does not connect to Google Play, runs no Play audit, and Play
+    // indexes copy differently. Emitting metadata/android/* derived from iOS copy
+    // would present an unsupported store as supported — so no android tree is
+    // written until real Play support exists (PRD-05).
     const m = asMap(buildFastlaneBundle(fullCopy, { locale: "en-US" }).files);
-    // Play has no keyword field; title + short/full description only.
-    expect(m["fastlane/metadata/android/en-US/title.txt"]).toBe(fullCopy.name);
-    expect(m["fastlane/metadata/android/en-US/short_description.txt"]).toBe(fullCopy.subtitle);
-    expect(m["fastlane/metadata/android/en-US/full_description.txt"]).toBe(fullCopy.description);
-    // and NO keyword file on the Play side
-    expect(m["fastlane/metadata/android/en-US/keywords.txt"]).toBeUndefined();
+    const androidFiles = Object.keys(m).filter((p) => p.includes("/metadata/android/"));
+    expect(androidFiles).toEqual([]);
   });
 
   it("defaults the locale to en-US when none is given", () => {
@@ -72,11 +72,8 @@ describe("buildFastlaneBundle — fastlane/metadata tree from proposed copy", ()
     expect(m["fastlane/metadata/en-US/promotional_text.txt"]).toBeUndefined();
     expect(m["fastlane/metadata/en-US/description.txt"]).toBeUndefined();
     expect(m["fastlane/metadata/en-US/release_notes.txt"]).toBeUndefined(); // (#46)
-    // Play full_description also absent (it maps from description)
-    expect(m["fastlane/metadata/android/en-US/full_description.txt"]).toBeUndefined();
-    // but the required files are always present
+    // but the required iOS files are always present
     expect(m["fastlane/metadata/en-US/name.txt"]).toBe(minimalCopy.name);
-    expect(m["fastlane/metadata/android/en-US/title.txt"]).toBe(minimalCopy.name);
   });
 
   it("file contents have no trailing newline (deliver reads the file verbatim)", () => {
@@ -92,13 +89,14 @@ describe("buildFastlaneBundle — fastlane/metadata tree from proposed copy", ()
     const readme = m["fastlane/metadata/SHIPASO_README.md"];
     expect(readme).toBeDefined();
     expect(readme!.toLowerCase()).toContain("deliver");
-    expect(readme!.toLowerCase()).toContain("supply");
+    // iOS-only: the README must NOT reference Google Play / supply
+    expect(readme!.toLowerCase()).not.toContain("supply");
+    expect(readme!.toLowerCase()).not.toContain("google play");
   });
 
   it("supports non-US locales", () => {
     const m = asMap(buildFastlaneBundle(fullCopy, { locale: "de-DE" }).files);
     expect(m["fastlane/metadata/de-DE/name.txt"]).toBe(fullCopy.name);
-    expect(m["fastlane/metadata/android/de-DE/title.txt"]).toBe(fullCopy.name);
   });
 });
 
@@ -106,7 +104,8 @@ describe("fastlaneReadme", () => {
   it("names the exact commands CI would run", () => {
     const r = fastlaneReadme("en-US");
     expect(r).toContain("fastlane deliver");
-    expect(r).toContain("fastlane supply");
+    // iOS-only: no Google Play / supply command
+    expect(r).not.toContain("fastlane supply");
     // makes clear ShipASO does not hold credentials
     expect(r.toLowerCase()).toContain("credential");
   });
