@@ -1,0 +1,55 @@
+# PR checks — the quality gate that runs BEFORE merge.
+#
+# deploy.yml runs the same gate on push to main and then deploys; by then a red
+# build has already landed. This workflow runs typecheck → test → e2e on every
+# pull request targeting main, so a PR shows a green/red check before it's merged
+# (and merges can be required to wait on it via branch protection). It NEVER
+# deploys and needs no secrets — it's purely the gate.
+
+name: ci
+
+on:
+  pull_request:
+    branches: [main]
+  # allow re-running the gate by hand from the Actions tab
+  workflow_dispatch: {}
+
+# A newer push to the same PR supersedes an in-flight check run.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: cloud
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: cloud/package-lock.json
+
+      - name: Install
+        run: npm ci
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Test
+        run: npm test
+
+      - name: Install Playwright browser
+        run: ./node_modules/.bin/playwright install --with-deps chromium
+
+      - name: E2E (dashboard funnel vs mock backend)
+        # Serial + 1 retry — matches deploy.yml and the local pre-push gate
+        # (.githooks/pre-push). A few picker-pagination specs race the result-list
+        # re-render under default parallelism on the shared :8793 static server;
+        # they pass deterministically serially. The retry absorbs residual flake
+        # without masking a real failure.
+        run: ./node_modules/.bin/playwright test --workers=1 --retries=1
