@@ -24,6 +24,7 @@ import { CHAR_LIMITS } from "./constants.js";
 import type { Listing as CompetitorListing } from "./competitorWatch.js";
 import { scoreKeyword as defaultScoreKeyword } from "./keywords.js";
 import type { Rank } from "./rankCheck.js";
+import type { ReviewKeywordCandidate } from "./reviewSentiment.js";
 
 export type KeywordGap = {
   keyword: string;
@@ -37,6 +38,13 @@ export type KeywordGap = {
   score: number;
   /** advisory: does it fit your remaining keyword-field char budget (~100)? */
   fitsBudget: boolean;
+  /**
+   * Where the candidate came from (#95). A competitor-derived gap OMITS this
+   * field entirely (its meaning is unchanged — competitor VISIBLE usage). A
+   * review-derived candidate is explicitly `'reviews'` so it's NEVER confused
+   * with measured search volume or competitor usage on the keyword surface.
+   */
+  source?: "reviews" | "competitor" | undefined;
 };
 
 export type FindKeywordGapsInput = {
@@ -163,4 +171,39 @@ export function findKeywordGaps(input: FindKeywordGapsInput): KeywordGap[] {
   });
 
   return gaps.map(({ _reach, ...g }) => g);
+}
+
+/**
+ * Merge REVIEW-derived keyword candidates into a competitor-gap list (#95),
+ * each labeled `source:'reviews'`. PURE + additive:
+ *  - competitor gaps pass through UNCHANGED (no `source` key gained), preserving
+ *    their existing meaning;
+ *  - a review candidate whose term already exists as a competitor gap is dropped
+ *    (no duplicate row), so the competitor reading wins;
+ *  - a fresh review term is appended as a gap labeled `source:'reviews'` with NO
+ *    competitor attribution and NO measured score — it is a candidate, never
+ *    measured search volume.
+ */
+export function withReviewCandidates(
+  competitorGaps: KeywordGap[],
+  candidates: ReviewKeywordCandidate[],
+): KeywordGap[] {
+  const existing = new Set(competitorGaps.map((g) => g.keyword.toLowerCase()));
+  const reviewGaps: KeywordGap[] = [];
+  const seen = new Set<string>();
+  for (const c of candidates) {
+    const kw = c.keyword.toLowerCase().trim();
+    if (!kw || existing.has(kw) || seen.has(kw)) continue;
+    seen.add(kw);
+    reviewGaps.push({
+      keyword: c.keyword,
+      competitorsUsing: [], // review-sourced: no competitor usage, not measured.
+      youRank: null,
+      inYourMetadata: false,
+      score: 0, // no measured volume — review candidates are advisory only.
+      fitsBudget: c.keyword.length <= CHAR_LIMITS.keywords,
+      source: "reviews",
+    });
+  }
+  return [...competitorGaps, ...reviewGaps];
 }

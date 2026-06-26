@@ -119,7 +119,24 @@ export {
   type KeywordGap,
   type FindKeywordGapsInput,
   findKeywordGaps,
+  withReviewCandidates,
 } from "./keywordGap.js";
+export {
+  type Review,
+  type ReviewSentiment,
+  type Topic,
+  type TopicSentiment,
+  type ReviewKeywordCandidate,
+  type Reasoner as ReviewReasoner,
+  MIN_CONFIDENT_SAMPLE,
+  fetchReviews,
+  fetchReviewsForBundle,
+  parseReviewsFeed,
+  analyzeSentiment,
+  extractTopics,
+  reviewKeywordCandidates,
+  buildReviewsPrompt,
+} from "./reviewSentiment.js";
 export {
   type RankMovement,
   type AttributedChange,

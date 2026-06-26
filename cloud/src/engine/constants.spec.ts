@@ -5,6 +5,8 @@ import {
   SCREENSHOT,
   RUN_STATUSES,
   BUCKET_TO_FIELD,
+  ITUNES_REVIEWS_RSS_BASE,
+  buildReviewsRssUrl,
 } from "./constants";
 
 // Smoke tests that lock the LOAD-BEARING constants ported from the Python libs.
@@ -52,6 +54,25 @@ describe("run lifecycle", () => {
       "rejected",
       "shipped",
     ]);
+  });
+});
+
+describe("reviews RSS customerreviews URL builder", () => {
+  it("uses Apple's free customerreviews JSON endpoint base", () => {
+    expect(ITUNES_REVIEWS_RSS_BASE).toBe("https://itunes.apple.com");
+  });
+
+  it("produces the /{country}/rss/customerreviews/page=N/id=ID/sortby=mostrecent/json shape", () => {
+    const url = buildReviewsRssUrl("123456", { country: "gb", page: 2 });
+    expect(url).toBe(
+      "https://itunes.apple.com/gb/rss/customerreviews/page=2/id=123456/sortby=mostrecent/json",
+    );
+  });
+
+  it("defaults to US, page 1", () => {
+    expect(buildReviewsRssUrl("999")).toBe(
+      "https://itunes.apple.com/us/rss/customerreviews/page=1/id=999/sortby=mostrecent/json",
+    );
   });
 });
 

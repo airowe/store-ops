@@ -148,6 +148,13 @@ import { findAscAppId, applyAscMetadata, readAscLocalization, AscWriteError } fr
 import { readAscSnapshot, ascScreenshotsToListing, type AscSnapshot } from "../engine/ascRead.js";
 import { score as scoreScreenshots } from "../engine/screenshotScore.js";
 import { auditFindings, summarizeFindings, surfaceLocks } from "../engine/auditFindings.js";
+import {
+  analyzeSentiment,
+  fetchReviewsForBundle,
+  reviewKeywordCandidates,
+  type Review,
+} from "../engine/reviewSentiment.js";
+import { withReviewCandidates } from "../engine/keywordGap.js";
 import { buildAscContext } from "../engine/ascContext.js";
 import { metadataCoverage } from "../engine/metadataCoverage.js";
 import { recommendLocales } from "../engine/localizationExpansion.js";
@@ -299,7 +306,39 @@ export function serializeRunResult(trace: ReasoningTrace, approved: boolean) {
     ...(trace.localizationExpansion !== undefined
       ? { localizationExpansion: trace.localizationExpansion }
       : {}),
+    // PRD 03 / #95: PUBLIC review sentiment + observed topics. Sample size is
+    // ALWAYS carried and the score is SUPPRESSED below threshold (#78). Public
+    // data only — safe to serve. Older traces have none → field omitted.
+    ...(trace.reviews !== undefined ? { reviews: trace.reviews } : {}),
   };
+}
+
+/**
+ * PUBLIC review sentiment (#95) — best-effort. Fetches the app's public App Store
+ * reviews (Apple's free RSS feed, keyed by the bundle's numeric track id), shapes
+ * an honest sentiment read (sample size ALWAYS carried; score SUPPRESSED below
+ * threshold — #78), and threads the review-derived keyword candidates onto the
+ * existing keyword-gap list LABELED `source:'reviews'` so they're never confused
+ * with measured search volume. Mutates `result` in place. NEVER throws and never
+ * strands the run: an empty/failed fetch simply leaves `result.reviews` honest
+ * (n=0, low confidence) and adds no candidates. Read-only public data — no push.
+ */
+async function attachReviews(env: Env, app: AppRow, result: AgentResult): Promise<void> {
+  let reviews: Review[] = [];
+  try {
+    reviews = await fetchReviewsForBundle(fetchForEnv(env), app.bundle_id, {
+      country: app.country?.toLowerCase() || "us",
+      pages: 2,
+    });
+  } catch {
+    reviews = []; // honest: a read limitation degrades to "no reviews", never an error.
+  }
+  result.reviews = await analyzeSentiment(reviews, reasonerForEnv(env.AI));
+  // Bridge review vocabulary onto the keyword surface, labeled source:'reviews'.
+  const candidates = reviewKeywordCandidates(reviews);
+  if (candidates.length > 0) {
+    result.keywordGaps = withReviewCandidates(result.keywordGaps ?? [], candidates);
+  }
 }
 
 /**
@@ -1032,6 +1071,10 @@ async function runApp(
 
   const input = await buildAppInput(app, overrides, previous);
   const result = await runAgent(fetchForEnv(env), input);
+  // PRD 03 / #95: PUBLIC review sentiment + topics + review-sourced keyword
+  // candidates. Best-effort; computed BEFORE findings so the audit can surface
+  // the reviews section. Never strands the run.
+  await attachReviews(env, app, result);
   // No-key run: compute the thin (public-only) findings set + the `asc_unlock`
   // CTA. EVERY run carries findings, ASC or not (PRD 02). No snapshot ⇒ no
   // ascContext — only the ASC-read path has one.
@@ -1040,6 +1083,7 @@ async function runApp(
     ranks: result.ranks,
     appName: app.name,
     hasAscKey: false,
+    ...(result.reviews !== undefined ? { reviews: result.reviews } : {}),
   });
   // #61: the per-surface "unlock to see + improve" locks. On a no-key run this is
   // the canonical blind-spot list (subtitle, keywords, screenshots, …); the UI
@@ -1158,6 +1202,10 @@ async function runAppWithAsc(
   if (ascListing) {
     result.audit.screenshots = scoreScreenshots(input.app, ascListing);
   }
+  // PRD 03 / #95: PUBLIC review sentiment is independent of the ASC read — a
+  // keyed run surfaces it too (public RSS data, no ASC/private review API). Best-
+  // effort; computed before findings so the audit carries the reviews section.
+  await attachReviews(env, app, result);
   // Mode-A run: compute the FULL findings set from the already-read snapshot
   // (no new ASC calls) + the screenshot re-score above, plus the slim PII-safe
   // ascContext. The raw snapshot stays server-side; ONLY findings + ascContext
@@ -1168,6 +1216,7 @@ async function runAppWithAsc(
     ranks: result.ranks,
     appName: app.name,
     hasAscKey: true,
+    ...(result.reviews !== undefined ? { reviews: result.reviews } : {}),
   });
   // #61: a keyed run reads every surface ⇒ it locks NOTHING. We still set the
   // field (to []) so the serializer is symmetric and the client never re-derives

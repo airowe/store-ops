@@ -23,6 +23,26 @@ export const ITUNES_LOOKUP_URL = "https://itunes.apple.com/lookup";
 export const ITUNES_MAX_LIMIT = 200; // Apple returns at most 200 software results
 export const USER_AGENT = "Mozilla/5.0 (Macintosh; store-ops)";
 
+// ── Public customer reviews (PRD 03 / #95) ───────────────────────────────────
+// Apple's free RSS customer-reviews JSON feed — PUBLIC, no key. Paginated by a
+// path segment (`page=N`), keyed by the numeric App Store track id, sorted most
+// recent first. The `/json` suffix returns the JSON variant (label-wrapped
+// fields), not XML. Same free-endpoint posture as search/lookup.
+export const ITUNES_REVIEWS_RSS_BASE = "https://itunes.apple.com";
+
+/**
+ * Build the customer-reviews RSS JSON feed URL for one app + page.
+ * Shape: /{country}/rss/customerreviews/page=N/id=ID/sortby=mostrecent/json
+ * (country is lower-cased per the RSS feed convention).
+ */
+export function buildReviewsRssUrl(
+  appId: string,
+  { country = "us", page = 1 }: { country?: string; page?: number } = {},
+): string {
+  const cc = country.toLowerCase();
+  return `${ITUNES_REVIEWS_RSS_BASE}/${cc}/rss/customerreviews/page=${page}/id=${appId}/sortby=mostrecent/json`;
+}
+
 // Retry policy for the public endpoints (from aso_rank_check.py).
 export const MAX_RETRIES = 3;
 export const BACKOFF_BASE = 1.5; // seconds: 1.5, 3.0, 6.0

@@ -1,7 +1,8 @@
 import { describe, it, expect } from "vitest";
-import { findKeywordGaps, type KeywordGap } from "./keywordGap";
+import { findKeywordGaps, withReviewCandidates, type KeywordGap } from "./keywordGap";
 import type { Rank } from "./rankCheck";
 import type { Listing as CompetitorListing } from "./competitorWatch";
+import type { ReviewKeywordCandidate } from "./reviewSentiment";
 
 // ── fixture helpers ──────────────────────────────────────────────────────────
 
@@ -244,5 +245,57 @@ describe("KeywordGap shape (privacy boundary)", () => {
     expect(JSON.stringify(g)).not.toContain("9.99");
     expect(JSON.stringify(g)).not.toContain("3.2.1");
     expect(JSON.stringify(g)).not.toContain("Secret");
+  });
+});
+
+describe("withReviewCandidates — review-sourced labeling (#95)", () => {
+  const cand = (keyword: string, count = 2): ReviewKeywordCandidate => ({
+    keyword,
+    count,
+    source: "reviews",
+  });
+
+  it("appends review-derived candidates labeled source:'reviews'", () => {
+    const competitorGaps = findKeywordGaps({
+      yourCopy,
+      yourRanks: [],
+      competitors: [comp("Calm", "Meditation and Sleep")],
+    });
+    const merged = withReviewCandidates(competitorGaps, [cand("offline"), cand("export")]);
+    const offline = merged.find((g) => g.keyword === "offline");
+    expect(offline).toBeDefined();
+    expect(offline?.source).toBe("reviews");
+  });
+
+  it("never labels a review candidate as competitor-source / measured volume", () => {
+    const merged = withReviewCandidates([], [cand("offline")]);
+    const offline = merged.find((g) => g.keyword === "offline");
+    expect(offline?.source).toBe("reviews");
+    expect(offline?.source).not.toBe("competitor");
+    // a review candidate carries NO competitor attribution (it is not measured
+    // search volume nor competitor usage).
+    expect(offline?.competitorsUsing).toEqual([]);
+  });
+
+  it("existing competitor gaps keep their meaning and do not gain a 'reviews' source", () => {
+    const competitorGaps = findKeywordGaps({
+      yourCopy,
+      yourRanks: [],
+      competitors: [comp("Calm", "Meditation and Sleep")],
+    });
+    const merged = withReviewCandidates(competitorGaps, []);
+    const meditation = merged.find((g) => g.keyword === "meditation");
+    // a competitor-derived gap is never relabeled as review-sourced.
+    expect(meditation?.source).not.toBe("reviews");
+  });
+
+  it("does not duplicate a term already present as a competitor gap", () => {
+    const competitorGaps = findKeywordGaps({
+      yourCopy,
+      yourRanks: [],
+      competitors: [comp("Calm", "Meditation and Sleep")],
+    });
+    const merged = withReviewCandidates(competitorGaps, [cand("meditation")]);
+    expect(merged.filter((g) => g.keyword === "meditation")).toHaveLength(1);
   });
 });
