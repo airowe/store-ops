@@ -6,7 +6,7 @@ description: Research and rank App Store / Google Play keywords for an app WITHO
 # aso-keyword-research
 
 The ASO *brain* — keyword research that reasons over **free / owned data**, with
-**no dependency on a paid ASO API** (Appeeky, AppTweak, Sensor Tower, etc.). This
+**no dependency on a paid ASO API** (AppTweak, Sensor Tower, etc.). This
 is the differentiator: every other AI ASO skill routes through a paid data SaaS.
 
 Works for **both** App Store and Google Play.
@@ -156,9 +156,9 @@ Chains into **aso-metadata-optimization**, which turns this plan into final copy
 ## No paid SaaS dependency
 
 Core path uses store autocomplete + public listing data via WebFetch/Chrome
-only — no paid ASO SaaS (Appeeky/AppTweak/Sensor Tower). The *optional* volume
+only — no paid ASO SaaS (AppTweak/Sensor Tower). The *optional* volume
 grounding uses the user's **own** Apple Search Ads account (free with the
-account; not a third-party data vendor). (grep this skill for "appeeky" → none.)
+account; not a third-party data vendor).
 
 
 ## Run it weekly

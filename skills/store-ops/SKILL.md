@@ -76,7 +76,7 @@ standalone and emit the commands regardless.
 
 ## Principles
 
-- **No paid data dependency.** The whole point — every competitor needs Appeeky /
+- **No paid data dependency.** The whole point — competitors need
   AppTweak / Sensor Tower; store-ops reasons over free + owned data.
 - **Both stores, official APIs.** iOS *and* Android, via asc/gplay official CLIs.
 - **Nothing ships without approval.** Reasoning skills write copy + print

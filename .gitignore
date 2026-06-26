@@ -21,3 +21,9 @@ dist/
 .DS_Store
 .vscode/
 .idea/
+
+# Competitive analysis + parity PRDs — kept LOCAL only, never committed.
+# (Competitor intel doesn't belong in the product repo; feature work is
+# tracked via GitHub issues instead.)
+docs/competitive/
+cloud/docs/prd/
