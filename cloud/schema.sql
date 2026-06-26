@@ -25,7 +25,7 @@ CREATE TABLE IF NOT EXISTS users (
   email                   TEXT NOT NULL UNIQUE,
   created_at              TEXT NOT NULL DEFAULT (datetime('now')),
   tier                    TEXT NOT NULL DEFAULT 'free'
-                            CHECK (tier IN ('free', 'launch', 'autopilot', 'fleet')),
+                            CHECK (tier IN ('free', 'indie', 'startup', 'scale')),
   status                  TEXT NOT NULL DEFAULT 'active',   -- mirrors Stripe sub status
   stripe_customer_id      TEXT,
   stripe_subscription_id  TEXT,
@@ -40,7 +40,7 @@ CREATE TABLE IF NOT EXISTS users (
 
 -- Migration for an EXISTING db (the CREATE above only fires on a fresh db). Run
 -- the same statements remotely + locally:
---   npx wrangler d1 execute store_ops --command "ALTER TABLE users ADD COLUMN tier TEXT NOT NULL DEFAULT 'free' CHECK (tier IN ('free','launch','autopilot','fleet'))"
+--   npx wrangler d1 execute store_ops --command "ALTER TABLE users ADD COLUMN tier TEXT NOT NULL DEFAULT 'free' CHECK (tier IN ('free','indie','startup','scale'))"
 --   npx wrangler d1 execute store_ops --command "ALTER TABLE users ADD COLUMN status TEXT NOT NULL DEFAULT 'active'"
 --   npx wrangler d1 execute store_ops --command "ALTER TABLE users ADD COLUMN stripe_customer_id TEXT"
 --   npx wrangler d1 execute store_ops --command "ALTER TABLE users ADD COLUMN stripe_subscription_id TEXT"
@@ -51,6 +51,17 @@ CREATE TABLE IF NOT EXISTS users (
 --   npx wrangler d1 execute store_ops --command "ALTER TABLE users ADD COLUMN rlhf_opt_out INTEGER NOT NULL DEFAULT 0"
 --   npx wrangler d1 execute store_ops --command "ALTER TABLE users ADD COLUMN rank_cadence TEXT NOT NULL DEFAULT 'weekly' CHECK (rank_cadence IN ('daily','weekly'))"
 -- (add `--local` to each for the local D1; drop it for remote.)
+--
+-- TIER RENAME (Appeeky-undercut: launch/autopilot/fleet → indie/startup/scale).
+-- DATA migration — remaps existing rows to the new tier names (the dropped
+-- 'launch' one-time tier maps to 'startup'). Run BEFORE tightening the CHECK
+-- constraint, since the old tier values would otherwise violate the new check.
+-- The human applies these remotely; do NOT run them from code:
+--   npx wrangler d1 execute store_ops --command "UPDATE users SET tier='scale' WHERE tier='fleet'; UPDATE users SET tier='indie' WHERE tier='autopilot'; UPDATE users SET tier='startup' WHERE tier='launch';"
+-- SQLite cannot ALTER an existing CHECK constraint in place; to adopt the new
+-- CHECK on an existing db, rebuild the users table (CREATE new → INSERT … SELECT
+-- → DROP old → RENAME), or recreate from this schema after the data UPDATE above.
+-- (add `--local` for the local D1; drop it for remote.)
 
 -- ── apps ─────────────────────────────────────────────────────────────────────
 -- An app a customer connected by bundle id. country scopes every iTunes call.

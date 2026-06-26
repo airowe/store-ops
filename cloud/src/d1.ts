@@ -33,7 +33,7 @@ import { encryptField } from "./crypto/rlhfCrypto.js";
 
 // ── Row types (mirror schema.sql) ────────────────────────────────────────────
 
-export type Tier = "free" | "launch" | "autopilot" | "fleet";
+export type Tier = "free" | "indie" | "startup" | "scale";
 
 /**
  * How often the cron snapshots an app's ranks (issue #94). 'weekly' (the default)

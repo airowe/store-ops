@@ -59,7 +59,7 @@ export async function seedAppWithRun(
       // Seeding is a test fixture, not a paywall scenario — lift the partition to
       // the top tier so seeding N apps never trips the free-tier connect gate
       // (#27). Tests that exercise the 402 paywall set the tier explicitly.
-      await M.handle("POST", "/_tier", { tier: "fleet" }, EM);
+      await M.handle("POST", "/_tier", { tier: "scale" }, EM);
       // emptyLive pins the live ASC subtitle/keyword field to "" via the connect
       // body's test-only fixture hooks, so the keyed run reads them as read-but-
       // blank (mirrors a real app with no subtitle/keyword field set).
@@ -90,7 +90,7 @@ export async function seedAppWithRun(
 /**
  * Set the mock backend's billing tier for the demo partition (drives the #27
  * tier-limit paywall deterministically). The mock mirrors src/billing.ts:
- * free/launch = 1 app, autopilot = 3, fleet = 50.
+ * free = 1 app, indie = 3, startup = 10, scale = 50.
  */
 export async function setMockTier(page: Page, tier: string): Promise<void> {
   await page.evaluate(async (t) => {

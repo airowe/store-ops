@@ -1,6 +1,6 @@
 /**
  * Portfolio summary — the PURE fleet-level reduction behind the multi-app
- * dashboard (a `fleet`-tier feature). This module has no DB and no network: the
+ * dashboard (a `scale`-tier feature). This module has no DB and no network: the
  * API layer assembles one `AppCard` per app (folding in each app's latest run —
  * the audit grade, the lead keyword/rank, and whether a run is sitting on the
  * human approval gate) and hands the array here to be summarized.

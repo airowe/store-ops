@@ -29,9 +29,9 @@ function prodEnv(over: EnvOverrides = {}): Env {
     SESSION_SECRET: "a-32-char-long-session-secret!!",
     STRIPE_SECRET_KEY: "sk_test_123",
     STRIPE_WEBHOOK_SECRET: "whsec_123",
-    STRIPE_PRICE_LAUNCH: "price_launch",
-    STRIPE_PRICE_AUTOPILOT: "price_autopilot",
-    STRIPE_PRICE_FLEET: "price_fleet",
+    STRIPE_PRICE_INDIE: "price_indie",
+    STRIPE_PRICE_STARTUP: "price_startup",
+    STRIPE_PRICE_SCALE: "price_scale",
     TINYFISH_API_KEY: "tf_123",
     RESEND_API_KEY: "re_123",
     RESEND_FROM: "store-ops <login@mail.shipaso.com>",
@@ -132,7 +132,7 @@ describe("auditReadiness — prod missing only warn-level config", () => {
         STRIPE_SECRET_KEY: undefined,
         STRIPE_TEST_KEY: undefined,
         STRIPE_WEBHOOK_SECRET: undefined,
-        STRIPE_PRICE_AUTOPILOT: undefined,
+        STRIPE_PRICE_STARTUP: undefined,
         TINYFISH_API_KEY: undefined,
         RESEND_API_KEY: undefined,
         RESEND_FROM: undefined,
@@ -164,11 +164,11 @@ describe("auditReadiness — prod missing only warn-level config", () => {
 
 describe("auditReadiness — Stripe price completeness", () => {
   it("warns when any single price id is missing", () => {
-    const report = auditReadiness(prodEnv({ STRIPE_PRICE_FLEET: undefined }));
+    const report = auditReadiness(prodEnv({ STRIPE_PRICE_SCALE: undefined }));
     const prices = check(report, "stripe_prices");
     expect(prices.ok).toBe(false);
     expect(prices.severity).toBe("warn");
-    expect(prices.detail).toContain("STRIPE_PRICE_FLEET");
+    expect(prices.detail).toContain("STRIPE_PRICE_SCALE");
   });
 
   it("passes only when all three price ids are present", () => {

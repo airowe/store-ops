@@ -90,9 +90,9 @@ COOKIE_DOMAIN = ".shipaso.com"
 #                           live. (Legacy STRIPE_TEST_KEY is still read as a
 #                           fallback during migration; prefer the new name.)
 #   STRIPE_WEBHOOK_SECRET — verifies the Stripe-Signature on /billing/webhook.
-#   STRIPE_PRICE_LAUNCH   — Price id for Launch Optimization ($49 one-time).
-#   STRIPE_PRICE_AUTOPILOT— Price id for Autopilot ($19/mo).
-#   STRIPE_PRICE_FLEET    — Price id for Fleet Autopilot ($149/mo).
+#   STRIPE_PRICE_INDIE    — Price id for Indie ($7/mo subscription).
+#   STRIPE_PRICE_STARTUP  — Price id for Startup ($19/mo subscription).
+#   STRIPE_PRICE_SCALE    — Price id for Scale ($65/mo subscription).
 # Egress:
 #   TINYFISH_API_KEY      — routes iTunes calls through TinyFish Fetch (clean egress).
 #     REQUIRED in production: Apple 403s iTunes /search from Cloudflare egress IPs.
@@ -107,9 +107,9 @@ COOKIE_DOMAIN = ".shipaso.com"
 #   npx wrangler secret put SESSION_SECRET
 #   npx wrangler secret put STRIPE_SECRET_KEY
 #   npx wrangler secret put STRIPE_WEBHOOK_SECRET
-#   npx wrangler secret put STRIPE_PRICE_LAUNCH
-#   npx wrangler secret put STRIPE_PRICE_AUTOPILOT
-#   npx wrangler secret put STRIPE_PRICE_FLEET
+#   npx wrangler secret put STRIPE_PRICE_INDIE
+#   npx wrangler secret put STRIPE_PRICE_STARTUP
+#   npx wrangler secret put STRIPE_PRICE_SCALE
 #   npx wrangler secret put TINYFISH_API_KEY
 #   npx wrangler secret put RESEND_API_KEY
 #   npx wrangler secret put RESEND_FROM   # (or add to [vars])

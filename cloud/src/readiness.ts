@@ -103,9 +103,9 @@ export function auditReadiness(env: Env): ReadinessReport {
 
   const missingPrices = (
     [
-      ["STRIPE_PRICE_LAUNCH", env.STRIPE_PRICE_LAUNCH],
-      ["STRIPE_PRICE_AUTOPILOT", env.STRIPE_PRICE_AUTOPILOT],
-      ["STRIPE_PRICE_FLEET", env.STRIPE_PRICE_FLEET],
+      ["STRIPE_PRICE_INDIE", env.STRIPE_PRICE_INDIE],
+      ["STRIPE_PRICE_STARTUP", env.STRIPE_PRICE_STARTUP],
+      ["STRIPE_PRICE_SCALE", env.STRIPE_PRICE_SCALE],
     ] as const
   )
     .filter(([, value]) => !isSet(value))
@@ -116,7 +116,7 @@ export function auditReadiness(env: Env): ReadinessReport {
     severity: "warn",
     detail:
       missingPrices.length === 0
-        ? "All Stripe price ids (launch, autopilot, fleet) are set."
+        ? "All Stripe price ids (indie, startup, scale) are set."
         : `Missing Stripe price id(s): ${missingPrices.join(", ")} — those tiers can't be purchased.`,
   });
 

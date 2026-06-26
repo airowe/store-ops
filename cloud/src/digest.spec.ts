@@ -562,7 +562,7 @@ describe("planDigests (pure: who gets a digest, and what's in it)", () => {
       appId: "a1",
       appName: "Clarity",
       email: "owner@example.com",
-      tier: "autopilot",
+      tier: "indie",
       hasPendingApproval: false,
       rankHistory: [
         snap("secular meditation", 44, w1),
@@ -572,18 +572,18 @@ describe("planDigests (pure: who gets a digest, and what's in it)", () => {
     };
   }
 
-  it("sends to autopilot and fleet tiers, skips free and launch", () => {
+  it("sends to every paid tier (indie/startup/scale), skips free", () => {
     const msgs = planDigests(
       [
-        app({ appId: "a", email: "auto@x.com", tier: "autopilot" }),
-        app({ appId: "b", email: "fleet@x.com", tier: "fleet" }),
-        app({ appId: "c", email: "free@x.com", tier: "free" }),
-        app({ appId: "d", email: "launch@x.com", tier: "launch" }),
+        app({ appId: "a", email: "indie@x.com", tier: "indie" }),
+        app({ appId: "b", email: "startup@x.com", tier: "startup" }),
+        app({ appId: "c", email: "scale@x.com", tier: "scale" }),
+        app({ appId: "d", email: "free@x.com", tier: "free" }),
       ],
       { dashboardUrl: "https://app.shipaso.com" },
     );
     const recipients = msgs.map((m) => m.to).sort();
-    expect(recipients).toEqual(["auto@x.com", "fleet@x.com"]);
+    expect(recipients).toEqual(["indie@x.com", "scale@x.com", "startup@x.com"]);
   });
 
   it("builds a real subject + the moved keyword into html and text", () => {
