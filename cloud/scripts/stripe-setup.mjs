@@ -2,8 +2,8 @@
 /**
  * One-shot Stripe product + price creation for store-ops (ShipASO).
  *
- * Creates the three paid tiers from commercial/OFFER.md and prints the price ids
- * to paste into the Worker secrets (STRIPE_PRICE_LAUNCH/AUTOPILOT/FLEET).
+ * Creates the three paid tiers and prints the price ids to paste into the
+ * Worker secrets (STRIPE_PRICE_INDIE/STARTUP/SCALE).
  *
  * Idempotent-ish: looks up an existing product by its metadata tag before
  * creating, so re-running won't make duplicates.
@@ -97,11 +97,11 @@ async function search(resource, query) {
   return json;
 }
 
-/** The three tiers. amount in cents; recurring => subscription, else one-time. */
+/** The three tiers. amount in cents; all recurring monthly subscriptions. */
 const TIERS = [
-  { tag: "store_ops_launch", name: "Launch Optimization", amount: 4900, recurring: null },
-  { tag: "store_ops_autopilot", name: "Autopilot", amount: 1900, recurring: "month" },
-  { tag: "store_ops_fleet", name: "Fleet Autopilot", amount: 14900, recurring: "month" },
+  { tag: "store_ops_indie", name: "Indie", amount: 700, recurring: "month" },
+  { tag: "store_ops_startup", name: "Startup", amount: 1900, recurring: "month" },
+  { tag: "store_ops_scale", name: "Scale", amount: 6500, recurring: "month" },
 ];
 
 async function ensureTier(t) {
@@ -156,9 +156,9 @@ async function ensureTier(t) {
   console.log(
     JSON.stringify(
       {
-        STRIPE_PRICE_LAUNCH: out.store_ops_launch,
-        STRIPE_PRICE_AUTOPILOT: out.store_ops_autopilot,
-        STRIPE_PRICE_FLEET: out.store_ops_fleet,
+        STRIPE_PRICE_INDIE: out.store_ops_indie,
+        STRIPE_PRICE_STARTUP: out.store_ops_startup,
+        STRIPE_PRICE_SCALE: out.store_ops_scale,
       },
       null,
       2,
