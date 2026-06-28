@@ -989,3 +989,13 @@ svg.spark .lbl { fill: var(--faint); font-family: var(--mono); font-size: 10px; 
 .finding-link { margin-top: 6px; font-size: 13px; }
 .finding-link a { color: var(--signal); }
 .finding-link a:hover { text-decoration: underline; }
+
+/* ── Google Play audit panel (parallel of the ASC run panel) ───────────────── */
+.play-audit-panel { margin: 0 0 14px; padding: 12px 14px; border: 1px solid var(--line-soft); border-radius: 11px; background: rgba(255,255,255,0.015); }
+.play-audit-result .play-note.ok  { color: var(--signal); }
+.play-audit-result .play-note.err { color: var(--bad); }
+.play-audit-out .play-findings    { display: flex; flex-direction: column; }
+.play-audit-out .sev-critical { color: var(--bad); }
+.play-audit-out .sev-warn     { color: var(--warn); }
+.play-audit-out .sev-good     { color: var(--signal); }
+.play-audit-out .sev-info     { color: var(--dim); }

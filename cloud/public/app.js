@@ -864,6 +864,14 @@
       runList(runs),
     ]));
 
+    // Google Play audit — the Play parallel of the ASC read (own-app, via the Play
+    // Developer API; the service account is sent once and never stored).
+    c.appendChild(el("div", { class: "card" }, [
+      el("h3", {}, ["Google Play audit"]),
+      el("p", { class: "faint", style: "font-size:12.5px;margin:0 0 14px" }, ["Audit your own Google Play listing via the Play Developer API. Play has no keyword field — this grades your title, short & long description, and screenshots."]),
+      playAuditPanel(app.id),
+    ]));
+
     // disconnect (irreversible — two-click confirm, no blocking dialog)
     c.appendChild(disconnectRow(app));
 
@@ -1196,6 +1204,115 @@
         inter.settle(); toast("Read your live listing — review the proposal."); go("#/runs/" + r.id);
       })
       .catch(function (e) { btn.disabled = false; btn.textContent = "▶ Run with ASC read"; inter.fail(e.message || "The App Store Connect run failed.", function () { triggerRunAsc(appId, btn, creds); }, "#/apps/" + appId); });
+  }
+
+  // Read a service-account .json client-side and fill the textarea (paste stays a
+  // fallback). Read in-memory via FileReader, never logged. Mirrors p8FileInput.
+  function saFileInput(jsonTextArea) {
+    var input = el("input", { type: "file", accept: ".json,application/json", class: "p8-file" });
+    input.addEventListener("change", function () {
+      var file = input.files && input.files[0];
+      if (!file) return;
+      var reader = new FileReader();
+      reader.onload = function () {
+        jsonTextArea.value = String(reader.result || "");
+        toast("Loaded service account — used once, never stored.");
+      };
+      reader.onerror = function () { toast("Couldn't read that file — paste the JSON instead."); };
+      reader.readAsText(file);
+    });
+    return el("label", { class: "fld" }, [
+      el("span", { class: "lab" }, ["Or upload service-account .json"]),
+      input,
+    ]);
+  }
+
+  // Google Play audit panel — the Play parallel of ascRunPanel. The user pastes or
+  // uploads their Play Developer API SERVICE-ACCOUNT JSON + their package id; the
+  // creds are sent once (to /play/verify or /apps/:id/audit-play) and NEVER stored,
+  // same posture as the .p8. Play has no keyword field, so this reads the title,
+  // short + long description, screenshots, and grades them.
+  function playAuditPanel(appId) {
+    var panel = el("div", { class: "play-audit-panel" });
+    panel.appendChild(el("div", { class: "faint", style: "font-size:12.5px;margin:0 0 12px" }, [
+      "Audit your own Google Play listing via the official Play Developer API. Provide your service-account JSON + Play package id. ",
+      el("b", { style: "color:var(--dim)" }, ["Your service account is used once and never stored."]),
+    ]));
+    var pkg = el("input", { class: "txt mono", type: "text", placeholder: "Play package id (e.g. com.foo.bar)", autocomplete: "off", spellcheck: "false" });
+    var lang = el("input", { class: "txt mono", type: "text", placeholder: "Listing language (default en-US)", autocomplete: "off", spellcheck: "false" });
+    var sa = el("textarea", { class: "txt mono", rows: "4", placeholder: 'Paste your service-account JSON ({ "client_email": …, "private_key": … })', autocomplete: "off", spellcheck: "false" });
+    panel.appendChild(el("label", { class: "fld" }, [el("span", { class: "lab" }, ["Play package id"]), pkg]));
+    panel.appendChild(el("label", { class: "fld" }, [el("span", { class: "lab" }, ["Service-account JSON"]), sa]));
+    panel.appendChild(saFileInput(sa));
+    panel.appendChild(el("label", { class: "fld" }, [el("span", { class: "lab" }, ["Language (optional)"]), lang]));
+
+    var result = el("div", { class: "play-audit-result" });
+    function body() {
+      var b = { serviceAccount: sa.value, packageName: pkg.value.trim() };
+      if (lang.value.trim()) b.language = lang.value.trim();
+      return b;
+    }
+    function valid() {
+      if (!sa.value.trim()) { toast("Paste or upload your service-account JSON."); return false; }
+      if (!pkg.value.trim()) { toast("Enter your Play package id."); return false; }
+      return true;
+    }
+    var auditBtn = el("button", { class: "btn primary", onclick: function () { if (valid()) triggerPlayAudit(appId, auditBtn, body(), result); } }, ["▶ Audit my Play listing"]);
+    var verifyBtn = el("button", { class: "btn", onclick: function () { if (valid()) triggerPlayVerify(verifyBtn, body(), result); } }, ["Verify access"]);
+    panel.appendChild(el("div", { class: "btn-row", style: "margin-top:4px" }, [auditBtn, verifyBtn]));
+    panel.appendChild(result);
+    return panel;
+  }
+
+  function triggerPlayVerify(btn, body, resultEl) {
+    var label = btn.textContent; btn.disabled = true; btn.innerHTML = '<span class="spin"></span> Verifying…';
+    clear(resultEl);
+    api("POST", "/play/verify", body)
+      .then(function (r) {
+        btn.disabled = false; btn.textContent = label;
+        if (r && r.ok) {
+          resultEl.appendChild(el("div", { class: "play-note ok", style: "margin-top:10px;font-size:13px" }, ["✓ Credential works" + (r.appAccessible ? " — access to this app confirmed." : " (app access not probed).")]));
+        } else {
+          resultEl.appendChild(el("div", { class: "play-note err", style: "margin-top:10px;font-size:13px" }, ["✗ " + ((r && r.reason) || "Verification failed.")]));
+        }
+      })
+      .catch(function (e) { btn.disabled = false; btn.textContent = label; resultEl.appendChild(el("div", { class: "play-note err", style: "margin-top:10px;font-size:13px" }, ["✗ " + (e.message || "Verification failed.")])); });
+  }
+
+  function triggerPlayAudit(appId, btn, body, resultEl) {
+    var label = btn.textContent; btn.disabled = true; btn.innerHTML = '<span class="spin"></span> Auditing your Play listing…';
+    clear(resultEl);
+    api("POST", "/apps/" + appId + "/audit-play", body)
+      .then(function (audit) { btn.disabled = false; btn.textContent = label; renderPlayAudit(resultEl, audit); toast("Audited your Play listing."); })
+      .catch(function (e) { btn.disabled = false; btn.textContent = label; resultEl.appendChild(el("div", { class: "play-note err", style: "margin-top:10px;font-size:13px" }, ["✗ " + (e.message || "The Play audit failed.")])); });
+  }
+
+  // Compact renderer for a PlayAudit (the /audit-play response). Read-only summary:
+  // headline, screenshot grade, coverage score, prioritized findings, locks.
+  function renderPlayAudit(resultEl, audit) {
+    clear(resultEl);
+    audit = audit || {};
+    var listing = audit.listing || {}, summary = audit.summary || {}, shots = audit.screenshots || {}, cov = audit.coverage || {};
+    var box = el("div", { class: "play-audit-out", style: "margin-top:14px;border-top:1px solid var(--line,#2a2a2a);padding-top:12px" });
+    box.appendChild(el("div", { style: "font-weight:600;margin-bottom:6px" }, [listing.title || "Your Play listing"]));
+    box.appendChild(el("div", { class: "faint", style: "font-size:12.5px;margin-bottom:8px" }, [summary.label || "Audit complete."]));
+    if (shots.grade) box.appendChild(el("div", { style: "font-size:13px;margin:4px 0" }, ["Screenshots: grade " + shots.grade + " · " + (shots.primaryCount || 0) + " phone"]));
+    if (typeof cov.coverageScore === "number") box.appendChild(el("div", { style: "font-size:13px;margin:4px 0" }, ["Metadata coverage: " + Math.round(cov.coverageScore) + "/100 (title 30 · short 80 · long 4000)"]));
+    var findings = audit.findings || [];
+    if (findings.length) {
+      var list = el("ul", { class: "play-findings", style: "margin:10px 0 0;padding-left:0;list-style:none" });
+      findings.forEach(function (f) {
+        list.appendChild(el("li", { style: "margin:0 0 8px" }, [
+          el("span", { class: "sev sev-" + f.severity, style: "font-weight:600;text-transform:uppercase;font-size:11px" }, [(f.severity || "") + " · "]),
+          el("span", {}, [f.title || ""]),
+          f.fix ? el("div", { class: "faint", style: "font-size:12px" }, [f.fix]) : null,
+        ]));
+      });
+      box.appendChild(list);
+    }
+    var locks = audit.locks || [];
+    if (locks.length) box.appendChild(el("div", { class: "faint", style: "font-size:12px;margin-top:10px" }, ["🔒 " + locks.length + " surface" + (locks.length === 1 ? "" : "s") + " need a connection to read."]));
+    resultEl.appendChild(box);
   }
 
   /* ════════════════════ VIEW: run detail (the money screen) ════════════════ */

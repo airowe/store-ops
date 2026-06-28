@@ -61,7 +61,7 @@ describe("runReadOnlyPlayAuditConnected — owner audit via the Developer API", 
     let raw = "";
     for (let i = 0; i < pkcs8.length; i++) raw += String.fromCharCode(pkcs8[i]!);
     const pem = `-----BEGIN PRIVATE KEY-----\n${btoa(raw).replace(/(.{64})/g, "$1\n")}\n-----END PRIVATE KEY-----`;
-    SA = { client_email: "svc@p.iam.gserviceaccount.com", private_key: pem, token_uri: "https://oauth2.test/token" };
+    SA = { client_email: "svc@p.iam.gserviceaccount.com", private_key: pem, token_uri: "https://oauth2.googleapis.com/token" };
   });
 
   /** Routes the token exchange + the edits.insert → listings → delete flow. */

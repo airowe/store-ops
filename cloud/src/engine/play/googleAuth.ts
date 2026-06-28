@@ -42,6 +42,28 @@ const DEFAULT_TOKEN_URI = "https://oauth2.googleapis.com/token";
 const JWT_BEARER_GRANT = "urn:ietf:params:oauth:grant-type:jwt-bearer";
 const TOKEN_TTL_SECONDS = 3600; // Google caps the assertion exp at 1 hour.
 
+/**
+ * Resolve + VALIDATE the OAuth token endpoint. The assertion is signed and POSTed
+ * here, so a hostile/typo'd `token_uri` in the supplied JSON must not be able to
+ * redirect the flow to an arbitrary host (SSRF defense-in-depth). We require
+ * https + a googleapis.com host; anything else is rejected. A real Google
+ * service-account JSON always uses https://oauth2.googleapis.com/token.
+ */
+function resolveTokenUri(raw?: string): string {
+  const uri = raw?.trim() || DEFAULT_TOKEN_URI;
+  let parsed: URL;
+  try {
+    parsed = new URL(uri);
+  } catch {
+    throw new GoogleAuthError("service-account token_uri is not a valid URL.");
+  }
+  const host = parsed.hostname.toLowerCase();
+  if (parsed.protocol !== "https:" || !(host === "googleapis.com" || host.endsWith(".googleapis.com"))) {
+    throw new GoogleAuthError("service-account token_uri must be an https googleapis.com endpoint.");
+  }
+  return uri;
+}
+
 function b64url(bytes: Uint8Array): string {
   let s = "";
   for (let i = 0; i < bytes.length; i++) s += String.fromCharCode(bytes[i]!);
@@ -83,7 +105,7 @@ export async function buildServiceAccountAssertion(
   const clientEmail = sa.client_email?.trim();
   if (!clientEmail) throw new GoogleAuthError("service account missing client_email.");
   if (!sa.private_key) throw new GoogleAuthError("service account missing private_key.");
-  const tokenUri = sa.token_uri?.trim() || DEFAULT_TOKEN_URI;
+  const tokenUri = resolveTokenUri(sa.token_uri);
   const scope = opts.scope ?? ANDROIDPUBLISHER_SCOPE;
   const iat = opts.now ?? Math.floor(nowSeconds());
 
@@ -130,7 +152,7 @@ export async function mintGoogleAccessToken(
   sa: GoogleServiceAccount,
   opts: { scope?: string; now?: number } = {},
 ): Promise<GoogleAccessToken> {
-  const tokenUri = sa.token_uri?.trim() || DEFAULT_TOKEN_URI;
+  const tokenUri = resolveTokenUri(sa.token_uri);
   const assertion = await buildServiceAccountAssertion(sa, opts);
   const body = new URLSearchParams({ grant_type: JWT_BEARER_GRANT, assertion }).toString();
 
