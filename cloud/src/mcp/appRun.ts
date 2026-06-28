@@ -15,11 +15,15 @@ import {
   type AgentResult,
   type AppCandidate,
   type FetchFn,
+  type FetchLike,
+  type GoogleServiceAccount,
   type PlayAudit,
   auditPlayListing,
   classifyQuery,
   lookup,
   playAdapter,
+  playApiTransportForServiceAccount,
+  playDeveloperApiAdapter,
   playWebSource,
   resolveAppQuery,
   runAgent,
@@ -142,4 +146,37 @@ export async function runReadOnlyPlayAudit(
     ...(input.brand ? { brand: input.brand } : {}),
   });
   return { kind: "resolved", audit };
+}
+
+/**
+ * Read-only CONNECTED (owner) Play audit via the official Developer API. Mints an
+ * access token from the service account, reads the owner's listing at full
+ * fidelity (incl. the short description; `reliable:true` ⇒ no capability locks),
+ * and runs the full audit. Read-only — the API path never commits/publishes.
+ *
+ * Owner-only by construction (the service account only sees apps it's granted),
+ * so there's no resolution step: the caller names their own package id.
+ */
+export async function runReadOnlyPlayAuditConnected(
+  fetchLike: FetchLike,
+  serviceAccount: GoogleServiceAccount,
+  input: {
+    packageName: string;
+    language?: string | undefined;
+    targets?: string[] | undefined;
+    brand?: string | undefined;
+  },
+): Promise<PlayAudit> {
+  const pkg = input.packageName?.trim();
+  if (!pkg) throw new Error("packageName is required");
+  const transport = await playApiTransportForServiceAccount(fetchLike, serviceAccount);
+  const adapter = playDeveloperApiAdapter(
+    transport,
+    input.language ? { language: input.language } : {},
+  );
+  return auditPlayListing(adapter, pkg, {
+    ...(input.language ? { lang: input.language } : {}),
+    ...(input.targets ? { targets: input.targets } : {}),
+    ...(input.brand ? { brand: input.brand } : {}),
+  });
 }

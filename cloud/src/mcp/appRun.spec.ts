@@ -1,6 +1,11 @@
-import { describe, expect, it } from "vitest";
-import { resolveOne, runReadOnlyAgent, runReadOnlyPlayAudit } from "./appRun.js";
-import type { FetchFn } from "../engine/index.js";
+import { beforeAll, describe, expect, it } from "vitest";
+import {
+  resolveOne,
+  runReadOnlyAgent,
+  runReadOnlyPlayAudit,
+  runReadOnlyPlayAuditConnected,
+} from "./appRun.js";
+import type { FetchFn, FetchLike, GoogleServiceAccount } from "../engine/index.js";
 
 /** A fetch stub for Play: any play.google.com URL → a fixed listing page. */
 function stubPlayFetch(page?: string): FetchFn {
@@ -40,6 +45,65 @@ describe("runReadOnlyPlayAudit — read-only Google Play audit", () => {
 
   it("throws when neither query nor packageName is given", async () => {
     await expect(runReadOnlyPlayAudit(stubPlayFetch(), {})).rejects.toThrow();
+  });
+});
+
+describe("runReadOnlyPlayAuditConnected — owner audit via the Developer API", () => {
+  let SA: GoogleServiceAccount;
+
+  beforeAll(async () => {
+    const kp = (await crypto.subtle.generateKey(
+      { name: "RSASSA-PKCS1-v1_5", modulusLength: 2048, publicExponent: new Uint8Array([1, 0, 1]), hash: "SHA-256" },
+      true,
+      ["sign", "verify"],
+    )) as CryptoKeyPair;
+    const pkcs8 = new Uint8Array((await crypto.subtle.exportKey("pkcs8", kp.privateKey)) as ArrayBuffer);
+    let raw = "";
+    for (let i = 0; i < pkcs8.length; i++) raw += String.fromCharCode(pkcs8[i]!);
+    const pem = `-----BEGIN PRIVATE KEY-----\n${btoa(raw).replace(/(.{64})/g, "$1\n")}\n-----END PRIVATE KEY-----`;
+    SA = { client_email: "svc@p.iam.gserviceaccount.com", private_key: pem, token_uri: "https://oauth2.test/token" };
+  });
+
+  /** Routes the token exchange + the edits.insert → listings → delete flow. */
+  function devApiFetch(): FetchLike {
+    return async (url, init) => {
+      const method = init.method;
+      const body = (s: string) => ({ ok: true, status: 200, text: async () => s });
+      if (url.includes("/token")) return body(JSON.stringify({ access_token: "tok", expires_in: 3600 }));
+      if (method === "POST" && url.endsWith("/edits")) return body(JSON.stringify({ id: "edit-1" }));
+      if (method === "GET" && url.endsWith("/listings")) {
+        return body(
+          JSON.stringify({
+            listings: [
+              {
+                language: "en-US",
+                title: "Calm",
+                shortDescription: "Sleep & meditation",
+                fullDescription: "Guided meditation and sleep stories.",
+              },
+            ],
+          }),
+        );
+      }
+      return { ok: true, status: 204, text: async () => "" }; // DELETE
+    };
+  }
+
+  it("reads the owner's listing at full fidelity (short description present, no locks)", async () => {
+    const audit = await runReadOnlyPlayAuditConnected(devApiFetch(), SA, {
+      packageName: "com.calm.android",
+    });
+    expect(audit.listing.store).toBe("googleplay");
+    expect(audit.listing.title).toBe("Calm");
+    expect(audit.listing.tagline).toBe("Sleep & meditation"); // fidelity win
+    expect(audit.listing.reliable).toBe(true);
+    expect(audit.locks).toEqual([]); // reliable read ⇒ no capability locks
+  });
+
+  it("requires a package name", async () => {
+    await expect(
+      runReadOnlyPlayAuditConnected(devApiFetch(), SA, { packageName: "" }),
+    ).rejects.toThrow(/packageName/);
   });
 });
 

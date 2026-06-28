@@ -27,6 +27,7 @@ describe("MCP tool registry — read-or-draft only (PRD #93 safety invariant)", 
       [
         "audit_app",
         "audit_play_app",
+        "audit_play_app_owner",
         "competitor_watch",
         "keyword_gaps",
         "localization_gaps",
@@ -135,5 +136,22 @@ describe("MCP tool handlers — delegate to the real engine pass", () => {
     await expect(
       toolByName("audit_play_app")!.handler({ query: "meditation app" }, ctx),
     ).rejects.toThrow(/no public name search|No Google Play app/i);
+  });
+
+  it("audit_play_app_owner errors clearly when no service account is configured", async () => {
+    // ctx.env has no GOOGLE_PLAY_SERVICE_ACCOUNT → honest "not connected" error.
+    await expect(
+      toolByName("audit_play_app_owner")!.handler({ packageName: "com.calm.android" }, ctx),
+    ).rejects.toThrow(/not connected|GOOGLE_PLAY_SERVICE_ACCOUNT/);
+  });
+
+  it("audit_play_app_owner errors on a malformed service-account secret", async () => {
+    const badCtx: ToolContext = {
+      env: { DEFAULT_COUNTRY: "US", GOOGLE_PLAY_SERVICE_ACCOUNT: "not json" } as unknown as Env,
+      user: { id: "u1", email: "dev@example.com" },
+    };
+    await expect(
+      toolByName("audit_play_app_owner")!.handler({ packageName: "com.calm.android" }, badCtx),
+    ).rejects.toThrow(/not valid JSON/);
   });
 });

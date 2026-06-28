@@ -31,8 +31,10 @@ import {
   resolveOne,
   runReadOnlyAgent,
   runReadOnlyPlayAudit,
+  runReadOnlyPlayAuditConnected,
   type ResolvedApp,
 } from "./appRun.js";
+import type { FetchLike, GoogleServiceAccount } from "../engine/index.js";
 
 const MAX_WAR_ROOM_COMPETITORS = 4;
 
@@ -209,6 +211,64 @@ export const TOOLS: McpToolDef[] = [
         findings: a.findings,
         summary: a.summary,
         locks: a.locks,
+      };
+    },
+  },
+  {
+    name: "audit_play_app_owner",
+    description:
+      "Read-only audit of YOUR OWN Google Play app via the official Play Developer " +
+      "API — full fidelity including the short description (which the public page " +
+      "can't show), with NO capability locks. Requires a configured Play service " +
+      "account (GOOGLE_PLAY_SERVICE_ACCOUNT). Reads only — it opens and DISCARDS a " +
+      "Play 'edit' and NEVER commits, so it can't publish. Owner-only; for a " +
+      "competitor use audit_play_app.",
+    readOnly: true,
+    inputSchema: {
+      packageName: z.string().describe("Your app's Play package id, e.g. com.foo.bar"),
+      language: z.string().optional().describe("BCP-47 listing language, e.g. en-US"),
+      targets: z
+        .array(z.string())
+        .optional()
+        .describe("Target search terms to measure long-description coverage for"),
+      brand: z.string().optional().describe("App brand name, so short-description brand-burn is flagged"),
+    },
+    async handler(args, ctx) {
+      const saJson = (ctx.env as { GOOGLE_PLAY_SERVICE_ACCOUNT?: string }).GOOGLE_PLAY_SERVICE_ACCOUNT;
+      if (!saJson) {
+        throw new Error(
+          "Google Play is not connected — set the GOOGLE_PLAY_SERVICE_ACCOUNT secret " +
+            "(a Play Developer API service-account JSON) to audit your own Play app.",
+        );
+      }
+      let serviceAccount: GoogleServiceAccount;
+      try {
+        serviceAccount = JSON.parse(saJson) as GoogleServiceAccount;
+      } catch {
+        throw new Error("GOOGLE_PLAY_SERVICE_ACCOUNT is not valid JSON.");
+      }
+      const packageName = String(args.packageName ?? "").trim();
+      if (!packageName) throw new Error("packageName is required.");
+      const targets = Array.isArray(args.targets)
+        ? (args.targets as unknown[]).filter((t): t is string => typeof t === "string")
+        : undefined;
+      // The Developer API needs a method+body fetch; the Worker's global fetch
+      // satisfies FetchLike (googleapis.com is reachable directly).
+      const fetchLike: FetchLike = (url, init) => fetch(url, init);
+      const audit = await runReadOnlyPlayAuditConnected(fetchLike, serviceAccount, {
+        packageName,
+        language: typeof args.language === "string" ? args.language : undefined,
+        ...(targets ? { targets } : {}),
+        brand: typeof args.brand === "string" ? args.brand : undefined,
+      });
+      return {
+        listing: audit.listing,
+        screenshots: audit.screenshots,
+        coverage: audit.coverage,
+        keywords: audit.keywords,
+        findings: audit.findings,
+        summary: audit.summary,
+        locks: audit.locks,
       };
     },
   },
