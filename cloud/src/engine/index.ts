@@ -98,6 +98,13 @@ export {
   analyzePlayKeywords,
 } from "./play/playKeywordModel.js";
 export {
+  type PlayFindingsInput,
+  playFindings,
+  playSurfaceLocks,
+} from "./play/playFindings.js";
+// Store-agnostic findings primitives (shared by iOS + Play rule sets).
+export { findingsLabel, sortFindings, mk as mkFinding } from "./findings/core.js";
+export {
   type KeywordInput,
   type ScoredKeyword,
   scoreKeyword,
