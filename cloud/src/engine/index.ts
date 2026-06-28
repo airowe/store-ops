@@ -232,3 +232,8 @@ export {
 } from "./rankWarRoom.js";
 export { appStoreAdapter, mapItunesToListing } from "./appStoreAdapter.js";
 export { playAdapter } from "./play/playAdapter.js";
+export {
+  type PlayAudit,
+  type AuditPlayListingOptions,
+  auditPlayListing,
+} from "./play/auditPlayListing.js";
