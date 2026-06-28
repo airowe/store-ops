@@ -237,3 +237,12 @@ export {
   type AuditPlayListingOptions,
   auditPlayListing,
 } from "./play/auditPlayListing.js";
+export {
+  type PlayApiTransport,
+  type PlayApiListing,
+  PlayApiError,
+  mapPlayApiListing,
+  selectListing,
+  readPlayListingViaApi,
+  playDeveloperApiAdapter,
+} from "./play/playDeveloperApi.js";
