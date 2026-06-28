@@ -256,4 +256,6 @@ export {
   mintGoogleAccessToken,
   playApiTransport,
   playApiTransportForServiceAccount,
+  type PlayVerifyResult,
+  verifyPlayServiceAccount,
 } from "./play/googleAuth.js";

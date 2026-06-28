@@ -186,6 +186,80 @@ export async function playApiTransportForServiceAccount(
   return playApiTransport(fetchLike, accessToken);
 }
 
+const ANDROIDPUBLISHER_BASE = "https://androidpublisher.googleapis.com/androidpublisher/v3";
+
+/** The outcome of a service-account credential check. */
+export type PlayVerifyResult =
+  | { ok: true; appAccessible?: boolean }
+  | { ok: false; reason: string };
+
+/**
+ * Verify a Play service account works — the parallel of the App Store Connect
+ * `.p8` verify. Mints a token (proving the key + service account are valid and
+ * Google accepts them); if a `packageName` is given, also probes app-level access
+ * by opening and immediately discarding a Play edit (read-only — never commits).
+ *
+ * Returns an honest `{ ok, reason }`; the reason NEVER contains key material
+ * (`GoogleAuthError` messages are key-free by construction).
+ */
+export async function verifyPlayServiceAccount(
+  fetchLike: FetchLike,
+  sa: GoogleServiceAccount,
+  opts: { packageName?: string; now?: number } = {},
+): Promise<PlayVerifyResult> {
+  let token: string;
+  try {
+    ({ accessToken: token } = await mintGoogleAccessToken(
+      fetchLike,
+      sa,
+      opts.now !== undefined ? { now: opts.now } : {},
+    ));
+  } catch (e) {
+    return {
+      ok: false,
+      reason:
+        e instanceof GoogleAuthError
+          ? e.message
+          : "could not mint an access token from the service account.",
+    };
+  }
+
+  const pkg = opts.packageName?.trim();
+  if (!pkg) return { ok: true }; // credential is structurally valid; app access not probed.
+
+  const appsBase = `${ANDROIDPUBLISHER_BASE}/applications/${encodeURIComponent(pkg)}`;
+  const auth = { Authorization: `Bearer ${token}`, "Content-Type": "application/json" };
+  const res = await fetchLike(`${appsBase}/edits`, { method: "POST", headers: auth });
+  if (res.status === 401 || res.status === 403) {
+    return {
+      ok: false,
+      reason: `Google rejected access to ${pkg} (${res.status}). Grant the service account access to this app in the Play Console.`,
+    };
+  }
+  if (res.status < 200 || res.status >= 300) {
+    return { ok: false, reason: `Play Developer API returned ${res.status} for ${pkg}.` };
+  }
+
+  // Discard the probe edit (best-effort — never commit, never leak an edit).
+  let editId: string | undefined;
+  try {
+    editId = (JSON.parse(await res.text()) as { id?: string }).id;
+  } catch {
+    editId = undefined;
+  }
+  if (editId) {
+    try {
+      await fetchLike(`${appsBase}/edits/${encodeURIComponent(editId)}`, {
+        method: "DELETE",
+        headers: auth,
+      });
+    } catch {
+      // dangling edits expire on their own.
+    }
+  }
+  return { ok: true, appAccessible: true };
+}
+
 /** Wall clock in seconds — single home for the Date.now() call (kept injectable). */
 function nowSeconds(): number {
   return Date.now() / 1000;
