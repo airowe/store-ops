@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { buildFastlaneBundle, fastlaneReadme } from "./fastlane.js";
+import { buildFastlaneBundle, buildFastlaneSupply, fastlaneReadme } from "./fastlane.js";
 import type { CopyFields } from "./optimize.js";
+import type { NormalizedListing } from "./store/types.js";
 
 const fullCopy: CopyFields = {
   name: "Calm · Calm Tracker",
@@ -108,5 +109,69 @@ describe("fastlaneReadme", () => {
     expect(r).not.toContain("fastlane supply");
     // makes clear ShipASO does not hold credentials
     expect(r.toLowerCase()).toContain("credential");
+  });
+});
+
+// Step 7: the Google Play `supply` handoff — gated on a REAL Play listing, never
+// derived from iOS copy, and applying the same omit-don't-blank safeguard.
+function playListing(over: Partial<NormalizedListing> = {}): NormalizedListing {
+  return {
+    store: "googleplay",
+    appId: "com.calm.android",
+    title: "Calm",
+    tagline: "Sleep & meditation",
+    keywordField: null,
+    longDescription: "Guided meditation, sleep stories, and breathing exercises.",
+    screenshots: [],
+    category: null,
+    reliable: true,
+    ...over,
+  };
+}
+
+describe("buildFastlaneSupply — gated Google Play handoff", () => {
+  it("writes the android tree from a real Play listing", () => {
+    const m = asMap(buildFastlaneSupply(playListing()).files);
+    expect(m["fastlane/metadata/android/en-US/title.txt"]).toBe("Calm");
+    expect(m["fastlane/metadata/android/en-US/short_description.txt"]).toBe("Sleep & meditation");
+    expect(m["fastlane/metadata/android/en-US/full_description.txt"]).toContain("Guided meditation");
+    expect("fastlane/metadata/SHIPASO_README_ANDROID.md" in m).toBe(true);
+  });
+
+  it("omits a field that was NOT read (null) — never a blank that wipes supply", () => {
+    // A public scrape can't see the short description → tagline null → no file.
+    const m = asMap(buildFastlaneSupply(playListing({ tagline: null })).files);
+    expect("fastlane/metadata/android/en-US/short_description.txt" in m).toBe(false);
+    expect("fastlane/metadata/android/en-US/title.txt" in m).toBe(true);
+  });
+
+  it("omits a measured-empty field too (empty .txt would wipe the live value)", () => {
+    const m = asMap(buildFastlaneSupply(playListing({ longDescription: "" })).files);
+    expect("fastlane/metadata/android/en-US/full_description.txt" in m).toBe(false);
+  });
+
+  it("NEVER emits an android tree from a non-Play (iOS) listing", () => {
+    const iosListing = playListing({ store: "appstore" });
+    expect(buildFastlaneSupply(iosListing).files).toEqual([]);
+  });
+
+  it("emits NOTHING (not even a README) when no field was actually read", () => {
+    const empty = playListing({ title: null, tagline: null, longDescription: null });
+    expect(buildFastlaneSupply(empty).files).toEqual([]);
+  });
+
+  it("honors a custom language directory", () => {
+    const m = asMap(buildFastlaneSupply(playListing(), { lang: "de-DE" }).files);
+    expect("fastlane/metadata/android/de-DE/title.txt" in m).toBe(true);
+  });
+
+  it("README warns it OVERWRITES and is for an app you OWN, and names supply", () => {
+    const readme = asMap(buildFastlaneSupply(playListing()).files)[
+      "fastlane/metadata/SHIPASO_README_ANDROID.md"
+    ]!;
+    expect(readme).toContain("fastlane supply");
+    expect(readme.toUpperCase()).toContain("OVERWRITES");
+    expect(readme.toLowerCase()).toContain("own");
+    expect(readme.toLowerCase()).toContain("credential");
   });
 });
