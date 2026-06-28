@@ -13,6 +13,8 @@
  *   total capped at 100; grade A≥85 B≥70 C≥50 D≥30 else F.
  */
 import { SCREENSHOT } from "./constants.js";
+import { primaryDeviceFamily } from "./store/profiles.js";
+import type { ScreenshotGroup, StoreProfile } from "./store/types.js";
 
 const { MAX_SLOTS, GOOD_MIN, KEY_SLOTS, TALL_RATIO } = SCREENSHOT;
 
@@ -106,6 +108,33 @@ export function gradeFor(pts: number): Grade {
   if (pts >= 30) return "D";
   return "F";
 }
+
+// ── Shared scoring budget (one source of truth for iOS + the generalized path) ─
+// These leaf helpers hold the EXACT point budget the iOS `score()` has always
+// used, so both the iOS scorer and the store-agnostic `scoreScreenshotGroups`
+// compute identical numbers without duplicating the magic constants.
+
+/** Count-tier points for the primary device family: 0→0, <GOOD_MIN→20, 6+→50, else 40. */
+export function countPoints(n: number): number {
+  if (n === 0) return 0;
+  if (n < GOOD_MIN) return 20;
+  return n >= 6 ? 50 : 40;
+}
+
+/** Secondary-coverage points: any non-primary device family present → 15, else 5. */
+export function coveragePoints(hasSecondary: boolean): number {
+  return hasSecondary ? 15 : 5;
+}
+
+/** Aspect points from the primary family's first-shot dims: tall→20, otherwise→10 (incl. unknown dims). */
+export function aspectPoints(dims: [number, number] | null): number {
+  if (!dims) return 10;
+  const [w, h] = dims;
+  return h / w >= TALL_RATIO ? 20 : 10;
+}
+
+/** Neutral caption credit (we don't OCR captions here) — the +8 the iOS path always added. */
+export const CAPTION_NEUTRAL_POINTS = 8;
 
 /**
  * The make-it tool for the count/aspect levers (#55) — the same MIT skill the
@@ -272,8 +301,9 @@ export function score(app: string, listing: Listing): ShotScore {
     };
   }
 
-  // count — the biggest lever (up to 50)
+  // count — the biggest lever (up to 50). Same budget via the shared helper.
   const n = iphone.length;
+  pts += countPoints(n);
   if (n === 0) {
     findings.push("✗ No iPhone screenshots — the listing can't convert. Add 4+.");
   } else if (n < GOOD_MIN) {
@@ -281,20 +311,17 @@ export function score(app: string, listing: Listing): ShotScore {
       `⚠ Only ${n} iPhone screenshots — add up to ${MAX_SLOTS}; ` +
         `the first ${KEY_SLOTS} carry most installs.`,
     );
-    pts += 20;
   } else {
     findings.push(`✓ ${n} iPhone screenshots (good — slots well used).`);
-    pts += n >= 6 ? 50 : 40;
   }
 
-  // iPad set — 15 pts
+  // iPad set — 15 pts (the secondary device family)
   if (ipad.length > 0) {
     findings.push(`✓ ${ipad.length} iPad screenshots present.`);
-    pts += 15;
   } else {
     findings.push("⚠ No iPad screenshots — fine if iPhone-only; add them if universal.");
-    pts += 5;
   }
+  pts += coveragePoints(ipad.length > 0);
 
   // aspect / device targeting — 20 pts
   let aspectHint = "";
@@ -305,25 +332,20 @@ export function score(app: string, listing: Listing): ShotScore {
       aspectHint = aspectLabel(w, h);
       if (h / w >= TALL_RATIO) {
         findings.push(`✓ Modern tall-phone ratio (${w}×${h}).`);
-        pts += 20;
       } else {
         findings.push(
           `⚠ Screenshots are ${w}×${h} (${aspectHint}) — verify they fit current devices.`,
         );
-        pts += 10;
       }
-    } else {
-      pts += 10;
     }
-  }
+    pts += aspectPoints(dims);
 
-  // caption heuristic — only with --fetch in Python; here we always take the
-  // neutral partial-credit branch (+8) and surface the info finding.
-  if (iphone.length > 0) {
+    // caption heuristic — only with --fetch in Python; here we always take the
+    // neutral partial-credit branch (+8) and surface the info finding.
     findings.push(
       "ℹ Run the caption check (image fetch) for a light first-screenshot review.",
     );
-    pts += 8;
+    pts += CAPTION_NEUTRAL_POINTS;
   }
 
   pts = Math.min(100, pts);
@@ -344,4 +366,139 @@ export function score(app: string, listing: Listing): ShotScore {
   // Engine-side compute = single TDD'd source of truth; the client renders only.
   result.levers = shotLevers(result);
   return result;
+}
+
+// ── Store-agnostic screenshot scoring (iOS + Android, one budget) ─────────────
+//
+// `score()` above is the iOS-facing API (kept byte-identical for back-compat).
+// `scoreScreenshotGroups()` is the generalized core the store abstraction uses:
+// it scores ANY profile's device families — iPhone/iPad OR phone/7"/10" tablet —
+// against the SAME point budget (via the shared `countPoints`/`coveragePoints`/
+// `aspectPoints` helpers), so Android gets real screenshot grades with zero
+// duplicated arithmetic and no new scoring dimensions invented for it.
+
+/** Per-device-family screenshot result inside a `FamilyShotScore`. */
+export type DeviceFamilyShot = {
+  /** the `DeviceFamily.key` this group scored under. */
+  family: string;
+  label: string;
+  count: number;
+  /** the resolved (loadable) URLs, in store order. */
+  urls: string[];
+};
+
+/** A store-agnostic screenshot score keyed by device family. */
+export type FamilyShotScore = {
+  app: string;
+  /** the primary family key (drives the count budget). */
+  primaryFamily: string;
+  primaryCount: number;
+  /** every family in the profile, with its resolved shots (count 0 when absent). */
+  families: DeviceFamilyShot[];
+  /** 0–100, or null when grade is "?" (unreadable/unknown). */
+  score: number | null;
+  grade: Grade;
+  findings: string[];
+  aspectHint: string;
+};
+
+/**
+ * Score a listing's screenshots for ANY store, against its profile's device
+ * families. Pure; no network. Mirrors `score()`'s budget exactly:
+ *   count(primary) up to 50 · any secondary family present +15 / none +5 ·
+ *   aspect of the primary family's first shot +20/+10 · caption +8 · cap 100.
+ *
+ * Honesty (#41): an empty PRIMARY set from an UNRELIABLE source (`reliable:false`
+ * — the public/licensed tier) grades "?" / null, never a false "grade F". This
+ * is the same discipline the iOS public-data path uses.
+ */
+export function scoreScreenshotGroups(
+  app: string,
+  input: { groups: ScreenshotGroup[]; reliable?: boolean },
+  profile: StoreProfile,
+): FamilyShotScore {
+  // Resolve every group's URL templates up front (so dims read + galleries load).
+  const byFamily = new Map<string, string[]>();
+  for (const g of input.groups) {
+    const resolved = (g.urls ?? []).map(resolveShotUrl);
+    byFamily.set(g.family, [...(byFamily.get(g.family) ?? []), ...resolved]);
+  }
+  const families: DeviceFamilyShot[] = profile.deviceFamilies.map((d) => {
+    const urls = byFamily.get(d.key) ?? [];
+    return { family: d.key, label: d.label, count: urls.length, urls };
+  });
+
+  const primary = primaryDeviceFamily(profile);
+  const primaryKey = primary?.key ?? profile.deviceFamilies[0]?.key ?? "";
+  const primaryShot = families.find((f) => f.family === primaryKey);
+  const primaryCount = primaryShot?.count ?? 0;
+  const primaryUrls = primaryShot?.urls ?? [];
+  const secondaryHasShots = families.some((f) => f.family !== primaryKey && f.count > 0);
+  const label = primary?.label ?? "primary";
+
+  // #41: empty primary set from an unreliable source ⇒ UNKNOWN, not zero.
+  if (primaryCount === 0 && input.reliable === false) {
+    return {
+      app,
+      primaryFamily: primaryKey,
+      primaryCount: 0,
+      families,
+      score: null,
+      grade: "?",
+      findings: [
+        `ℹ Couldn't read your ${label} screenshots from public store data — this is often incomplete. ` +
+          "Connect the store to audit your real screenshot set.",
+      ],
+      aspectHint: "",
+    };
+  }
+
+  const findings: string[] = [];
+  let pts = countPoints(primaryCount);
+  if (primaryCount === 0) {
+    findings.push(`✗ No ${label} screenshots — the listing can't convert. Add ${GOOD_MIN}+.`);
+  } else if (primaryCount < GOOD_MIN) {
+    findings.push(
+      `⚠ Only ${primaryCount} ${label} screenshots — add up to ${MAX_SLOTS}; ` +
+        `the first ${KEY_SLOTS} carry most installs.`,
+    );
+  } else {
+    findings.push(`✓ ${primaryCount} ${label} screenshots (good — slots well used).`);
+  }
+
+  pts += coveragePoints(secondaryHasShots);
+  findings.push(
+    secondaryHasShots
+      ? "✓ Secondary device (tablet) screenshots present."
+      : "⚠ No secondary device (tablet) screenshots — add them if you target tablets.",
+  );
+
+  let aspectHint = "";
+  if (primaryCount > 0) {
+    const dims = aspectFromUrl(primaryUrls[0] as string);
+    if (dims) {
+      const [w, h] = dims;
+      aspectHint = aspectLabel(w, h);
+      findings.push(
+        h / w >= TALL_RATIO
+          ? `✓ Modern tall ratio (${w}×${h}).`
+          : `⚠ Screenshots are ${w}×${h} (${aspectHint}) — verify they fit current devices.`,
+      );
+    }
+    pts += aspectPoints(dims);
+    findings.push("ℹ Run the caption check (image fetch) for a light first-screenshot review.");
+    pts += CAPTION_NEUTRAL_POINTS;
+  }
+
+  pts = Math.min(100, pts);
+  return {
+    app,
+    primaryFamily: primaryKey,
+    primaryCount,
+    families,
+    score: pts,
+    grade: gradeFor(pts),
+    findings,
+    aspectHint,
+  };
 }

@@ -5,10 +5,12 @@ import {
   gradeFor,
   resolveShotUrl,
   score,
+  scoreScreenshotGroups,
   shotLevers,
   type Lever,
   type Listing,
 } from "./screenshotScore.js";
+import { APP_STORE_PROFILE, GOOGLE_PLAY_PROFILE } from "./store/profiles.js";
 
 const TALL = "https://is1.mzstatic.com/image/thumb/x/v4/a/b/c/1290x2796bb.png";
 const WIDE = "https://is1.mzstatic.com/image/thumb/x/v4/a/b/c/392x696bb.png";
@@ -291,5 +293,82 @@ describe("shot levers (#55)", () => {
     expect(lever(ls, "count")!.skill).toBe(true);
     expect(lever(ls, "aspect")!.skill).toBe(true);
     expect(lever(ls, "ipad")!.skill).toBeFalsy();
+  });
+});
+
+// Step 2 of Google Play support: the store-agnostic `scoreScreenshotGroups`
+// scores ANY profile's device families on the SAME budget. iOS stays
+// byte-identical (the suite above is unchanged); Android phone/tablet sets now
+// get a real grade, and the generalized scorer must AGREE with `score()` on the
+// shared budget (no divergence).
+describe("scoreScreenshotGroups (store-agnostic, Android phone/tablet)", () => {
+  const phone = (n: number, url = TALL) => ({ family: "phone", urls: Array.from({ length: n }, () => url) });
+  const tablet = (n: number) => ({ family: "tablet10", urls: Array.from({ length: n }, () => "t") });
+
+  it("scores a full Play phone set (6 tall, no tablet) at 83 → B", () => {
+    const s = scoreScreenshotGroups("x", { groups: [phone(6)] }, GOOGLE_PLAY_PROFILE);
+    expect(s.score).toBe(83); // 50 (count) + 5 (no secondary) + 20 (tall) + 8 (caption)
+    expect(s.grade).toBe("B");
+    expect(s.primaryFamily).toBe("phone");
+    expect(s.primaryCount).toBe(6);
+  });
+
+  it("awards the secondary-coverage bonus for a tablet set", () => {
+    const withTablet = scoreScreenshotGroups("x", { groups: [phone(6), tablet(4)] }, GOOGLE_PLAY_PROFILE);
+    const phoneOnly = scoreScreenshotGroups("x", { groups: [phone(6)] }, GOOGLE_PLAY_PROFILE);
+    expect(withTablet.score!).toBeGreaterThan(phoneOnly.score!);
+    expect(withTablet.score).toBe(93); // +10 vs phone-only (15 vs 5 coverage)
+    expect(withTablet.grade).toBe("A");
+  });
+
+  it("reports every profile family (phone/tablet7/tablet10), never an iPad family", () => {
+    const s = scoreScreenshotGroups("x", { groups: [phone(3)] }, GOOGLE_PLAY_PROFILE);
+    expect(s.families.map((f) => f.family)).toEqual(["phone", "tablet7", "tablet10"]);
+    expect(s.families.some((f) => f.family === "ipad")).toBe(false);
+    expect(s.families.find((f) => f.family === "phone")?.count).toBe(3);
+  });
+
+  it("honesty (#41): empty primary set from an unreliable source is '?'/null, not F", () => {
+    const s = scoreScreenshotGroups("x", { groups: [], reliable: false }, GOOGLE_PLAY_PROFILE);
+    expect(s.grade).toBe("?");
+    expect(s.score).toBeNull();
+    expect(s.findings.some((f) => /Couldn't read/i.test(f))).toBe(true);
+  });
+
+  it("keeps a hard F for a genuinely-empty set when the source IS reliable", () => {
+    const s = scoreScreenshotGroups("x", { groups: [], reliable: true }, GOOGLE_PLAY_PROFILE);
+    expect(s.grade).toBe("F");
+    // 5 pts from the no-secondary coverage floor (matches iOS score() for an
+    // empty reliable set) — a real, low number, not the null "?" unknown.
+    expect(s.score).toBe(5);
+  });
+});
+
+// The generalized scorer must produce the SAME numeric score as the iOS `score()`
+// for the same iPhone/iPad input under the App Store profile — proof the two
+// paths share one budget and won't drift.
+describe("scoreScreenshotGroups ↔ score() parity (App Store profile)", () => {
+  const asGroups = (nIphone: number, nIpad: number, url = TALL) => ({
+    groups: [
+      { family: "iphone", urls: Array.from({ length: nIphone }, () => url) },
+      { family: "ipad", urls: Array.from({ length: nIpad }, () => "ipad") },
+    ],
+  });
+
+  it.each<[number, number, string]>([
+    [5, 0, WIDE],
+    [6, 0, TALL],
+    [6, 5, TALL],
+    [2, 0, TALL],
+    [0, 0, TALL],
+    [10, 10, TALL],
+  ])("iphone=%i ipad=%i agrees with score()", (nIphone, nIpad, url) => {
+    const generic = scoreScreenshotGroups("x", asGroups(nIphone, nIpad, url), APP_STORE_PROFILE);
+    const ios = score("x", {
+      screenshotUrls: Array.from({ length: nIphone }, () => url),
+      ipadScreenshotUrls: Array.from({ length: nIpad }, () => "ipad"),
+    });
+    expect(generic.score).toBe(ios.score);
+    expect(generic.grade).toBe(ios.grade);
   });
 });

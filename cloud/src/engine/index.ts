@@ -33,12 +33,37 @@ export {
   type ShotScore,
   type Grade,
   type Lever,
+  type FamilyShotScore,
+  type DeviceFamilyShot,
   score as scoreScreenshots,
+  scoreScreenshotGroups,
   shotLevers,
   gradeFor,
   aspectFromUrl,
   aspectLabel,
 } from "./screenshotScore.js";
+export {
+  type StoreId,
+  type SurfaceRole,
+  type RankingSurface,
+  type DeviceFamily,
+  type StoreProfile,
+  type ScreenshotGroup,
+  type NormalizedListing,
+  type StoreAdapter,
+} from "./store/types.js";
+export {
+  PLAY_CHAR_LIMITS,
+  APP_STORE_PROFILE,
+  GOOGLE_PLAY_PROFILE,
+  STORE_PROFILES,
+  profileFor,
+  getSurface,
+  surfaceByRole,
+  surfacesByRole,
+  indexedSurfaces,
+  primaryDeviceFamily,
+} from "./store/profiles.js";
 export {
   type KeywordInput,
   type ScoredKeyword,
