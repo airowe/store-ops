@@ -246,3 +246,14 @@ export {
   readPlayListingViaApi,
   playDeveloperApiAdapter,
 } from "./play/playDeveloperApi.js";
+export {
+  type FetchLike,
+  type GoogleServiceAccount,
+  type GoogleAccessToken,
+  GoogleAuthError,
+  ANDROIDPUBLISHER_SCOPE,
+  buildServiceAccountAssertion,
+  mintGoogleAccessToken,
+  playApiTransport,
+  playApiTransportForServiceAccount,
+} from "./play/googleAuth.js";
