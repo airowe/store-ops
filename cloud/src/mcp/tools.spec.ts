@@ -26,6 +26,7 @@ describe("MCP tool registry — read-or-draft only (PRD #93 safety invariant)", 
     expect(names).toEqual(
       [
         "audit_app",
+        "audit_play_app",
         "competitor_watch",
         "keyword_gaps",
         "localization_gaps",
@@ -104,5 +105,35 @@ describe("MCP tool handlers — delegate to the real engine pass", () => {
     await expect(
       toolByName("preview_app")!.handler({ query: "zzzznotanapp" }, ctx),
     ).rejects.toThrow(/No app found/);
+  });
+
+  it("audit_play_app audits a Play package (no keyword field, honest locks)", async () => {
+    const PLAY_PAGE = `<html><head><script type="application/ld+json">${JSON.stringify({
+      "@type": "SoftwareApplication",
+      name: "Calm - Sleep & Meditation",
+      description: "Guided meditation and sleep stories to help you relax.",
+      applicationCategory: "HEALTH_AND_FITNESS",
+      screenshot: ["https://play-lh.googleusercontent.com/s1"],
+    })}</script></head></html>`;
+    vi.stubGlobal("fetch", async (url: string) =>
+      String(url).includes("play.google.com")
+        ? new Response(PLAY_PAGE, { status: 200 })
+        : new Response("{}", { status: 200 }),
+    );
+    const out = (await toolByName("audit_play_app")!.handler(
+      { query: "com.calm.android" },
+      ctx,
+    )) as Record<string, unknown>;
+    expect(out.listing).toBeDefined();
+    expect((out.listing as Record<string, unknown>).keywordField).toBeNull(); // Play has none
+    expect(Array.isArray(out.findings)).toBe(true);
+    expect(out.summary).toBeDefined();
+  });
+
+  it("audit_play_app rejects a free-text name (Play has no public name search)", async () => {
+    vi.stubGlobal("fetch", async () => new Response("{}", { status: 200 }));
+    await expect(
+      toolByName("audit_play_app")!.handler({ query: "meditation app" }, ctx),
+    ).rejects.toThrow(/no public name search|No Google Play app/i);
   });
 });

@@ -27,7 +27,12 @@ import { getApp, getRankHistory, getRun, listAllApps, listRunsForApp } from "../
 import type { ReasoningTrace } from "../d1.js";
 import { extractWins, aggregateProof } from "../proof.js";
 import type { Env } from "../index.js";
-import { resolveOne, runReadOnlyAgent, type ResolvedApp } from "./appRun.js";
+import {
+  resolveOne,
+  runReadOnlyAgent,
+  runReadOnlyPlayAudit,
+  type ResolvedApp,
+} from "./appRun.js";
 
 const MAX_WAR_ROOM_COMPETITORS = 4;
 
@@ -58,6 +63,27 @@ const appSelector = {
   query: z.string().optional().describe("App name, App Store URL, numeric id, or bundle id"),
   bundleId: z.string().optional().describe("Exact bundle id (skips resolution)"),
   country: z.string().length(2).optional().describe("ISO country storefront, e.g. US"),
+};
+
+/**
+ * A Google Play target selector. Play has NO public name search, so the selector
+ * takes a package id or a play.google.com URL — never a free-text app name.
+ */
+const playAppSelector = {
+  query: z
+    .string()
+    .optional()
+    .describe("Google Play package id (com.foo.bar) or a play.google.com app URL"),
+  packageName: z.string().optional().describe("Exact Play package id (skips resolution)"),
+  country: z.string().length(2).optional().describe("ISO country storefront, e.g. US"),
+  targets: z
+    .array(z.string())
+    .optional()
+    .describe("Target search terms to measure long-description coverage for"),
+  brand: z
+    .string()
+    .optional()
+    .describe("App brand name, so brand-burn in the short description is flagged"),
 };
 
 function country(env: Env, args: Record<string, unknown>): string {
@@ -142,6 +168,48 @@ export const TOOLS: McpToolDef[] = [
         hasAscKey: false,
       });
       return { audit: result.audit, findings, summary: summarizeFindings(findings) };
+    },
+  },
+  {
+    name: "audit_play_app",
+    description:
+      "Read-only GOOGLE PLAY listing audit: screenshot grade, the 30/80/4000 " +
+      "title/short/long-description budget, target-term coverage in the long " +
+      "description (Play's keyword surface), a keyword-stuffing guard, prioritized " +
+      "findings + summary, and capability locks for surfaces a public read can't see. " +
+      "Takes a Play package id (com.foo.bar) or a play.google.com URL — NOT a " +
+      "free-text name (Play has no public name search). Play has NO keyword field. " +
+      "Reads public Play data only; never edits or pushes.",
+    readOnly: true,
+    inputSchema: playAppSelector,
+    async handler(args, ctx) {
+      const fetchFn = fetchForEnv(ctx.env);
+      const targets = Array.isArray(args.targets)
+        ? (args.targets as unknown[]).filter((t): t is string => typeof t === "string")
+        : undefined;
+      const out = await runReadOnlyPlayAudit(fetchFn, {
+        query: typeof args.query === "string" ? args.query : undefined,
+        packageName: typeof args.packageName === "string" ? args.packageName : undefined,
+        country: country(ctx.env, args),
+        ...(targets ? { targets } : {}),
+        brand: typeof args.brand === "string" ? args.brand : undefined,
+      });
+      if (out.kind === "not-found") {
+        throw new Error(
+          `No Google Play app found for "${out.query}". Provide a package id ` +
+            "(com.foo.bar) or a play.google.com URL — Play has no public name search.",
+        );
+      }
+      const a = out.audit;
+      return {
+        listing: a.listing,
+        screenshots: a.screenshots,
+        coverage: a.coverage,
+        keywords: a.keywords,
+        findings: a.findings,
+        summary: a.summary,
+        locks: a.locks,
+      };
     },
   },
   {

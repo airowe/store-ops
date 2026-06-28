@@ -15,7 +15,12 @@ import {
   type AgentResult,
   type AppCandidate,
   type FetchFn,
+  type PlayAudit,
+  auditPlayListing,
+  classifyQuery,
   lookup,
+  playAdapter,
+  playWebSource,
   resolveAppQuery,
   runAgent,
 } from "../engine/index.js";
@@ -94,4 +99,47 @@ export async function runReadOnlyAgent(
   if (opts.reasoner) overrides.reasoner = opts.reasoner;
   const input = await buildAppInput(appRow, overrides, {});
   return runAgent(fetchFn, input);
+}
+
+/** Resolved Play audit, or an honest not-found (Play has no public name search). */
+export type PlayAuditOutcome =
+  | { kind: "resolved"; audit: PlayAudit }
+  | { kind: "not-found"; query: string };
+
+/**
+ * Read-only Google Play audit — the Android sibling of `runReadOnlyAgent`.
+ *
+ * Resolves a Play PACKAGE id or a `play.google.com/...?id=` URL (a free-text name
+ * returns `not-found`, never a fabricated match — Play has no public name search),
+ * reads the public listing via our own provider, and runs the full Play audit
+ * (`auditPlayListing`). No DB, no push. The network call is the injected `FetchFn`,
+ * so it unit-tests without a runtime.
+ */
+export async function runReadOnlyPlayAudit(
+  fetchFn: FetchFn,
+  input: {
+    query?: string | undefined;
+    packageName?: string | undefined;
+    country?: string | undefined;
+    targets?: string[] | undefined;
+    brand?: string | undefined;
+  },
+): Promise<PlayAuditOutcome> {
+  const adapter = playAdapter(playWebSource(fetchFn));
+  let pkg = input.packageName?.trim();
+  if (!pkg) {
+    const query = input.query?.trim();
+    if (!query) throw new Error("query or packageName is required");
+    // A dotted package id or a Play URL classifies as "bundle-id"; a numeric App
+    // Store id or a plain name is not a resolvable Play package here.
+    const q = classifyQuery(query);
+    if (q.kind !== "bundle-id") return { kind: "not-found", query };
+    pkg = q.id;
+  }
+  const audit = await auditPlayListing(adapter, pkg, {
+    ...(input.country ? { country: input.country } : {}),
+    ...(input.targets ? { targets: input.targets } : {}),
+    ...(input.brand ? { brand: input.brand } : {}),
+  });
+  return { kind: "resolved", audit };
 }

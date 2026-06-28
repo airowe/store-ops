@@ -1,6 +1,47 @@
 import { describe, expect, it } from "vitest";
-import { resolveOne, runReadOnlyAgent } from "./appRun.js";
+import { resolveOne, runReadOnlyAgent, runReadOnlyPlayAudit } from "./appRun.js";
 import type { FetchFn } from "../engine/index.js";
+
+/** A fetch stub for Play: any play.google.com URL → a fixed listing page. */
+function stubPlayFetch(page?: string): FetchFn {
+  const html =
+    page ??
+    `<html><head><script type="application/ld+json">${JSON.stringify({
+      "@type": "SoftwareApplication",
+      name: "Calm - Sleep & Meditation",
+      description: "Guided meditation and sleep stories.",
+      screenshot: ["https://play-lh.googleusercontent.com/s1"],
+    })}</script></head></html>`;
+  return (async () => new Response(html, { status: 200 })) as unknown as FetchFn;
+}
+
+describe("runReadOnlyPlayAudit — read-only Google Play audit", () => {
+  it("audits a package id end to end (no keyword field, googleplay listing)", async () => {
+    const out = await runReadOnlyPlayAudit(stubPlayFetch(), { query: "com.calm.android" });
+    expect(out.kind).toBe("resolved");
+    if (out.kind !== "resolved") throw new Error("expected resolved");
+    expect(out.audit.listing.store).toBe("googleplay");
+    expect(out.audit.listing.title).toContain("Calm");
+    expect(out.audit.listing.keywordField).toBeNull();
+    expect(out.audit.summary.total).toBe(out.audit.findings.length);
+  });
+
+  it("resolves a play.google.com URL to its package", async () => {
+    const out = await runReadOnlyPlayAudit(stubPlayFetch(), {
+      query: "https://play.google.com/store/apps/details?id=com.calm.android",
+    });
+    expect(out.kind).toBe("resolved");
+  });
+
+  it("returns not-found for a free-text name (Play has no public name search)", async () => {
+    const out = await runReadOnlyPlayAudit(stubPlayFetch(), { query: "meditation app" });
+    expect(out.kind).toBe("not-found");
+  });
+
+  it("throws when neither query nor packageName is given", async () => {
+    await expect(runReadOnlyPlayAudit(stubPlayFetch(), {})).rejects.toThrow();
+  });
+});
 
 // A fetch stub: /lookup → one live listing; /search → the supplied result set
 // (empty by default, so rank checks return "not ranked" rather than a network).
