@@ -8,6 +8,7 @@ import {
   mintGoogleAccessToken,
   playApiTransport,
   playApiTransportForServiceAccount,
+  verifyPlayServiceAccount,
 } from "./googleAuth.js";
 
 /** Decode a base64url JWT segment to JSON. */
@@ -125,5 +126,59 @@ describe("playApiTransport", () => {
     // A subsequent API call carries the minted token (smoke: it resolves).
     const out = await transport({ method: "POST", url: "https://androidpublisher.googleapis.com/edits" });
     expect(out.status).toBe(200);
+  });
+});
+
+describe("verifyPlayServiceAccount", () => {
+  const tokenOk: FetchLike = async (url, init) => {
+    if (url.includes("/token")) {
+      return { ok: true, status: 200, text: async () => JSON.stringify({ access_token: "tok", expires_in: 3600 }) };
+    }
+    if (init.method === "POST" && url.endsWith("/edits")) {
+      return { ok: true, status: 200, text: async () => JSON.stringify({ id: "edit-1" }) };
+    }
+    return { ok: true, status: 204, text: async () => "" }; // DELETE
+  };
+
+  it("ok:true when the token mints and no package is probed", async () => {
+    const res = await verifyPlayServiceAccount(
+      async () => ({ ok: true, status: 200, text: async () => JSON.stringify({ access_token: "t", expires_in: 1 }) }),
+      SA,
+      { now: 1 },
+    );
+    expect(res.ok).toBe(true);
+  });
+
+  it("probes app access (edits.insert) and discards the edit when a package is given", async () => {
+    const calls: string[] = [];
+    const wrapped: FetchLike = async (url, init) => {
+      calls.push(`${init.method} ${url.split("/v3/")[1] ?? url}`);
+      return tokenOk(url, init);
+    };
+    const res = await verifyPlayServiceAccount(wrapped, SA, { packageName: "com.calm.android", now: 1 });
+    expect(res).toEqual({ ok: true, appAccessible: true });
+    expect(calls.some((c) => c.startsWith("DELETE"))).toBe(true); // probe edit cleaned up
+  });
+
+  it("ok:false with a clear reason when the token mint fails", async () => {
+    const res = await verifyPlayServiceAccount(
+      async () => ({ ok: false, status: 401, text: async () => "denied" }),
+      SA,
+      { now: 1 },
+    );
+    expect(res.ok).toBe(false);
+    if (res.ok) throw new Error("expected not ok");
+    expect(res.reason).toMatch(/token exchange failed/);
+  });
+
+  it("ok:false when Google rejects app access (403)", async () => {
+    const fetchLike: FetchLike = async (url) =>
+      url.includes("/token")
+        ? { ok: true, status: 200, text: async () => JSON.stringify({ access_token: "tok", expires_in: 1 }) }
+        : { ok: false, status: 403, text: async () => "forbidden" };
+    const res = await verifyPlayServiceAccount(fetchLike, SA, { packageName: "com.x", now: 1 });
+    expect(res.ok).toBe(false);
+    if (res.ok) throw new Error("expected not ok");
+    expect(res.reason).toMatch(/Grant the service account access/);
   });
 });

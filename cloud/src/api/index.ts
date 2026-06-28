@@ -66,18 +66,24 @@ import {
   type AgentResult,
   type AppCandidate,
   type CopyFields,
+  type FetchLike,
+  type GoogleServiceAccount,
   type ProposedCopy,
   type PushCommand,
   type PushInput,
   type WarRoomRankSnapshot,
+  auditPlayListing,
   buildPushCommands,
   buildWarRoom,
   lookup,
+  playApiTransportForServiceAccount,
+  playDeveloperApiAdapter,
   rankOpportunities,
   ranksFor,
   resolveAppQuery,
   resolveNameToBundle,
   runAgent,
+  verifyPlayServiceAccount,
 } from "../engine/index.js";
 import type { ReasoningTrace, AppRow, FindingsSummary } from "../d1.js";
 import { buildPreview } from "../engine/preview.js";
@@ -1267,6 +1273,111 @@ async function runAppWithAsc(
   return { id: runId, status: "awaiting_approval", digest: result.competitors.digest, ascRead: true };
 }
 
+// ── Google Play credentials (parallel of the App Store Connect .p8 path) ──────
+//
+// The user supplies their Play Developer API SERVICE-ACCOUNT JSON in the request
+// body, exactly like the ASC `.p8` arrives in /asc/verify and /apps/:id/run-asc:
+// it is used in-request to mint a short-lived token and is NEVER persisted (no
+// D1, no secret) and never logged. Only audit results / a boolean leave here.
+
+type PlayVerifyBody = { serviceAccount?: unknown; packageName?: string };
+type PlayAuditBody = {
+  serviceAccount?: unknown;
+  packageName?: string;
+  language?: string;
+  targets?: string[];
+  brand?: string;
+};
+
+/**
+ * Normalize the `serviceAccount` field (a JSON object OR a JSON string) into a
+ * `GoogleServiceAccount`. Throws a 400 with a key-free message on anything
+ * malformed — it never echoes the private key.
+ */
+function parseServiceAccount(raw: unknown): GoogleServiceAccount {
+  let obj: unknown = raw;
+  if (typeof raw === "string") {
+    try {
+      obj = JSON.parse(raw);
+    } catch {
+      throw new HttpError(400, "serviceAccount is not valid JSON");
+    }
+  }
+  if (!obj || typeof obj !== "object") {
+    throw new HttpError(400, "serviceAccount is required (the Play Developer API service-account JSON)");
+  }
+  const sa = obj as { client_email?: unknown; private_key?: unknown; token_uri?: unknown };
+  if (typeof sa.client_email !== "string" || typeof sa.private_key !== "string") {
+    throw new HttpError(400, "serviceAccount must include client_email and private_key");
+  }
+  return {
+    client_email: sa.client_email,
+    private_key: sa.private_key,
+    ...(typeof sa.token_uri === "string" ? { token_uri: sa.token_uri } : {}),
+  };
+}
+
+/** The Worker global fetch as the method+body `FetchLike` the Play API needs. */
+const workerFetchLike: FetchLike = (url, init) => fetch(url, init);
+
+/**
+ * POST /play/verify — opt-in Play service-account credential check (the parallel
+ * of POST /runs/:id/asc/verify). The JSON arrives in this request, is used to
+ * mint a token (and optionally probe access to `packageName` via a discarded
+ * edit), and is NEVER persisted. Only `{ ok, reason? }` leaves this function.
+ */
+async function playVerifyRoute(req: Request, env: Env, userId: string): Promise<unknown> {
+  void env;
+  void userId; // authed caller; the credential is in the body, not stored per-user.
+  const body = await req.json<PlayVerifyBody>().catch(() => ({}) as PlayVerifyBody);
+  const sa = parseServiceAccount(body.serviceAccount);
+  const packageName = body.packageName?.trim();
+  return verifyPlayServiceAccount(
+    workerFetchLike,
+    sa,
+    packageName ? { packageName } : {},
+  );
+}
+
+/**
+ * POST /apps/:id/audit-play — read-only own-app Google Play audit via the
+ * Developer API, using the service-account JSON supplied IN THIS REQUEST (never
+ * persisted). Owner-scoped on the connected app; the Play package id is supplied
+ * in the body (it may differ from the iOS bundle id). Read-only — the Developer
+ * API path opens and discards an edit and NEVER commits, so it can't publish.
+ */
+async function auditPlayRoute(
+  req: Request,
+  env: Env,
+  userId: string,
+  appId: string,
+): Promise<unknown> {
+  await requireOwnedApp(env, appId, userId);
+  const body = await req.json<PlayAuditBody>().catch(() => ({}) as PlayAuditBody);
+  const sa = parseServiceAccount(body.serviceAccount);
+  const packageName = (body.packageName ?? "").trim();
+  if (!packageName) {
+    throw new HttpError(400, "packageName is required (your Play package id, e.g. com.foo.bar)");
+  }
+  void env;
+
+  let transport;
+  try {
+    transport = await playApiTransportForServiceAccount(workerFetchLike, sa);
+  } catch (e) {
+    throw new HttpError(400, e instanceof Error ? e.message : "invalid service account");
+  }
+  const adapter = playDeveloperApiAdapter(transport, body.language ? { language: body.language } : {});
+  const targets = Array.isArray(body.targets)
+    ? body.targets.filter((t): t is string => typeof t === "string")
+    : undefined;
+  return auditPlayListing(adapter, packageName, {
+    ...(body.language ? { lang: body.language } : {}),
+    ...(targets ? { targets } : {}),
+    ...(typeof body.brand === "string" ? { brand: body.brand } : {}),
+  });
+}
+
 /**
  * DELETE /apps/:id — disconnect an app the user owns. Cascades to its runs,
  * rank/competitor snapshots, and approvals/proposals (see deleteApp), freeing a
@@ -2272,6 +2383,9 @@ export async function handleApi(req: Request, env: Env): Promise<Response> {
       if (seg.length === 3 && seg[1] && seg[2] === "run-asc" && method === "POST") {
         return json(await runAppWithAsc(req, env, user.id, seg[1]), 201, origin);
       }
+      if (seg.length === 3 && seg[1] && seg[2] === "audit-play" && method === "POST") {
+        return json(await auditPlayRoute(req, env, user.id, seg[1]), 200, origin);
+      }
       if (seg.length === 3 && seg[1] && seg[2] === "ranks" && method === "GET") {
         return json(await appRanks(env, user.id, seg[1], url), 200, origin);
       }
@@ -2283,6 +2397,13 @@ export async function handleApi(req: Request, env: Env): Promise<Response> {
       }
       if (seg.length === 3 && seg[1] && seg[2] === "share-card.svg" && method === "GET") {
         return await shareCardRoute(env, user.id, seg[1], url, origin);
+      }
+    }
+
+    // /play ... (Google Play credential check — service account in the body)
+    if (seg[0] === "play") {
+      if (seg.length === 2 && seg[1] === "verify" && method === "POST") {
+        return json(await playVerifyRoute(req, env, user.id), 200, origin);
       }
     }
 
