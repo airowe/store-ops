@@ -64,6 +64,25 @@ export {
   indexedSurfaces,
   primaryDeviceFamily,
 } from "./store/profiles.js";
+// Our own Google Play data provider (web-source fetch + standards-based parse).
+export {
+  type PlayPageOpts,
+  type PlayPageSource,
+  PlayError,
+  PLAY_DETAIL_URL,
+  PLAY_SEARCH_URL,
+  playDetailUrl,
+  playSearchUrl,
+  fetchText as fetchPlayText,
+  playWebSource,
+} from "./play/playWebSource.js";
+export {
+  type PlayDetailRaw,
+  extractLdJson,
+  extractOgMeta,
+  parsePlayDetail,
+} from "./play/playListingParse.js";
+export { mapPlayDetailToListing, readPlayListing } from "./play/readPlayListing.js";
 export {
   type KeywordInput,
   type ScoredKeyword,
