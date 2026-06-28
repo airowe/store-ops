@@ -84,6 +84,20 @@ export {
 } from "./play/playListingParse.js";
 export { mapPlayDetailToListing, readPlayListing } from "./play/readPlayListing.js";
 export {
+  type PlayFieldFill,
+  type PlayCoverageWaste,
+  type PlayCoverageReport,
+  type PlayCoverageOptions,
+  playCoverage,
+} from "./play/playCoverage.js";
+export {
+  type PlayTermCoverage,
+  type PlayKeywordReport,
+  type PlayKeywordInput,
+  type PlayKeywordOptions,
+  analyzePlayKeywords,
+} from "./play/playKeywordModel.js";
+export {
   type KeywordInput,
   type ScoredKeyword,
   scoreKeyword,
