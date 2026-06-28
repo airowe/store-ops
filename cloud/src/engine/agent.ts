@@ -219,14 +219,11 @@ export function buildPushCommands(bundleId: string, copy: ProposedCopy): PushCom
       command: `asc metadata set --bundle ${bundleId} --promo ${esc(copy.promo)}`,
     });
   }
-  cmds.push({
-    store: "googleplay",
-    tool: "gplay",
-    description: "Stage Play Store title + short description (no keyword field on Play).",
-    command:
-      `gplay listing update --package ${bundleId} ` +
-      `--title ${esc(copy.name)} --short-description ${esc(copy.subtitle)}`,
-  });
+  // NO Google Play command here. The previous `gplay listing update` was
+  // synthesized from the iOS name/subtitle — Android output derived from iOS copy
+  // with no real Play audit behind it, which is dishonest (constraint #3). The
+  // Play handoff is the `fastlane supply` metadata tree (buildFastlaneSupply),
+  // emitted ONLY when a real Play listing was actually read — never from iOS copy.
   return cmds;
 }
 
