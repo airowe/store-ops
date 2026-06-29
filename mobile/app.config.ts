@@ -35,7 +35,7 @@ const config: ExpoConfig = {
       },
     ],
   },
-  plugins: ["expo-router", "expo-secure-store", "expo-font"],
+  plugins: ["expo-router", "expo-secure-store", "expo-font", "expo-notifications"],
   experiments: { typedRoutes: true },
   extra: {
     apiBase: API_BASE,
