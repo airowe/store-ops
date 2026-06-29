@@ -3,17 +3,20 @@
  * run opens the run detail ("money screen"). Read-only; honest movement (an
  * unchecked keyword stays "—", never a guessed number).
  */
-import React from "react";
+import React, { useState } from "react";
 import { ActivityIndicator, Pressable, View } from "react-native";
 import { Stack, useLocalSearchParams, useRouter } from "expo-router";
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import { useAuth } from "../../../src/auth/AuthProvider.js";
-import { getApp, getDeltas } from "../../../src/api/endpoints.js";
+import { auditPlay, getApp, getDeltas, runAsc, verifyPlay } from "../../../src/api/endpoints.js";
 import { RankMovementRow } from "../../../src/components/RankMovementRow.js";
+import { CredentialSheet, type AscSubmit, type PlaySubmit } from "../../../src/components/CredentialSheet.js";
+import { PlayAuditView } from "../../../src/components/PlayAuditView.js";
 import { EmptyState } from "../../../src/components/EmptyState.js";
-import { Screen, AppText, Card, Centered } from "../../../src/components/primitives.js";
+import { Screen, AppText, Button, Card, Centered } from "../../../src/components/primitives.js";
 import { humanizeStatus, timeAgo } from "../../../src/lib/format.js";
 import { palette, spacing } from "../../../src/theme/index.js";
+import type { PlayAudit } from "../../../src/types/api.js";
 
 export default function AppDetail() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -23,6 +26,27 @@ export default function AppDetail() {
 
   const app = useQuery({ queryKey: ["app", id], queryFn: () => getApp(client, id!), enabled: !!id });
   const deltas = useQuery({ queryKey: ["deltas", id], queryFn: () => getDeltas(client, id!), enabled: !!id });
+
+  const [showCreds, setShowCreds] = useState(false);
+  const [playAudit, setPlayAudit] = useState<PlayAudit | null>(null);
+
+  // ASC read-and-improve: the .p8 is used once here and dropped (never stored).
+  const asc = useMutation({
+    mutationFn: (s: AscSubmit) => runAsc(client, id!, { ...s.cred }),
+    onSuccess: (run) => router.push(`/(app)/runs/${run.id}`),
+  });
+
+  // Play own-app audit: verify the service account, then audit. Credential used
+  // once across both calls and never persisted.
+  const play = useMutation({
+    mutationFn: async (s: PlaySubmit) => {
+      const pkg = app.data?.app.bundle_id ?? "";
+      const v = await verifyPlay(client, s.serviceAccount, pkg);
+      if (!v.ok) throw new Error(v.reason ?? "service account could not access this app");
+      return auditPlay(client, id!, { serviceAccount: s.serviceAccount, packageName: pkg });
+    },
+    onSuccess: (audit) => setPlayAudit(audit),
+  });
 
   if (app.isLoading) {
     return <Centered><ActivityIndicator color={palette.signal} /></Centered>;
@@ -52,6 +76,25 @@ export default function AppDetail() {
           ))}
         </Card>
       ) : null}
+
+      <Card>
+        <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
+          <AppText kind="lead">Credentialed audits</AppText>
+          <Button label={showCreds ? "Hide" : "Connect"} variant="ghost" onPress={() => setShowCreds((v) => !v)} />
+        </View>
+        <AppText kind="micro">Read your live listing with your own keys — used once, never stored on this device.</AppText>
+      </Card>
+
+      {showCreds ? (
+        <>
+          <CredentialSheet variant="asc" onSubmit={(v) => asc.mutate(v as AscSubmit)} busy={asc.isPending} />
+          {asc.isError ? <AppText kind="dim" style={{ color: palette.bad }}>{asc.error instanceof Error ? asc.error.message : "ASC run failed"}</AppText> : null}
+          <CredentialSheet variant="play" onSubmit={(v) => play.mutate(v as PlaySubmit)} busy={play.isPending} />
+          {play.isError ? <AppText kind="dim" style={{ color: palette.bad }}>{play.error instanceof Error ? play.error.message : "Play audit failed"}</AppText> : null}
+        </>
+      ) : null}
+
+      {playAudit ? <PlayAuditView audit={playAudit} /> : null}
 
       <AppText kind="title">Runs</AppText>
       {runs.length === 0 ? (

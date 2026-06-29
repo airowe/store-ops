@@ -16,6 +16,11 @@ jest.mock("expo-secure-store", () => {
   };
 });
 
+// Document picker: default to "canceled" so tests opt into a file explicitly.
+jest.mock("expo-document-picker", () => ({
+  getDocumentAsync: jest.fn(async () => ({ canceled: true, assets: null })),
+}));
+
 jest.mock("expo-linking", () => ({
   createURL: (path: string) => `shipaso://${path}`,
   parse: (url: string) => ({ queryParams: Object.fromEntries(new URL(url).searchParams) }),

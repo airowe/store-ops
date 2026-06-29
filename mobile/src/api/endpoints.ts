@@ -65,6 +65,21 @@ export const preview = (c: ApiClient, query: string) =>
   c.post<unknown>("/preview", { query });
 
 // ── credentials (Phase 3) ──────────────────────────────────────────────────────
+
+/** A newly-created run (from a credentialed pass). */
+export type RunCreated = { id: string; status: string; ascRead?: boolean };
+
+/**
+ * ASC read-and-improve run. The `.p8` + key/issuer ids are used ONCE in this
+ * request and never stored (server-side: in-request only; client-side: passed
+ * straight through, never persisted). Returns the new run to route to.
+ */
+export const runAsc = (
+  c: ApiClient,
+  appId: string,
+  body: { p8: string; keyId: string; issuerId: string; locale?: string },
+) => c.post<RunCreated>(`/apps/${enc(appId)}/run-asc`, body);
+
 export const verifyPlay = (c: ApiClient, serviceAccount: string, packageName?: string) =>
   c.post<PlayVerifyResult>("/play/verify", { serviceAccount, ...(packageName ? { packageName } : {}) });
 
