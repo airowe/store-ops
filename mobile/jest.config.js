@@ -3,7 +3,7 @@
 module.exports = {
   preset: "jest-expo",
   setupFilesAfterEnv: ["<rootDir>/jest.setup.ts"],
-  testMatch: ["<rootDir>/src/**/*.test.ts", "<rootDir>/src/**/*.test.tsx", "<rootDir>/app/**/*.test.tsx"],
+  testMatch: ["<rootDir>/src/**/*.test.ts", "<rootDir>/src/**/*.test.tsx", "<rootDir>/app/**/*.test.tsx", "<rootDir>/*.test.ts"],
   moduleNameMapper: {
     // Source uses ESM-correct ".js" import specifiers on ".ts" files (for tsc's
     // Bundler resolution); map them back so jest's resolver finds the TS source.
