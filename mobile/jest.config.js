@@ -3,6 +3,9 @@
 module.exports = {
   preset: "jest-expo",
   setupFilesAfterEnv: ["<rootDir>/jest.setup.ts"],
+  // The first test in each worker pays the cold babel/RN transform cost; a 5s
+  // default can flake on a cold CI cache. Give transforms room.
+  testTimeout: 30000,
   testMatch: ["<rootDir>/src/**/*.test.ts", "<rootDir>/src/**/*.test.tsx", "<rootDir>/app/**/*.test.tsx", "<rootDir>/*.test.ts"],
   moduleNameMapper: {
     // Source uses ESM-correct ".js" import specifiers on ".ts" files (for tsc's
