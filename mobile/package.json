@@ -1,0 +1,17 @@
+{
+  "name": "shipaso-mobile",
+  "version": "0.0.0",
+  "private": true,
+  "description": "ShipASO mobile (Expo) — client of the existing Worker API. Phase 0: portable, Expo-free core (typed API client, DTOs, theme tokens) verifiable with tsc + vitest. RN/Expo screens land in later phases and require an Expo-capable toolchain to build.",
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "devDependencies": {
+    "@types/node": "^20.19.43",
+    "typescript": "^5.5.4",
+    "vitest": "^2.0.5"
+  }
+}
