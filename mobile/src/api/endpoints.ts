@@ -6,13 +6,18 @@
  */
 import type { ApiClient } from "./client.js";
 import type {
+  AppDetail,
   AppList,
   AuthExchangeResult,
   AuthRequestResult,
+  DeltasView,
   Me,
   PlayAudit,
   PlayVerifyResult,
+  PushCommand,
+  RanksSeries,
   ResolveResult,
+  RunDetail,
 } from "../types/api.js";
 
 // ── auth ──────────────────────────────────────────────────────────────────────
@@ -34,6 +39,26 @@ export const connectApp = (c: ApiClient, body: { bundle_id?: string; query?: str
   c.post<ConnectResult>("/apps", body);
 
 export const listApps = (c: ApiClient) => c.get<AppList>("/apps");
+
+// ── app + run detail (the money screen) ─────────────────────────────────────────
+const enc = encodeURIComponent;
+export const getApp = (c: ApiClient, id: string) => c.get<AppDetail>(`/apps/${enc(id)}`);
+export const getRanks = (c: ApiClient, id: string, keyword?: string) =>
+  c.get<RanksSeries>(`/apps/${enc(id)}/ranks${keyword ? `?keyword=${enc(keyword)}` : ""}`);
+export const getDeltas = (c: ApiClient, id: string) => c.get<DeltasView>(`/apps/${enc(id)}/deltas`);
+export const getRun = (c: ApiClient, id: string) => c.get<RunDetail>(`/runs/${enc(id)}`);
+
+/** Approve/reject a run (the human gate). Returns the updated run view. */
+export const decideRun = (c: ApiClient, id: string, decision: "approve" | "reject") =>
+  c.post<RunDetail>(`/runs/${enc(id)}/${decision}`, { decision });
+
+/** Post-approval handoff: the (non-executed) push commands. */
+export const pushCommands = (c: ApiClient, id: string) =>
+  c.get<{ pushCommands: PushCommand[] }>(`/runs/${enc(id)}/push-commands`);
+
+/** The fastlane metadata zip URL (opened/shared, not parsed). */
+export const fastlaneZipUrl = (base: string, id: string) =>
+  `${base.replace(/\/+$/, "")}/runs/${enc(id)}/fastlane.zip`;
 
 // ── logged-out preview (try-before-signup) ─────────────────────────────────────
 export const preview = (c: ApiClient, query: string) =>
