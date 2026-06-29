@@ -40,7 +40,10 @@ export default function Dashboard() {
     <Screen>
       <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
         <AppText kind="title">Your apps</AppText>
-        <Button label="Sign out" variant="ghost" onPress={() => void signOut()} />
+        <View style={{ flexDirection: "row", gap: 4 }}>
+          <Button label="Portfolio" variant="ghost" onPress={() => router.push("/(app)/portfolio")} />
+          <Button label="Sign out" variant="ghost" onPress={() => void signOut()} />
+        </View>
       </View>
       {me?.email ? <AppText kind="micro">{me.email}{me.via === "demo" ? " · demo" : ""}</AppText> : null}
 

@@ -418,3 +418,53 @@ export type DeltaEntry = {
   direction: DeltaDirection;
 };
 export type DeltasView = { appName: string; entries: DeltaEntry[]; anyMovement: boolean };
+
+// ── Phase 4: extras ────────────────────────────────────────────────────────────
+
+export type WarTrend = "gaining" | "losing" | "flat" | "new" | "lost" | string;
+export type HeadToHead = {
+  keyword: string;
+  /** your current rank, or null if unranked. */
+  you: number | null;
+  /** your prior rank, or null when there's only one snapshot (skip count-up; never 0). */
+  youPrevious: number | null;
+  competitors: Array<{ name: string; rank: number | null }>;
+  /** your rank − best competitor rank; null when there's no gap to close. */
+  gapToBest: number | null;
+  trend: WarTrend;
+  winning: boolean;
+};
+export type WarRoomView = {
+  appName: string;
+  warRoom: HeadToHead[];
+  competitors: string[];
+  window: number;
+  checkedAt: string;
+};
+
+/** One app in the Scale portfolio roll-up. */
+export type PortfolioCard = {
+  appId: string;
+  name: string;
+  grade: string | null;
+  leadKeyword: string | null;
+  leadRank: number | null;
+  pendingApproval: boolean;
+};
+export type PortfolioSummary = {
+  totalApps: number;
+  pendingApprovals: number;
+  gradeBreakdown: Record<string, number>;
+  appsTracked: number;
+  cards: PortfolioCard[];
+};
+
+/** Public proof aggregates (anonymized). */
+export type ProofAggregate = {
+  appsWithWins: number;
+  totalWins: number;
+  bestImprovement: number;
+  medianImprovement: number;
+};
+
+export type CheckoutResult = { url: string };

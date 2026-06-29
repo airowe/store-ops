@@ -10,14 +10,18 @@ import type {
   AppList,
   AuthExchangeResult,
   AuthRequestResult,
+  CheckoutResult,
   DeltasView,
   Me,
   PlayAudit,
   PlayVerifyResult,
+  PortfolioSummary,
+  ProofAggregate,
   PushCommand,
   RanksSeries,
   ResolveResult,
   RunDetail,
+  WarRoomView,
 } from "../types/api.js";
 
 // ── auth ──────────────────────────────────────────────────────────────────────
@@ -88,3 +92,16 @@ export const auditPlay = (
   appId: string,
   body: { serviceAccount: string; packageName: string; language?: string; targets?: string[]; brand?: string },
 ) => c.post<PlayAudit>(`/apps/${encodeURIComponent(appId)}/audit-play`, body);
+
+// ── Phase 4: extras ────────────────────────────────────────────────────────────
+export const warRoom = (c: ApiClient, appId: string, competitors?: string[]) =>
+  c.get<WarRoomView>(`/apps/${enc(appId)}/war-room${competitors?.length ? `?competitors=${enc(competitors.join(","))}` : ""}`);
+
+/** The share-card SVG URL (fetched as text → rendered via react-native-svg). */
+export const shareCardUrl = (base: string, appId: string, size: "wide" | "square" = "wide") =>
+  `${base.replace(/\/+$/, "")}/apps/${enc(appId)}/share-card.svg?size=${size}`;
+
+export const portfolio = (c: ApiClient) => c.get<PortfolioSummary>("/portfolio");
+export const proof = (c: ApiClient) => c.get<ProofAggregate>("/proof");
+export const billingCheckout = (c: ApiClient, tier: string) =>
+  c.post<CheckoutResult>("/billing/checkout", { tier });

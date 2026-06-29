@@ -15,6 +15,7 @@ import { PlayAuditView } from "../../../src/components/PlayAuditView.js";
 import { EmptyState } from "../../../src/components/EmptyState.js";
 import { Screen, AppText, Button, Card, Centered } from "../../../src/components/primitives.js";
 import { humanizeStatus, timeAgo } from "../../../src/lib/format.js";
+import { shareWin } from "../../../src/lib/shareCard.js";
 import { palette, spacing } from "../../../src/theme/index.js";
 import type { PlayAudit } from "../../../src/types/api.js";
 
@@ -67,6 +68,11 @@ export default function AppDetail() {
     <Screen>
       <Stack.Screen options={{ title: a.name, headerShown: true }} />
       <AppText kind="dim">{a.bundle_id} · {a.country}</AppText>
+
+      <View style={{ flexDirection: "row", gap: spacing.sm }}>
+        <Button label="War room" variant="ghost" onPress={() => router.push(`/(app)/war-room/${a.id}`)} />
+        <Button label="Share a win" variant="ghost" onPress={() => void shareWin(a.id)} />
+      </View>
 
       {deltas.data && deltas.data.entries.length > 0 ? (
         <Card>
