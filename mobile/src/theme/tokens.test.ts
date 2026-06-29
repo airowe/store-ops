@@ -1,13 +1,10 @@
 import { readFileSync } from "node:fs";
-import { fileURLToPath } from "node:url";
-import { dirname, resolve } from "node:path";
-import { describe, expect, it } from "vitest";
+import { resolve } from "node:path";
 import { fonts, palette, theme } from "./tokens.js";
 
-const here = dirname(fileURLToPath(import.meta.url));
 /** The web's canonical design system — the single source of truth. */
 const stylesCss = readFileSync(
-  resolve(here, "../../../cloud/public/styles.css"),
+  resolve(__dirname, "../../../cloud/public/styles.css"),
   "utf8",
 );
 
@@ -45,7 +42,7 @@ describe("theme tokens", () => {
     ["bad", "bad"],
   ] as const)("--%s matches palette.%s", (cssName, key) => {
     const fromCss = cssVar(cssName);
-    expect(fromCss, `--${cssName} not found in styles.css`).not.toBeNull();
+    expect(fromCss).not.toBeNull(); // --${cssName} must exist in styles.css
     expect(palette[key].toLowerCase()).toBe(fromCss!.toLowerCase());
   });
 
