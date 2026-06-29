@@ -1,0 +1,14 @@
+{
+  "applinks": {
+    "details": [
+      {
+        "appIDs": ["TEAMID.com.shipaso.app"],
+        "components": [
+          { "/": "/auth/m", "comment": "magic-link → opens the app to exchange the token" },
+          { "/": "/apps/*", "comment": "deep link to an app detail screen" },
+          { "/": "/runs/*", "comment": "deep link to a run detail screen" }
+        ]
+      }
+    ]
+  }
+}
