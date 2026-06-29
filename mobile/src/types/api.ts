@@ -312,3 +312,159 @@ export type AppListItem = {
 };
 
 export type AppList = { apps: AppListItem[] };
+
+// ── Run detail (the money screen) ──────────────────────────────────────────────
+
+/** A generated, NON-executed store handoff command. Never run on the client. */
+export type PushCommand = {
+  store: "appstore" | "googleplay";
+  tool: "asc" | "gplay";
+  description: string;
+  command: string;
+};
+
+/** Editable listing copy. Fields absent (undefined) are unknown/unread. */
+export type CopyFields = {
+  name?: string;
+  subtitle?: string;
+  /** the keyword FIELD (comma-joined). */
+  keywords?: string;
+  promo?: string;
+  description?: string;
+  whatsNew?: string;
+};
+
+/** Keyword gap (PRD 01) — a term competitors use that you could win. */
+export type KeywordGap = {
+  keyword: string;
+  competitorsUsing: string[];
+  /** your current organic rank for this term, if any. null = unmeasured. */
+  youRank: number | null;
+  inYourMetadata: boolean;
+  score: number;
+  fitsBudget: boolean;
+};
+
+export type OpportunityDrivers = { distance: number; competitorWeakness: number; momentum: number };
+export type Reachability = "reachable" | "stretch" | "longshot" | string;
+
+/** Winnability opportunity (PRD 06) — "where to push next." */
+export type Opportunity = {
+  keyword: string;
+  /** current rank, or null when not in the top results (unmeasured ≠ 0). */
+  rank: number | null;
+  opportunityScore: number;
+  why: string;
+  reachability: Reachability;
+  drivers: OpportunityDrivers;
+};
+
+/** The slim, PII-safe ASC context a Mode-A run carries (when ASC was read). */
+export type AscContext = {
+  category?: string | null;
+  [k: string]: unknown;
+};
+
+/** The run-page `result` block — curated copy + counts only (privacy boundary). */
+export type RunResult = {
+  audit: {
+    /** iOS screenshot grade; null when unreadable/absent. */
+    screenshots?: ShotScore | null;
+    liveName?: string;
+    liveSubtitle?: string;
+    [k: string]: unknown;
+  };
+  findings: Finding[];
+  findingsSummary: FindingsSummary;
+  currentCopy: CopyFields;
+  proposedCopy: CopyFields & { [k: string]: unknown };
+  /** withheld ([]) until the human approves the run. */
+  pushCommands: PushCommand[];
+  coverage?: CoverageReport;
+  locks?: SurfaceLock[];
+  opportunities?: Opportunity[];
+  keywordGaps?: KeywordGap[];
+};
+
+export type RunApproval = { decision: string; decided_at: string };
+
+export type RunDetail = {
+  id: string;
+  app_id: string;
+  status: string;
+  created_at: string;
+  approval: RunApproval | null;
+  trigger?: { source?: string; reasons?: string[] } | null;
+  result: RunResult;
+};
+
+/** `GET /apps/:id` — the app row + its run history. */
+export type RunRow = { id: string; status: string; created_at: string };
+export type AppDetail = {
+  app: { id: string; bundle_id: string; name: string; country: string };
+  runs: RunRow[];
+};
+
+// ── Trend / movement ───────────────────────────────────────────────────────────
+export type RankPoint = { rank: number | null; total: number | null; checked_at: string };
+export type RanksSeries = { keyword: string; points: RankPoint[] };
+
+export type DeltaDirection = "up" | "down" | "flat" | string;
+export type DeltaEntry = {
+  keyword: string;
+  current: number | null;
+  previous: number | null;
+  delta: number | null;
+  direction: DeltaDirection;
+};
+export type DeltasView = { appName: string; entries: DeltaEntry[]; anyMovement: boolean };
+
+// ── Phase 4: extras ────────────────────────────────────────────────────────────
+
+export type WarTrend = "gaining" | "losing" | "flat" | "new" | "lost" | string;
+export type HeadToHead = {
+  keyword: string;
+  /** your current rank, or null if unranked. */
+  you: number | null;
+  /** your prior rank, or null when there's only one snapshot (skip count-up; never 0). */
+  youPrevious: number | null;
+  competitors: Array<{ name: string; rank: number | null }>;
+  /** your rank − best competitor rank; null when there's no gap to close. */
+  gapToBest: number | null;
+  trend: WarTrend;
+  winning: boolean;
+};
+export type WarRoomView = {
+  appName: string;
+  warRoom: HeadToHead[];
+  competitors: string[];
+  window: number;
+  checkedAt: string;
+};
+
+/** One app in the Scale portfolio roll-up. */
+export type PortfolioCard = {
+  appId: string;
+  name: string;
+  grade: string | null;
+  leadKeyword: string | null;
+  leadRank: number | null;
+  pendingApproval: boolean;
+};
+export type PortfolioSummary = {
+  totalApps: number;
+  pendingApprovals: number;
+  gradeBreakdown: Record<string, number>;
+  appsTracked: number;
+  cards: PortfolioCard[];
+};
+
+/** Public proof aggregates (anonymized). */
+export type ProofAggregate = {
+  appsWithWins: number;
+  totalWins: number;
+  bestImprovement: number;
+  medianImprovement: number;
+};
+
+export type CheckoutResult = { url: string };

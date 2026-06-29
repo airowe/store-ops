@@ -1,4 +1,3 @@
-import { describe, expect, it, vi } from "vitest";
 import { createApiClient } from "./client.js";
 import { ApiError } from "./errors.js";
 
@@ -56,7 +55,7 @@ describe("createApiClient", () => {
 
   it("invokes onUnauthorized exactly once on a 401, then rejects with ApiError", async () => {
     const { fetch } = fakeFetch({ status: 401, body: { error: "session expired" } });
-    const onUnauthorized = vi.fn();
+    const onUnauthorized = jest.fn();
     const client = createApiClient({ baseUrl: BASE, fetch, onUnauthorized });
 
     await expect(client.get("/apps")).rejects.toMatchObject({
