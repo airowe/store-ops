@@ -1,16 +1,10 @@
 /**
- * Placeholder entry screen (Phase 0). Confirms the app boots themed and can name
- * its job. Phase 1 replaces this with the auth guard that routes to the dashboard
- * `(app)` or the `(public)` login based on `GET /auth/me`.
+ * Entry route — bounce into the authed group. The `(app)` guard handles the
+ * loading spinner and the redirect to `(public)/login` when unauthed, so the
+ * routing decision lives in exactly one place.
  */
-import React from "react";
-import { Centered, AppText } from "../src/components/primitives.js";
+import { Redirect } from "expo-router";
 
 export default function Index() {
-  return (
-    <Centered>
-      <AppText kind="display">ShipASO</AppText>
-      <AppText kind="dim">Honest ASO, on your phone.</AppText>
-    </Centered>
-  );
+  return <Redirect href="/(app)" />;
 }

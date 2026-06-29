@@ -20,5 +20,6 @@ jest.mock("expo-linking", () => ({
   createURL: (path: string) => `shipaso://${path}`,
   parse: (url: string) => ({ queryParams: Object.fromEntries(new URL(url).searchParams) }),
   useURL: () => null,
+  getInitialURL: jest.fn(async () => null),
   addEventListener: jest.fn(() => ({ remove: jest.fn() })),
 }));
