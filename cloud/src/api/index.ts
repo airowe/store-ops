@@ -28,6 +28,8 @@
  *                           {sent:true} (never leaks whether the email exists).
  *   GET  /auth/callback     ?token=… → verify the magic link, set the session
  *                           cookie, redirect to the dashboard (or 200 {ok}).
+ *   POST /auth/exchange     {token} → MOBILE: verify the magic link, return the
+ *                           session token as JSON {token} (no cookie) for Bearer.
  *   POST /auth/logout       clear the session cookie.
  *   GET  /auth/me           { authed, via:"session"|"demo", email? } — the
  *                           dashboard's boot check (login screen vs app).
@@ -556,6 +558,37 @@ async function authCallback(req: Request, env: Env, origin: string | null): Prom
   });
 }
 
+/**
+ * POST /auth/exchange { token } — the MOBILE counterpart to /auth/callback.
+ *
+ * A native app can't carry a session cookie, but `requireUser` already accepts
+ * `Authorization: Bearer <session-token>`. So instead of setting a cookie and
+ * redirecting (what the browser flow needs), the app posts its magic-link token
+ * here and gets the freshly-minted session token back in the JSON BODY, which it
+ * stores in the device keychain (expo-secure-store) and sends as a Bearer header.
+ *
+ * Reuses the exact same magic-link crypto + session minting as the cookie path —
+ * the ONLY difference is delivery (body vs Set-Cookie). No cookie is set here.
+ * Public route (the magic token IS the credential), same 400 on a bad/expired
+ * link so we never reveal whether an email exists.
+ */
+async function authExchange(req: Request, env: Env): Promise<Response> {
+  const origin = req.headers.get("Origin");
+  const body = await readJson<{ token?: string }>(req);
+  const token = typeof body.token === "string" ? body.token : "";
+  const res = await verifyMagicToken(sessionSecret(env), token);
+  if (!res.ok) {
+    return json({ error: "invalid or expired link" }, 400, origin, env);
+  }
+  await upsertUser(env.DB, res.email);
+  const session = await mintSessionToken(sessionSecret(env), res.email, {
+    ttlSeconds: SESSION_TTL_SECONDS,
+  });
+  // Token in the body — NOT a cookie. The app stores it in SecureStore and sends
+  // it as `Authorization: Bearer` on every call (the requireUser Bearer path).
+  return json({ token: session, email: res.email }, 200, origin, env);
+}
+
 /** POST /auth/logout — clear the session cookie (same scope it was set with). */
 function authLogout(origin: string | null, env: Env): Response {
   return json({ ok: true }, 200, origin, env, {
@@ -572,8 +605,14 @@ function authLogout(origin: string | null, env: Env): Response {
  * Always 200 (the body carries the state) so it's a simple client check.
  */
 async function authMe(req: Request, env: Env, origin: string | null): Promise<Response> {
+  // The session token may arrive as a cookie (web) OR an Authorization: Bearer
+  // header (mobile — the same signed token, carried in a header). Mobile boots
+  // via this route, so it must recognize the Bearer token, exactly like the
+  // requireUser path does.
   const jar = parseCookie(req.headers.get("Cookie"));
-  const token = jar[SESSION_COOKIE];
+  const authz = req.headers.get("Authorization") ?? "";
+  const bearer = /^Bearer\s+/i.test(authz) ? authz.replace(/^Bearer\s+/i, "").trim() : "";
+  const token = jar[SESSION_COOKIE] || bearer;
   if (token) {
     const res = await verifySessionToken(sessionSecret(env), token);
     if (res.ok) {
@@ -2246,6 +2285,9 @@ export async function handleApi(req: Request, env: Env): Promise<Response> {
       }
       if (seg[1] === "callback" && seg.length === 2 && method === "GET") {
         return authCallback(req, env, origin);
+      }
+      if (seg[1] === "exchange" && seg.length === 2 && method === "POST") {
+        return authExchange(req, env);
       }
       if (seg[1] === "logout" && seg.length === 2 && method === "POST") {
         return authLogout(origin, env);

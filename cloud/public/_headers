@@ -18,3 +18,14 @@
   Cache-Control: public, max-age=31536000, immutable
 /*.css
   Cache-Control: public, max-age=31536000, immutable
+
+# Universal-link association files (mobile deep links + magic-link → app).
+# Apple requires the EXTENSIONLESS apple-app-site-association to be served as
+# application/json with no redirect; assetlinks.json is JSON by extension but we
+# pin its type too. Short cache so a fingerprint/appID fix propagates quickly.
+/.well-known/apple-app-site-association
+  Content-Type: application/json
+  Cache-Control: public, max-age=3600
+/.well-known/assetlinks.json
+  Content-Type: application/json
+  Cache-Control: public, max-age=3600
