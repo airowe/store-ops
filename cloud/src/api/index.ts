@@ -1371,11 +1371,17 @@ async function auditPlayRoute(
   const targets = Array.isArray(body.targets)
     ? body.targets.filter((t): t is string => typeof t === "string")
     : undefined;
-  return auditPlayListing(adapter, packageName, {
-    ...(body.language ? { lang: body.language } : {}),
-    ...(targets ? { targets } : {}),
-    ...(typeof body.brand === "string" ? { brand: body.brand } : {}),
-  });
+  try {
+    return await auditPlayListing(adapter, packageName, {
+      ...(body.language ? { lang: body.language } : {}),
+      ...(targets ? { targets } : {}),
+      ...(typeof body.brand === "string" ? { brand: body.brand } : {}),
+    });
+  } catch (e) {
+    // PlayApiError messages are key-free (HTTP status only) — safe to surface as a
+    // clean upstream error rather than a generic 500.
+    throw new HttpError(502, e instanceof Error ? e.message : "Play audit failed");
+  }
 }
 
 /**

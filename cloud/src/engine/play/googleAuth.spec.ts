@@ -37,7 +37,7 @@ beforeAll(async () => {
   SA = {
     client_email: "svc@my-proj.iam.gserviceaccount.com",
     private_key: pem,
-    token_uri: "https://oauth2.test/token",
+    token_uri: "https://oauth2.googleapis.com/token",
   };
 });
 
@@ -49,7 +49,7 @@ describe("buildServiceAccountAssertion", () => {
     const claims = decodeSegment(c!);
     expect(claims.iss).toBe(SA.client_email);
     expect(claims.scope).toBe(ANDROIDPUBLISHER_SCOPE);
-    expect(claims.aud).toBe("https://oauth2.test/token");
+    expect(claims.aud).toBe("https://oauth2.googleapis.com/token");
     expect(claims.iat).toBe(1_000_000);
     expect(claims.exp).toBe(1_000_000 + 3600);
 
@@ -69,6 +69,23 @@ describe("buildServiceAccountAssertion", () => {
       buildServiceAccountAssertion({ ...SA, private_key: "not a key" }),
     ).rejects.toBeInstanceOf(GoogleAuthError);
   });
+
+  it("rejects a non-googleapis token_uri (SSRF defense)", async () => {
+    await expect(
+      buildServiceAccountAssertion({ ...SA, token_uri: "https://evil.example.com/token" }),
+    ).rejects.toThrow(/googleapis\.com/);
+    await expect(
+      buildServiceAccountAssertion({ ...SA, token_uri: "http://oauth2.googleapis.com/token" }),
+    ).rejects.toThrow(/googleapis\.com/); // http (not https) also rejected
+  });
+
+  it("accepts the standard googleapis token endpoint", async () => {
+    const jwt = await buildServiceAccountAssertion(
+      { ...SA, token_uri: "https://oauth2.googleapis.com/token" },
+      { now: 1 },
+    );
+    expect(jwt.split(".")).toHaveLength(3);
+  });
 });
 
 describe("mintGoogleAccessToken", () => {
@@ -85,7 +102,7 @@ describe("mintGoogleAccessToken", () => {
     const tok = await mintGoogleAccessToken(fetchLike, SA, { now: 1_000_000 });
     expect(tok.accessToken).toBe("ya29.test-token");
     expect(tok.expiresIn).toBe(3599);
-    expect(captured!.url).toBe("https://oauth2.test/token");
+    expect(captured!.url).toBe("https://oauth2.googleapis.com/token");
     expect(captured!.body).toContain("grant_type=urn%3Aietf%3Aparams%3Aoauth%3Agrant-type%3Ajwt-bearer");
     expect(captured!.body).toContain("assertion=");
   });
