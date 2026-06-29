@@ -1,0 +1,314 @@
+/**
+ * Shared API DTOs — the response/result shapes the mobile app consumes from the
+ * Worker API (`https://api.shipaso.com`). These MIRROR the engine's public types
+ * in `cloud/src/engine/**` and `cloud/src/api/index.ts`; the phone is a dumb
+ * client of that JSON and does NOT re-implement the ASO engine (see
+ * `docs/prd/expo-app/00-implementation-plan.md` §1b — share types, not the engine).
+ *
+ * The load-bearing honesty contract rides through these types unchanged:
+ *   • a string (incl. "") is MEASURED; `null` is UNREAD / UNMEASURED.
+ *   • `keywordField` is ALWAYS null for Google Play (Play has no keyword field).
+ *   • a `score` of `null` (grade "?") means unknown/unreadable — NOT zero.
+ *   • `seen:false` on a coverage field means UNKNOWN, not a measured 0.
+ *   • `SurfaceLock`s are capability gaps ("connect to unlock"), never deficiencies.
+ *
+ * Kept narrow on purpose: only the shapes a screen renders. When `cloud/` later
+ * imports a shared package to guarantee no drift, these are the canonical fields.
+ */
+
+// ── Auth ──────────────────────────────────────────────────────────────────────
+
+/** `GET /auth/me` — the session boot check. */
+export type Me = {
+  authed: boolean;
+  /** how the caller was identified. "demo" is the X-User-Email stub (dev only). */
+  via?: "session" | "demo";
+  email?: string;
+};
+
+/** `POST /auth/request {email}` — passwordless magic-link request. Always sent. */
+export type AuthRequestResult = { sent: true };
+
+/**
+ * Mobile auth callback/exchange — the magic-link token is exchanged for a signed
+ * session token the app stores in SecureStore and sends as `Authorization: Bearer`.
+ * (Server gate: the JSON/mobile mode on `/auth/callback` or `/auth/exchange`.)
+ */
+export type AuthExchangeResult = { token: string };
+
+// ── Resolve / connect (dashboard) ────────────────────────────────────────────
+
+export type Query =
+  | { kind: "appstore-id"; id: string }
+  | { kind: "bundle-id"; id: string }
+  | { kind: "name"; term: string };
+
+/** A connectable app candidate, normalized from a store search result. */
+export type AppCandidate = {
+  bundleId: string;
+  name: string;
+  publisher: string | null;
+  genres: string[];
+  trackId: number | null;
+  iconUrl: string | null;
+};
+
+/** `POST /resolve {query}` — classify a query into a connectable result. */
+export type ResolveResult = {
+  /**
+   * resolved   — exactly one connectable match (connect can proceed directly)
+   * candidates — several matches; the user must pick one
+   * not-found  — nothing connectable matched
+   */
+  kind: "resolved" | "candidates" | "not-found";
+  query: Query;
+  candidates: AppCandidate[];
+  /** the offset this page started at (0 for the first page). */
+  offset: number;
+  /** true when another page of name-search results exists (drives "Show more"). */
+  hasMore: boolean;
+};
+
+// ── Findings ─────────────────────────────────────────────────────────────────
+
+export type FindingSeverity = "critical" | "warn" | "good" | "info";
+export type FindingImpact = "ranking" | "conversion" | "trust" | "completeness";
+
+export type Finding = {
+  /** stable id, e.g. "privacy_policy_missing" */
+  id: string;
+  /** the surface it came from, e.g. "appInfo" | "previews" | "screenshots" */
+  surface: string;
+  severity: FindingSeverity;
+  impact: FindingImpact;
+  title: string;
+  detail: string;
+  fix: string;
+  /** the data point, when it sharpens the point. */
+  evidence?: string;
+};
+
+/**
+ * A surface a run could NOT read — an honest capability lock ("we can't SEE this
+ * without access"), never a deficiency. Renders as a "connect to unlock" prompt.
+ */
+export type SurfaceLock = {
+  surface: string;
+  label: string;
+  unlockCopy: string;
+};
+
+export type FindingsSummary = {
+  critical: number;
+  warn: number;
+  good: number;
+  info: number;
+  total: number;
+  /** the impact lane of the highest-weighted finding, or null when there are none. */
+  topImpact: FindingImpact | null;
+  /** human one-liner, e.g. "3 fixes available · 1 critical" or "No fixes found". */
+  label: string;
+};
+
+// ── Screenshots ──────────────────────────────────────────────────────────────
+
+export type Grade = "A" | "B" | "C" | "D" | "F" | "?";
+
+/** A prioritized, quantified C→B→A improvement lever. */
+export type Lever = {
+  id: "count" | "ipad" | "aspect";
+  label: string;
+  detail: string;
+  /** point gain (> 0 always — never a no-op lever). */
+  delta: number;
+  fromGrade: Grade;
+  toGrade: Grade;
+  /** true → offer the screenshots skill linkout. */
+  skill?: boolean;
+};
+
+/** iOS screenshot score (iphone/ipad families). */
+export type ShotScore = {
+  app: string;
+  iphoneCount: number;
+  ipadCount: number;
+  /** 0–100, or null when grade is "?" (unknown/unreadable). */
+  score: number | null;
+  grade: Grade;
+  findings: string[];
+  aspectHint: string;
+  /** the REAL screenshot URLs graded, App Store order. Empty for the "?" set. */
+  screenshotUrls: string[];
+  ipadScreenshotUrls: string[];
+  /** empty for the unreadable "?" set and for an A-grade set (no headroom). */
+  levers: Lever[];
+};
+
+/** One device family's resolved shots (store-agnostic, e.g. Play phone/tablet). */
+export type DeviceFamilyShot = {
+  family: string;
+  label: string;
+  count: number;
+  /** the resolved (loadable) URLs, in store order. */
+  urls: string[];
+};
+
+/** A store-agnostic screenshot score keyed by device family. */
+export type FamilyShotScore = {
+  app: string;
+  /** the primary family key (drives the count budget). */
+  primaryFamily: string;
+  primaryCount: number;
+  families: DeviceFamilyShot[];
+  /** 0–100, or null when grade is "?" (unreadable/unknown). */
+  score: number | null;
+  grade: Grade;
+  findings: string[];
+  aspectHint: string;
+};
+
+// ── Coverage (iOS) ───────────────────────────────────────────────────────────
+
+export type CoverageWaste = {
+  kind: "duplicate" | "brand_repeat" | "filler" | "unused";
+  detail: string;
+  chars: number;
+};
+
+export type FieldFill = {
+  field: "name" | "subtitle" | "keywords";
+  limit: number;
+  /** chars used — 0 for an unseen field (carries no measured value). */
+  used: number;
+  fillPct: number;
+  /** false when the field's input was undefined (unseen) — a 0 here is UNKNOWN. */
+  seen: boolean;
+};
+
+export type CoverageReport = {
+  /** 0–100: (available budget − total waste chars) / available budget, clamped. */
+  coverageScore: number;
+  usedChars: { name: number; subtitle: number; keywords: number };
+  fieldFill: FieldFill[];
+  distinctTerms: number;
+  waste: CoverageWaste[];
+  /** a high-value term that would fit. Deferred → omitted. */
+  topMissingValue?: string;
+};
+
+// ── Google Play (connected-tier own-app audit) ───────────────────────────────
+
+export type StoreId = "appstore" | "googleplay";
+
+/** A device family's screenshot URLs, joined to a `DeviceFamily.key`. */
+export type ScreenshotGroup = { family: string; urls: string[] };
+
+/**
+ * The store-agnostic listing the engine reads. HONEST tri-state on every text
+ * field: a string (incl. "") = MEASURED; `null` = UNREAD. `keywordField` is
+ * ALWAYS null for Play (absent, never "empty").
+ */
+export type NormalizedListing = {
+  store: StoreId;
+  /** bundleId (iOS) / packageName (Play). */
+  appId: string;
+  title: string | null;
+  /** subtitle (iOS) / short description (Play). */
+  tagline: string | null;
+  /** iOS keyword field; ALWAYS null on Play. */
+  keywordField: string | null;
+  longDescription: string | null;
+  screenshots: ScreenshotGroup[];
+  category: { id: string; name: string | null } | null;
+  /** is this source trustworthy for ABSENCE? false → empty means UNKNOWN, not zero. */
+  reliable: boolean;
+};
+
+export type PlayFieldFill = {
+  field: "title" | "shortDescription" | "description";
+  limit: number;
+  used: number;
+  fillPct: number;
+  seen: boolean;
+};
+
+export type PlayCoverageWaste = {
+  kind: "stuffing" | "brand_repeat";
+  detail: string;
+  term: string;
+  count: number;
+};
+
+export type PlayCoverageReport = {
+  fieldFill: PlayFieldFill[];
+  distinctTerms: number;
+  waste: PlayCoverageWaste[];
+  /** 0–100 efficiency heuristic — "how hard your indexed text works", NOT rank. */
+  coverageScore: number;
+  stuffingRisk: boolean;
+};
+
+export type PlayTermCoverage = {
+  term: string;
+  inTitle: boolean;
+  inShortDescription: boolean;
+  inDescription: boolean;
+  /** MEASURED occurrences in the long description (never extrapolated to volume). */
+  descriptionCount: number;
+  covered: boolean;
+};
+
+export type PlayKeywordReport = {
+  terms: PlayTermCoverage[];
+  missingFromDescription: string[];
+  uncovered: string[];
+  stuffed: string[];
+};
+
+export type PlayAudit = {
+  appId: string;
+  listing: NormalizedListing;
+  screenshots: FamilyShotScore;
+  coverage: PlayCoverageReport;
+  keywords: PlayKeywordReport;
+  findings: Finding[];
+  summary: FindingsSummary;
+  /** surfaces this run could not read (capability locks, never deficiencies). */
+  locks: SurfaceLock[];
+};
+
+/** `POST /play/verify` — service-account credential check (key used once). */
+export type PlayVerifyResult = {
+  ok: boolean;
+  reason?: string;
+  appAccessible?: boolean;
+};
+
+// ── Dashboard rows ───────────────────────────────────────────────────────────
+
+export type RankSummary = {
+  lead_keyword: string;
+  lead_rank: number | null;
+  top10: number;
+  tracked: number;
+};
+
+export type LatestRun = {
+  id: string;
+  status: string;
+  created_at: string;
+};
+
+/** `GET /apps` — one app card: identity + latest-run badge + rank/findings summary. */
+export type AppListItem = {
+  id: string;
+  bundle_id: string;
+  name: string;
+  country: string;
+  created_at: string;
+  latest_run: LatestRun | null;
+  rank_summary: RankSummary | null;
+  findings_summary: FindingsSummary | null;
+};
+
+export type AppList = { apps: AppListItem[] };
