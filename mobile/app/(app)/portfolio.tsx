@@ -11,14 +11,17 @@ import * as WebBrowser from "expo-web-browser";
 import { useAuth } from "../../src/auth/AuthProvider.js";
 import { billingCheckout, portfolio } from "../../src/api/endpoints.js";
 import { PortfolioRow } from "../../src/components/Portfolio.js";
+import { Grid } from "../../src/components/Grid.js";
 import { EmptyState } from "../../src/components/EmptyState.js";
 import { Screen, AppText, Button, Card, Centered } from "../../src/components/primitives.js";
 import { ApiError } from "../../src/api/errors.js";
-import { palette, spacing } from "../../src/theme/index.js";
+import { useLayout } from "../../src/theme/responsive.js";
+import { palette } from "../../src/theme/index.js";
 
 export default function Portfolio() {
   const { client } = useAuth();
   const router = useRouter();
+  const { columns } = useLayout();
 
   const pf = useQuery({ queryKey: ["portfolio"], queryFn: () => portfolio(client) });
 
@@ -64,11 +67,11 @@ export default function Portfolio() {
         <AppText kind="title">{d.totalApps} apps</AppText>
         <AppText kind="dim">{d.pendingApprovals} awaiting approval · {d.appsTracked} tracked</AppText>
       </Card>
-      <View style={{ gap: spacing.sm }}>
+      <Grid columns={columns}>
         {d.cards.map((c) => (
           <PortfolioRow key={c.appId} card={c} onPress={(id) => router.push(`/(app)/apps/${id}`)} />
         ))}
-      </View>
+      </Grid>
     </Screen>
   );
 }

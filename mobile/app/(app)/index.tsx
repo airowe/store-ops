@@ -12,9 +12,11 @@ import { connectApp, listApps } from "../../src/api/endpoints.js";
 import { AppCard } from "../../src/components/AppCard.js";
 import { ConnectPicker } from "../../src/components/ConnectPicker.js";
 import { EmptyState } from "../../src/components/EmptyState.js";
+import { Grid } from "../../src/components/Grid.js";
 import { Screen, AppText, Button, Centered } from "../../src/components/primitives.js";
 import { ActivityIndicator } from "react-native";
-import { palette, spacing } from "../../src/theme/index.js";
+import { useLayout } from "../../src/theme/responsive.js";
+import { palette } from "../../src/theme/index.js";
 import type { AppCandidate } from "../../src/types/api.js";
 
 export default function Dashboard() {
@@ -22,6 +24,7 @@ export default function Dashboard() {
   const router = useRouter();
   const qc = useQueryClient();
   const now = Date.now();
+  const { columns } = useLayout();
 
   const apps = useQuery({
     queryKey: ["apps"],
@@ -66,11 +69,11 @@ export default function Dashboard() {
       ) : (apps.data?.apps.length ?? 0) === 0 ? (
         <EmptyState title="No apps connected yet" detail="Search above to connect your first app." />
       ) : (
-        <View style={{ gap: spacing.md }}>
+        <Grid columns={columns}>
           {apps.data!.apps.map((a) => (
             <AppCard key={a.id} app={a} now={now} onPress={(id) => router.push(`/(app)/apps/${id}`)} />
           ))}
-        </View>
+        </Grid>
       )}
     </Screen>
   );

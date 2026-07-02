@@ -16,12 +16,37 @@ import {
   type ViewStyle,
 } from "react-native";
 import { fontSize, palette, radius, spacing } from "../theme/index.js";
+import { useLayout } from "../theme/responsive.js";
 
-/** A full-screen, padded, scrollable surface on the app background. */
-export function Screen({ children, style }: { children: React.ReactNode; style?: StyleProp<ViewStyle> }) {
+/**
+ * A full-screen, padded, scrollable surface. On tablets the content column is
+ * capped (`contentMaxWidth`) and centered — mirroring the web's `.wrap` — so an
+ * iPad never stretches a single column into unreadable full-width lines. Pass
+ * `wide` for the rare screen that wants the whole canvas.
+ */
+export function Screen({
+  children,
+  style,
+  wide,
+}: {
+  children: React.ReactNode;
+  style?: StyleProp<ViewStyle>;
+  wide?: boolean;
+}) {
+  const { contentMaxWidth, gutter } = useLayout();
   return (
-    <ScrollView style={styles.screen} contentContainerStyle={[styles.screenContent, style]}>
-      {children}
+    <ScrollView style={styles.screen} contentContainerStyle={styles.screenOuter}>
+      <View
+        testID="screen-content"
+        style={[
+          styles.screenContent,
+          { padding: gutter, gap: gutter },
+          !wide && { maxWidth: contentMaxWidth, width: "100%", alignSelf: "center" },
+          style,
+        ]}
+      >
+        {children}
+      </View>
     </ScrollView>
   );
 }
@@ -110,7 +135,10 @@ export function Centered({ children }: { children: React.ReactNode }) {
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: palette.bg },
-  screenContent: { padding: spacing.lg, gap: spacing.md },
+  // Outer container fills width so the inner column can center on wide screens.
+  screenOuter: { flexGrow: 1 },
+  // padding + gap are applied inline from the size-class gutter.
+  screenContent: {},
   centered: { flex: 1, alignItems: "center", justifyContent: "center", padding: spacing.xl, gap: spacing.md, backgroundColor: palette.bg },
   card: {
     backgroundColor: palette.panel,
