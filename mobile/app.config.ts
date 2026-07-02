@@ -24,7 +24,9 @@ const config: ExpoConfig = {
   // runtimeVersion ties OTA updates to a native build; "appVersion" policy bumps
   // it with `version` so an incompatible JS bundle is never served to an old app.
   runtimeVersion: { policy: "appVersion" },
-  orientation: "portrait",
+  // "default" lets the iPad rotate to landscape (the responsive layout uses the
+  // extra width for multi-column card grids); phones still read fine either way.
+  orientation: "default",
   userInterfaceStyle: "dark",
   backgroundColor: "#07090e",
   assetBundlePatterns: ["**/*"],
