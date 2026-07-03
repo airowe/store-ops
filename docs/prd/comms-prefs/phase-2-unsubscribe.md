@@ -1,4 +1,4 @@
-# Phase 2 — Digest unsubscribe PRD (comms-prefs)
+# Phase 2 — Digest unsubscribe PRD (comms-prefs) — v2
 
 Parent: `00-implementation-plan.md`. Depends on: Phase 1 (`email_digest` pref).
 **Deliverability-critical** — this is the compliance phase.
@@ -7,69 +7,87 @@ Parent: `00-implementation-plan.md`. Depends on: Phase 1 (`email_digest` pref).
 
 A working, compliant unsubscribe on the weekly digest: a footer link everyone
 can click, and the RFC 8058 `List-Unsubscribe(-Post)` headers mailbox providers
-use for their native "Unsubscribe" button. One click → `email_digest='off'`.
+use for their native button. One click → `email_digest='off'` — which, because
+the digest fans out per app, silences the digest for EVERY app on the account
+(G8; the copy says so).
 
 ## Scope
 
-- **In:** `"unsub"` token kind (mint/verify); `GET /email/unsubscribe` (confirm
-  page — NO state change) + `POST /email/unsubscribe` (the flip, idempotent);
-  per-recipient footer link in the digest; `EmailMessage.headers` +
-  `List-Unsubscribe`/`List-Unsubscribe-Post` wiring in Brevo/Resend senders.
-- **Out:** unsubscribe for any other email (magic links are transactional);
-  re-subscribe flows beyond the settings UI; preference-center pages.
+- **In:** `API_ORIGIN` env var (B1); `"unsub"` token kind; `GET
+  /email/unsubscribe` (confirm page — NO state change) + `POST` (the flip,
+  idempotent); per-RECIPIENT footer link + headers on the digest;
+  `EmailMessage.headers` wired through Brevo/Resend/Console; non-creating
+  email→user flip helper (G2).
+- **Out:** unsubscribe for transactional email (magic links); preference-center
+  pages; re-subscribe beyond the settings UI.
 
 ## Files
 
-- `cloud/src/auth.ts` — `TokenKind` + `"unsub"`, `mintUnsubToken(secret, email,
-  {ttlSeconds})` / `verifyUnsubToken` (mirrors magic/session wrappers)
-- `cloud/src/api/index.ts` — public GET/POST `/email/unsubscribe` (before
-  requireUser, like `/auth/*`), tiny HTML page helpers (inline, no assets)
-- `cloud/src/digest.ts` — footer link rendered into html + text (per-recipient
-  URL passed via `DigestAppInput`/plan opts)
-- `cloud/src/cron/scheduled.ts` — mint the token per recipient in
-  `sendWeeklyDigests`, pass link + headers
-- `cloud/src/auth.ts` senders + `EmailMessage` — optional `headers`
-  (Brevo: `headers` field; Resend: `headers` field; Console: log them)
-- specs: `cloud/src/api/unsubscribe.spec.ts`, extend `cloud/src/auth.spec.ts`
-  (audience separation), extend the digest/scheduled specs (footer + headers)
+- `cloud/wrangler.toml` + `cloud/src/index.ts` (`Env`) — **`API_ORIGIN`** (B1):
+  the public base of the API worker (e.g. `https://api.shipaso.com`). The cron
+  has no request to derive an origin from, and `DASHBOARD_ORIGIN` is the Pages
+  frontend which does not serve API routes. **Unset → the digest sends WITHOUT
+  footer link/headers** (console warn) — degrade, never a broken link.
+- `cloud/src/auth.ts` — `TokenKind` + `"unsub"`; `mintUnsubToken` /
+  `verifyUnsubToken` (payload carries the email, like magic tokens); TTL **60
+  days** (a fresh token ships weekly — N3). `EmailMessage.headers?:
+  Record<string,string>`; Brevo + Resend senders pass headers through their
+  (hand-built JSON) request bodies; Console logs them.
+- `cloud/src/api/index.ts` — public GET/POST `/email/unsubscribe` (in the
+  public block before `requireUser`, like `/auth/*`); an **HTML response
+  helper** (N2 — the router's `json()` is wrong for pages); handlers take the
+  token from the **query string only** and NEVER call `readJson` (G1 — the
+  one-click POST and the confirm-form POST are form-encoded, which `readJson`
+  would 400; body is ignored).
+- `cloud/src/d1.ts` — **`setEmailDigestByEmail(db, email, 'off')` as a direct
+  `UPDATE users SET email_digest='off' WHERE email = ?`** (G2). NEVER
+  `upsertUser` — it get-or-CREATES and would resurrect a deleted account.
+  0 rows changed (deleted account) → same success page, nothing to leak.
+- `cloud/src/digest.ts` — footer link in html + text; the unsubscribe URL rides
+  the plan inputs (minting is async `crypto.subtle`, so it CANNOT happen inside
+  pure/sync `planDigests` — G8).
+- `cloud/src/cron/scheduled.ts` — mint **once per unique email** (dedupe — G8:
+  a 3-app user gets 3 messages that share one token), attach URL + headers.
+- specs: `cloud/src/api/unsubscribe.spec.ts`, `cloud/src/auth.spec.ts`
+  (audience separation both directions), digest/scheduled spec (footer, headers,
+  deduped minting, API_ORIGIN-unset degrade).
 
 ## Contracts
 
-- Token: HMAC-signed, audience `"unsub"`, payload = email, TTL **180 days**
-  (a digest older than that shouldn't carry a live credential; a fresh token
-  ships with every digest anyway).
-- `GET /email/unsubscribe?token=…` → 200 HTML page: "Stop the weekly digest for
-  <email>?" + a form button POSTing the same URL. **Never mutates** — link
-  prefetchers/scanners follow GETs and must not silently unsubscribe anyone.
-  Invalid/expired token → generic 400 page (no enumeration; no echo of the token).
-- `POST /email/unsubscribe?token=…` → flips `email_digest='off'` for the token's
-  user, 200 confirmation page ("Weekly digest off. ShipASO keeps working — runs
-  still open; turn it back on in Settings."). Idempotent: already-off → same 200.
-  Also accepts the RFC 8058 body (`List-Unsubscribe=One-Click`) — same behavior.
-- Headers on every digest email:
-  `List-Unsubscribe: <https://api…/email/unsubscribe?token=…>` and
+- Token: HMAC-signed, audience `"unsub"`, payload = email, TTL 60d.
+- `GET /email/unsubscribe?token=…` → 200 HTML: "Stop the weekly digest for
+  <email>? This silences the digest for every app on this account. ShipASO
+  keeps working — runs still open." + a form button POSTing the same URL.
+  **Never mutates** (scanner-prefetch safety). Invalid/expired/foreign-audience
+  token → generic 400 page (no enumeration, token never echoed).
+- `POST /email/unsubscribe?token=…` → flips via the non-creating helper, 200
+  confirmation page (re-enable pointer to Settings). Idempotent. Accepts the
+  RFC 8058 body (`List-Unsubscribe=One-Click`) AND the empty confirm-form body
+  identically (both form-encoded; both ignored).
+- Headers on every digest email (only when `API_ORIGIN` set):
+  `List-Unsubscribe: <{API_ORIGIN}/email/unsubscribe?token=…>` and
   `List-Unsubscribe-Post: List-Unsubscribe=One-Click`.
-- Unknown user for a VALID token (deleted account): same generic success page —
-  nothing to leak, nothing to flip.
+- No CORS work: one-click is server-to-server; the confirm form is a
+  same-origin navigation (N3).
 
 ## Security invariants (tested)
 
-- A session token or magic token in the `token` param → 400 (audience split,
-  both directions — an unsub token must also never pass `verifySessionToken`
-  or `verifyMagicToken`).
-- The flip touches ONLY `email_digest` — an unsub token can never pause the
-  agent, change cadence, or authenticate any other route.
-- The confirmation pages set no cookies and echo no attacker-controlled strings
-  (the email shown comes from the VERIFIED token payload, HTML-escaped).
+- Audience separation BOTH directions: session/magic tokens fail as unsub
+  tokens; an unsub token fails `verifySessionToken` AND `verifyMagicToken`.
+- The flip touches ONLY `email_digest`. An unsub token authenticates nothing
+  else.
+- Pages set no cookies; the only reflected string is the verified token's
+  email, HTML-escaped.
 
 ## Acceptance criteria
 
-- Digest html AND text carry the footer link; headers present on the message.
+- Digest html AND text carry the footer link; headers present; one token per
+  unique email across a multi-app user's messages.
 - GET renders the confirm page and changes nothing (pref still `weekly` after).
-- POST (button) and POST (One-Click body) both flip to `off`; second POST → 200.
-- After unsubscribing, the next `sendWeeklyDigests` pass skips that user
-  (integration assertion tying Phase 2 to Phase 1's gate).
-- Bad/expired/foreign-audience token → generic 400 page, no state change.
+- POST (form) and POST (One-Click body) both flip to `off`; repeat POST → 200.
+- After the flip, the next `sendWeeklyDigests` pass skips that user end to end.
+- `API_ORIGIN` unset → digest still sends, no footer/headers, a console warn.
+- Deleted-account token → success page, no row created (assert row count).
 
 ## Definition of done
 
