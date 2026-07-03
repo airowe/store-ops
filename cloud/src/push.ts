@@ -10,7 +10,7 @@
  * are pruned so dead devices don't accumulate. Nothing here persists or logs
  * credentials; full push tokens are never echoed.
  */
-import { deleteDeviceToken, listDeviceTokensForUser } from "./d1.js";
+import { deleteDeviceToken, getPushRunReady, listDeviceTokensForUser } from "./d1.js";
 
 /**
  * A POST-capable fetch (the engine's `FetchFn` is headers-only). The Worker's
@@ -161,6 +161,10 @@ export async function notifyRunAwaitingApproval(
   opts: { fixLabel?: string | undefined; endpoint?: string | undefined } = {},
 ): Promise<number> {
   try {
+    // Preference gate (comms-prefs): the owner turned run-ready push off →
+    // send NOTHING, before any token read. Missing row/pre-migration → ON
+    // (today's behavior). The run itself is untouched either way.
+    if (!(await getPushRunReady(db, app.user_id))) return 0;
     const tokens = await listDeviceTokensForUser(db, app.user_id);
     if (tokens.length === 0) return 0;
     const messages = buildRunReadyMessages(tokens, {

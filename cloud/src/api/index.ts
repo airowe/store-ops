@@ -94,7 +94,9 @@ import {
   countAppsForUser,
   createApp,
   deleteApp,
+  deleteDeviceTokenForUser,
   getApp,
+  getNotificationPrefs,
   getOptOut,
   getUser,
   getApproval,
@@ -112,6 +114,7 @@ import {
   registerDeviceToken,
   setAgentPaused,
   setGithubConnection,
+  setNotificationPrefs,
   setOptOut,
   setRankCadence,
   setTier,
@@ -643,6 +646,8 @@ async function authMe(req: Request, env: Env, origin: string | null): Promise<Re
           paused: user.agent_paused,
           rlhf_opt_out: user.rlhf_opt_out === 1,
           rank_cadence: user.rank_cadence,
+          email_digest: user.email_digest,
+          push_run_ready: user.push_run_ready,
         },
         200,
         origin,
@@ -662,6 +667,8 @@ async function authMe(req: Request, env: Env, origin: string | null): Promise<Re
           paused: user.agent_paused,
           rlhf_opt_out: user.rlhf_opt_out === 1,
           rank_cadence: user.rank_cadence,
+          email_digest: user.email_digest,
+          push_run_ready: user.push_run_ready,
         },
         200,
         origin,
@@ -702,6 +709,56 @@ async function rankCadenceRoute(req: Request, env: Env, userId: string): Promise
   }
   await setRankCadence(env.DB, { userId, cadence: body.cadence });
   return { rank_cadence: body.cadence };
+}
+
+/**
+ * GET/POST /account/notifications — the communication prefs (comms-prefs Phase 1).
+ * GET returns the current state; POST is a PARTIAL update (only the provided
+ * fields change; invalid values → 400, never silently coerced) and returns the
+ * full new state. Changing a pref changes what we SEND, never what the agent
+ * does — the sweep/runs are untouched.
+ */
+async function notificationsGetRoute(env: Env, userId: string): Promise<unknown> {
+  return getNotificationPrefs(env.DB, userId);
+}
+
+async function notificationsPostRoute(req: Request, env: Env, userId: string): Promise<unknown> {
+  const body = await readJson<{ email_digest?: unknown; push_run_ready?: unknown }>(req);
+  const patch: { email_digest?: "weekly" | "off"; push_run_ready?: boolean } = {};
+  if (body.email_digest !== undefined) {
+    if (body.email_digest !== "weekly" && body.email_digest !== "off") {
+      throw new HttpError(400, "email_digest must be 'weekly' or 'off'");
+    }
+    patch.email_digest = body.email_digest;
+  }
+  if (body.push_run_ready !== undefined) {
+    if (typeof body.push_run_ready !== "boolean") {
+      throw new HttpError(400, "push_run_ready must be a boolean");
+    }
+    patch.push_run_ready = body.push_run_ready;
+  }
+  if (patch.email_digest === undefined && patch.push_run_ready === undefined) {
+    throw new HttpError(400, "provide email_digest and/or push_run_ready");
+  }
+  await setNotificationPrefs(env.DB, { userId, ...patch });
+  return getNotificationPrefs(env.DB, userId);
+}
+
+/**
+ * DELETE /account/push-token { token } — unregister THIS user's device (the
+ * sign-out path). Deletes only a row the caller owns; someone else's token or
+ * an already-gone one answers { removed:false } with 200 — sign-out must be
+ * idempotent and can never unregister another user's device. A malformed token
+ * is a 400 (nothing to look up).
+ */
+async function pushTokenDeleteRoute(req: Request, env: Env, userId: string): Promise<unknown> {
+  const body = await readJson<{ token?: unknown }>(req);
+  const token = typeof body.token === "string" ? body.token.trim() : "";
+  if (!isExpoPushToken(token)) {
+    throw new HttpError(400, "a valid Expo push token is required");
+  }
+  const removed = await deleteDeviceTokenForUser(env.DB, userId, token);
+  return { removed };
 }
 
 /**
@@ -2437,6 +2494,24 @@ export async function handleApi(req: Request, env: Env): Promise<Response> {
       method === "POST"
     ) {
       return json(await pushTokenRoute(req, env, user.id), 200, origin, env);
+    }
+    // DELETE /account/push-token — unregister this user's device (sign-out path)
+    if (
+      seg[0] === "account" &&
+      seg[1] === "push-token" &&
+      seg.length === 2 &&
+      method === "DELETE"
+    ) {
+      return json(await pushTokenDeleteRoute(req, env, user.id), 200, origin, env);
+    }
+    // /account/notifications — communication prefs (comms-prefs Phase 1)
+    if (seg[0] === "account" && seg[1] === "notifications" && seg.length === 2) {
+      if (method === "GET") {
+        return json(await notificationsGetRoute(env, user.id), 200, origin, env);
+      }
+      if (method === "POST") {
+        return json(await notificationsPostRoute(req, env, user.id), 200, origin, env);
+      }
     }
 
     // /runs/approve-all — bulk-approve every pending run (matched BEFORE /runs/:id)

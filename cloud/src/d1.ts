@@ -43,6 +43,15 @@ export type Tier = "free" | "indie" | "startup" | "scale";
  */
 export type RankCadence = "daily" | "weekly";
 
+/**
+ * Communication preference: the weekly digest email (comms-prefs Phase 1).
+ * 'weekly' (default) = today's behavior; 'off' silences the digest for EVERY
+ * app the user owns (the digest fans out per app; the pref is per-user). An
+ * enum, not a boolean, so a future 'daily' digest slots into the same column.
+ * Changing this NEVER changes what the agent does — only what we send.
+ */
+export type EmailDigest = "weekly" | "off";
+
 export type UserRow = {
   id: string;
   email: string;
@@ -59,6 +68,10 @@ export type UserRow = {
   rlhf_opt_out: number; // 0 = capturing (default), 1 = opted out (#39 Part 2)
   /** how often the cron snapshots ranks (issue #94). 'weekly' default; 'daily' adds the lightweight daily snapshot. */
   rank_cadence: RankCadence;
+  /** weekly digest email pref (comms-prefs). 'off' = no digest; the sweep runs regardless. */
+  email_digest: EmailDigest;
+  /** run-ready push pref (comms-prefs). false = notifyRunAwaitingApproval sends nothing. 0/1 in SQLite → boolean here. */
+  push_run_ready: boolean;
 };
 
 export type AppRow = {
@@ -213,12 +226,14 @@ const now = (): string => new Date().toISOString().replace("T", " ").slice(0, 19
 // ── users ────────────────────────────────────────────────────────────────────
 
 const USER_COLS =
-  "id, email, created_at, tier, status, stripe_customer_id, stripe_subscription_id, current_period_end, github_installation_id, github_repo, agent_paused, rlhf_opt_out, rank_cadence";
+  "id, email, created_at, tier, status, stripe_customer_id, stripe_subscription_id, current_period_end, github_installation_id, github_repo, agent_paused, rlhf_opt_out, rank_cadence, email_digest, push_run_ready";
 
-/** SQLite stores `agent_paused` as 0/1 and may be missing `rank_cadence` on a legacy row. */
-type RawUserRow = Omit<UserRow, "agent_paused" | "rank_cadence"> & {
+/** SQLite stores booleans as 0/1, and pre-migration rows may lack newer columns. */
+type RawUserRow = Omit<UserRow, "agent_paused" | "rank_cadence" | "email_digest" | "push_run_ready"> & {
   agent_paused?: number | null;
   rank_cadence?: RankCadence | null;
+  email_digest?: EmailDigest | null;
+  push_run_ready?: number | null;
 };
 
 /**
@@ -226,12 +241,22 @@ type RawUserRow = Omit<UserRow, "agent_paused" | "rank_cadence"> & {
  * so `agent_paused` comes back as 0/1 (or undefined on a legacy pre-migration
  * row) — fold it to a real boolean so callers never compare against `1`.
  * `rlhf_opt_out` (#39 Part 2) stays a 0/1 number and passes through unchanged.
- * `rank_cadence` (#94) defaults to 'weekly' when null/absent (pre-migration row),
- * preserving today's weekly behavior for everyone.
+ * `rank_cadence` (#94), `email_digest` and `push_run_ready` (comms-prefs)
+ * default to today's behavior when null/absent, so a NULL-carrying row reads
+ * as unchanged defaults. NOTE: this coalescing does NOT excuse deploy order —
+ * USER_COLS names the new columns, so the ALTER migration must be applied
+ * BEFORE a Worker referencing them is deployed (see schema.sql).
  */
 function mapUserRow(raw: RawUserRow | null): UserRow | null {
   if (!raw) return null;
-  return { ...raw, agent_paused: raw.agent_paused === 1, rank_cadence: raw.rank_cadence ?? "weekly" };
+  return {
+    ...raw,
+    agent_paused: raw.agent_paused === 1,
+    rank_cadence: raw.rank_cadence ?? "weekly",
+    email_digest: raw.email_digest ?? "weekly",
+    // default ON (fail-open = today's behavior): 0 is the only opt-out value.
+    push_run_ready: raw.push_run_ready !== 0,
+  };
 }
 
 /** Get-or-create a user by email (magic-link/session resolves to this). Idempotent. */
@@ -258,6 +283,8 @@ export async function upsertUser(db: D1Database, email: string): Promise<UserRow
     agent_paused: false,
     rlhf_opt_out: 0, // capture is ON by default; the settings toggle sets this
     rank_cadence: "weekly", // weekly snapshotting by default (#94); the settings toggle opts into daily
+    email_digest: "weekly", // digest on by default (comms-prefs); settings/unsubscribe turn it off
+    push_run_ready: true, // run-ready push on by default (comms-prefs)
   };
   await db
     .prepare("INSERT INTO users (id, email, created_at, tier, status) VALUES (?, ?, ?, ?, ?)")
@@ -502,6 +529,55 @@ export async function setRankCadence(
     .run();
 }
 
+/** The user's communication prefs (comms-prefs Phase 1). Missing/NULL → defaults. */
+export type NotificationPrefs = { email_digest: EmailDigest; push_run_ready: boolean };
+
+export async function getNotificationPrefs(db: D1Database, userId: string): Promise<NotificationPrefs> {
+  const row = await db
+    .prepare("SELECT email_digest, push_run_ready FROM users WHERE id = ?")
+    .bind(userId)
+    .first<{ email_digest: EmailDigest | null; push_run_ready: number | null }>();
+  return {
+    email_digest: row?.email_digest ?? "weekly",
+    push_run_ready: row ? row.push_run_ready !== 0 : true,
+  };
+}
+
+/**
+ * Partial-update the communication prefs (the settings toggles call this).
+ * Only the provided fields change; validation happens at the API edge.
+ */
+export async function setNotificationPrefs(
+  db: D1Database,
+  args: { userId: string; email_digest?: EmailDigest; push_run_ready?: boolean },
+): Promise<void> {
+  if (args.email_digest !== undefined) {
+    await db
+      .prepare("UPDATE users SET email_digest = ? WHERE id = ?")
+      .bind(args.email_digest, args.userId)
+      .run();
+  }
+  if (args.push_run_ready !== undefined) {
+    await db
+      .prepare("UPDATE users SET push_run_ready = ? WHERE id = ?")
+      .bind(args.push_run_ready ? 1 : 0, args.userId)
+      .run();
+  }
+}
+
+/**
+ * Slim read for the push gate (mirrors `getRankCadence`): is run-ready push ON
+ * for this user? Missing row / NULL / pre-migration → TRUE (fail-open = today's
+ * behavior) — 0 is the only opt-out value.
+ */
+export async function getPushRunReady(db: D1Database, userId: string): Promise<boolean> {
+  const row = await db
+    .prepare("SELECT push_run_ready FROM users WHERE id = ?")
+    .bind(userId)
+    .first<{ push_run_ready: number | null }>();
+  return row ? row.push_run_ready !== 0 : true;
+}
+
 /** How many apps this user has connected (for the per-tier app-count gate). */
 export async function countAppsForUser(db: D1Database, userId: string): Promise<number> {
   const row = await db
@@ -595,6 +671,23 @@ export async function listDeviceTokensForUser(db: D1Database, userId: string): P
 /** Drop a token (e.g. Expo reported it unregistered). */
 export async function deleteDeviceToken(db: D1Database, token: string): Promise<void> {
   await db.prepare("DELETE FROM device_tokens WHERE token = ?").bind(token).run();
+}
+
+/**
+ * Drop a token ONLY if the caller owns it (the sign-out path). Returns whether a
+ * row was removed — false for someone else's token or an already-gone one, so
+ * sign-out stays idempotent and can never unregister another user's device.
+ */
+export async function deleteDeviceTokenForUser(
+  db: D1Database,
+  userId: string,
+  token: string,
+): Promise<boolean> {
+  const res = await db
+    .prepare("DELETE FROM device_tokens WHERE token = ? AND user_id = ?")
+    .bind(token, userId)
+    .run();
+  return (res.meta?.changes ?? 0) > 0;
 }
 
 export async function getApp(db: D1Database, appId: string): Promise<AppRow | null> {

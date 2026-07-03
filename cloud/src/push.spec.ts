@@ -6,7 +6,7 @@
  * inflated by error tickets), DeviceNotRegistered tokens are pruned, and the
  * deep-link payload points at the run.
  */
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   buildRunReadyMessages,
   isExpoPushToken,
@@ -122,8 +122,10 @@ describe("sendExpoPush", () => {
 /** Minimal fake D1: canned tokens per user + a record of deleted tokens. */
 function fakeDb(tokensByUser: Record<string, string[]>) {
   const deleted: string[] = [];
+  const tokenReads: string[] = [];
   const db = {
     __deleted: deleted,
+    __tokenReads: tokenReads,
     prepare(sql: string) {
       let bound: unknown[] = [];
       const stmt = {
@@ -133,9 +135,15 @@ function fakeDb(tokensByUser: Record<string, string[]>) {
         },
         async all<T>() {
           const uid = String(bound[0]);
+          tokenReads.push(uid);
           return { results: (tokensByUser[uid] ?? []).map((token) => ({ token })) as T[] };
         },
         async first() {
+          // push_run_ready pref read: null (missing row) → the gate defaults ON.
+          if (/SELECT push_run_ready/.test(sql) && prefsByUser) {
+            const uid = String(bound[0]);
+            return uid in prefsByUser ? ({ push_run_ready: prefsByUser[uid] } as unknown) : null;
+          }
           return null;
         },
         async run() {
@@ -146,8 +154,14 @@ function fakeDb(tokensByUser: Record<string, string[]>) {
       return stmt;
     },
   };
-  return db as unknown as D1Database & { __deleted: string[] };
+  return db as unknown as D1Database & { __deleted: string[]; __tokenReads: string[] };
 }
+
+/** Optional per-user push_run_ready values (0/1) for the pref-gate tests. */
+let prefsByUser: Record<string, number> | null = null;
+afterEach(() => {
+  prefsByUser = null;
+});
 
 describe("notifyRunAwaitingApproval", () => {
   const app = { user_id: "u1", name: "Acme", bundle_id: "com.acme" };
@@ -179,6 +193,26 @@ describe("notifyRunAwaitingApproval", () => {
     const n = await notifyRunAwaitingApproval(fetch, db, app, "run1");
     expect(n).toBe(1);
     expect(db.__deleted).toEqual([T2]);
+  });
+
+  it("PREF GATE: push_run_ready=0 → sends nothing and never reads tokens", async () => {
+    prefsByUser = { u1: 0 };
+    const db = fakeDb({ u1: [T1, T2] });
+    const fetch = vi.fn<PushFetch>(async () => ({ ok: true, status: 200 }));
+    const n = await notifyRunAwaitingApproval(fetch, db, app, "run1");
+    expect(n).toBe(0);
+    expect(fetch).not.toHaveBeenCalled();
+    expect(db.__tokenReads).toEqual([]); // gated BEFORE the token read
+  });
+
+  it("PREF GATE: push_run_ready=1 and missing-row both send as today (fail-open)", async () => {
+    prefsByUser = { u1: 1 };
+    const fetch = vi.fn<PushFetch>(async () => ({ ok: true, status: 200 }));
+    expect(await notifyRunAwaitingApproval(fetch, fakeDb({ u1: [T1] }), app, "run1")).toBe(1);
+
+    prefsByUser = {}; // no row for u1 → default ON
+    const fetch2 = vi.fn<PushFetch>(async () => ({ ok: true, status: 200 }));
+    expect(await notifyRunAwaitingApproval(fetch2, fakeDb({ u1: [T1] }), app, "run1")).toBe(1);
   });
 
   it("a token-read failure never throws (the sweep must survive)", async () => {

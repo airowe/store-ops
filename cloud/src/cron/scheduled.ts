@@ -231,16 +231,27 @@ export async function sendWeeklyDigests(env: Env, report: CronReport): Promise<n
   const byId = new Map(apps.map((a) => [a.id, a]));
 
   const inputs: DigestAppInput[] = [];
+  // One user row per OWNER, cached — tier, email, AND the digest pref all ride
+  // the same row, and a multi-app owner appears once per app in the report.
+  const userCache = new Map<string, Awaited<ReturnType<typeof getUser>>>();
   for (const entry of report.perApp) {
     // Pause suppresses the nag (#51): a paused target opened no run, so it must
     // not be emailed either. Skip before any reads.
     if (entry.skippedPaused) continue;
     const app = byId.get(entry.appId);
     if (!app) continue;
-    const tier = await getTier(env.DB, app.user_id);
-    if (tier !== "indie" && tier !== "startup" && tier !== "scale") continue; // skip the gate early (saves the reads)
-    const user = await getUser(env.DB, app.user_id);
+    let user = userCache.get(app.user_id);
+    if (user === undefined) {
+      user = await getUser(env.DB, app.user_id);
+      userCache.set(app.user_id, user);
+    }
     if (!user?.email) continue;
+    const tier = user.tier;
+    if (tier !== "indie" && tier !== "startup" && tier !== "scale") continue; // skip the gate early (saves the reads)
+    // Preference gate (comms-prefs): 'off' silences the digest for EVERY app
+    // this user owns — before the hasOpenRun/getRankHistory reads. The sweep
+    // itself already ran; only the EMAIL is suppressed.
+    if (user.email_digest === "off") continue;
     inputs.push({
       appId: app.id,
       appName: app.name,
