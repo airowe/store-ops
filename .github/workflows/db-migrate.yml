@@ -1,0 +1,124 @@
+# Manual D1 migration runner — applies PENDING schema changes to the REMOTE
+# production database, idempotently, using the same repo secrets as deploy.yml.
+#
+# Why this exists: schema.sql's CREATE TABLE IF NOT EXISTS statements apply via
+# `npm run db:migrate`, but column ADDITIONS live as documented ALTERs (SQLite
+# can't conditionally add columns in SQL alone). This workflow closes that gap:
+# it reads PRAGMA table_info and adds ONLY the missing columns, so re-running is
+# always safe. Trigger from the Actions tab (workflow_dispatch) after merging a
+# schema change — ideally BEFORE the Worker deploy that references it.
+#
+# Never destructive: only ADD COLUMN + CREATE TABLE/INDEX IF NOT EXISTS. It
+# cannot drop or rewrite anything.
+
+name: db-migrate
+
+on:
+  workflow_dispatch: {}
+
+concurrency:
+  group: db-migrate-prod
+  cancel-in-progress: false
+
+jobs:
+  migrate:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: cloud
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: cloud/package-lock.json
+
+      - name: Install
+        run: npm ci
+
+      - name: Check credentials
+        env:
+          CF_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          if [ -z "$CF_TOKEN" ]; then
+            echo "::error::CLOUDFLARE_API_TOKEN not set — cannot migrate."
+            exit 1
+          fi
+
+      - name: Apply pending migrations (idempotent)
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          set -euo pipefail
+          d1() { npx wrangler d1 execute store_ops --remote --json --command "$1"; }
+
+          echo "── current users columns ──"
+          COLS_JSON="$(d1 'PRAGMA table_info(users)')"
+          COLS="$(echo "$COLS_JSON" | node -e '
+            let s = "";
+            process.stdin.on("data", (c) => (s += c));
+            process.stdin.on("end", () => {
+              const out = JSON.parse(s);
+              const rows = out[0]?.results ?? [];
+              console.log(rows.map((r) => r.name).join(" "));
+            });
+          ')"
+          echo "users columns: $COLS"
+
+          add_col_if_missing() {
+            local col="$1"; local ddl="$2"
+            if echo " $COLS " | grep -q " $col "; then
+              echo "✓ users.$col already present — skipping"
+            else
+              echo "→ adding users.$col"
+              d1 "ALTER TABLE users ADD COLUMN $ddl" > /dev/null
+              echo "✓ added users.$col"
+            fi
+          }
+
+          # Guarded column additions (every documented users ALTER — no-ops when present).
+          add_col_if_missing agent_paused   "agent_paused INTEGER NOT NULL DEFAULT 0"
+          add_col_if_missing rlhf_opt_out   "rlhf_opt_out INTEGER NOT NULL DEFAULT 0"
+          add_col_if_missing rank_cadence   "rank_cadence TEXT NOT NULL DEFAULT 'weekly' CHECK (rank_cadence IN ('daily','weekly'))"
+          add_col_if_missing email_digest   "email_digest TEXT NOT NULL DEFAULT 'weekly' CHECK (email_digest IN ('weekly','off'))"
+          add_col_if_missing push_run_ready "push_run_ready INTEGER NOT NULL DEFAULT 1"
+
+          # Idempotent table/index creation (device_tokens — mobile push, #127).
+          d1 "CREATE TABLE IF NOT EXISTS device_tokens (token TEXT PRIMARY KEY, user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE, platform TEXT NOT NULL DEFAULT 'ios', created_at TEXT NOT NULL DEFAULT (datetime('now')))" > /dev/null
+          d1 "CREATE INDEX IF NOT EXISTS idx_device_tokens_user ON device_tokens(user_id)" > /dev/null
+          echo "✓ device_tokens table + index ensured"
+
+      - name: Verify
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          set -euo pipefail
+          echo "── users columns after migration ──"
+          npx wrangler d1 execute store_ops --remote --json --command 'PRAGMA table_info(users)' | node -e '
+            let s = "";
+            process.stdin.on("data", (c) => (s += c));
+            process.stdin.on("end", () => {
+              const rows = JSON.parse(s)[0]?.results ?? [];
+              for (const r of rows) console.log(`  ${r.name} (${r.type})`);
+              const need = ["email_digest", "push_run_ready"];
+              const have = new Set(rows.map((r) => r.name));
+              const missing = need.filter((n) => !have.has(n));
+              if (missing.length) { console.error("MISSING: " + missing.join(", ")); process.exit(1); }
+              console.log("✓ all comms-prefs columns present");
+            });
+          '
+          echo "── tables ──"
+          npx wrangler d1 execute store_ops --remote --json --command "SELECT name FROM sqlite_master WHERE type='table' ORDER BY name" | node -e '
+            let s = "";
+            process.stdin.on("data", (c) => (s += c));
+            process.stdin.on("end", () => {
+              const rows = JSON.parse(s)[0]?.results ?? [];
+              console.log(rows.map((r) => r.name).join(", "));
+              if (!rows.some((r) => r.name === "device_tokens")) { console.error("MISSING device_tokens"); process.exit(1); }
+              console.log("✓ device_tokens present");
+            });
+          '
