@@ -1004,7 +1004,39 @@
     // GET /auth/me — surface the RLHF opt-out so the toggle reflects live state
     // (#39 Part 2). The mock is always "authed as" the acting email.
     if (method === "GET" && path === "/auth/me") {
-      return json(200, { authed: true, via: "demo", email: email, rlhf_opt_out: !!db.rlhf_opt_out });
+      return json(200, {
+        authed: true, via: "demo", email: email, rlhf_opt_out: !!db.rlhf_opt_out,
+        // comms-prefs (Phase 1 parity): defaults mirror the Worker's.
+        rank_cadence: db.rank_cadence || "weekly",
+        email_digest: db.email_digest || "weekly",
+        push_run_ready: db.push_run_ready !== false,
+      });
+    }
+
+    // GET/POST /account/notifications — communication prefs (comms-prefs parity).
+    if (path === "/account/notifications") {
+      if (method === "GET") {
+        return json(200, { email_digest: db.email_digest || "weekly", push_run_ready: db.push_run_ready !== false });
+      }
+      if (method === "POST") {
+        if (body && body.email_digest !== undefined) {
+          if (body.email_digest !== "weekly" && body.email_digest !== "off") return json(400, { error: "email_digest must be 'weekly' or 'off'" });
+          db.email_digest = body.email_digest;
+        }
+        if (body && body.push_run_ready !== undefined) {
+          if (typeof body.push_run_ready !== "boolean") return json(400, { error: "push_run_ready must be a boolean" });
+          db.push_run_ready = body.push_run_ready;
+        }
+        ctx.commit();
+        return json(200, { email_digest: db.email_digest || "weekly", push_run_ready: db.push_run_ready !== false });
+      }
+    }
+
+    // POST /account/rank-cadence — rank snapshot cadence (comms-prefs parity, #94).
+    if (method === "POST" && path === "/account/rank-cadence") {
+      if (!body || (body.cadence !== "daily" && body.cadence !== "weekly")) return json(400, { error: "cadence must be 'daily' or 'weekly'" });
+      db.rank_cadence = body.cadence; ctx.commit();
+      return json(200, { rank_cadence: db.rank_cadence });
     }
 
     // POST /account/rlhf-optout {optOut} — flip RLHF capture opt-out (#39 Part 2).
