@@ -55,6 +55,16 @@ jobs:
           set -euo pipefail
           d1() { npx wrangler d1 execute store_ops --remote --json --command "$1"; }
 
+          # Diagnostics OUTSIDE command substitution so a wrangler failure is
+          # visible in the log instead of being swallowed by $(...).
+          echo "── wrangler auth check ──"
+          npx wrangler whoami || true
+          echo "── probe: can we reach the DB? ──"
+          npx wrangler d1 execute store_ops --remote --json --command "SELECT 1" || {
+            echo "::error::wrangler d1 execute failed — see output above (likely the API token lacks Account · D1 · Edit, or the DB name/binding differs)"
+            exit 1
+          }
+
           echo "── current users columns ──"
           COLS_JSON="$(d1 'PRAGMA table_info(users)')"
           COLS="$(echo "$COLS_JSON" | node -e '
