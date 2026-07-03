@@ -27,6 +27,12 @@ export type Env = {
   // Public base URL of the dashboard (for magic-link callback + CORS origin echo).
   // Optional: falls back to the request Origin when unset.
   DASHBOARD_ORIGIN?: string;
+  // Public base URL of THIS API worker (e.g. "https://api.shipaso.com") — needed
+  // by the cron to build absolute unsubscribe links (comms-prefs Phase 2): the
+  // cron has no request to derive an origin from, and DASHBOARD_ORIGIN is the
+  // Pages frontend which does not serve API routes. Unset → digests send WITHOUT
+  // the unsubscribe footer/headers (degrade + warn, never a broken link).
+  API_ORIGIN?: string;
   // When the dashboard (app.shipaso.com) and API (api.shipaso.com) live on
   // sibling subdomains, set COOKIE_DOMAIN=".shipaso.com" so the session cookie is
   // shared across them and uses SameSite=None (sent on cross-site fetch). Unset →

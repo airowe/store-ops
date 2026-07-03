@@ -37,11 +37,15 @@ import {
 import { canRunCron } from "../billing.js";
 import { type DigestAppInput, planDigests } from "../digest.js";
 import { emailSenderForEnv } from "../emailSender.js";
+import { mintUnsubToken, resolveSessionSecret } from "../auth.js";
 import { buildAppInput } from "../api/runConfig.js";
 import { reasonerForEnv } from "../api/aiReasoner.js";
 import { fetchForEnv } from "../fetchAdapter.js";
 import { notifyRunAwaitingApproval } from "../push.js";
 import type { Env } from "../index.js";
+
+/** Unsubscribe-token lifetime: ~60 days - a fresh token ships with every weekly digest. */
+const UNSUB_TTL_SECONDS = 60 * 24 * 60 * 60;
 
 /** Result of evaluating whether this week's data crosses the re-draft threshold. */
 export type ThresholdDecision = {
@@ -231,6 +235,23 @@ export async function sendWeeklyDigests(env: Env, report: CronReport): Promise<n
   const byId = new Map(apps.map((a) => [a.id, a]));
 
   const inputs: DigestAppInput[] = [];
+  // Unsubscribe minting setup (Phase 2). API_ORIGIN unset -> warn once, degrade.
+  const unsubByEmail = new Map<string, string>();
+  let unsubBase: { origin: string; secret: string } | null = null;
+  if (env.API_ORIGIN) {
+    try {
+      unsubBase = {
+        origin: env.API_ORIGIN.replace(/\/+$/, ""),
+        secret: resolveSessionSecret(env.SESSION_SECRET, env.APP_ENV),
+      };
+    } catch (e) {
+      console.warn(`[store-ops cron] unsubscribe links disabled: ${String(e)}`);
+    }
+  } else {
+    console.warn(
+      "[store-ops cron] API_ORIGIN unset - digests sent WITHOUT unsubscribe footer/headers",
+    );
+  }
   // One user row per OWNER, cached — tier, email, AND the digest pref all ride
   // the same row, and a multi-app owner appears once per app in the report.
   const userCache = new Map<string, Awaited<ReturnType<typeof getUser>>>();
@@ -252,7 +273,19 @@ export async function sendWeeklyDigests(env: Env, report: CronReport): Promise<n
     // this user owns — before the hasOpenRun/getRankHistory reads. The sweep
     // itself already ran; only the EMAIL is suppressed.
     if (user.email_digest === "off") continue;
+    // Unsubscribe link (comms-prefs Phase 2): one token per UNIQUE email — a
+    // multi-app owner's messages share it. Needs API_ORIGIN (the cron has no
+    // request to derive an origin from); unset → no footer/headers (degrade).
+    let unsubscribeUrl = unsubByEmail.get(user.email);
+    if (unsubscribeUrl === undefined && unsubBase) {
+      const token = await mintUnsubToken(unsubBase.secret, user.email, {
+        ttlSeconds: UNSUB_TTL_SECONDS,
+      });
+      unsubscribeUrl = `${unsubBase.origin}/email/unsubscribe?token=${encodeURIComponent(token)}`;
+      unsubByEmail.set(user.email, unsubscribeUrl);
+    }
     inputs.push({
+      ...(unsubscribeUrl ? { unsubscribeUrl } : {}),
       appId: app.id,
       appName: app.name,
       email: user.email,

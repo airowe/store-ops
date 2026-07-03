@@ -98,3 +98,48 @@ describe("sendWeeklyDigests — email_digest gate (both directions)", () => {
     expect(sent).toBe(1);
   });
 });
+
+describe("sendWeeklyDigests — unsubscribe link + headers (Phase 2)", () => {
+  const envWithOrigin = {
+    DB: {},
+    AI: undefined,
+    API_ORIGIN: "https://api.test",
+    SESSION_SECRET: "test-secret-cccccccccccccccccccccccccccccc",
+    APP_ENV: "production",
+  } as never;
+
+  it("attaches the footer link + RFC 8058 headers, ONE token per unique email", async () => {
+    listAllApps.mockResolvedValue([
+      { id: "a1", user_id: "u1", bundle_id: "com.a1", name: "A1" },
+      { id: "a2", user_id: "u1", bundle_id: "com.a2", name: "A2" },
+    ]);
+    getUser.mockResolvedValue({ email: "multi@example.com", tier: "scale", email_digest: "weekly", push_run_ready: true });
+
+    const sent = await sendWeeklyDigests(envWithOrigin, report([entry("a1", "com.a1"), entry("a2", "com.a2")]));
+    expect(sent).toBe(2); // per-app fan-out preserved
+
+    const msgs = send.mock.calls.map((c) => c[0] as {
+      text: string; html: string; headers?: Record<string, string>;
+    });
+    for (const m of msgs) {
+      expect(m.text).toContain("https://api.test/email/unsubscribe?token=");
+      expect(m.html).toContain("/email/unsubscribe?token=");
+      expect(m.headers?.["List-Unsubscribe"]).toMatch(/^<https:\/\/api\.test\/email\/unsubscribe\?token=/);
+      expect(m.headers?.["List-Unsubscribe-Post"]).toBe("List-Unsubscribe=One-Click");
+    }
+    // dedupe: the two messages for one owner share ONE minted token/URL.
+    const urlOf = (t: string) => t.match(/https:\S+unsubscribe\?token=\S+/)?.[0];
+    expect(urlOf(msgs[0]!.text)).toBe(urlOf(msgs[1]!.text));
+  });
+
+  it("API_ORIGIN unset → digest still sends, WITHOUT footer or headers (degrade)", async () => {
+    listAllApps.mockResolvedValue([{ id: "a1", user_id: "u1", bundle_id: "com.a", name: "A" }]);
+    getUser.mockResolvedValue({ email: "u@example.com", tier: "indie", email_digest: "weekly", push_run_ready: true });
+
+    const sent = await sendWeeklyDigests(env, report([entry("a1", "com.a")])); // env has no API_ORIGIN
+    expect(sent).toBe(1);
+    const m = send.mock.calls[0]![0] as { text: string; headers?: Record<string, string> };
+    expect(m.text).not.toContain("unsubscribe");
+    expect(m.headers).toBeUndefined();
+  });
+});

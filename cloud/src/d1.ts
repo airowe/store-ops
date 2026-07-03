@@ -566,6 +566,25 @@ export async function setNotificationPrefs(
 }
 
 /**
+ * Unsubscribe flip (comms-prefs Phase 2): set the digest pref by EMAIL, the only
+ * identity an unsubscribe token carries. NON-creating on purpose — an UPDATE
+ * matches zero rows for a deleted account (never `upsertUser`, which would
+ * resurrect it). Returns whether a row changed (the caller shows the same
+ * success page either way — nothing to leak).
+ */
+export async function setEmailDigestByEmail(
+  db: D1Database,
+  email: string,
+  value: EmailDigest,
+): Promise<boolean> {
+  const res = await db
+    .prepare("UPDATE users SET email_digest = ? WHERE email = ?")
+    .bind(value, email)
+    .run();
+  return (res.meta?.changes ?? 0) > 0;
+}
+
+/**
  * Slim read for the push gate (mirrors `getRankCadence`): is run-ready push ON
  * for this user? Missing row / NULL / pre-migration → TRUE (fail-open = today's
  * behavior) — 0 is the only opt-out value.
