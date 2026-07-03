@@ -40,6 +40,7 @@ import { emailSenderForEnv } from "../emailSender.js";
 import { buildAppInput } from "../api/runConfig.js";
 import { reasonerForEnv } from "../api/aiReasoner.js";
 import { fetchForEnv } from "../fetchAdapter.js";
+import { notifyRunAwaitingApproval } from "../push.js";
 import type { Env } from "../index.js";
 
 /** Result of evaluating whether this week's data crosses the re-draft threshold. */
@@ -166,6 +167,10 @@ export async function runWeeklySweep(env: Env): Promise<CronReport> {
           trigger: { source: "cron", reasons: decision.reasons },
         });
         report.runsOpened++;
+        // Notify the owner on their phone — the whole point of push: a run opened
+        // while they were away. Best-effort (no tokens / blocked egress → no-op);
+        // a notification failure never affects the recorded run.
+        await notifyRunAwaitingApproval(globalThis.fetch, env.DB, app, runId);
         report.perApp.push({
           appId: app.id,
           bundleId: app.bundle_id,
