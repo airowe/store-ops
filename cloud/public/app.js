@@ -3168,6 +3168,82 @@
   }
 
   /* ════════════════════════ router ════════════════════════════════════════ */
+  // ── #/settings — the settings page (comms-prefs Phase 3). ──────────────────
+  // Communications block: digest on/off + rank-check cadence + an honest
+  // read-only push line (web has no push — no fake toggle). Copy states the
+  // honesty rule verbatim: prefs change what we SEND, never what the agent does.
+  async function viewSettings() {
+    loading("Loading settings…");
+    var me;
+    try { me = await api("GET", "/auth/me"); } catch (e) { return errorBox(e); }
+    var c = root(); clear(c);
+    c.appendChild(backlink("#/", "Back to dashboard"));
+    c.appendChild(el("h2", {}, ["Settings"]));
+    c.appendChild(commsSettingsCard(me));
+  }
+
+  function commsSettingsCard(me) {
+    var card = el("div", { class: "card" }, [el("h3", {}, ["Communications"])]);
+
+    // Weekly digest toggle — reconcile from the server response; a failed POST
+    // restores the visible state (no lying UI).
+    var digestOn = (me.email_digest || "weekly") === "weekly";
+    var digestBtn = el("button", { class: "btn ghost", id: "digestToggle" }, [digestOn ? "On" : "Off"]);
+    digestBtn.onclick = function () {
+      var next = digestOn ? "off" : "weekly";
+      digestBtn.disabled = true;
+      api("POST", "/account/notifications", { email_digest: next })
+        .then(function (r) {
+          digestOn = (r.email_digest || "weekly") === "weekly";
+          digestBtn.textContent = digestOn ? "On" : "Off";
+        })
+        .catch(function (e) { toast(e.message || "Couldn't update the digest setting."); })
+        .then(function () { digestBtn.disabled = false; });
+    };
+    card.appendChild(el("div", { class: "settings-row", style: "display:flex;gap:12px;align-items:center;justify-content:space-between;margin-top:10px" }, [
+      el("div", {}, [
+        el("div", {}, ["Weekly digest email"]),
+        el("div", { class: "faint", style: "font-size:12px" }, ["Stops the weekly digest email for every app on this account — the agent keeps working and runs keep opening."]),
+      ]),
+      digestBtn,
+    ]));
+
+    // Rank-check cadence — labeled as what it IS (data collection frequency).
+    var cadence = me.rank_cadence || "weekly";
+    var weeklyBtn = el("button", { class: "btn ghost", id: "cadenceWeekly" }, ["Weekly"]);
+    var dailyBtn = el("button", { class: "btn ghost", id: "cadenceDaily" }, ["Daily"]);
+    function paintCadence() {
+      weeklyBtn.style.opacity = cadence === "weekly" ? "1" : "0.5";
+      dailyBtn.style.opacity = cadence === "daily" ? "1" : "0.5";
+    }
+    function setCadence(next) {
+      if (next === cadence) return;
+      weeklyBtn.disabled = dailyBtn.disabled = true;
+      api("POST", "/account/rank-cadence", { cadence: next })
+        .then(function (r) { cadence = r.rank_cadence || cadence; paintCadence(); })
+        .catch(function (e) { toast(e.message || "Couldn't update the cadence."); paintCadence(); })
+        .then(function () { weeklyBtn.disabled = dailyBtn.disabled = false; });
+    }
+    weeklyBtn.onclick = function () { setCadence("weekly"); };
+    dailyBtn.onclick = function () { setCadence("daily"); };
+    paintCadence();
+    card.appendChild(el("div", { class: "settings-row", style: "display:flex;gap:12px;align-items:center;justify-content:space-between;margin-top:14px" }, [
+      el("div", {}, [
+        el("div", {}, ["Rank checks"]),
+        el("div", { class: "faint", style: "font-size:12px" }, ["How often we snapshot your keyword ranks. This is data collection — not email frequency."]),
+      ]),
+      el("span", { style: "display:flex;gap:6px" }, [weeklyBtn, dailyBtn]),
+    ]));
+
+    // Push — informational only; the web can't honor a toggle it doesn't have.
+    card.appendChild(el("div", { class: "settings-row", style: "margin-top:14px" }, [
+      el("div", {}, ["Run-ready push"]),
+      el("div", { class: "faint", style: "font-size:12px" }, ["Managed in the mobile app."]),
+    ]));
+
+    return card;
+  }
+
   function route() {
     // Logged-out + live backend → the try-before-signup preview (NOT a cold
     // login wall). Signup is gated at "Connect & run", after they've seen value.
@@ -3177,6 +3253,7 @@
     // #/apps/:id (optionally ?asc=1 → scroll to + flash the ASC run panel, PRD 04).
     if ((m = h.match(/^\/apps\/([^/?]+)(?:\?(.*))?$/))) { ascCredsMemory = null; return viewApp(m[1], parseQuery(m[2])); }
     if ((m = h.match(/^\/runs\/([^/]+)$/))) return viewRun(m[1]);
+    if (h === "/settings") { ascCredsMemory = null; return viewSettings(); }
     ascCredsMemory = null; // leaving the read→run→push flow → drop the in-memory key
     return viewDashboard();
   }
@@ -3291,6 +3368,13 @@
   //   signedIn → email + Sign out (apps auto-load); hide the demo stub + label
   //   signIn   → a "Sign in" button (→ magic link); hide the demo stub + label
   //   demoStub → keep the editable "acting as…" field (local/demo only)
+  /** Header link to the settings page (comms-prefs Phase 3). */
+  function settingsLink() {
+    return el("a", { id: "settingsLink", href: "#/settings", style: "color:inherit;text-decoration:underline;cursor:pointer", onclick: function (e) {
+      e.preventDefault(); go("#/settings");
+    } }, ["Settings"]);
+  }
+
   function applyAuthHeader() {
     var who = document.querySelector(".who");
     if (!who) return;
@@ -3308,6 +3392,7 @@
       // Surface the RLHF opt-out toggle in local/demo dev too (it routes through
       // the mock backend), so the privacy control is exercisable end-to-end.
       var demoSpan = el("span", { id: "authState", class: "faint", style: "display:flex;gap:8px;align-items:center" }, [
+        settingsLink(),
         privacyToggle(),
       ]);
       who.insertBefore(demoSpan, document.getElementById("envpill"));
@@ -3321,6 +3406,7 @@
     if (st.mode === "signedIn") {
       var span = el("span", { id: "authState", class: "faint", style: "display:flex;gap:8px;align-items:center" }, [
         el("span", {}, [st.email || ""]),
+        settingsLink(),
         privacyToggle(),
         el("a", { href: "#", style: "color:inherit;text-decoration:underline;cursor:pointer", onclick: function (e) {
           e.preventDefault();
