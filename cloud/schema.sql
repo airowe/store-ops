@@ -35,7 +35,10 @@ CREATE TABLE IF NOT EXISTS users (
   agent_paused            INTEGER NOT NULL DEFAULT 0,   -- 0/1: owner paused the weekly autonomous sweep (issue #51)
   rlhf_opt_out            INTEGER NOT NULL DEFAULT 0,    -- 1 ⇒ do NOT capture this user's proposal edits (#39 Part 2)
   rank_cadence            TEXT NOT NULL DEFAULT 'weekly' -- 'daily'|'weekly': how often the cron snapshots ranks (issue #94)
-                            CHECK (rank_cadence IN ('daily', 'weekly'))
+                            CHECK (rank_cadence IN ('daily', 'weekly')),
+  email_digest            TEXT NOT NULL DEFAULT 'weekly' -- comms-prefs: weekly digest email; 'off' silences it (the sweep runs regardless)
+                            CHECK (email_digest IN ('weekly', 'off')),
+  push_run_ready          INTEGER NOT NULL DEFAULT 1     -- comms-prefs: 0 ⇒ do NOT send run-ready push (the run still opens)
 );
 
 -- Migration for an EXISTING db (the CREATE above only fires on a fresh db). Run
@@ -50,7 +53,14 @@ CREATE TABLE IF NOT EXISTS users (
 --   npx wrangler d1 execute store_ops --command "ALTER TABLE users ADD COLUMN agent_paused INTEGER NOT NULL DEFAULT 0"
 --   npx wrangler d1 execute store_ops --command "ALTER TABLE users ADD COLUMN rlhf_opt_out INTEGER NOT NULL DEFAULT 0"
 --   npx wrangler d1 execute store_ops --command "ALTER TABLE users ADD COLUMN rank_cadence TEXT NOT NULL DEFAULT 'weekly' CHECK (rank_cadence IN ('daily','weekly'))"
+--   npx wrangler d1 execute store_ops --command "ALTER TABLE users ADD COLUMN email_digest TEXT NOT NULL DEFAULT 'weekly' CHECK (email_digest IN ('weekly','off'))"
+--   npx wrangler d1 execute store_ops --command "ALTER TABLE users ADD COLUMN push_run_ready INTEGER NOT NULL DEFAULT 1"
 -- (add `--local` to each for the local D1; drop it for remote.)
+--
+-- ⚠️ DEPLOY ORDER (comms-prefs): apply the email_digest/push_run_ready ALTERs
+-- BEFORE deploying a Worker that references them — USER_COLS names the columns,
+-- so an un-migrated DB fails every getUser/requireUser call app-wide, not just
+-- the prefs routes. Migration first, deploy second (the rank_cadence precedent).
 --
 -- TIER RENAME (Appeeky-undercut: launch/autopilot/fleet → indie/startup/scale).
 -- DATA migration — remaps existing rows to the new tier names (the dropped

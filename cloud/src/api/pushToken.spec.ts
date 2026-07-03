@@ -35,6 +35,15 @@ function fakeDb() {
       deviceTokens.set(token!, { user_id: user_id!, platform: platform! }); // ON CONFLICT → upsert
       return { row: null, changes: 1 };
     }
+    if (/^DELETE FROM device_tokens WHERE token = \? AND user_id = \?$/.test(s)) {
+      const [token, user_id] = args as string[];
+      const row = deviceTokens.get(token!);
+      if (row && row.user_id === user_id) {
+        deviceTokens.delete(token!);
+        return { row: null, changes: 1 };
+      }
+      return { row: null, changes: 0 };
+    }
     throw new Error(`fakeDb: unhandled SQL: ${s}`);
   }
 
@@ -101,5 +110,47 @@ describe("POST /account/push-token", () => {
     const db = fakeDb();
     const res = await handleApi(post("/account/push-token", { token: TOKEN }), makeEnv(db));
     expect(res.status).toBe(401);
+  });
+});
+
+function del(path: string, body: unknown, opts: { email?: string } = {}): Request {
+  const headers: Record<string, string> = { "content-type": "application/json" };
+  if (opts.email) headers["x-user-email"] = opts.email;
+  return new Request(`https://api.test${path}`, { method: "DELETE", headers, body: JSON.stringify(body) });
+}
+
+describe("DELETE /account/push-token (sign-out unregister)", () => {
+  it("removes the caller's own token", async () => {
+    const db = fakeDb();
+    const env = makeEnv(db);
+    await handleApi(post("/account/push-token", { token: TOKEN }, { email: EMAIL }), env);
+    const res = await handleApi(del("/account/push-token", { token: TOKEN }, { email: EMAIL }), env);
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ removed: true });
+    expect(db.__deviceTokens.has(TOKEN)).toBe(false);
+  });
+
+  it("cannot remove another user's token — their row survives, caller gets removed:false", async () => {
+    const db = fakeDb();
+    const env = makeEnv(db);
+    await handleApi(post("/account/push-token", { token: TOKEN }, { email: "victim@example.com" }), env);
+    const res = await handleApi(del("/account/push-token", { token: TOKEN }, { email: EMAIL }), env);
+    expect(await res.json()).toEqual({ removed: false });
+    expect(db.__deviceTokens.has(TOKEN)).toBe(true); // untouched
+  });
+
+  it("is idempotent — deleting an already-gone token is removed:false, 200", async () => {
+    const db = fakeDb();
+    const env = makeEnv(db);
+    const res = await handleApi(del("/account/push-token", { token: TOKEN }, { email: EMAIL }), env);
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ removed: false });
+  });
+
+  it("rejects a malformed token with 400 and requires auth (401)", async () => {
+    const db = fakeDb();
+    const env = makeEnv(db);
+    expect((await handleApi(del("/account/push-token", { token: "junk" }, { email: EMAIL }), env)).status).toBe(400);
+    expect((await handleApi(del("/account/push-token", { token: TOKEN }), env)).status).toBe(401);
   });
 });
