@@ -82,6 +82,7 @@ import RunDetailScreen from "../../app/(app)/runs/[id].js";
 import PortfolioScreen from "../../app/(app)/portfolio.js";
 import WarRoomScreen from "../../app/(app)/war-room/[id].js";
 import Login from "../../app/(public)/login.js";
+import SettingsScreen from "../../app/(app)/settings.js";
 
 beforeEach(async () => {
   await setToken("sess-1"); // authed for the (app) screens' data
@@ -125,6 +126,12 @@ describe.each(WIDTHS)("screens render on %s (width %i)", (_label, width) => {
     renderScreen(<WarRoomScreen />);
     await waitFor(() => expect(screen.getByText("War room")).toBeTruthy());
     expect(screen.getByText("#3")).toBeTruthy();
+  });
+
+  it("Settings", async () => {
+    renderScreen(<SettingsScreen />);
+    await waitFor(() => expect(screen.getByText("Communications")).toBeTruthy());
+    expect(screen.getByTestId("sign-out")).toBeTruthy();
   });
 
   it("Login", async () => {

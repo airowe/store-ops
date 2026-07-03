@@ -13,11 +13,13 @@ import type {
   CheckoutResult,
   DeltasView,
   Me,
+  NotificationPrefs,
   PlayAudit,
   PlayVerifyResult,
   PortfolioSummary,
   ProofAggregate,
   PushCommand,
+  RankCadence,
   RanksSeries,
   ResolveResult,
   RunDetail,
@@ -105,3 +107,22 @@ export const portfolio = (c: ApiClient) => c.get<PortfolioSummary>("/portfolio")
 export const proof = (c: ApiClient) => c.get<ProofAggregate>("/proof");
 export const billingCheckout = (c: ApiClient, tier: string) =>
   c.post<CheckoutResult>("/billing/checkout", { tier });
+
+// ── settings (comms-prefs Phase 4) ─────────────────────────────────────────────
+export const getNotifications = (c: ApiClient) =>
+  c.get<NotificationPrefs>("/account/notifications");
+
+export const setNotifications = (c: ApiClient, patch: Partial<NotificationPrefs>) =>
+  c.post<NotificationPrefs>("/account/notifications", patch);
+
+export const setRankCadence = (c: ApiClient, cadence: RankCadence) =>
+  c.post<{ rank_cadence: RankCadence }>("/account/rank-cadence", { cadence });
+
+/**
+ * Unregister this device's push token (the sign-out path). Uses the generic
+ * request() with method DELETE — the client deliberately has no `delete` helper
+ * (every test fake is {get, post, request}). Server answers { removed } and is
+ * idempotent, so sign-out can call this best-effort.
+ */
+export const deletePushToken = (c: ApiClient, token: string) =>
+  c.request<{ removed: boolean }>("/account/push-token", { method: "DELETE", body: { token } });
