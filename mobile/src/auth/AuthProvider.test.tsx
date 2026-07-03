@@ -69,4 +69,30 @@ describe("AuthProvider state machine", () => {
     await waitFor(() => expect(screen.getByText("authed")).toBeTruthy());
     expect(await getToken()).toBe("sess-xyz");
   });
+
+  it("a FAILED magic-link exchange never strands the UI on loading", async () => {
+    // /auth/exchange rejects (expired link) → we must land back on unauthed
+    // (login screen), not sit on "loading" forever.
+    const client = {
+      get: async <T,>() => ({ authed: false }) as T,
+      post: async <T,>(path: string) => {
+        if (path === "/auth/exchange") throw new Error("invalid or expired link");
+        return {} as T;
+      },
+      request: async <T,>() => ({}) as T,
+    } as unknown as ApiClient;
+
+    render(
+      <AuthProvider clientOverride={client}>
+        <Consumer />
+      </AuthProvider>,
+    );
+    await waitFor(() => expect(screen.getByText("unauthed")).toBeTruthy());
+
+    fireEvent.press(screen.getByTestId("do-magic"));
+
+    // ends back at unauthed — never stuck at "loading"
+    await waitFor(() => expect(screen.getByText("unauthed")).toBeTruthy());
+    expect(await getToken()).toBeNull();
+  });
 });

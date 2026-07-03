@@ -18,6 +18,42 @@ export async function readCredentialFile(
   return readAsStringAsync(uri);
 }
 
+export type PickedFileDeps = {
+  readAsStringAsync: typeof FileSystem.readAsStringAsync;
+  deleteAsync: typeof FileSystem.deleteAsync;
+  cacheDirectory: string | null;
+};
+
+/**
+ * Read a PICKED credential file and make sure no on-disk copy outlives the read.
+ * The picker is invoked with `copyToCacheDirectory: false` (see CredentialSheet),
+ * so normally no copy exists — but if the OS/picker staged one inside our cache
+ * anyway, it is deleted (best-effort) the moment the contents are in memory.
+ * This is the enforcement arm of the NEVER-persisted invariant for the file path.
+ */
+export async function readPickedCredential(
+  uri: string,
+  deps: PickedFileDeps = {
+    readAsStringAsync: FileSystem.readAsStringAsync,
+    deleteAsync: FileSystem.deleteAsync,
+    cacheDirectory: FileSystem.cacheDirectory,
+  },
+): Promise<string> {
+  try {
+    return await deps.readAsStringAsync(uri);
+  } finally {
+    // Defensive cleanup: only ever delete inside OUR cache dir (never the user's
+    // original document), and never let cleanup failure mask the read result.
+    if (deps.cacheDirectory && uri.startsWith(deps.cacheDirectory)) {
+      try {
+        await deps.deleteAsync(uri, { idempotent: true });
+      } catch {
+        /* best-effort — a locked file is still bounded by the OS cache eviction */
+      }
+    }
+  }
+}
+
 /** Shape a `.p8` credential the ASC run needs. */
 export type AscCredential = { p8: string; keyId: string; issuerId: string };
 

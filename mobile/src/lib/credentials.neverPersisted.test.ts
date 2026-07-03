@@ -1,13 +1,17 @@
 /**
  * THE binding security invariant: a credential value must NEVER reach any
- * persistence API. We spy on SecureStore (the one persistence the app uses) and
- * exercise the full credential surface — validation, file-read, and a simulated
- * submit — then assert the secret value was never written. The credentials module
- * has no persist path by construction; this test fails loudly if one is ever added.
+ * persistence API — not SecureStore AND not the filesystem. We spy on both and
+ * exercise the full credential surface — validation, file-read (including the
+ * picked-file path and its cache-copy cleanup), and a simulated submit — then
+ * assert the secret value was never written. The review that added the
+ * filesystem coverage caught a real gap: the picker used to stage a cache copy
+ * that SecureStore-only spying could not see.
  */
 import * as SecureStore from "expo-secure-store";
+import * as FileSystem from "expo-file-system";
 import {
   readCredentialFile,
+  readPickedCredential,
   validateAscCredential,
   validateServiceAccount,
 } from "./credentials.js";
@@ -22,10 +26,13 @@ const SECRET_SA = JSON.stringify({
 
 beforeEach(() => jest.clearAllMocks());
 
-/** Assert no SecureStore write ever carried the secret material. */
+/** Assert no SecureStore OR filesystem write ever carried the secret material. */
 function assertSecretNeverPersisted(secret: string) {
-  const set = SecureStore.setItemAsync as jest.Mock;
-  for (const call of set.mock.calls) {
+  const writes = [
+    ...(SecureStore.setItemAsync as jest.Mock).mock.calls,
+    ...(FileSystem.writeAsStringAsync as jest.Mock).mock.calls,
+  ];
+  for (const call of writes) {
     for (const arg of call) {
       expect(String(arg)).not.toContain(secret.slice(0, 24));
     }
@@ -62,5 +69,38 @@ describe("credentials never persisted (security invariant)", () => {
     expect(sent).toEqual([SECRET_SA]);
     expect(SecureStore.setItemAsync).not.toHaveBeenCalled();
     assertSecretNeverPersisted(SECRET_SA);
+  });
+
+  it("readPickedCredential deletes a cache-staged copy the moment it's read", async () => {
+    const deleted: string[] = [];
+    const text = await readPickedCredential("file:///cache/DocumentPicker/AuthKey.p8", {
+      readAsStringAsync: (async () => SECRET_P8) as typeof FileSystem.readAsStringAsync,
+      deleteAsync: (async (uri: string) => void deleted.push(uri)) as typeof FileSystem.deleteAsync,
+      cacheDirectory: "file:///cache/",
+    });
+    expect(text).toBe(SECRET_P8);
+    expect(deleted).toEqual(["file:///cache/DocumentPicker/AuthKey.p8"]); // no on-disk copy survives
+    assertSecretNeverPersisted(SECRET_P8);
+  });
+
+  it("readPickedCredential NEVER deletes the user's original document (outside our cache)", async () => {
+    const deleted: string[] = [];
+    await readPickedCredential("content://downloads/service-account.json", {
+      readAsStringAsync: (async () => SECRET_SA) as typeof FileSystem.readAsStringAsync,
+      deleteAsync: (async (uri: string) => void deleted.push(uri)) as typeof FileSystem.deleteAsync,
+      cacheDirectory: "file:///cache/",
+    });
+    expect(deleted).toEqual([]);
+  });
+
+  it("a cleanup failure never masks the read result", async () => {
+    const text = await readPickedCredential("file:///cache/x.p8", {
+      readAsStringAsync: (async () => SECRET_P8) as typeof FileSystem.readAsStringAsync,
+      deleteAsync: (async () => {
+        throw new Error("locked");
+      }) as typeof FileSystem.deleteAsync,
+      cacheDirectory: "file:///cache/",
+    });
+    expect(text).toBe(SECRET_P8);
   });
 });

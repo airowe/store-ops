@@ -112,6 +112,27 @@ describe("createApiClient", () => {
     await expect(client.get("/health")).resolves.toBeUndefined();
   });
 
+  it("NEVER attaches the Bearer token to a cross-origin absolute URL", async () => {
+    const { fetch, calls } = fakeFetch({ body: {} });
+    const client = createApiClient({ baseUrl: BASE, fetch, getToken: () => "tok-123" });
+
+    await client.get("https://evil.example.com/steal");
+
+    const headers = calls[0]!.init.headers as Record<string, string>;
+    expect(headers["Authorization"]).toBeUndefined(); // token stays home
+    expect(calls[0]!.url).toBe("https://evil.example.com/steal");
+  });
+
+  it("still attaches the Bearer token to a same-origin absolute URL", async () => {
+    const { fetch, calls } = fakeFetch({ body: {} });
+    const client = createApiClient({ baseUrl: BASE, fetch, getToken: () => "tok-123" });
+
+    await client.get(`${BASE}/auth/me`);
+
+    const headers = calls[0]!.init.headers as Record<string, string>;
+    expect(headers["Authorization"]).toBe("Bearer tok-123");
+  });
+
   it("merges defaultHeaders (e.g. the demo X-User-Email path)", async () => {
     const { fetch, calls } = fakeFetch({ body: {} });
     const client = createApiClient({

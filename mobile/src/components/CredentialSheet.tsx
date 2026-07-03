@@ -11,7 +11,7 @@ import { View } from "react-native";
 import * as DocumentPicker from "expo-document-picker";
 import { palette, spacing } from "../theme/index.js";
 import {
-  readCredentialFile,
+  readPickedCredential,
   validateAscCredential,
   validateServiceAccount,
   type AscCredential,
@@ -42,9 +42,12 @@ export function CredentialSheet({
 }
 
 async function pickFileText(): Promise<string | null> {
-  const res = await DocumentPicker.getDocumentAsync({ copyToCacheDirectory: true });
+  // SECURITY: copyToCacheDirectory MUST stay false — a cache copy would write the
+  // credential to disk, breaking the never-persisted invariant. We read the picked
+  // document in place; readPickedCredential also deletes any staged cache copy.
+  const res = await DocumentPicker.getDocumentAsync({ copyToCacheDirectory: false });
   if (res.canceled || !res.assets?.[0]) return null;
-  return readCredentialFile(res.assets[0].uri);
+  return readPickedCredential(res.assets[0].uri);
 }
 
 function AscSheet({ onSubmit, busy, submitLabel }: { onSubmit: (v: AscSubmit) => void; busy?: boolean; submitLabel?: string }) {

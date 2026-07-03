@@ -98,4 +98,10 @@ describe("extractMagicToken", () => {
     expect(extractMagicToken(null)).toBeNull();
     expect(extractMagicToken(undefined)).toBeNull();
   });
+  it("ignores a token param on a NON-auth path (scoped to /auth/m only)", () => {
+    // A shared content link happening to carry ?token= must never fire an
+    // auth exchange — that could strand the UI or consume a fresh session boot.
+    expect(extractMagicToken("https://shipaso.com/apps/123?token=abc")).toBeNull();
+    expect(extractMagicToken("shipaso://runs/r1?token=abc")).toBeNull();
+  });
 });
