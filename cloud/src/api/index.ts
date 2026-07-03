@@ -710,6 +710,15 @@ async function rankCadenceRoute(req: Request, env: Env, userId: string): Promise
  * (mobile, Phase 5). requireUser-gated; idempotent (re-registering the same token
  * just re-points it at this user). A malformed token is rejected 400 rather than
  * stored, so we never queue an unsendable notification.
+ *
+ * Known tradeoff (accepted): re-registration re-points an EXISTING token at the
+ * caller — required so a device that switches accounts follows the new login.
+ * A caller who somehow learned another user's push token could therefore
+ * redirect that device's notifications to their own runs. Expo push tokens are
+ * opaque, per-install, and never exposed by our API, so exploiting this needs a
+ * token leak from the victim's device; the blast radius is mis-addressed
+ * notifications (no data access). Revisit with a signed device attestation if
+ * tokens ever become discoverable.
  */
 async function pushTokenRoute(req: Request, env: Env, userId: string): Promise<unknown> {
   const body = await readJson<{ token?: unknown; platform?: unknown }>(req);
