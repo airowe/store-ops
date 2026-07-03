@@ -19,11 +19,26 @@
 // ── Auth ──────────────────────────────────────────────────────────────────────
 
 /** `GET /auth/me` — the session boot check. */
+/** Communication preferences (comms-prefs). Server truth; boolean at the API edge. */
+export type NotificationPrefs = {
+  /** 'off' silences the weekly digest email — the agent keeps working. */
+  email_digest: "weekly" | "off";
+  /** false = the server sends no run-ready push — the run still opens. */
+  push_run_ready: boolean;
+};
+
+/** How often the cron snapshots ranks (data collection, NOT email frequency). */
+export type RankCadence = "daily" | "weekly";
+
 export type Me = {
   authed: boolean;
   /** how the caller was identified. "demo" is the X-User-Email stub (dev only). */
   via?: "session" | "demo";
   email?: string;
+  /** present when authed (comms-prefs Phase 1 puts these on /auth/me). */
+  email_digest?: NotificationPrefs["email_digest"];
+  push_run_ready?: boolean;
+  rank_cadence?: RankCadence;
 };
 
 /** `POST /auth/request {email}` — passwordless magic-link request. Always sent. */

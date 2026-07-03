@@ -20,7 +20,7 @@ import { palette } from "../../src/theme/index.js";
 import type { AppCandidate } from "../../src/types/api.js";
 
 export default function Dashboard() {
-  const { client, me, signOut } = useAuth();
+  const { client, me } = useAuth();
   const router = useRouter();
   const qc = useQueryClient();
   const now = Date.now();
@@ -45,7 +45,8 @@ export default function Dashboard() {
         <AppText kind="title">Your apps</AppText>
         <View style={{ flexDirection: "row", gap: 4 }}>
           <Button label="Portfolio" variant="ghost" onPress={() => router.push("/(app)/portfolio")} />
-          <Button label="Sign out" variant="ghost" onPress={() => void signOut()} />
+          {/* sign-out moved into Settings (with device-token cleanup) */}
+          <Button label="Settings" variant="ghost" onPress={() => router.push("/(app)/settings")} />
         </View>
       </View>
       {me?.email ? <AppText kind="micro">{me.email}{me.via === "demo" ? " · demo" : ""}</AppText> : null}

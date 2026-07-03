@@ -32,6 +32,15 @@ jest.mock("expo-file-system", () => ({
   downloadAsync: jest.fn(async (_u: string, t: string) => ({ status: 200, uri: t, headers: {} })),
 }));
 
+// Notifications: default to granted + a stable token; tests override per-case.
+jest.mock("expo-notifications", () => ({
+  getPermissionsAsync: jest.fn(async () => ({ status: "granted" })),
+  requestPermissionsAsync: jest.fn(async () => ({ status: "granted" })),
+  getExpoPushTokenAsync: jest.fn(async () => ({ data: "ExpoPushToken[jest-device]" })),
+  getLastNotificationResponseAsync: jest.fn(async () => null),
+  addNotificationResponseReceivedListener: jest.fn(() => ({ remove: jest.fn() })),
+}));
+
 jest.mock("expo-linking", () => ({
   createURL: (path: string) => `shipaso://${path}`,
   parse: (url: string) => ({ queryParams: Object.fromEntries(new URL(url).searchParams) }),
