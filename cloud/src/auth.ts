@@ -23,7 +23,7 @@ export const SESSION_COOKIE = "store_ops_session";
 /** Fallback secret used ONLY in the demo env when SESSION_SECRET is unset. */
 const DEV_FALLBACK_SECRET = "store-ops-dev-insecure-secret-do-not-use-in-prod";
 
-type TokenKind = "magic" | "session";
+type TokenKind = "magic" | "session" | "unsub";
 
 type TokenPayload = {
   /** normalized (trimmed, lowercased) email */
@@ -174,6 +174,29 @@ export function verifySessionToken(
   return verify(secret, token, "session", opts);
 }
 
+/**
+ * Unsubscribe tokens (comms-prefs Phase 2) — the credential inside the digest
+ * email's unsubscribe link. Audience-separated ("unsub"): it can never pass as
+ * a session or magic token and vice versa. Long-lived (the caller passes ~60d)
+ * because a fresh one ships with every weekly digest anyway; scoped to ONE
+ * action (digest off) at the API layer.
+ */
+export function mintUnsubToken(
+  secret: string,
+  email: string,
+  opts: Clock & { ttlSeconds: number },
+): Promise<string> {
+  return mint(secret, email, "unsub", opts);
+}
+
+export function verifyUnsubToken(
+  secret: string,
+  token: string,
+  opts?: Clock,
+): Promise<VerifyResult> {
+  return verify(secret, token, "unsub", opts);
+}
+
 // ── cookies ─────────────────────────────────────────────────────────────────────
 
 export type SameSite = "Lax" | "Strict" | "None";
@@ -256,6 +279,12 @@ export type EmailMessage = {
   subject: string;
   html: string;
   text: string;
+  /**
+   * Optional RFC-style message headers (e.g. List-Unsubscribe / -Post for the
+   * digest, comms-prefs Phase 2). Senders that support custom headers pass them
+   * through; Console logs them.
+   */
+  headers?: Record<string, string>;
 };
 
 /**
@@ -287,7 +316,8 @@ export class ConsoleEmailSender implements EmailSender {
   }
 
   async send(msg: EmailMessage): Promise<void> {
-    this.log(`[store-ops email] ${msg.subject} -> ${msg.to}\n${msg.text}`);
+    const hdrs = msg.headers ? ` headers=${JSON.stringify(msg.headers)}` : "";
+    this.log(`[store-ops email] ${msg.subject} -> ${msg.to}${hdrs}\n${msg.text}`);
   }
 
   async sendMagicLink(email: string, link: string): Promise<void> {
@@ -341,6 +371,7 @@ export class ResendEmailSender implements EmailSender {
         subject: msg.subject,
         html: msg.html,
         text: msg.text,
+        ...(msg.headers ? { headers: msg.headers } : {}),
       }),
     });
 
@@ -407,6 +438,7 @@ export class BrevoEmailSender implements EmailSender {
         subject: msg.subject,
         htmlContent: msg.html,
         textContent: msg.text,
+        ...(msg.headers ? { headers: msg.headers } : {}),
       }),
     });
 

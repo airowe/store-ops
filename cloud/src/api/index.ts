@@ -114,6 +114,7 @@ import {
   registerDeviceToken,
   setAgentPaused,
   setGithubConnection,
+  setEmailDigestByEmail,
   setNotificationPrefs,
   setOptOut,
   setRankCadence,
@@ -133,6 +134,7 @@ import {
   serializeSessionCookie,
   SESSION_COOKIE,
   verifyMagicToken,
+  verifyUnsubToken,
   verifySessionToken,
 } from "../auth.js";
 import { emailSenderForEnv } from "../emailSender.js";
@@ -605,6 +607,74 @@ async function authExchange(req: Request, env: Env): Promise<Response> {
   // Token in the body — NOT a cookie. The app stores it in SecureStore and sends
   // it as `Authorization: Bearer` on every call (the requireUser Bearer path).
   return json({ token: session, email: res.email }, 200, origin, env);
+}
+
+// ── Digest unsubscribe (comms-prefs Phase 2) — public, token-authenticated ────
+//
+// GET renders a CONFIRMATION page and never mutates: mail scanners and link
+// prefetchers follow GET links, and a mutating GET would silently unsubscribe
+// real users. POST does the flip — both the confirm-form POST and the RFC 8058
+// one-click POST (`List-Unsubscribe=One-Click`) are form-encoded, so these
+// handlers take the token from the QUERY STRING ONLY and never call readJson.
+// Responses are HTML pages (not the json() helper). The flip is NON-creating
+// (a deleted account gets the same success page; no row is resurrected).
+
+/** Minimal HTML page response — inline styles, no cookies, no external assets. */
+function htmlPage(title: string, bodyHtml: string, status = 200): Response {
+  const doc =
+    `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">` +
+    `<title>${escapeHtmlText(title)}</title></head>` +
+    `<body style="margin:0;background:#07090e;color:#eef1f7;font:16px/1.6 -apple-system,Segoe UI,Roboto,sans-serif">` +
+    `<div style="max-width:520px;margin:12vh auto 0;padding:0 20px">` +
+    `<div style="font-weight:700;letter-spacing:.4px;color:#34d399;margin-bottom:18px">ShipASO</div>` +
+    bodyHtml +
+    `</div></body></html>`;
+  return new Response(doc, { status, headers: { "content-type": "text/html; charset=utf-8" } });
+}
+
+/** HTML-escape for interpolating the (verified) email into the pages. */
+function escapeHtmlText(s: string): string {
+  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+}
+
+const UNSUB_BAD_BODY =
+  `<h1 style="font-size:22px;margin:0 0 10px">This link isn't valid anymore</h1>` +
+  `<p style="color:#97a1b6">The unsubscribe link is invalid or has expired. ` +
+  `A fresh one is at the bottom of every weekly digest, or manage emails in your dashboard settings.</p>`;
+
+/** GET /email/unsubscribe?token=… — confirm page. NEVER mutates. */
+async function unsubscribeGetRoute(req: Request, env: Env): Promise<Response> {
+  const url = new URL(req.url);
+  const token = url.searchParams.get("token") ?? "";
+  const res = await verifyUnsubToken(sessionSecret(env), token);
+  if (!res.ok) return htmlPage("Unsubscribe", UNSUB_BAD_BODY, 400);
+  const email = escapeHtmlText(res.email);
+  return htmlPage(
+    "Stop the weekly digest?",
+    `<h1 style="font-size:22px;margin:0 0 10px">Stop the weekly digest?</h1>` +
+      `<p style="color:#97a1b6">This turns off the weekly digest email for <strong style="color:#eef1f7">${email}</strong> — ` +
+      `every app on the account. ShipASO keeps working either way: runs still open in your dashboard.</p>` +
+      `<form method="post" action="${escapeHtmlText(url.pathname + url.search)}">` +
+      `<button type="submit" style="background:#34d399;color:#07090e;border:0;border-radius:10px;padding:12px 18px;font-weight:700;font-size:15px;cursor:pointer">Stop the weekly digest</button>` +
+      `</form>`,
+  );
+}
+
+/** POST /email/unsubscribe?token=… — the flip. Idempotent; form-encoded body ignored. */
+async function unsubscribePostRoute(req: Request, env: Env): Promise<Response> {
+  const token = new URL(req.url).searchParams.get("token") ?? "";
+  const res = await verifyUnsubToken(sessionSecret(env), token);
+  if (!res.ok) return htmlPage("Unsubscribe", UNSUB_BAD_BODY, 400);
+  // Non-creating flip: a deleted account matches zero rows and gets the same
+  // page — nothing to leak, nothing resurrected. Repeat POSTs are no-ops.
+  await setEmailDigestByEmail(env.DB, res.email, "off");
+  const email = escapeHtmlText(res.email);
+  return htmlPage(
+    "Weekly digest off",
+    `<h1 style="font-size:22px;margin:0 0 10px">Weekly digest off</h1>` +
+      `<p style="color:#97a1b6">No more weekly digest emails for <strong style="color:#eef1f7">${email}</strong>. ` +
+      `ShipASO keeps working — runs still open in your dashboard, and you can turn the digest back on any time in Settings.</p>`,
+  );
 }
 
 /** POST /auth/logout — clear the session cookie (same scope it was set with). */
@@ -2394,6 +2464,11 @@ export async function handleApi(req: Request, env: Env): Promise<Response> {
       if (seg[1] === "me" && seg.length === 2 && method === "GET") {
         return authMe(req, env, origin);
       }
+    }
+    // Digest unsubscribe (comms-prefs Phase 2) — public; the token IS the auth.
+    if (seg[0] === "email" && seg[1] === "unsubscribe" && seg.length === 2) {
+      if (method === "GET") return unsubscribeGetRoute(req, env);
+      if (method === "POST") return unsubscribePostRoute(req, env);
     }
     // Stripe calls this server-to-server with NO cookie — auth is the signature.
     if (

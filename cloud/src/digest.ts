@@ -53,6 +53,13 @@ export type RenderOpts = {
   appName: string;
   dashboardUrl: string;
   hasPendingApproval: boolean;
+  /**
+   * Absolute unsubscribe URL for THIS recipient (comms-prefs Phase 2). Optional:
+   * absent when API_ORIGIN is unconfigured — the digest then renders without a
+   * footer link (degrade, never a broken href). One token per unique email; the
+   * link turns off the digest for EVERY app on the account.
+   */
+  unsubscribeUrl?: string | undefined;
 };
 
 // ── classification ──────────────────────────────────────────────────────────
@@ -320,6 +327,12 @@ export function renderDigestText(digest: Digest, opts: RenderOpts): string {
     lines.push(`See the full trend in your dashboard -> ${opts.dashboardUrl}`);
   }
 
+  if (opts.unsubscribeUrl) {
+    lines.push("");
+    lines.push(`Stop this weekly digest (for every app on this account): ${opts.unsubscribeUrl}`);
+    lines.push("ShipASO keeps working either way - runs still open in your dashboard.");
+  }
+
   return lines.join("\n");
 }
 
@@ -391,6 +404,11 @@ export function renderDigestHtml(digest: Digest, opts: RenderOpts): string {
     `</div>`,
     `</div>`,
     `<div style="max-width:520px;margin:14px auto 0;font:12px/1.5 -apple-system,Segoe UI,Roboto,sans-serif;color:#626c83;text-align:center">ShipASO ran the loop on real rank data — we never hold your store credentials.</div>`,
+    ...(opts.unsubscribeUrl
+      ? [
+          `<div style="max-width:520px;margin:8px auto 0;font:12px/1.5 -apple-system,Segoe UI,Roboto,sans-serif;color:#626c83;text-align:center"><a href="${escapeHtml(opts.unsubscribeUrl)}" style="color:#626c83;text-decoration:underline">Stop this weekly digest</a> — ShipASO keeps working either way.</div>`,
+        ]
+      : []),
     `</div>`,
   ].join("");
 }
@@ -406,6 +424,8 @@ export type DigestAppInput = {
   hasPendingApproval: boolean;
   /** flat RankSnapshotRow[] for this app, as getRankHistory returns it. */
   rankHistory: RankSnapshotRow[];
+  /** per-recipient unsubscribe URL (minted by the cron; absent → no footer/headers). */
+  unsubscribeUrl?: string | undefined;
 };
 
 /** Only the paid tiers pay for standing autonomy → only they get a digest. */
@@ -432,6 +452,7 @@ export function planDigests(
       appName: app.appName,
       dashboardUrl: opts.dashboardUrl,
       hasPendingApproval: app.hasPendingApproval,
+      unsubscribeUrl: app.unsubscribeUrl,
     };
     const mover = digest.topMover ? ` — ${describeEntry(digest.topMover)}` : "";
     const subject = digest.anyMovement
@@ -442,6 +463,15 @@ export function planDigests(
       subject,
       html: renderDigestHtml(digest, renderOpts),
       text: renderDigestText(digest, renderOpts),
+      // RFC 8058 one-click headers — only when we can build a real URL.
+      ...(app.unsubscribeUrl
+        ? {
+            headers: {
+              "List-Unsubscribe": `<${app.unsubscribeUrl}>`,
+              "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
+            },
+          }
+        : {}),
     });
   }
   return messages;

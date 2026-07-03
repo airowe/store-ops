@@ -76,6 +76,10 @@ APP_ENV = "production"
 # AND used to build the post-login + Stripe redirect targets, so the browser
 # lands on the dashboard (not the bare Worker) after the magic link / checkout.
 DASHBOARD_ORIGIN = "https://app.shipaso.com"
+# API_ORIGIN — the public base of THIS worker; the cron uses it to build absolute
+# unsubscribe links on the weekly digest (comms-prefs Phase 2). Unset → digests
+# send without the unsubscribe footer/headers (degrade, never a broken link).
+API_ORIGIN = "https://api.shipaso.com"
 # COOKIE_DOMAIN — shares the session cookie across the dashboard (app.shipaso.com)
 # and API (api.shipaso.com) subdomains, with SameSite=None so it rides cross-site
 # fetches. Leave unset for single-origin / local dev (→ host-only, SameSite=Lax).
