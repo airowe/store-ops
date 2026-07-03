@@ -207,3 +207,20 @@ CREATE TABLE IF NOT EXISTS review_snapshots (
   fetched_at  TEXT NOT NULL DEFAULT (datetime('now'))
 );
 CREATE INDEX IF NOT EXISTS idx_reviews_app ON review_snapshots(app_id, fetched_at);
+
+-- ── device_tokens ────────────────────────────────────────────────────────────
+-- Expo push tokens per user, so the cron can notify an owner when a run opens
+-- while they're away (mobile, Phase 5). A token is unique (one row per device);
+-- re-registering the same token just refreshes ownership/timestamp. Not a
+-- credential — but we never log full tokens.
+-- Migration for an EXISTING db (the CREATE below only fires on a fresh db):
+--   npx wrangler d1 execute store_ops --command "CREATE TABLE IF NOT EXISTS device_tokens (token TEXT PRIMARY KEY, user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE, platform TEXT NOT NULL DEFAULT 'ios', created_at TEXT NOT NULL DEFAULT (datetime('now')))"
+--   npx wrangler d1 execute store_ops --command "CREATE INDEX IF NOT EXISTS idx_device_tokens_user ON device_tokens(user_id)"
+-- (add `--local` for the local D1; drop it for remote.)
+CREATE TABLE IF NOT EXISTS device_tokens (
+  token       TEXT PRIMARY KEY,                       -- the Expo push token (unique per device)
+  user_id     TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  platform    TEXT NOT NULL DEFAULT 'ios',            -- 'ios' | 'android'
+  created_at  TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_device_tokens_user ON device_tokens(user_id);

@@ -563,6 +563,40 @@ export async function createApp(
   return row;
 }
 
+/**
+ * Register (or refresh) an Expo push token for a user. Idempotent: the token is
+ * the primary key, so re-registering the SAME device just re-points it at this
+ * user + updates the timestamp (a device that changed accounts follows the login).
+ */
+export async function registerDeviceToken(
+  db: D1Database,
+  userId: string,
+  token: string,
+  platform: "ios" | "android",
+): Promise<void> {
+  await db
+    .prepare(
+      "INSERT INTO device_tokens (token, user_id, platform, created_at) VALUES (?, ?, ?, ?) " +
+        "ON CONFLICT(token) DO UPDATE SET user_id = excluded.user_id, platform = excluded.platform, created_at = excluded.created_at",
+    )
+    .bind(token, userId, platform, now())
+    .run();
+}
+
+/** The Expo push tokens registered for a user (empty when none). */
+export async function listDeviceTokensForUser(db: D1Database, userId: string): Promise<string[]> {
+  const res = await db
+    .prepare("SELECT token FROM device_tokens WHERE user_id = ?")
+    .bind(userId)
+    .all<{ token: string }>();
+  return (res.results ?? []).map((r) => r.token);
+}
+
+/** Drop a token (e.g. Expo reported it unregistered). */
+export async function deleteDeviceToken(db: D1Database, token: string): Promise<void> {
+  await db.prepare("DELETE FROM device_tokens WHERE token = ?").bind(token).run();
+}
+
 export async function getApp(db: D1Database, appId: string): Promise<AppRow | null> {
   return db
     .prepare(

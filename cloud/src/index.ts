@@ -32,6 +32,13 @@ export type Env = {
   // shared across them and uses SameSite=None (sent on cross-site fetch). Unset →
   // SameSite=Lax, host-only cookie (single-origin / local dev).
   COOKIE_DOMAIN?: string;
+  /**
+   * Optional web/Pages origin (e.g. "https://shipaso.com") the magic-link email
+   * points at, so the link is a UNIVERSAL LINK that opens the mobile app (via the
+   * .well-known association files) and falls back to /auth/m for web. Unset ⇒ the
+   * link stays the worker's /auth/callback (today's web-only flow).
+   */
+  MAGIC_LINK_BASE?: string;
   // Secrets (set via `wrangler secret put`):
   SESSION_SECRET?: string; // signs magic-link + session tokens (HMAC-SHA256)
   STRIPE_SECRET_KEY?: string; // Stripe secret key (Bearer for the REST API) — test OR live

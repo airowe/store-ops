@@ -109,6 +109,7 @@ import {
   persistRun,
   recordApproval,
   recordSubscriber,
+  registerDeviceToken,
   setAgentPaused,
   setGithubConnection,
   setOptOut,
@@ -117,6 +118,7 @@ import {
   updateRunCopy,
   upsertUser,
 } from "../d1.js";
+import { isExpoPushToken } from "../push.js";
 import { finalizeEditedCopy } from "./proposalEdit.js";
 import { decryptField, importKeyFromBase64 } from "../crypto/rlhfCrypto.js";
 import {
@@ -506,6 +508,20 @@ function authBaseUrl(req: Request, env: Env): string {
  * {sent:true} regardless of whether the email is known, so we never leak account
  * existence. A malformed email is also treated as "sent" (no enumeration).
  */
+/**
+ * Build the URL the magic-link email points at. Default (MAGIC_LINK_BASE unset):
+ * the worker's own `/auth/callback` — today's web-only flow, byte-for-byte. When
+ * MAGIC_LINK_BASE is set to the web/Pages origin, the link becomes a UNIVERSAL
+ * LINK to `/auth/m?token=…` that opens the mobile app on a device that has it and
+ * falls back to the cookie flow for web. Pure + exported so it's unit-tested
+ * directly (no email side effects).
+ */
+export function buildMagicLink(env: Env, requestOrigin: string, token: string): string {
+  const t = encodeURIComponent(token);
+  const linkBase = env.MAGIC_LINK_BASE?.replace(/\/+$/, "");
+  return linkBase ? `${linkBase}/auth/m?token=${t}` : `${requestOrigin}/auth/callback?token=${t}`;
+}
+
 async function authRequest(req: Request, env: Env): Promise<unknown> {
   const body = await readJson<{ email?: string }>(req);
   const email = body.email?.trim().toLowerCase();
@@ -513,8 +529,7 @@ async function authRequest(req: Request, env: Env): Promise<unknown> {
     const token = await mintMagicToken(sessionSecret(env), email, {
       ttlSeconds: MAGIC_LINK_TTL_SECONDS,
     });
-    const base = new URL(req.url).origin; // callback is served by THIS worker
-    const link = `${base}/auth/callback?token=${encodeURIComponent(token)}`;
+    const link = buildMagicLink(env, new URL(req.url).origin, token);
     // Delivery failure must NOT change the response (no account enumeration, no
     // leaking vendor errors). Log server-side and still answer {sent:true}.
     try {
@@ -687,6 +702,24 @@ async function rankCadenceRoute(req: Request, env: Env, userId: string): Promise
   }
   await setRankCadence(env.DB, { userId, cadence: body.cadence });
   return { rank_cadence: body.cadence };
+}
+
+/**
+ * POST /account/push-token { token, platform? } — register this device's Expo
+ * push token so the cron can notify the owner when a run opens while they're away
+ * (mobile, Phase 5). requireUser-gated; idempotent (re-registering the same token
+ * just re-points it at this user). A malformed token is rejected 400 rather than
+ * stored, so we never queue an unsendable notification.
+ */
+async function pushTokenRoute(req: Request, env: Env, userId: string): Promise<unknown> {
+  const body = await readJson<{ token?: unknown; platform?: unknown }>(req);
+  const token = typeof body.token === "string" ? body.token.trim() : "";
+  if (!isExpoPushToken(token)) {
+    throw new HttpError(400, "a valid Expo push token is required");
+  }
+  const platform = body.platform === "android" ? "android" : "ios";
+  await registerDeviceToken(env.DB, userId, token, platform);
+  return { registered: true, platform };
 }
 
 /**
@@ -2385,6 +2418,16 @@ export async function handleApi(req: Request, env: Env): Promise<Response> {
       method === "POST"
     ) {
       return json(await rankCadenceRoute(req, env, user.id), 200, origin, env);
+    }
+
+    // /account/push-token — register this device's Expo push token (mobile, Phase 5)
+    if (
+      seg[0] === "account" &&
+      seg[1] === "push-token" &&
+      seg.length === 2 &&
+      method === "POST"
+    ) {
+      return json(await pushTokenRoute(req, env, user.id), 200, origin, env);
     }
 
     // /runs/approve-all — bulk-approve every pending run (matched BEFORE /runs/:id)
