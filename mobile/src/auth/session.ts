@@ -29,13 +29,16 @@ export async function clearToken(): Promise<void> {
 
 /**
  * Extract a magic-link token from a deep link the OS handed us, e.g.
- * `https://shipaso.com/auth/m?token=…` or `shipaso://auth/m?token=…`. Returns
- * null when the URL carries no token (so a non-auth deep link is ignored).
+ * `https://shipaso.com/auth/m?token=…` or `shipaso://auth/m?token=…`. Scoped to
+ * the `/auth/m` path — a NON-auth deep link that happens to carry a `token`
+ * query param (e.g. a shared content URL) must NOT trigger an auth exchange.
+ * Returns null for anything else.
  */
 export function extractMagicToken(url: string | null | undefined): string | null {
   if (!url) return null;
-  // Tolerate custom-scheme URLs that the URL constructor parses oddly by
-  // matching the query directly — we only need the `token` param.
+  // Only the magic-link landing path is an auth link. Tolerate custom-scheme URLs
+  // that the URL constructor parses oddly by matching the string directly.
+  if (!/(^|\/)auth\/m(\/|\?|#|$)/.test(url)) return null;
   const m = url.match(/[?&]token=([^&#]+)/);
   return m && m[1] ? decodeURIComponent(m[1]) : null;
 }

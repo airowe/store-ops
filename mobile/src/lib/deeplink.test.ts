@@ -30,4 +30,10 @@ describe("routeForNotificationData", () => {
     expect(routeForNotificationData({ url: "https://shipaso.com/apps/a2" })).toBe("/(app)/apps/a2");
     expect(routeForNotificationData(undefined)).toBeNull();
   });
+
+  it("URL-encodes ids so a '/' in a payload can't map to an unintended route", () => {
+    expect(routeForNotificationData({ runId: "r1/../../evil" })).toBe(
+      `/(app)/runs/${encodeURIComponent("r1/../../evil")}`,
+    );
+  });
 });

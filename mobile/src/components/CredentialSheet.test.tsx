@@ -1,5 +1,5 @@
 import React from "react";
-import { render, screen, fireEvent } from "@testing-library/react-native";
+import { render, screen, fireEvent, waitFor } from "@testing-library/react-native";
 import * as SecureStore from "expo-secure-store";
 import { CredentialSheet, type AscSubmit, type PlaySubmit } from "./CredentialSheet.js";
 
@@ -30,6 +30,18 @@ describe("CredentialSheet — asc", () => {
 
     expect(onSubmit).toHaveBeenCalledWith({ kind: "asc", cred: { p8: P8, keyId: "KEY123", issuerId: "ISSUER123" } });
     expect(SecureStore.setItemAsync).not.toHaveBeenCalled(); // never persisted
+  });
+});
+
+describe("CredentialSheet — file picking (security)", () => {
+  it("invokes the picker with copyToCacheDirectory:false — a cache copy would persist the credential", async () => {
+    const DocumentPicker = jest.requireMock("expo-document-picker") as {
+      getDocumentAsync: jest.Mock;
+    };
+    render(<CredentialSheet variant="asc" onSubmit={jest.fn()} />);
+    fireEvent.press(screen.getByTestId("asc-pick"));
+    await waitFor(() => expect(DocumentPicker.getDocumentAsync).toHaveBeenCalled());
+    expect(DocumentPicker.getDocumentAsync).toHaveBeenCalledWith({ copyToCacheDirectory: false });
   });
 });
 

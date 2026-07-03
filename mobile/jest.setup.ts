@@ -21,6 +21,17 @@ jest.mock("expo-document-picker", () => ({
   getDocumentAsync: jest.fn(async () => ({ canceled: true, assets: null })),
 }));
 
+// File system: observable spies so the never-persisted credential tests can
+// assert that NO write API is ever handed a credential value.
+jest.mock("expo-file-system", () => ({
+  cacheDirectory: "file:///cache/",
+  documentDirectory: "file:///docs/",
+  readAsStringAsync: jest.fn(async () => ""),
+  writeAsStringAsync: jest.fn(async () => undefined),
+  deleteAsync: jest.fn(async () => undefined),
+  downloadAsync: jest.fn(async (_u: string, t: string) => ({ status: 200, uri: t, headers: {} })),
+}));
+
 jest.mock("expo-linking", () => ({
   createURL: (path: string) => `shipaso://${path}`,
   parse: (url: string) => ({ queryParams: Object.fromEntries(new URL(url).searchParams) }),

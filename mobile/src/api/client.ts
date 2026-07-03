@@ -57,6 +57,15 @@ function joinUrl(base: string, path: string): string {
   return `${base.replace(/\/+$/, "")}/${path.replace(/^\/+/, "")}`;
 }
 
+/** Does this URL live on the same origin as the configured API base? */
+function sameOriginAsBase(url: string, base: string): boolean {
+  try {
+    return new URL(url).origin === new URL(base).origin;
+  } catch {
+    return false; // unparseable → never trust it with the token
+  }
+}
+
 /** Parse a Response body as JSON, tolerating an empty body (→ undefined). */
 async function parseBody(res: Response): Promise<unknown> {
   const text = await res.text();
@@ -71,6 +80,7 @@ async function parseBody(res: Response): Promise<unknown> {
 export function createApiClient(config: ApiClientConfig): ApiClient {
   async function request<T>(path: string, opts: RequestOptions = {}): Promise<T> {
     const token = config.getToken ? await config.getToken() : undefined;
+    const url = joinUrl(config.baseUrl, path);
 
     const headers: Record<string, string> = {
       Accept: "application/json",
@@ -78,8 +88,12 @@ export function createApiClient(config: ApiClientConfig): ApiClient {
       ...opts.headers,
     };
     if (opts.body !== undefined) headers["Content-Type"] = "application/json";
-    // Bearer is attached ONLY when we actually have a token (logged-out → omit).
-    if (token) headers["Authorization"] = `Bearer ${token}`;
+    // Bearer is attached ONLY when we actually have a token (logged-out → omit)
+    // AND the request stays on the API's own origin — an absolute URL to any
+    // other host (should one ever reach here) must never carry the session token.
+    if (token && sameOriginAsBase(url, config.baseUrl)) {
+      headers["Authorization"] = `Bearer ${token}`;
+    }
 
     const init: RequestInit = {
       method: opts.method ?? (opts.body !== undefined ? "POST" : "GET"),
@@ -90,7 +104,7 @@ export function createApiClient(config: ApiClientConfig): ApiClient {
 
     let res: Response;
     try {
-      res = await config.fetch(joinUrl(config.baseUrl, path), init);
+      res = await config.fetch(url, init);
     } catch (err) {
       // Transport/abort failure: never produced an HTTP response.
       const message = err instanceof Error ? err.message : "network request failed";

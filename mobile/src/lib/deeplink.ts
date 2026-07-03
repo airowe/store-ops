@@ -42,11 +42,12 @@ export function routeForDeepLink(url: string | null | undefined): RouteTarget {
   return null;
 }
 
-/** Resolve a notification's data payload to a route (push tap → screen). */
+/** Resolve a notification's data payload to a route (push tap → screen). Ids are
+ *  URL-encoded so a value containing "/" can never map to an unintended route. */
 export function routeForNotificationData(data: Record<string, unknown> | undefined): RouteTarget {
   if (!data) return null;
-  if (typeof data.runId === "string") return `/(app)/runs/${data.runId}`;
-  if (typeof data.appId === "string") return `/(app)/apps/${data.appId}`;
+  if (typeof data.runId === "string") return `/(app)/runs/${encodeURIComponent(data.runId)}`;
+  if (typeof data.appId === "string") return `/(app)/apps/${encodeURIComponent(data.appId)}`;
   if (typeof data.url === "string") return routeForDeepLink(data.url);
   return null;
 }

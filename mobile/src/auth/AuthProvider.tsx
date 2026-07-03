@@ -93,7 +93,13 @@ export function AuthProvider({
       },
       completeMagicLink: async (magicToken: string) => {
         setStatus("loading");
-        await session.exchangeMagicLink(client, magicToken);
+        try {
+          await session.exchangeMagicLink(client, magicToken);
+        } catch {
+          // Invalid/expired link — NEVER strand the UI on "loading". Fall through
+          // to a fresh boot: an existing session survives untouched; a logged-out
+          // user lands back on the login screen.
+        }
         await refresh();
       },
       refresh,
