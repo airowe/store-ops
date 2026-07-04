@@ -132,6 +132,11 @@ jobs:
           add_settings_col_if_missing schedule_json "schedule_json TEXT"
           add_settings_col_if_missing last_sweep_at "last_sweep_at TEXT"
 
+          # stored_credentials (#67 — opt-in envelope-encrypted store credentials).
+          d1 "CREATE TABLE IF NOT EXISTS stored_credentials (id TEXT PRIMARY KEY, user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE, app_id TEXT REFERENCES apps(id) ON DELETE CASCADE, kind TEXT NOT NULL CHECK (kind IN ('asc','play')), key_id TEXT NOT NULL DEFAULT '', issuer_id TEXT NOT NULL DEFAULT '', ciphertext TEXT NOT NULL, wrapped_dek TEXT NOT NULL, kek_version INTEGER NOT NULL, created_at TEXT NOT NULL DEFAULT (datetime('now')), last_used_at TEXT, UNIQUE (user_id, app_id, kind))" > /dev/null
+          d1 "CREATE INDEX IF NOT EXISTS idx_stored_cred_user ON stored_credentials(user_id)" > /dev/null
+          echo "✓ stored_credentials table + index ensured"
+
       - name: Verify
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
@@ -165,5 +170,7 @@ jobs:
               console.log("✓ app_competitors present");
               if (!rows.some((r) => r.name === "app_settings")) { console.error("MISSING app_settings"); process.exit(1); }
               console.log("✓ app_settings present");
+              if (!rows.some((r) => r.name === "stored_credentials")) { console.error("MISSING stored_credentials"); process.exit(1); }
+              console.log("✓ stored_credentials present");
             });
           '

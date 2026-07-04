@@ -172,6 +172,31 @@ CREATE TABLE IF NOT EXISTS app_settings (
   last_sweep_at   TEXT
 );
 
+-- ── stored_credentials ───────────────────────────────────────────────────────
+-- #67 post-launch half: OPT-IN, server-side, envelope-encrypted store
+-- credentials (design: docs/prd/credential-storage/00-design.md). This table
+-- holds ONLY ciphertext — never key material: the KEK is a Worker secret
+-- (CRED_KEK_V*), never in D1/repo. Write-only custody: no route ever returns
+-- plaintext; identifiers (key_id/issuer_id) are non-secret metadata for the UI.
+-- ⚠️ DEPLOY ORDER: create via db-migrate BEFORE deploying a Worker that reads it.
+CREATE TABLE IF NOT EXISTS stored_credentials (
+  id            TEXT PRIMARY KEY,                     -- uuid
+  user_id       TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  app_id        TEXT REFERENCES apps(id) ON DELETE CASCADE, -- NULL = account-level
+  kind          TEXT NOT NULL CHECK (kind IN ('asc','play')),
+  -- non-secret identifiers, shown in the management UI (never key material):
+  key_id        TEXT NOT NULL DEFAULT '',             -- ASC Key ID / Play client_email
+  issuer_id     TEXT NOT NULL DEFAULT '',             -- ASC Issuer ID (empty for play)
+  -- the envelope (base64) — safe to store; useless without the KEK:
+  ciphertext    TEXT NOT NULL,                        -- IV ++ payload-ct+tag
+  wrapped_dek   TEXT NOT NULL,                        -- IV ++ wrapped-DEK+tag
+  kek_version   INTEGER NOT NULL,
+  created_at    TEXT NOT NULL DEFAULT (datetime('now')),
+  last_used_at  TEXT,
+  UNIQUE (user_id, app_id, kind)
+);
+CREATE INDEX IF NOT EXISTS idx_stored_cred_user ON stored_credentials(user_id);
+
 -- ── approvals ────────────────────────────────────────────────────────────────
 -- The human approval gate. One decision row per run. 'approved' is the only
 -- state that unlocks the irreversible push (command handoff).

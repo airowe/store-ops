@@ -1216,12 +1216,50 @@
     panel.appendChild(el("label", { class: "fld" }, [el("span", { class: "lab" }, ["Key ID"]), keyId]));
     panel.appendChild(el("label", { class: "fld" }, [el("span", { class: "lab" }, [".p8 private key"]), p8]));
     panel.appendChild(p8FileInput(p8, keyId));
+    // #67 opt-in: "save this key" checkbox — only when the deployment enables
+    // credential storage (the /account/credentials probe sets storeEnabled).
+    // Unchecked by default = today's per-run ephemeral behavior, byte-for-byte.
+    var storeCbId = "store-asc-" + appId;
+    var storeCb = el("input", { type: "checkbox", id: storeCbId });
+    var storeRow = el("div", { class: "checkbox-row", id: "storeAscRow", style: "display:none;margin-top:6px" }, [
+      storeCb,
+      el("label", { "for": storeCbId, style: "font-size:12.5px" }, [
+        "Save this key for scheduled runs — ",
+        el("b", { style: "color:var(--dim)" }, ["stored encrypted, write-only"]),
+        " (usable & deletable, never viewable). Delete anytime; revoke at Apple to fully kill it.",
+      ]),
+    ]);
+
     var ascBtn = el("button", { class: "btn primary", onclick: function () {
       var creds = { issuerId: issuer.value.trim(), keyId: keyId.value.trim(), p8: p8.value };
       if (!creds.issuerId || !creds.keyId || !creds.p8.trim()) { toast("Issuer ID, Key ID, and .p8 are all required."); return; }
+      if (storeCb.checked) creds.store = true;
       triggerRunAsc(appId, ascBtn, creds);
     } }, ["▶ Run with ASC read"]);
     panel.appendChild(el("div", { class: "btn-row", style: "margin-top:4px" }, [ascBtn]));
+    panel.appendChild(storeRow);
+
+    // "Run with saved key" — appears when a stored ASC key exists for this app
+    // (or account-level). One click, no re-typing (the #67 payoff).
+    var savedRow = el("div", { class: "btn-row", id: "savedKeyRow", style: "display:none;margin-top:8px;align-items:center;gap:10px" });
+    panel.appendChild(savedRow);
+    api("GET", "/account/credentials").then(function (r) {
+      if (!r || !r.enabled) return;
+      storeRow.style.display = ""; // storage available → offer the opt-in
+      var saved = (r.credentials || []).filter(function (c) {
+        return c.kind === "asc" && (c.appId === appId || c.appId === null);
+      })[0];
+      if (saved) {
+        var savedBtn = el("button", { class: "btn primary", id: "runSavedKey", onclick: function () {
+          triggerRunAsc(appId, savedBtn, { useStored: true });
+        } }, ["▶ Run with saved key"]);
+        savedRow.appendChild(savedBtn);
+        savedRow.appendChild(el("span", { class: "faint", style: "font-size:12px" }, [
+          "Using your saved key" + (saved.keyId ? " (" + saved.keyId + ")" : "") + " — no re-typing. Manage it in Settings.",
+        ]));
+        savedRow.style.display = "";
+      }
+    }).catch(function () { /* storage probe is best-effort — panel still works */ });
 
     // Opt-out: no ASC key → reveal the blind run (leaves subtitle/keywords as-is).
     var cbId = "no-asc-key-" + appId;
@@ -1245,9 +1283,10 @@
     var inter = runInterstitial(["Reading your live subtitle & keywords from App Store Connect"].concat(RUN_STEPS.slice(1)));
     api("POST", "/apps/" + appId + "/run-asc", creds)
       .then(function (r) {
-        // Remember the creds in-memory for THIS session so the push step doesn't
-        // re-prompt (never persisted; cleared on the next route()).
-        ascCredsMemory = { issuerId: creds.issuerId, keyId: creds.keyId, p8: creds.p8 };
+        // Remember the in-request creds in-memory for THIS session so the push
+        // step doesn't re-prompt (never persisted; cleared on the next route()).
+        // A saved-key run carries no plaintext to remember.
+        if (creds.p8) ascCredsMemory = { issuerId: creds.issuerId, keyId: creds.keyId, p8: creds.p8 };
         inter.settle(); toast("Read your live listing — review the proposal."); go("#/runs/" + r.id);
       })
       .catch(function (e) { btn.disabled = false; btn.textContent = "▶ Run with ASC read"; inter.fail(e.message || "The App Store Connect run failed.", function () { triggerRunAsc(appId, btn, creds); }, "#/apps/" + appId); });
@@ -3680,6 +3719,63 @@
     c.appendChild(backlink("#/", "Back to dashboard"));
     c.appendChild(el("h2", {}, ["Settings"]));
     c.appendChild(commsSettingsCard(me));
+    c.appendChild(storedKeysCard());
+  }
+
+  // #67: stored-credential management — metadata only (the API never returns key
+  // material). Delete is one click and honest: it does NOT revoke at Apple.
+  function storedKeysCard() {
+    var card = el("div", { class: "card", id: "storedKeysCard" }, [el("h3", {}, ["Saved keys"])]);
+    var body = el("div", { id: "storedKeysBody" });
+    card.appendChild(body);
+
+    function render(r) {
+      clear(body);
+      if (!r || !r.enabled) {
+        body.appendChild(el("p", { class: "faint", style: "font-size:13px" }, [
+          "Saving keys isn't enabled on this deployment. Runs use your key once and never store it.",
+        ]));
+        return;
+      }
+      body.appendChild(el("p", { class: "faint", style: "font-size:13px;margin-top:0" }, [
+        "Keys you chose to save are stored encrypted (envelope encryption; write-only — usable and deletable, never viewable) so scheduled runs can read your live listing. ",
+        el("b", { style: "color:var(--dim)" }, ["Deleting here does not revoke the key at Apple"]),
+        " — do that in App Store Connect.",
+      ]));
+      var creds = (r.credentials || []);
+      if (!creds.length) {
+        body.appendChild(el("div", { class: "faint", id: "noSavedKeys", style: "padding:6px 0" }, [
+          "No saved keys. Tick “Save this key” when you run with App Store Connect to add one.",
+        ]));
+        return;
+      }
+      creds.forEach(function (cd) {
+        var label = (cd.kind === "asc" ? "App Store Connect" : "Google Play") +
+          (cd.keyId ? " · " + cd.keyId : "") + (cd.appId ? "" : " · account-level");
+        var meta = "saved " + (cd.createdAt ? cd.createdAt.slice(0, 10) : "") +
+          (cd.lastUsedAt ? " · last used " + cd.lastUsedAt.slice(0, 10) : " · never used");
+        var delBtn = el("button", { class: "btn small ghost", onclick: function () {
+          delBtn.disabled = true;
+          var path = "/account/credentials/" + cd.kind + (cd.appId ? "?app=" + encodeURIComponent(cd.appId) : "");
+          api("DELETE", path).then(function () { load(); toast("Saved key deleted (revoke it at Apple too)."); })
+            .catch(function (e) { delBtn.disabled = false; toast(e && e.message ? e.message : "Couldn't delete."); });
+        } }, ["Delete"]);
+        body.appendChild(el("div", { class: "comp", "data-key": cd.id }, [
+          el("span", { class: "cname" }, [label]),
+          el("span", { class: "cdetail" }, [meta]),
+          el("span", { style: "flex:1" }),
+          delBtn,
+        ]));
+      });
+    }
+
+    function load() {
+      api("GET", "/account/credentials").then(render).catch(function () {
+        render({ enabled: false });
+      });
+    }
+    load();
+    return card;
   }
 
   function commsSettingsCard(me) {

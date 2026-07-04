@@ -1179,9 +1179,23 @@
       var app = db.apps[m[1]];
       if (!app) return json(404, { error: "app not found" });
       var ascRead = m[2] === "-asc";
-      if (ascRead && !(body && body.p8 && body.keyId && body.issuerId)) {
+      // #67: a run may use a stored key (useStored) instead of in-request creds.
+      db.storedCreds = db.storedCreds || [];
+      var storedAsc = db.storedCreds.filter(function (c) {
+        return c.kind === "asc" && (c.appId === m[1] || c.appId === null);
+      })[0];
+      if (ascRead && (body && body.useStored)) {
+        if (!storedAsc) return json(404, { error: "no saved App Store Connect key for this app" });
+      } else if (ascRead && !(body && body.p8 && body.keyId && body.issuerId)) {
         return json(400, { error: "p8, keyId, and issuerId are required" });
       }
+      // #67 opt-in: persist the credential (metadata only in the mock) after it
+      // "minted a token" — i.e. a real p8 was supplied with store:true.
+      if (ascRead && body && body.store && body.p8) {
+        db.storedCreds = db.storedCreds.filter(function (c) { return !(c.kind === "asc" && c.appId === m[1]); });
+        db.storedCreds.push({ id: uid(), appId: m[1], kind: "asc", keyId: body.keyId, issuerId: body.issuerId, createdAt: nowISO(), lastUsedAt: null });
+      }
+      if (ascRead && body && body.useStored && storedAsc) storedAsc.lastUsedAt = nowISO();
       var result = runAgentMock(app, ascRead);
       app._prevCompetitors = result._listingsSnapshot;
       var runId = uid();
@@ -1220,7 +1234,30 @@
       return json(200, { deleted: true, id: m[1] });
     }
 
-    // ── Sweep schedule (#52): read / set, Worker-matching validation ─────────
+    // ── Stored credentials (#67): opt-in, write-only metadata ────────────────
+    // The mock enables storage so e2e can drive the opt-in + management flow.
+    if (path === "/account/credentials") {
+      db.storedCreds = db.storedCreds || [];
+      if (method === "GET") {
+        var metas = db.storedCreds.map(function (c) {
+          return { id: c.id, appId: c.appId, kind: c.kind, keyId: c.keyId, issuerId: c.issuerId, createdAt: c.createdAt, lastUsedAt: c.lastUsedAt, kekVersion: 1 };
+        });
+        return json(200, { enabled: true, credentials: metas });
+      }
+    }
+    if (method === "DELETE" && (m = path.match(/^\/account\/credentials\/([^/?]+)/))) {
+      db.storedCreds = db.storedCreds || [];
+      var dk = m[1];
+      var dApp = null, qi = path.indexOf("?app=");
+      if (qi !== -1) dApp = decodeURIComponent(path.slice(qi + 5));
+      var before = db.storedCreds.length;
+      db.storedCreds = db.storedCreds.filter(function (c) { return !(c.kind === dk && c.appId === dApp); });
+      if (db.storedCreds.length === before) return json(404, { error: "no stored credential to delete" });
+      ctx.commit();
+      return json(200, { deleted: true, note: "Removed from ShipASO. This does NOT revoke the key at Apple — revoke it in App Store Connect to fully kill it." });
+    }
+
+    // ── Sweep schedule (#52): read / set, Worker-matching validation ─────────    // ── Sweep schedule (#52): read / set, Worker-matching validation ─────────
     if (m = path.match(/^\/apps\/([^/]+)\/schedule$/)) {
       var sApp = db.apps[m[1]];
       if (!sApp) return json(404, { error: "app not found" });
