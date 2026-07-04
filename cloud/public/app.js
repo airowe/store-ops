@@ -1599,7 +1599,7 @@
     //     below the findings card when the run computed locale recommendations
     //     (a Mode-A/ASC run); the locale_single finding above is the headline, this
     //     is the workbench. Absent → nothing renders.
-    var locCard = localizationExpansionCard(R, run.app_id);
+    var locCard = localizationExpansionCard(R, run);
     if (locCard) c.appendChild(locCard);
 
     // 2) THE DIFF — lead with current → proposed, like a PR review (devs). The
@@ -2171,7 +2171,8 @@
     "hi-IN": "Hindi", "en-GB": "English (UK)", "en-AU": "English (Australia)",
   };
 
-  function localizationExpansionCard(R, appId) {
+  function localizationExpansionCard(R, run) {
+    var approvedMap = (R && R.localizedCopy) || {};
     var recs = (R && R.localizationExpansion) || [];
     if (!recs.length) return null; // no recommendations → no card
 
@@ -2196,13 +2197,7 @@
         el("span", { class: "impact-chip " + tier.cls }, [tier.label]),
         el("span", { class: "loc-effort-badge " + r.effort, title: effortTitle }, [effortLabel]),
       ]);
-      // Honest label: a per-locale draft flow doesn't exist yet, so this routes to
-      // the ASC run panel (which runs the full read-and-improve). Say what it does.
-      var draftBtn = el("button", {
-        class: "btn small", title: "Run a read-and-improve pass with your App Store Connect key",
-        onclick: function () { go("#/apps/" + appId + "?asc=1"); },
-      }, ["Run with App Store Connect →"]);
-
+      // #78 Phase 4: the per-market review lane — generate → edit → approve.
       body.appendChild(el("div", { class: "loc-rec flip-in", style: "--i:" + i }, [
         el("div", { class: "loc-rec-head" }, [
           el("span", { class: "loc-rec-code" }, [r.locale]),
@@ -2210,15 +2205,132 @@
         ]),
         el("div", { class: "loc-rec-rationale" }, [r.rationale]),
         meta,
-        el("div", { class: "btn-row", style: "margin-top:2px" }, [draftBtn]),
+        localeReviewLane(run, r.locale, approvedMap),
       ]));
     });
 
+    // Free pick: the recommendations are a starting point, not a fence.
+    var freeIn = el("input", { class: "txt mono", id: "locFreePick", type: "text", placeholder: "any App Store locale, e.g. nl-NL", style: "max-width:200px", autocomplete: "off" });
+    var freeLane = el("div", {});
+    var freeBtn = el("button", { class: "btn small", id: "locFreeGo", onclick: function () {
+      var code = freeIn.value.trim();
+      if (!code) { toast("Enter a locale code, e.g. nl-NL."); return; }
+      clear(freeLane);
+      freeLane.appendChild(localeReviewLane(run, code, approvedMap, true));
+    } }, ["Add locale"]);
+    body.appendChild(el("div", { class: "loc-rec loc-freepick", style: "border-top:1px dashed var(--line);padding-top:10px" }, [
+      el("div", { class: "btn-row", style: "align-items:center;gap:8px" }, [freeIn, freeBtn]),
+      freeLane,
+    ]));
+
     var note = el("p", { class: "faint loc-rec-note" }, [
-      "Each locale is a separate ranking surface. Opportunity is ranked by a static market-size heuristic — not live install data.",
+      "Each locale is a separate ranking surface. Opportunity is ranked by a static market-size heuristic — not live install data. Drafts are machine-translated and never ship without your review — only locales you approve join the handoff.",
     ]);
 
     return el("div", { class: "card loc-card" }, [head, body, note]);
+  }
+
+  // ── #78 Phase 4: one locale's generate → review/edit → approve lane ─────────
+  // Honest states: run not approved → say so (generation sources the APPROVED
+  // copy); 503 → "translation needs the AI binding"; provider failure → the
+  // error verbatim + retry. An approved locale shows the "in handoff" chip and
+  // can be removed. The MT label renders verbatim on every draft.
+  function localeReviewLane(run, locale, approvedMap, autoOpen) {
+    var lane = el("div", { class: "loc-lane", "data-locale": locale });
+    var status = el("span", { class: "faint", style: "font-size:12px" });
+    var editor = el("div", { class: "loc-editor", style: "display:none;margin-top:8px" });
+    var approvedNow = !!(approvedMap && approvedMap[locale]);
+
+    function chipRow() {
+      var row = el("div", { class: "btn-row", style: "margin-top:4px;align-items:center;gap:10px;flex-wrap:wrap" });
+      if (approvedNow) {
+        row.appendChild(el("span", { class: "tag new loc-inhandoff" }, ["in handoff"]));
+        row.appendChild(el("button", { class: "btn small ghost", onclick: function () { removeLocale(); } }, ["Remove"]));
+        row.appendChild(el("button", { class: "btn small ghost", onclick: function () { openEditor(approvedMap[locale], []); } }, ["Edit"]));
+      } else if (run.status === "approved" || run.status === "shipped") {
+        row.appendChild(el("button", { class: "btn small loc-generate", onclick: function () { generate(this); } }, ["Generate draft"]));
+      } else {
+        row.appendChild(el("span", { class: "faint", style: "font-size:12px" }, ["Approve the run first — drafts translate the copy you approved."]));
+      }
+      row.appendChild(status);
+      return row;
+    }
+
+    var actions = chipRow();
+    lane.appendChild(actions);
+    lane.appendChild(editor);
+
+    function rerenderActions() {
+      var fresh = chipRow();
+      lane.replaceChild(fresh, actions);
+      actions = fresh;
+    }
+
+    function generate(btn) {
+      if (btn) { btn.disabled = true; btn.innerHTML = '<span class="spin"></span> Translating…'; }
+      status.textContent = "";
+      api("POST", "/runs/" + run.id + "/localize", { locale: locale })
+        .then(function (draft) {
+          if (btn) { btn.disabled = false; btn.textContent = "Generate draft"; }
+          openEditor(draft.copy || {}, draft.trimmed || [], draft.label);
+        })
+        .catch(function (e) {
+          if (btn) { btn.disabled = false; btn.textContent = "Generate draft"; }
+          status.textContent = "✕ " + (e.message || "Generation failed.") + " — try again.";
+          status.style.color = "var(--bad)";
+        });
+    }
+
+    function openEditor(copy, trimmed, label) {
+      clear(editor);
+      editor.style.display = "";
+      editor.appendChild(el("div", { class: "loc-draft-label", style: "font-size:12px;color:var(--warn);font-weight:600" }, [label || "draft — machine-translated, review before shipping"]));
+      if (trimmed && trimmed.length) {
+        editor.appendChild(el("div", { class: "faint", style: "font-size:12px" }, ["Trimmed to fit: " + trimmed.join(", ") + "."]));
+      }
+      var fields = [["name", "Name", 30], ["subtitle", "Subtitle", 30], ["keywords", "Keyword field", 100]];
+      if (copy.promo !== undefined) fields.push(["promo", "Promotional text", 170]);
+      var inputs = {};
+      fields.forEach(function (f) {
+        var input = el("input", { class: "txt loc-field", "data-field": f[0], type: "text", value: copy[f[0]] || "", autocomplete: "off", spellcheck: "false" });
+        inputs[f[0]] = input;
+        editor.appendChild(el("label", { class: "fld" }, [el("span", { class: "lab" }, [f[1] + " (≤" + f[2] + ")"]), input]));
+      });
+      var saveBtn = el("button", { class: "btn primary small loc-approve", onclick: function () {
+        var body = { locale: locale, copy: { name: inputs.name.value, subtitle: inputs.subtitle.value, keywords: inputs.keywords.value } };
+        if (inputs.promo) body.copy.promo = inputs.promo.value;
+        saveBtn.disabled = true; saveBtn.innerHTML = '<span class="spin"></span> Approving…';
+        api("POST", "/runs/" + run.id + "/localize/approve", body)
+          .then(function () {
+            saveBtn.disabled = false; saveBtn.textContent = "Approve for handoff";
+            approvedNow = true;
+            if (approvedMap) approvedMap[locale] = body.copy;
+            editor.style.display = "none";
+            rerenderActions();
+            toast(locale + " approved — it now rides the fastlane bundle.");
+          })
+          .catch(function (e) {
+            saveBtn.disabled = false; saveBtn.textContent = "Approve for handoff";
+            toast(e && e.message ? e.message : "Couldn't approve.");
+          });
+      } }, ["Approve for handoff"]);
+      editor.appendChild(el("div", { class: "btn-row", style: "margin-top:8px" }, [saveBtn]));
+    }
+
+    function removeLocale() {
+      api("DELETE", "/runs/" + run.id + "/localize/" + encodeURIComponent(locale))
+        .then(function () {
+          approvedNow = false;
+          if (approvedMap) delete approvedMap[locale];
+          editor.style.display = "none";
+          rerenderActions();
+          toast(locale + " removed from the handoff.");
+        })
+        .catch(function (e) { toast(e && e.message ? e.message : "Couldn't remove."); });
+    }
+
+    if (autoOpen && (run.status === "approved" || run.status === "shipped") && !approvedNow) generate(null);
+    return lane;
   }
 
   function reasoningCard(R) {
@@ -2886,6 +2998,13 @@
       // panels render the EDITED values that actually ship — not the agent's
       // original proposal.
       card.appendChild(el("p", { class: "muted", style: "margin-top:0" }, ["Approved. Hand the metadata to your build pipeline (recommended) — that path is credential-free. Or upload straight to App Store Connect below; ShipASO uses your key once and never stores it."]));
+      // #78 Phase 2: say exactly which locales ride the bundle — approved ones only.
+      var locKeys = Object.keys(R.localizedCopy || {}).sort();
+      if (locKeys.length) {
+        card.appendChild(el("p", { class: "faint", id: "handoffLocales", style: "font-size:12.5px;margin-top:0" }, [
+          "Bundle includes en-US + " + locKeys.join(", ") + " — " + locKeys.length + " machine-translated draft" + (locKeys.length === 1 ? "" : "s") + " you approved.",
+        ]));
+      }
       card.appendChild(ascPushCta(run.id));
       card.appendChild(commandsBox(R.pushCommands || [], run.id, R.proposedCopy || {}, R.currentCopy || {}));
     }

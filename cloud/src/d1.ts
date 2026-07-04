@@ -145,6 +145,12 @@ export type ReasoningTrace = {
   currentCopy: AgentResult["currentCopy"];
   /** full proposed copy WITH validation (pass + per-field checks). */
   proposedCopy: ProposedCopy;
+  /**
+   * #78 Phase 2: per-locale drafts the human APPROVED for handoff (locale →
+   * fitted copy). Written ONLY by the explicit approve route; the fastlane
+   * bundle emits exactly these locales and nothing else.
+   */
+  localizedCopy?: Record<string, CopyFields> | undefined;
   pushCommands: AgentResult["pushCommands"];
   /**
    * Scored, prioritized listing findings (PRD 01/02). EVERY run carries them —
@@ -1392,4 +1398,48 @@ export async function setLastSweepAt(db: D1Database, appId: string, at: string):
     if (e instanceof Error && /no such (table|column)|has no column named/i.test(e.message)) return;
     throw e;
   }
+}
+
+// ── Localized drafts on the run trace (#78 Phase 2) ───────────────────────────
+
+/** Store (or replace) an APPROVED per-locale draft on the run's trace. */
+export async function setLocalizedCopy(
+  db: D1Database,
+  runId: string,
+  locale: string,
+  copy: CopyFields,
+): Promise<boolean> {
+  const run = await db
+    .prepare("SELECT reasoning_json FROM runs WHERE id = ?")
+    .bind(runId)
+    .first<{ reasoning_json: string }>();
+  if (!run) return false;
+  const trace = JSON.parse(run.reasoning_json) as ReasoningTrace;
+  trace.localizedCopy = { ...(trace.localizedCopy ?? {}), [locale]: copy };
+  await db
+    .prepare("UPDATE runs SET reasoning_json = ? WHERE id = ?")
+    .bind(JSON.stringify(trace), runId)
+    .run();
+  return true;
+}
+
+/** Un-approve a locale (remove it from the handoff). False when absent. */
+export async function deleteLocalizedCopy(
+  db: D1Database,
+  runId: string,
+  locale: string,
+): Promise<boolean> {
+  const run = await db
+    .prepare("SELECT reasoning_json FROM runs WHERE id = ?")
+    .bind(runId)
+    .first<{ reasoning_json: string }>();
+  if (!run) return false;
+  const trace = JSON.parse(run.reasoning_json) as ReasoningTrace;
+  if (!trace.localizedCopy || !(locale in trace.localizedCopy)) return false;
+  delete trace.localizedCopy[locale];
+  await db
+    .prepare("UPDATE runs SET reasoning_json = ? WHERE id = ?")
+    .bind(JSON.stringify(trace), runId)
+    .run();
+  return true;
 }

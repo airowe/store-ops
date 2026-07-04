@@ -24,7 +24,16 @@ const DEFAULT_ANDROID_LANG = "en-US";
  */
 export function buildFastlaneBundle(
   copy: CopyFields,
-  opts: { locale?: string } = {},
+  opts: {
+    locale?: string;
+    /**
+     * #78 Phase 2: APPROVED per-locale drafts (locale → copy). Each emits its
+     * own `metadata/<locale>/` tree alongside the primary locale's. The caller
+     * passes ONLY human-approved locales (the run trace's localizedCopy) — a
+     * generated-but-unapproved draft never reaches a handoff.
+     */
+    locales?: Record<string, CopyFields>;
+  } = {},
 ): FastlaneBundle {
   const locale = opts.locale ?? DEFAULT_LOCALE;
   const files: BundleFile[] = [];
@@ -37,29 +46,48 @@ export function buildFastlaneBundle(
     files.push({ path, content });
   };
 
+  const emitLocale = (loc: string, c: CopyFields) => {
+    const dir = `fastlane/metadata/${loc}`;
+    add(`${dir}/name.txt`, c.name);
+    add(`${dir}/subtitle.txt`, c.subtitle);
+    add(`${dir}/keywords.txt`, c.keywords);
+    add(`${dir}/promotional_text.txt`, c.promo);
+    add(`${dir}/description.txt`, c.description);
+    add(`${dir}/release_notes.txt`, c.whatsNew); // What's New / release notes (#46)
+  };
+
   // ── App Store · deliver ──
-  const ios = `fastlane/metadata/${locale}`;
-  add(`${ios}/name.txt`, copy.name);
-  add(`${ios}/subtitle.txt`, copy.subtitle);
-  add(`${ios}/keywords.txt`, copy.keywords);
-  add(`${ios}/promotional_text.txt`, copy.promo);
-  add(`${ios}/description.txt`, copy.description);
-  add(`${ios}/release_notes.txt`, copy.whatsNew); // What's New / release notes (#46)
+  emitLocale(locale, copy);
+  const extraLocales = Object.keys(opts.locales ?? {}).filter((l) => l !== locale).sort();
+  for (const l of extraLocales) emitLocale(l, (opts.locales ?? {})[l]!);
 
   // ── README ──
-  add("fastlane/metadata/SHIPASO_README.md", fastlaneReadme(locale));
+  add("fastlane/metadata/SHIPASO_README.md", fastlaneReadme(locale, extraLocales));
 
   return { files };
 }
 
 /** Operator-facing note dropped beside the metadata tree. */
-export function fastlaneReadme(locale: string): string {
+export function fastlaneReadme(locale: string, generatedLocales: string[] = []): string {
+  const localizedLines =
+    generatedLocales.length > 0
+      ? [
+          "",
+          "## Localized metadata (machine-translated drafts you approved)",
+          "",
+          "- Included locales: " + generatedLocales.join(", ") + " — each under its own `metadata/<locale>/`.",
+          "- These were MACHINE-TRANSLATED and human-approved in ShipASO. Review the",
+          "  diff per locale before pushing — you approved them, but a second look",
+          "  before an irreversible store write never hurts.",
+        ]
+      : [];
   return [
     "# ShipASO — Fastlane metadata handoff",
     "",
     "ShipASO generated this `fastlane/metadata/` tree from your approved copy.",
     "It is the metadata your build pipeline already knows how to push — ShipASO",
     "never holds your store credentials and never pushes for you.",
+    ...localizedLines,
     "",
     "## What this is",
     "",

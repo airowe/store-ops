@@ -168,7 +168,7 @@ export function buildKeywordField(
 }
 
 /** Truncate to a field's limit without splitting mid-word where avoidable. */
-function fitToLimit(value: string, field: StoreField): string {
+export function fitToLimit(value: string, field: StoreField): string {
   const limit = CHAR_LIMITS[field];
   if (value.length <= limit) return value;
   const cut = value.slice(0, limit);
