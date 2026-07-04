@@ -174,7 +174,7 @@ import { fetchForEnv } from "../fetchAdapter.js";
 import { buildFastlaneBundle } from "../engine/fastlane.js";
 import { zipStore } from "../engine/zip.js";
 import { mintAscJwt } from "../engine/ascJwt.js";
-import { findAscAppId, applyAscMetadata, readAscLocalization, AscWriteError } from "../engine/ascWrite.js";
+import { findAscAppId, applyAscMetadata, createAscVersion, isValidVersionString, readAscLocalization, AscWriteError } from "../engine/ascWrite.js";
 import { readAscSnapshot, ascScreenshotsToListing, type AscSnapshot } from "../engine/ascRead.js";
 import { score as scoreScreenshots } from "../engine/screenshotScore.js";
 import { auditFindings, summarizeFindings, surfaceLocks } from "../engine/auditFindings.js";
@@ -2451,6 +2451,58 @@ async function ascPushRoute(
   }
 }
 
+/**
+ * POST /runs/:id/asc/create-version (#34) — create a DRAFT App Store version
+ * (PREPARE_FOR_SUBMISSION) on the user's Apple account so the approved
+ * proposal has somewhere to land. Its OWN per-action gate: same flag +
+ * approval + in-request credential requirements as the push, its own explicit
+ * click in the UI — never called automatically, never a silent fallback.
+ * ASC errors (e.g. a version-number conflict) surface honestly.
+ */
+async function ascCreateVersionRoute(
+  req: Request,
+  env: Env,
+  userId: string,
+  runId: string,
+): Promise<unknown> {
+  if (!isFlagOn(env.ASC_WRITE_ENABLED)) {
+    throw new HttpError(403, "direct App Store Connect writes are not enabled; use the Fastlane handoff");
+  }
+  const run = await getRun(env.DB, runId);
+  if (!run) throw new HttpError(404, "run not found");
+  const app = await requireOwnedApp(env, run.app_id, userId);
+  if (run.status !== "shipped" && run.status !== "approved") {
+    throw new HttpError(403, "approval required before creating a draft version");
+  }
+
+  const body = (await req
+    .json()
+    .catch(() => ({}))) as { p8?: string; keyId?: string; issuerId?: string; versionString?: string };
+  if (!body.p8 || !body.keyId || !body.issuerId) {
+    throw new HttpError(400, "p8, keyId, and issuerId are required");
+  }
+  const versionString = (body.versionString ?? "").trim();
+  if (!isValidVersionString(versionString)) {
+    throw new HttpError(400, "versionString must look like 1, 1.2, or 1.2.3");
+  }
+
+  let token: string;
+  try {
+    token = await mintAscJwt({ p8: body.p8, keyId: body.keyId, issuerId: body.issuerId });
+  } catch (e) {
+    throw new HttpError(400, e instanceof Error ? e.message : "invalid credentials");
+  }
+
+  try {
+    const ascAppId = await findAscAppId(fetch, token, app.bundle_id);
+    const created = await createAscVersion(fetch, { token, appId: ascAppId, versionString });
+    return { ok: true, versionId: created.id, versionString: created.versionString, state: created.appStoreState };
+  } catch (e) {
+    if (e instanceof AscWriteError) return { ok: false, reason: e.message };
+    throw e;
+  }
+}
+
 /** Truthy flag parse for opt-in env switches. */
 function isFlagOn(v: string | undefined): boolean {
   return v === "1" || v?.toLowerCase() === "true";
@@ -2915,6 +2967,9 @@ export async function handleApi(req: Request, env: Env): Promise<Response> {
       }
       if (seg.length === 4 && seg[2] === "asc" && seg[3] === "push" && method === "POST") {
         return json(await ascPushRoute(req, env, user.id, runId), 200, origin);
+      }
+      if (seg.length === 4 && seg[2] === "asc" && seg[3] === "create-version" && method === "POST") {
+        return json(await ascCreateVersionRoute(req, env, user.id, runId), 200, origin);
       }
       if (seg.length === 4 && seg[2] === "github" && seg[3] === "pr" && method === "POST") {
         return json(await githubPrRoute(env, user.id, runId), 200, origin);

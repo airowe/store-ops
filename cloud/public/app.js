@@ -2988,7 +2988,27 @@
       status.textContent = "Using the key from your read — never stored.";
     }
     var creds = function () { return { issuerId: issuer.value, keyId: keyId.value, p8: p8.value }; };
-    var pushBtn = el("button", { class: "btn primary", onclick: function () { pushAsc(runId, creds(), pushBtn, status); } }, ["↥ Upload to App Store Connect"]);
+
+    // #34: create-a-draft-version flow — hidden until the push hits the honest
+    // "no editable version" dead end. Its OWN explicit action (a separate
+    // outward write to the user's Apple account): the user types the version
+    // number and clicks its own clearly-labeled button. Never automatic.
+    var draftSec = el("div", { class: "draft-version", id: "createDraftSec", style: "display:none;margin-top:12px;padding:12px;border:1px solid var(--warn);border-radius:10px" });
+    var draftVer = el("input", { class: "txt mono", id: "draftVersionInput", type: "text", placeholder: "e.g. 1.4.3 — must be new, higher than the live version", autocomplete: "off", spellcheck: "false", style: "max-width:280px" });
+    var draftStatus = el("span", { class: "faint", style: "font-size:12.5px" }, []);
+    var draftBtn = el("button", { class: "btn", id: "createDraftBtn", onclick: function () {
+      createDraftVersion(runId, creds(), draftVer.value.trim(), draftBtn, draftStatus, status);
+    } }, ["＋ Create the draft version on my Apple account"]);
+    draftSec.appendChild(el("div", { style: "font-size:13.5px;font-weight:600;margin-bottom:4px" }, ["No editable version exists yet"]));
+    draftSec.appendChild(el("p", { class: "faint", style: "font-size:12.5px;margin:0 0 10px" }, [
+      "Apple only lets metadata land on a draft (PREPARE_FOR_SUBMISSION) version. ShipASO can create one for you — ",
+      el("b", { style: "color:var(--warn)" }, ["this creates a new version on your Apple account"]),
+      "; nothing is submitted for review and the push stays a separate click.",
+    ]));
+    draftSec.appendChild(el("label", { class: "fld" }, [el("span", { class: "lab" }, ["New version number"]), draftVer]));
+    draftSec.appendChild(el("div", { class: "btn-row", style: "margin-top:8px;align-items:center;gap:12px;flex-wrap:wrap" }, [draftBtn, draftStatus]));
+
+    var pushBtn = el("button", { class: "btn primary", onclick: function () { pushAsc(runId, creds(), pushBtn, status, draftSec); } }, ["↥ Upload to App Store Connect"]);
     sec.appendChild(el("label", { class: "fld", style: "margin-top:12px" }, [el("span", { class: "lab" }, ["Issuer ID"]), issuer]));
     sec.appendChild(el("label", { class: "fld" }, [el("span", { class: "lab" }, ["Key ID"]), keyId]));
     sec.appendChild(el("label", { class: "fld" }, [el("span", { class: "lab" }, [".p8 private key"]), p8]));
@@ -2996,6 +3016,7 @@
     // AuthKey_<KEYID>.p8 filename. The file is read in-browser only, never uploaded.
     sec.appendChild(p8FileInput(p8, keyId));
     sec.appendChild(el("div", { class: "btn-row", style: "margin-top:12px;align-items:center;gap:12px;flex-wrap:wrap" }, [pushBtn, status]));
+    sec.appendChild(draftSec);
     sec.appendChild(el("p", { class: "faint", style: "font-size:12px;margin:10px 0 0" }, [
       el("b", { style: "color:var(--warn)" }, ["This writes to your live App Store version"]),
       " (the editable one in App Store Connect). Your .p8 is used once and never stored.",
@@ -3003,7 +3024,42 @@
     return sec;
   }
 
-  async function pushAsc(runId, creds, btn, status) {
+  // #34: the per-action draft-version write. Explicit click only; surfaces ASC
+  // errors (e.g. version-number conflicts) honestly; on success points the user
+  // back at the push button — the push is still ITS OWN action.
+  async function createDraftVersion(runId, creds, versionString, btn, draftStatus, pushStatus) {
+    if (!creds.issuerId.trim() || !creds.keyId.trim() || !creds.p8.trim()) {
+      draftStatus.textContent = "Fill in issuer id, key id, and the .p8 above first."; draftStatus.style.color = "var(--warn)"; return;
+    }
+    if (!/^\d+(\.\d+){0,2}$/.test(versionString)) {
+      draftStatus.textContent = "Enter a version like 1.4.3."; draftStatus.style.color = "var(--warn)"; return;
+    }
+    if (!(API_BASE && liveMode)) {
+      draftStatus.textContent = "Live API required."; draftStatus.style.color = "var(--warn)"; return;
+    }
+    btn.disabled = true; draftStatus.textContent = "Creating draft " + versionString + "…"; draftStatus.style.color = "var(--dim)";
+    try {
+      var res = await fetch(API_BASE + "/runs/" + runId + "/asc/create-version", {
+        method: "POST", credentials: "include",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ issuerId: creds.issuerId, keyId: creds.keyId, p8: creds.p8, versionString: versionString }),
+      });
+      var out = await res.json();
+      if (out.ok) {
+        draftStatus.textContent = "✓ Draft " + out.versionString + " created (" + (out.state || "PREPARE_FOR_SUBMISSION") + ").";
+        draftStatus.style.color = "var(--signal)";
+        pushStatus.textContent = "Draft ready — click Upload to push the approved metadata into it.";
+        pushStatus.style.color = "var(--dim)";
+      } else {
+        draftStatus.textContent = "✕ " + (out.reason || out.error || "Couldn't create the version.");
+        draftStatus.style.color = "var(--bad)";
+      }
+    } catch (e) {
+      draftStatus.textContent = "✕ " + (e.message || "Request failed."); draftStatus.style.color = "var(--bad)";
+    } finally { btn.disabled = false; }
+  }
+
+  async function pushAsc(runId, creds, btn, status, draftSec) {
     if (!creds.issuerId.trim() || !creds.keyId.trim() || !creds.p8.trim()) {
       status.textContent = "Fill in issuer id, key id, and the .p8."; status.style.color = "var(--warn)"; return;
     }
@@ -3025,9 +3081,15 @@
       if (out.ok) {
         status.textContent = "✓ Pushed " + (out.fieldsPushed || []).length + " field(s) to the editable version.";
         status.style.color = "var(--signal)";
+        if (draftSec) draftSec.style.display = "none";
       } else {
         status.textContent = "✕ " + (out.reason || out.error || "Push failed.");
         status.style.color = "var(--bad)";
+        // #34: the honest dead end now has a next step — offer to CREATE the
+        // draft (its own explicit action; the push stays a separate click).
+        if (draftSec && /no editable app store version/i.test(out.reason || "")) {
+          draftSec.style.display = "";
+        }
       }
     } catch (e) {
       status.textContent = "✕ " + (e.message || "Request failed."); status.style.color = "var(--bad)";

@@ -743,3 +743,45 @@ export async function ascError(res: Response, step: string): Promise<AscWriteErr
   const suffix = detail ? `: ${detail}` : "";
   return new AscWriteError(`App Store Connect rejected the ${step} (${res.status})${suffix}`);
 }
+
+// ── Draft-version creation (#34) ──────────────────────────────────────────────
+
+/**
+ * #34: create a DRAFT App Store version (state PREPARE_FOR_SUBMISSION) so an
+ * approved proposal has somewhere to land when no editable version exists.
+ *
+ * This is an OUTWARD WRITE to the user's Apple account: it is only ever called
+ * from its own explicitly-clicked per-action route — never automatically, never
+ * as a fallback inside the push. ASC errors (e.g. a version-number conflict)
+ * surface honestly via AscWriteError.
+ */
+export async function createAscVersion(
+  fetchFn: FetchLike,
+  opts: { token: string; appId: string; versionString: string; platform?: string },
+): Promise<{ id: string; versionString: string; appStoreState: string }> {
+  const res = await fetchFn(`${ASC_BASE}/appStoreVersions`, {
+    method: "POST",
+    headers: { authorization: `Bearer ${opts.token}`, "content-type": "application/json" },
+    body: JSON.stringify({
+      data: {
+        type: "appStoreVersions",
+        attributes: { versionString: opts.versionString, platform: opts.platform ?? "IOS" },
+        relationships: { app: { data: { type: "apps", id: opts.appId } } },
+      },
+    }),
+  });
+  if (!res.ok) throw await ascError(res, "create app store version");
+  const body = (await res.json().catch(() => ({}))) as {
+    data?: { id?: string; attributes?: { versionString?: string; appStoreState?: string } };
+  };
+  return {
+    id: body.data?.id ?? "",
+    versionString: body.data?.attributes?.versionString ?? opts.versionString,
+    appStoreState: body.data?.attributes?.appStoreState ?? "PREPARE_FOR_SUBMISSION",
+  };
+}
+
+/** Loose Apple version-string check (1 / 1.2 / 1.2.3, numeric segments). */
+export function isValidVersionString(v: string): boolean {
+  return /^\d+(\.\d+){0,2}$/.test(v.trim());
+}
