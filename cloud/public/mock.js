@@ -227,7 +227,7 @@
       versionState: ascRead ? "READY_FOR_SALE" : null, localeCount: 1,
       previewDeviceCount: 0, cppCount: cppCount,
     };
-    var findings = buildFindings(app, sc, ascRead, { category: ascContext.category, cppCount: cppCount });
+    var findings = buildFindings(app, sc, ascRead, { category: ascContext.category, cppCount: cppCount, keywords: seedTerms });
     var findingsSummary = summarizeFindings(findings);
     // Locked-field upgrade surfaces (#61) — mirrors src/engine/auditFindings.ts
     // surfaceLocks(): a keyed run reads everything ⇒ [], a no-key run carries the
@@ -371,31 +371,44 @@
         title: "No privacy policy URL",
         detail: "Apple can reject without one, and it's a trust signal to users.",
         fix: "Add a privacy policy URL in App Store Connect." });
+      // #71-B5: mirror the engine's derived suggestion (adjacent-category pairing).
       f.push({ id: "secondary_category_missing", surface: "appInfo", severity: "warn", impact: "ranking",
         title: "No secondary category set",
         detail: "A secondary category is a free second ranking surface.",
-        fix: "Pick your most relevant secondary category in App Store Connect." });
-      // previews — no preview video is a conversion warning.
+        fix: "From your primary category, the closest fits are Utilities or Business — set one in App Store Connect." });
+      // previews — #71-B4: scripted from the run's real tracked keywords.
+      var pvKws = (ctx && ctx.keywords) || [];
       f.push({ id: "preview_missing", surface: "previews", severity: "warn", impact: "conversion",
         title: "No app preview video",
         detail: "Previews lift conversion — a short demo earns trust before the install.",
-        fix: "Add a 15–30s preview for your primary device." });
-      // locales — single-locale is a ranking warning.
-      f.push({ id: "locale_single", surface: "locales", severity: "warn", impact: "ranking",
+        fix: pvKws.length
+          ? "Script it from your targets: open on the “" + pvKws[0] + "” job in the first 3 seconds — 15–30s of real in-app footage, ending on the outcome."
+          : "Add a 15–30s preview for your primary device." });
+      // locales — #71-C: status (the expansion card below carries the action).
+      f.push({ id: "locale_single", surface: "locales", severity: "info", impact: "ranking",
         title: "Live in 1 locale",
         detail: "Each localization is a new keyword surface + audience.",
-        fix: "Start with the top locales for your category.",
-        evidence: "1 locale" });
+        fix: "See the market recommendations below — each is a concrete locale to claim.",
+        evidence: "1 locale", context: true });
       // good signal — CPPs present (so the card shows a green row too).
       f.push({ id: "cpp_present", surface: "customProductPages", severity: "good", impact: "conversion",
         title: ((ctx && ctx.cppCount) || 2) + " Custom Product Pages",
         detail: "CPPs tailor your store page per ad/audience.",
         fix: "Nice — you're using CPPs." });
-      // info — category context (a ranking framing note).
+      // #71-B7/C — category CONFIRMED by the read; status strip, not the fix list.
       f.push({ id: "primary_category_context", surface: "appInfo", severity: "info", impact: "ranking",
-        title: "Category: " + ((ctx && ctx.category) || "Productivity"),
-        detail: "This is the primary surface you compete in.",
-        fix: "Confirm it matches the keywords you're targeting." });
+        title: "Category confirmed: " + ((ctx && ctx.category) || "Productivity"),
+        detail: "Read from your App Store Connect listing — it shapes which charts and searches you rank in.",
+        fix: "No action — confirmed from your listing.", context: true });
+      // #71-C — version + pricing status rows (mirror version_context/pricing_context).
+      f.push({ id: "version_context", surface: "versionState", severity: "info", impact: "completeness",
+        title: "Live version 1.4.2 (READY_FOR_SALE)",
+        detail: "Current version context for the rest of the audit.",
+        fix: "No action — context only.", evidence: "1.4.2 READY_FOR_SALE", context: true });
+      f.push({ id: "pricing_context", surface: "pricing", severity: "info", impact: "conversion",
+        title: "free, 2 IAPs",
+        detail: "Pricing context that frames the rest of the conversion advice.",
+        fix: "No action — context only.", evidence: "free, 2 IAPs", context: true });
     }
     // meta — no-key runs get the unlock nudge (PRD 04 renders the CTA).
     if (!ascRead) {

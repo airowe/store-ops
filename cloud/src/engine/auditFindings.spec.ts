@@ -356,8 +356,9 @@ const RULES: RuleCase[] = [
   },
   // locales
   {
+    // #71-C: status, not a fix — the localization-expansion card carries the action.
     id: "locale_single",
-    severity: "warn",
+    severity: "info",
     impact: "ranking",
     surface: "locales",
     trigger: (b) => {
@@ -507,14 +508,15 @@ describe("sort order", () => {
   });
 
   it("ties broken stably by id", () => {
-    // Two warn/ranking findings: locale_single + secondary_category_missing.
+    // Two warn/ranking findings: locale_incomplete + secondary_category_missing.
+    // (locale_single demoted to info/context in #71-C, so the tie pair changed.)
     const snap = healthySnapshot();
     delete snap.appInfo!.secondaryCategory;
-    snap.locales = locales([{ locale: "en-US", name: "Demo", subtitle: "x", keywords: "y" }]);
+    snap.locales = locales([{ locale: "en-US", name: "Demo", subtitle: "", keywords: "" }]);
     const findings = auditFindings(input({ snapshot: snap }));
-    const a = findings.findIndex((f) => f.id === "locale_single");
+    const a = findings.findIndex((f) => f.id === "locale_incomplete");
     const b = findings.findIndex((f) => f.id === "secondary_category_missing");
-    // "locale_single" < "secondary_category_missing" alphabetically
+    // "locale_incomplete" < "secondary_category_missing" alphabetically
     expect(a).toBeLessThan(b);
   });
 });
@@ -847,5 +849,98 @@ describe("reviews surface (#95)", () => {
     const blob = rv.map((f) => `${f.title} ${f.detail} ${f.evidence ?? ""}`).join(" ");
     expect(blob).toContain("sync");
     expect(rv.every((f) => f.severity !== "critical")).toBe(true);
+  });
+});
+
+// ── #71-B/C: suggestions instead of bare links + status/fix separation ────────
+
+describe("findings as suggestions (#71-B)", () => {
+  const RANKS = [
+    { keyword: "meal planner", rank: 12, total: 200, limit: 200, foundName: "Demo", error: "" },
+    { keyword: "grocery list", rank: null, total: 200, limit: 200, foundName: "", error: "" },
+    { keyword: "pantry tracker", rank: 44, total: 200, limit: 200, foundName: "Demo", error: "" },
+  ];
+
+  it("preview_missing scripts the preview from the run's real tracked keywords", () => {
+    const snap = healthySnapshot();
+    snap.previews = { devices: [] };
+    const findings = auditFindings(input({ snapshot: snap, ranks: RANKS as never }));
+    const f = byId(findings, "preview_missing");
+    expect(f).toBeDefined();
+    expect(f!.fix).toContain("“meal planner”");
+    expect(f!.fix).toContain("first 3 seconds");
+    expect(f!.fix).toContain("“grocery list”");
+  });
+
+  it("preview_missing keeps the generic guidance when the run tracked no keywords", () => {
+    const snap = healthySnapshot();
+    snap.previews = { devices: [] };
+    const f = byId(auditFindings(input({ snapshot: snap, ranks: [] })), "preview_missing");
+    expect(f!.fix).toBe("Add a 15–30s preview for your primary device.");
+  });
+
+  it("secondary_category_missing carries a derived suggestion for a mapped primary", () => {
+    const snap = healthySnapshot();
+    delete snap.appInfo!.secondaryCategory;
+    snap.appInfo!.primaryCategory = { id: "FOOD_AND_DRINK", name: "Food & Drink" };
+    const f = byId(auditFindings(input({ snapshot: snap })), "secondary_category_missing");
+    expect(f!.fix).toContain("Health & Fitness or Lifestyle");
+    expect(f!.fix).toContain("From your primary category");
+  });
+
+  it("secondary_category_missing keeps generic copy for an unmapped primary", () => {
+    const snap = healthySnapshot();
+    delete snap.appInfo!.secondaryCategory;
+    snap.appInfo!.primaryCategory = { id: "SOMETHING_NEW", name: "Something New" };
+    const f = byId(auditFindings(input({ snapshot: snap })), "secondary_category_missing");
+    expect(f!.fix).toBe("Pick your most relevant secondary category in App Store Connect.");
+  });
+
+  it("cpp_none suggests one page per tracked intent", () => {
+    const snap = healthySnapshot();
+    snap.customProductPages = { pages: [] };
+    const f = byId(auditFindings(input({ snapshot: snap, ranks: RANKS as never })), "cpp_none");
+    expect(f!.fix).toContain("one page per intent");
+    expect(f!.fix).toContain("“meal planner”");
+    expect(f!.fix).toContain("“pantry tracker”");
+  });
+
+  it("primary category is phrased as CONFIRMED by the read, not a go-check chore", () => {
+    const f = byId(auditFindings(input()), "primary_category_context");
+    expect(f!.title).toContain("Category confirmed:");
+    expect(f!.fix).not.toMatch(/confirm it matches/i);
+  });
+});
+
+describe("status vs fixes separation (#71-C)", () => {
+  it("status/context findings carry context:true; actionable ones do not", () => {
+    const snap = healthySnapshot();
+    delete snap.appInfo!.secondaryCategory; // an actionable warn
+    snap.locales = locales([{ locale: "en-US", name: "Demo", subtitle: "Do it", keywords: "a,b" }]);
+    const findings = auditFindings(input({ snapshot: snap }));
+
+    const contextIds = findings.filter((f) => f.context).map((f) => f.id);
+    for (const id of ["version_context", "pricing_context", "age_rating_context", "primary_category_context", "version_no_draft", "locale_single"]) {
+      // version_no_draft only fires without a draft; healthy snapshot HAS one —
+      // assert only on the ones present, but the always-present trio must be there.
+      if (findings.some((f) => f.id === id)) expect(contextIds).toContain(id);
+    }
+    expect(contextIds).toContain("version_context");
+    expect(contextIds).toContain("pricing_context");
+
+    // actionable findings never carry the flag
+    const actionable = byId(findings, "secondary_category_missing");
+    expect(actionable!.context).toBeUndefined();
+  });
+
+  it("version_no_draft and version_in_review are context when they fire", () => {
+    const snap = healthySnapshot();
+    snap.versionState = {
+      current: { id: "V1", versionString: "1.0.0", appStoreState: "IN_REVIEW" },
+      all: [{ id: "V1", versionString: "1.0.0", appStoreState: "IN_REVIEW" }],
+    };
+    const findings = auditFindings(input({ snapshot: snap }));
+    expect(byId(findings, "version_in_review")!.context).toBe(true);
+    expect(byId(findings, "version_no_draft")!.context).toBe(true);
   });
 });

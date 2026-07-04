@@ -97,6 +97,58 @@ function previewIsUnready(state: string): boolean {
   return s !== "COMPLETE" && s !== "";
 }
 
+/**
+ * #71-B: the run's tracked keywords, in target order — the app-derived material
+ * suggestion copy is built from (preview script beats, CPP angles). These are
+ * the keywords the run genuinely targeted, never invented terms.
+ */
+function topKeywords(ranks: Rank[], n: number): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const r of ranks) {
+    const kw = r.keyword?.trim();
+    if (!kw || seen.has(kw.toLowerCase())) continue;
+    seen.add(kw.toLowerCase());
+    out.push(kw);
+    if (out.length >= n) break;
+  }
+  return out;
+}
+
+/**
+ * #71-B5: closest secondary-category fits DERIVED from the primary category — a
+ * deterministic pairing of adjacent App Store categories, so the finding carries
+ * a concrete starting suggestion instead of a bare "pick one" link. Honest
+ * framing: "closest fits from your primary category", never a demand claim.
+ * Unmapped categories keep the generic copy.
+ */
+const SECONDARY_CATEGORY_FITS: Record<string, string> = {
+  FOOD_AND_DRINK: "Health & Fitness or Lifestyle",
+  HEALTH_AND_FITNESS: "Lifestyle or Medical",
+  PRODUCTIVITY: "Utilities or Business",
+  UTILITIES: "Productivity",
+  LIFESTYLE: "Health & Fitness",
+  FINANCE: "Business or Productivity",
+  BUSINESS: "Productivity",
+  EDUCATION: "Reference or Productivity",
+  REFERENCE: "Education",
+  PHOTO_AND_VIDEO: "Graphics & Design",
+  GRAPHICS_AND_DESIGN: "Photo & Video",
+  MUSIC: "Entertainment",
+  ENTERTAINMENT: "Photo & Video",
+  MEDICAL: "Health & Fitness",
+  SPORTS: "Health & Fitness",
+  NEWS: "Magazines & Newspapers",
+  MAGAZINES_AND_NEWSPAPERS: "News",
+  SHOPPING: "Lifestyle",
+  SOCIAL_NETWORKING: "Lifestyle",
+  DEVELOPER_TOOLS: "Utilities or Productivity",
+  WEATHER: "Utilities",
+  NAVIGATION: "Travel",
+  TRAVEL: "Navigation or Lifestyle",
+  BOOKS: "Education or Reference",
+};
+
 // ── Per-surface rule sets ────────────────────────────────────────────────────
 
 /** screenshots — re-uses the existing ShotScore grade on the audit. */
@@ -208,13 +260,28 @@ function shipsIpadButEmpty(snapshot: AscSnapshot | undefined): boolean {
 }
 
 /** previews — `snapshot.previews.devices[]`. */
-function previewFindings(snapshot: AscSnapshot | undefined): Finding[] {
-  const previews = snapshot?.previews;
+function previewFindings(input: AuditFindingsInput): Finding[] {
+  const previews = input.snapshot?.previews;
   if (!previews) return [];
   const out: Finding[] = [];
   const devices = previews.devices ?? [];
 
   if (devices.length === 0) {
+    // #71-B4: don't abandon the user at a bare ASC link — script the preview
+    // from the run's REAL tracked keywords (never invented terms). Without
+    // keywords the generic guidance stands.
+    const kws = topKeywords(input.ranks, 3);
+    const scripted =
+      kws.length > 0
+        ? `Script it from your targets: open on the “${kws[0]}” job in the first 3 seconds` +
+          (kws.length > 1
+            ? `, then one beat each for ${kws
+                .slice(1)
+                .map((k) => `“${k}”`)
+                .join(" and ")}`
+            : "") +
+          " — 15–30s of real in-app footage, ending on the outcome."
+        : "Add a 15–30s preview for your primary device.";
     out.push(
       mk({
         id: "preview_missing",
@@ -223,7 +290,7 @@ function previewFindings(snapshot: AscSnapshot | undefined): Finding[] {
         impact: "conversion",
         title: "No app preview video",
         detail: "Preview videos lift conversion — they show the app in motion before install.",
-        fix: "Add a 15–30s preview for your primary device.",
+        fix: scripted,
       }),
     );
     return out; // no devices ⇒ neither coverage nor error checks apply
@@ -285,6 +352,11 @@ function appInfoFindings(input: AuditFindingsInput): Finding[] {
   }
 
   if (!appInfo.secondaryCategory) {
+    // #71-B5: carry a concrete starting suggestion derived from the primary
+    // category (deterministic adjacent-category pairing), not a bare "pick one".
+    const fits = appInfo.primaryCategory
+      ? SECONDARY_CATEGORY_FITS[appInfo.primaryCategory.id]
+      : undefined;
     out.push(
       mk({
         id: "secondary_category_missing",
@@ -293,12 +365,16 @@ function appInfoFindings(input: AuditFindingsInput): Finding[] {
         impact: "ranking",
         title: "No secondary category set",
         detail: "A secondary category is a free second ranking surface you're not using.",
-        fix: "Pick your most relevant secondary category in App Store Connect.",
+        fix: fits
+          ? `From your primary category, the closest fits are ${fits} — set one in App Store Connect.`
+          : "Pick your most relevant secondary category in App Store Connect.",
       }),
     );
   }
 
   if (appInfo.primaryCategory) {
+    // #71-B7: this is CONFIRMED by the ASC read — phrase it as a confirmed
+    // fact, not a "go check" chore. Context, not a fix (#71-C).
     const name = appInfo.primaryCategory.name ?? appInfo.primaryCategory.id;
     out.push(
       mk({
@@ -306,10 +382,12 @@ function appInfoFindings(input: AuditFindingsInput): Finding[] {
         surface: "appInfo",
         severity: "info",
         impact: "ranking",
-        title: `Category: ${name}`,
-        detail: "Your primary category shapes which charts and searches you rank in.",
-        fix: "Confirm it matches the keywords you're targeting.",
+        title: `Category confirmed: ${name}`,
+        detail:
+          "Read from your App Store Connect listing — it shapes which charts and searches you rank in.",
+        fix: "No action — confirmed from your listing.",
         evidence: name,
+        context: true,
       }),
     );
   }
@@ -361,6 +439,7 @@ function versionFindings(snapshot: AscSnapshot | undefined): Finding[] {
         detail: "Metadata is locked while a version is in review.",
         fix: "Ship metadata changes after it clears review.",
         evidence: current.appStoreState,
+        context: true, // #71-C: a state of the world, not a fix
       }),
     );
   }
@@ -376,6 +455,7 @@ function versionFindings(snapshot: AscSnapshot | undefined): Finding[] {
         title: "No draft version",
         detail: "You need an editable version to push metadata changes.",
         fix: "Create a new version in App Store Connect.",
+        context: true, // #71-C: listing status — shown in the status strip
       }),
     );
   }
@@ -390,6 +470,7 @@ function versionFindings(snapshot: AscSnapshot | undefined): Finding[] {
       detail: "Current version context for the rest of the audit.",
       fix: "No action — context only.",
       evidence: `${current.versionString} ${current.appStoreState}`,
+      context: true, // #71-C
     }),
   );
   return out;
@@ -435,6 +516,7 @@ function pricingFindings(snapshot: AscSnapshot | undefined): Finding[] {
       detail: "Pricing context that frames the rest of the conversion advice.",
       fix: "No action — context only.",
       evidence: `${priceLabel}${iapSuffix}`,
+      context: true, // #71-C
     }),
   );
   return out;
@@ -482,6 +564,7 @@ function ageRatingFindings(snapshot: AscSnapshot | undefined): Finding[] {
         detail: "Your declared age rating, for context.",
         fix: "No action — context only.",
         evidence: ageRating.ageRating,
+        context: true, // #71-C
       }),
     );
   }
@@ -489,13 +572,22 @@ function ageRatingFindings(snapshot: AscSnapshot | undefined): Finding[] {
 }
 
 /** customProductPages — `snapshot.customProductPages.pages[]`. */
-function cppFindings(snapshot: AscSnapshot | undefined): Finding[] {
-  const cpp = snapshot?.customProductPages;
+function cppFindings(input: AuditFindingsInput): Finding[] {
+  const cpp = input.snapshot?.customProductPages;
   if (!cpp) return [];
   const out: Finding[] = [];
   const pages = cpp.pages ?? [];
 
   if (pages.length === 0) {
+    // #71-B6: suggest concrete CPP angles from the run's REAL tracked keywords
+    // (one page per intent) instead of a bare "create one" link.
+    const kws = topKeywords(input.ranks, 3);
+    const angles =
+      kws.length > 0
+        ? `Angle ideas from your targets: one page per intent — ${kws
+            .map((k) => `“${k}”`)
+            .join(", ")} — each opening on that job. Create them in App Store Connect.`
+        : "Create a Custom Product Page in App Store Connect.";
     out.push(
       mk({
         id: "cpp_none",
@@ -505,7 +597,7 @@ function cppFindings(snapshot: AscSnapshot | undefined): Finding[] {
         title: "No Custom Product Pages",
         detail:
           "Custom Product Pages let you tailor your store page per ad or audience — a growth lever once the basics are solid.",
-        fix: "Create a Custom Product Page in App Store Connect.",
+        fix: angles,
       }),
     );
   } else {
@@ -532,17 +624,21 @@ function localeFindings(snapshot: AscSnapshot | undefined): Finding[] {
   const out: Finding[] = [];
 
   if (locales.length === 1) {
+    // #71-C: status, not a fix — the actionable per-market recommendations live
+    // in the localization-expansion card (PRD 04), which fires on the same read.
+    // Keeping this in the fix list double-counted the same lever.
     out.push(
       mk({
         id: "locale_single",
         surface: "locales",
-        severity: "warn",
+        severity: "info",
         impact: "ranking",
         title: "Live in 1 locale",
         detail:
           "Each localization is a new keyword surface and a new audience you're not reaching.",
-        fix: "Localize for the top locales in your category.",
+        fix: "See the market recommendations below — each is a concrete locale to claim.",
         evidence: localeKey(locales[0]),
+        context: true,
       }),
     );
   }
@@ -677,12 +773,12 @@ function reviewFindings(input: AuditFindingsInput): Finding[] {
 export function auditFindings(input: AuditFindingsInput): Finding[] {
   const findings: Finding[] = [
     ...screenshotFindings(input),
-    ...previewFindings(input.snapshot),
+    ...previewFindings(input),
     ...appInfoFindings(input),
     ...versionFindings(input.snapshot),
     ...pricingFindings(input.snapshot),
     ...ageRatingFindings(input.snapshot),
-    ...cppFindings(input.snapshot),
+    ...cppFindings(input),
     ...localeFindings(input.snapshot),
     ...reviewFindings(input),
     ...metaFindings(input),

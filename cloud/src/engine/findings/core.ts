@@ -28,6 +28,13 @@ export type Finding = {
   fix: string;
   /** the data point, when it sharpens the point */
   evidence?: string | undefined;
+  /**
+   * #71-C: true marks a STATUS/CONTEXT finding (live version state, pricing
+   * context, confirmed category…) — facts that frame the audit but are not
+   * recommended fixes. Clients render these in a separate "Listing status"
+   * strip so they never dilute the actionable list. Absent = actionable.
+   */
+  context?: true | undefined;
 };
 
 /**
@@ -132,7 +139,10 @@ export function findingsLabel(critical: number, warn: number): string {
 
 /** A finding builder with `evidence` only attached when defined (exactOptional). */
 export function mk(
-  f: Omit<Finding, "evidence"> & { evidence?: string | undefined },
+  f: Omit<Finding, "evidence" | "context"> & {
+    evidence?: string | undefined;
+    context?: true | undefined;
+  },
 ): Finding {
   const out: Finding = {
     id: f.id,
@@ -144,6 +154,7 @@ export function mk(
     fix: f.fix,
   };
   if (f.evidence !== undefined) out.evidence = f.evidence;
+  if (f.context !== undefined) out.context = f.context;
   return out;
 }
 
