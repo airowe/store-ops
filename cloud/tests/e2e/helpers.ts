@@ -7,7 +7,11 @@ import type { Page } from "@playwright/test";
  * window.STORE_OPS_MOCK). This keeps the real config.js untouched on disk and
  * guarantees the E2E run never reaches a live Worker/D1/network.
  */
-export async function gotoMockDashboard(page: Page, hash = "#/"): Promise<void> {
+export async function gotoMockDashboard(
+  page: Page,
+  hash = "#/",
+  opts: { intersectionObserver?: boolean } = {},
+): Promise<void> {
   await page.route("**/config.js", (route) =>
     route.fulfill({
       status: 200,
@@ -22,9 +26,20 @@ export async function gotoMockDashboard(page: Page, hash = "#/"): Promise<void> 
   // Hermetic state: clear the mock DB (localStorage) BEFORE the page boots so no
   // app/run a prior test connected leaks into this one. Tests that need state
   // seed it explicitly via seedAppWithRun.
-  await page.addInitScript(() => {
+  //
+  // Also disable IntersectionObserver: the picker's scroll-to-load sentinel
+  // (attachPager) auto-chains page loads whenever the sentinel is near the
+  // viewport — in a short headless viewport that's ALWAYS, so it raced every
+  // "Show more" click (button disabled/moved/removed mid-click — the flake
+  // that kept failing CI). app.js guards with `typeof IntersectionObserver ===
+  // "function"` and falls back to click-only pagination, which is exactly the
+  // deterministic path these tests pin. Scroll-to-load stays production-only.
+  await page.addInitScript((keepIO) => {
     try { localStorage.removeItem("store-ops:mockdb:v1"); } catch { /* no-op */ }
-  });
+    if (!keepIO) {
+      try { Object.defineProperty(window, "IntersectionObserver", { value: undefined, configurable: true }); } catch { /* no-op */ }
+    }
+  }, opts.intersectionObserver === true);
 
   await page.goto(`/index.html${hash}`);
   // app.js boots after config.js + mock.js; wait for the mock to be installed.

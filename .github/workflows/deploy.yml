@@ -33,6 +33,11 @@ concurrency:
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    # issues:write is for the failure alert below — a broken deploy on main used
+    # to fail silently (10 merges shipped nowhere before anyone noticed).
+    permissions:
+      contents: read
+      issues: write
     defaults:
       run:
         working-directory: cloud
@@ -110,3 +115,26 @@ jobs:
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           workingDirectory: cloud
           command: pages deploy dist --project-name store-ops-dashboard --branch main
+
+      # ── failure alert: a red deploy on main must be LOUD ──
+      # Opens (or comments on) a pinned-by-title issue so a broken deploy can't
+      # fail silently across merges (the 2026-07-04 token episode: 10 merges
+      # deployed nothing before anyone noticed). Uses the run's own token.
+      - name: Alert on deploy failure (open/update issue)
+        if: failure()
+        working-directory: .
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          TITLE="deploy to production is failing"
+          BODY="Deploy run failed: $RUN_URL (commit ${GITHUB_SHA:0:7}).
+
+          Merges to main are NOT reaching production until this is fixed. Check the run log — historically this is the Cloudflare API token (the header of .github/workflows/deploy.yml documents the permissions it needs: Workers Scripts Edit, Cloudflare Pages Edit, D1 Edit, zone Workers Routes Edit)."
+          NUM=$(gh issue list --repo "$GITHUB_REPOSITORY" --state open --search "in:title \"$TITLE\"" --json number --jq '.[0].number // empty' || true)
+          if [ -n "$NUM" ]; then
+            gh issue comment "$NUM" --repo "$GITHUB_REPOSITORY" --body "$BODY"
+          else
+            gh issue create --repo "$GITHUB_REPOSITORY" --title "🚨 $TITLE" --body "$BODY"
+          fi
