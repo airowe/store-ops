@@ -1182,8 +1182,29 @@
       "ShipASO can't see your subtitle/keywords from public data. Provide a read key and the agent reads them, then proposes improvements. ",
       el("b", { style: "color:var(--dim)" }, ["Your .p8 is used once for this run and never stored."]),
     ]));
-    var issuer = el("input", { class: "txt mono", type: "text", placeholder: "Issuer ID (UUID)", autocomplete: "off", spellcheck: "false" });
-    var keyId = el("input", { class: "txt mono", type: "text", placeholder: "Key ID (e.g. ABC123DEFG)", autocomplete: "off", spellcheck: "false" });
+    // #67 (launch half): in-app step-by-step to MINT the key — acquisition
+    // friction is the real blocker, and the exact ASC path is unguessable.
+    // Custody unchanged: per-run use only, never stored.
+    var guideBody = el("ol", { class: "key-guide-steps", style: "margin:8px 0 4px;padding-left:20px;font-size:12.5px;line-height:1.7" }, [
+      el("li", {}, [el("span", { html: "In App Store Connect, open <b>Users&nbsp;and&nbsp;Access → Integrations → App&nbsp;Store&nbsp;Connect&nbsp;API</b> (you need the Account Holder or Admin role to see it)." })]),
+      el("li", {}, [el("span", { html: "Under <b>Team Keys</b>, click <b>＋</b> to generate a key. Name it (e.g. “ShipASO read”) and pick the <b>Developer</b> role — enough to read your listing and stage metadata; don't grant Admin." })]),
+      el("li", {}, [el("span", { html: "Download the <b>.p8</b> file — Apple offers it <b>once</b>; keep it somewhere safe." })]),
+      el("li", {}, [el("span", { html: "Copy the <b>Key ID</b> from the key's row, and the <b>Issuer ID</b> from the top of the same page (a UUID shared by all your keys)." })]),
+    ]);
+    var guideNote = el("div", { class: "faint", style: "font-size:12px;margin:2px 0 6px" }, [
+      "ShipASO uses the key once per run and never stores it — you can revoke it in the same screen at any time.",
+    ]);
+    var guideWrap = el("div", { class: "key-guide", style: "display:none" }, [guideBody, guideNote]);
+    var guideToggle = el("a", { href: "#", id: "keyGuideToggle", style: "font-size:12.5px", onclick: function (e) {
+      e.preventDefault();
+      var open = guideWrap.style.display !== "none";
+      guideWrap.style.display = open ? "none" : "";
+      guideToggle.textContent = open ? "Where do I get these? Mint a key in 2 minutes →" : "Hide the walkthrough";
+    } }, ["Where do I get these? Mint a key in 2 minutes →"]);
+    panel.appendChild(el("div", { style: "margin:0 0 10px" }, [guideToggle, guideWrap]));
+
+    var issuer = el("input", { class: "txt mono", type: "text", placeholder: "Issuer ID — the UUID at the top of the Integrations page", autocomplete: "off", spellcheck: "false" });
+    var keyId = el("input", { class: "txt mono", type: "text", placeholder: "Key ID — 10 characters, on the key's row (e.g. ABC123DEFG)", autocomplete: "off", spellcheck: "false" });
     var p8 = el("textarea", { class: "txt mono", rows: "4", placeholder: "-----BEGIN PRIVATE KEY-----\n…paste your .p8 contents…\n-----END PRIVATE KEY-----", autocomplete: "off", spellcheck: "false" });
     panel.appendChild(el("label", { class: "fld" }, [el("span", { class: "lab" }, ["Issuer ID"]), issuer]));
     panel.appendChild(el("label", { class: "fld" }, [el("span", { class: "lab" }, ["Key ID"]), keyId]));
