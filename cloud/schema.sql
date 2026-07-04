@@ -155,14 +155,21 @@ CREATE TABLE IF NOT EXISTS app_competitors (
 CREATE INDEX IF NOT EXISTS idx_app_competitors ON app_competitors(app_id, status);
 
 -- ── app_settings ─────────────────────────────────────────────────────────────
--- #53: per-app agent configuration. threshold_json holds the run-threshold
--- config (src/thresholds.ts is the single source of truth for shape/defaults;
--- reads are FAIL-OPEN: missing row / NULL / garbage → today's behavior).
--- ⚠️ DEPLOY ORDER: create via the db-migrate workflow BEFORE deploying a
+-- Per-app agent configuration. threshold_json holds the run-threshold config
+-- (#53, src/thresholds.ts); schedule_json holds the sweep schedule (#52,
+-- src/schedule.ts — default weekly Monday 09:00 UTC); last_sweep_at stamps the
+-- last completed sweep (the hourly cron's due-check reads it). ALL reads are
+-- FAIL-OPEN: missing row / column / NULL / garbage → today's behavior.
+-- ⚠️ DEPLOY ORDER: create/alter via the db-migrate workflow BEFORE deploying a
 -- Worker that reads it (reads degrade gracefully, but writes 500 until then).
+-- Migration for pre-#52 deployments:
+--   ALTER TABLE app_settings ADD COLUMN schedule_json TEXT;
+--   ALTER TABLE app_settings ADD COLUMN last_sweep_at TEXT;
 CREATE TABLE IF NOT EXISTS app_settings (
   app_id          TEXT PRIMARY KEY REFERENCES apps(id) ON DELETE CASCADE,
-  threshold_json  TEXT NOT NULL DEFAULT '{}'
+  threshold_json  TEXT NOT NULL DEFAULT '{}',
+  schedule_json   TEXT,
+  last_sweep_at   TEXT
 );
 
 -- ── approvals ────────────────────────────────────────────────────────────────

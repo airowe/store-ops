@@ -27,7 +27,9 @@ import { type AgentResult, runAgent } from "../engine/index.js";
 import {
   confirmedCompetitorKeys,
   getLatestCompetitorMap,
+  getLastSweepAt,
   getLatestRanks,
+  getSchedule,
   getThresholds,
   getRankHistory,
   getTier,
@@ -36,6 +38,7 @@ import {
   isAgentPaused,
   listAllApps,
   persistRun,
+  setLastSweepAt,
 } from "../d1.js";
 import { canRunCron } from "../billing.js";
 import { type DigestAppInput, planDigests } from "../digest.js";
@@ -47,6 +50,7 @@ import { fetchForEnv } from "../fetchAdapter.js";
 import { notifyRunAwaitingApproval } from "../push.js";
 import type { Env } from "../index.js";
 import { DEFAULT_THRESHOLDS, type ThresholdConfig } from "../thresholds.js";
+import { isSweepDue } from "../schedule.js";
 
 /** Unsubscribe-token lifetime: ~60 days - a fresh token ships with every weekly digest. */
 const UNSUB_TTL_SECONDS = 60 * 24 * 60 * 60;
@@ -134,6 +138,9 @@ export type CronReport = {
   skippedTier: number;
   /** apps skipped because the owner explicitly paused the autonomous sweep (#51). */
   skippedPaused: number;
+  /** #52: apps skipped because their schedule says this hour isn't their slot.
+   *  Not listed in perApp (an hourly tick would flood it) — count only. */
+  skippedNotDue: number;
   perApp: Array<{
     appId: string;
     bundleId: string;
@@ -152,13 +159,32 @@ export type CronReport = {
 /**
  * Walk every app once. Returns a report (also handy for tests / manual
  * invocation). Per-app failures are isolated — one bad app never aborts the
- * weekly sweep.
+ * sweep.
+ *
+ * #52: `opts.enforceSchedule` (the hourly cron sets it) gates each app on its
+ * stored schedule via isSweepDue — an app whose slot this isn't is counted in
+ * skippedNotDue and left completely untouched. Without the flag (tests,
+ * manual/admin invocation) every app sweeps, exactly as before.
  */
-export async function runWeeklySweep(env: Env): Promise<CronReport> {
+export async function runWeeklySweep(
+  env: Env,
+  opts: { enforceSchedule?: boolean; now?: Date } = {},
+): Promise<CronReport> {
   const apps = await listAllApps(env.DB);
-  const report: CronReport = { appsProcessed: 0, runsOpened: 0, skippedTier: 0, skippedPaused: 0, perApp: [] };
+  const report: CronReport = { appsProcessed: 0, runsOpened: 0, skippedTier: 0, skippedPaused: 0, skippedNotDue: 0, perApp: [] };
+  const now = opts.now ?? new Date();
 
   for (const app of apps) {
+    // Schedule gate (#52) — BEFORE the processed counter and every read: an
+    // off-slot app costs two cheap D1 lookups and nothing else.
+    if (opts.enforceSchedule) {
+      const schedule = await getSchedule(env.DB, app.id);
+      const lastSweepAt = await getLastSweepAt(env.DB, app.id);
+      if (!isSweepDue(schedule, now, lastSweepAt)) {
+        report.skippedNotDue++;
+        continue;
+      }
+    }
     report.appsProcessed++;
     try {
       // Tier gate: standing autonomy is a paid feature (indie/startup/scale). Free
@@ -270,6 +296,9 @@ export async function runWeeklySweep(env: Env): Promise<CronReport> {
           reasons: decision.reasons,
         });
       }
+      // #52: stamp the completed sweep — the due-check's min-gap reads this.
+      // Best-effort (missing column during the deploy-order window → no-op).
+      await setLastSweepAt(env.DB, app.id, now.toISOString());
     } catch (e) {
       report.perApp.push({
         appId: app.id,
@@ -377,7 +406,8 @@ export async function sendWeeklyDigests(env: Env, report: CronReport): Promise<n
 
 /** The scheduled() entry — runs the sweep, then sends the weekly digests. */
 export async function handleScheduled(env: Env): Promise<void> {
-  const report = await runWeeklySweep(env);
+  // #52: the cron fires HOURLY; each app sweeps only in its scheduled slot.
+  const report = await runWeeklySweep(env, { enforceSchedule: true });
   const digests = await sendWeeklyDigests(env, report).catch((e) => {
     console.error(`[store-ops cron] digest pass failed: ${String(e)}`);
     return 0;

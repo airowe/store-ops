@@ -622,7 +622,7 @@
     line.appendChild(
       paused
         ? el("span", { html: "Autonomous agent <b style='color:var(--txt)'>paused</b> — the Monday sweep is off, so there are no new rank/listing checks and no weekly emails until you resume. Your manual runs still work." })
-        : el("span", { html: "Autonomous agent <b style='color:var(--txt)'>active</b> — re-checks your ranks &amp; listing every Monday 09:00 UTC (and any competitors you add). It prepares every move; <b style='color:var(--txt)'>you approve the push.</b>" }),
+        : el("span", { html: "Autonomous agent <b style='color:var(--txt)'>active</b> — re-checks your ranks &amp; listing on each app's schedule (weekly, Monday 09:00 UTC by default) plus any competitors you watch. It prepares every move; <b style='color:var(--txt)'>you approve the push.</b>" }),
     );
     line.appendChild(toggle);
     return line;
@@ -1339,6 +1339,56 @@
     panel.appendChild(rowCb(notifyCb, "Notify only — report crossings but never open a run"));
     panel.appendChild(el("div", { class: "btn-row", style: "margin-top:8px" }, [saveBtn]));
     panel.appendChild(note);
+
+    // ── Sweep schedule (#52) — WHEN the sweep runs, separate save (own route).
+    var DAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+    var cadenceSel = el("select", { class: "txt", id: "schCadence" }, [
+      el("option", { value: "daily" }, ["Daily"]),
+      el("option", { value: "weekly" }, ["Weekly"]),
+      el("option", { value: "biweekly" }, ["Every 2 weeks"]),
+    ]);
+    var daySel = el("select", { class: "txt", id: "schDay" }, DAYS.map(function (d, i) {
+      return el("option", { value: String(i) }, [d]);
+    }));
+    var hourSel = el("select", { class: "txt", id: "schHour" }, Array.from({ length: 24 }, function (_, h) {
+      return el("option", { value: String(h) }, [(h < 10 ? "0" + h : String(h)) + ":00 UTC"]);
+    }));
+    function syncDayVisibility() { daySel.style.display = cadenceSel.value === "daily" ? "none" : ""; }
+    cadenceSel.addEventListener("change", syncDayVisibility);
+
+    function fillSchedule(s) {
+      cadenceSel.value = s.cadence || "weekly";
+      daySel.value = String(s.day == null ? 1 : s.day);
+      hourSel.value = String(s.hourUtc == null ? 9 : s.hourUtc);
+      syncDayVisibility();
+    }
+    fillSchedule({});
+    api("GET", "/apps/" + appId + "/schedule")
+      .then(function (r) { fillSchedule(r.schedule || {}); })
+      .catch(function () { /* fail-open — defaults already rendered */ });
+
+    var schNote = el("div", { class: "faint", style: "font-size:12px;margin-top:8px" });
+    var schSave = el("button", { class: "btn", id: "schSave", onclick: function () {
+      var body = { cadence: cadenceSel.value, day: Number(daySel.value), hourUtc: Number(hourSel.value) };
+      schSave.disabled = true; schSave.innerHTML = '<span class="spin"></span> Saving…';
+      api("POST", "/apps/" + appId + "/schedule", body)
+        .then(function (r) {
+          schSave.disabled = false; schSave.textContent = "Save schedule";
+          fillSchedule(r.schedule || {});
+          schNote.textContent = "Saved — the agent sweeps this app on that slot from now on.";
+        })
+        .catch(function (e) {
+          schSave.disabled = false; schSave.textContent = "Save schedule";
+          toast(e && e.message ? e.message : "Couldn't save the schedule.");
+        });
+    } }, ["Save schedule"]);
+
+    panel.appendChild(el("div", { style: "border-top:1px solid var(--line);margin-top:12px;padding-top:10px" }, [
+      el("div", { style: "font-size:13.5px;font-weight:600;margin-bottom:6px" }, ["Sweep schedule"]),
+      el("div", { class: "faint", style: "font-size:12px;margin-bottom:8px" }, ["When the autonomous sweep runs for this app. Default: weekly, Monday 09:00 UTC."]),
+      el("div", { style: "display:flex;gap:8px;flex-wrap:wrap;align-items:center" }, [cadenceSel, daySel, hourSel, schSave]),
+      schNote,
+    ]));
     return panel;
   }
 
