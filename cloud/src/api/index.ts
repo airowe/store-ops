@@ -90,6 +90,7 @@ import {
 import type { ReasoningTrace, AppRow, FindingsSummary } from "../d1.js";
 import { buildPreview } from "../engine/preview.js";
 import { discoverCompetitors, resolveNameToId } from "../engine/competitorWatch.js";
+import { buildRankAnnotations } from "../engine/rankAnnotations.js";
 import { validateThresholdPatch } from "../thresholds.js";
 import {
   captureProposalEdits,
@@ -115,6 +116,7 @@ import {
   listAllApps,
   listAppsForUser,
   listCompetitors,
+  listCompetitorSnapshots,
   listRunsForApp,
   persistRun,
   recordApproval,
@@ -1818,7 +1820,20 @@ async function appRanks(
     }
   }
 
-  if (!keyword) return { keyword: "", points: [] };
+  // #62: timeline annotations — the app's own APPROVED pushes + competitors'
+  // VISIBLE listing diffs, from data we already persist (no new reads). The
+  // client overlays them as correlational markers; empty arrays are honest
+  // (nothing observed), never an error.
+  const [pushes, compSnapshots] = await Promise.all([
+    derivePushes(env, appId),
+    listCompetitorSnapshots(env.DB, appId),
+  ]);
+  const annotations = buildRankAnnotations({
+    pushes: pushes.map((p) => ({ runId: p.runId, pushedAt: p.pushedAt })),
+    competitorSnapshots: compSnapshots,
+  });
+
+  if (!keyword) return { keyword: "", points: [], annotations };
 
   const history = await getRankHistory(env.DB, appId, { keyword });
   const points = history.map((s) => ({
@@ -1826,7 +1841,7 @@ async function appRanks(
     total: s.total,
     checked_at: s.checked_at,
   }));
-  return { keyword, points };
+  return { keyword, points, annotations };
 }
 
 /**

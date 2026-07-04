@@ -620,6 +620,13 @@ svg.spark .line { fill: none; stroke: var(--signal); stroke-width: 2; }
 svg.spark .area { fill: url(#sparkfill); opacity: .5; }
 svg.spark .dot { fill: var(--signal); }
 svg.spark .lbl { fill: var(--faint); font-family: var(--mono); font-size: 10px; }
+/* #62: observed-change markers on the trajectory (▲ push / ◆ competitor) */
+svg.spark .anno-line { stroke-width: 1; stroke-dasharray: 3 3; opacity: .55; }
+svg.spark .anno-push .anno-line { stroke: var(--brand); }
+svg.spark .anno-competitor .anno-line { stroke: var(--warn); }
+svg.spark .anno-glyph { font-size: 10px; }
+svg.spark .anno-push .anno-glyph { fill: var(--brand); }
+svg.spark .anno-competitor .anno-glyph { fill: var(--warn); }
 
 /* ── misc ────────────────────────────────────────────────────── */
 .muted { color: var(--dim); }

@@ -1312,3 +1312,20 @@ export async function setThresholds(
     .run();
   return next;
 }
+
+/** All competitor snapshots for an app, seen_at ASC — the #62 annotation input. */
+export async function listCompetitorSnapshots(
+  db: D1Database,
+  appId: string,
+  limit = 500,
+): Promise<Array<{ comp_id: string; name: string; version: string; rating: string; seen_at: string }>> {
+  const { results } = await db
+    .prepare(
+      `SELECT comp_id, name, version, rating, seen_at
+       FROM competitor_snapshots WHERE app_id = ?
+       ORDER BY seen_at ASC, id ASC LIMIT ?`,
+    )
+    .bind(appId, limit)
+    .all<{ comp_id: string; name: string; version: string; rating: string; seen_at: string }>();
+  return results ?? [];
+}

@@ -847,11 +847,17 @@
     // rank movement this week — animated prev→cur per keyword (the headline)
     c.appendChild(rankMovementCard(deltas || {}, app.id));
 
-    // rank trend mini-chart
+    // rank trend mini-chart (+ #62 what-changed markers when history carries any)
+    var annos = ranks.annotations || [];
     c.appendChild(el("div", { class: "card" }, [
       el("h3", {}, ["Rank trend — “" + esc(ranks.keyword) + "”"]),
-      sparkline(ranks.points || []),
+      sparkline(ranks.points || [], annos),
       el("div", { class: "faint", style: "font-size:12px;margin-top:8px" }, ["Lower is better. 8-week organic position from the iTunes Search API."]),
+      annos.length
+        ? el("div", { class: "faint anno-legend", style: "font-size:12px;margin-top:4px" }, [
+            "▲ your approved pushes · ◆ competitor visible changes (name/version/rating — their keyword fields aren't public). Correlation, not causation; history starts when tracking started.",
+          ])
+        : null,
     ]));
 
     // run an agent loop on demand — the App Store Connect read-and-improve pass
@@ -3172,7 +3178,10 @@
   }
 
   /* ════════════════════════ rank sparkline (inline SVG) ════════════════════ */
-  function sparkline(points) {
+  // #62: `annotations` (optional) overlays observed-change markers on the
+  // trajectory — ▲ your approved pushes, ◆ competitor VISIBLE changes. Markers
+  // outside the charted window are skipped (never squeezed in dishonestly).
+  function sparkline(points, annotations) {
     var W = 600, H = 140, pad = 24;
     if (!points.length) return el("div", { class: "faint" }, ["No rank history yet."]);
     var ranks = points.map(function (p) { return p.rank == null ? 200 : p.rank; });
@@ -3206,6 +3215,35 @@
       lbl.setAttribute("text-anchor", i === 0 ? "start" : "end");
       lbl.textContent = "#" + (p.rank == null ? "200+" : p.rank);
       svg.appendChild(lbl);
+    });
+
+    // #62: annotation markers — a dashed vertical at the observed-change time,
+    // with a glyph on top and a hover <title> carrying the honest label. The
+    // x-position interpolates by DATE between charted snapshots; anything
+    // outside the window is skipped.
+    var t0 = Date.parse(points[0].checked_at);
+    var t1 = Date.parse(points[points.length - 1].checked_at);
+    (annotations || []).forEach(function (a) {
+      var t = Date.parse(a.at);
+      if (isNaN(t) || isNaN(t0) || isNaN(t1) || t1 <= t0 || t < t0 || t > t1) return;
+      var ax = pad + ((t - t0) / (t1 - t0)) * (W - pad * 2);
+      var g = document.createElementNS(svgNS, "g");
+      g.setAttribute("class", "anno anno-" + a.kind);
+      var line = document.createElementNS(svgNS, "line");
+      line.setAttribute("x1", ax); line.setAttribute("x2", ax);
+      line.setAttribute("y1", pad - 6); line.setAttribute("y2", H - pad);
+      line.setAttribute("class", "anno-line");
+      g.appendChild(line);
+      var glyph = document.createElementNS(svgNS, "text");
+      glyph.setAttribute("class", "anno-glyph");
+      glyph.setAttribute("x", ax); glyph.setAttribute("y", pad - 9);
+      glyph.setAttribute("text-anchor", "middle");
+      glyph.textContent = a.kind === "push" ? "▲" : "◆";
+      g.appendChild(glyph);
+      var tip = document.createElementNS(svgNS, "title");
+      tip.textContent = a.label + " · " + a.at.slice(0, 10);
+      g.appendChild(tip);
+      svg.appendChild(g);
     });
     return svg;
   }

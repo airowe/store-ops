@@ -863,7 +863,7 @@
   function defaultCompetitors(name) { return ["Streaks", "Habitica", "Way of Life", "Productive"]; }
 
   // ── rank trend history (synthetic time-series for the sparkline) ──────────
-  function rankHistory(app) {
+  function rankHistory(db, app) {
     var lead = (app.keywords && app.keywords[0]) || defaultKeywords(app.name)[0];
     var h = hash(lead + app.bundleId);
     var pts = [], cur = 40 + (h % 30);
@@ -872,7 +872,23 @@
       var d = new Date(); d.setDate(d.getDate() - w * 7);
       pts.push({ checked_at: d.toISOString().slice(0, 10), keyword: lead, rank: cur, total: 200 });
     }
-    return { keyword: lead, points: pts };
+    // #62: timeline annotations — mirrors the Worker (approved pushes +
+    // competitor visible diffs). Deterministic: one push marker mid-history
+    // for apps with an APPROVED/SHIPPED run, one competitor marker when the
+    // app watches a confirmed competitor.
+    var annotations = [];
+    var approved = (app.runs || []).some(function (rid) {
+      var r = db.runs[rid];
+      return r && (r.status === "approved" || r.status === "shipped");
+    });
+    if (approved && pts.length > 3) {
+      annotations.push({ at: pts[pts.length - 3].checked_at, kind: "push", label: "You shipped metadata", runId: (app.runs || [])[0] });
+    }
+    var watched = ((db.competitors || {})[app.id] || []).filter(function (c) { return c.status === "confirmed"; })[0];
+    if (watched && pts.length > 1) {
+      annotations.push({ at: pts[pts.length - 2].checked_at, kind: "competitor", label: watched.name + ": version 2.3 → 2.4" });
+    }
+    return { keyword: lead, points: pts, annotations: annotations };
   }
 
   // ── per-keyword week-over-week deltas (the animated dashboard payload) ─────
@@ -1290,7 +1306,7 @@
     if (method === "GET" && (m = path.match(/^\/apps\/([^/]+)\/ranks$/))) {
       var app = db.apps[m[1]];
       if (!app) return json(404, { error: "app not found" });
-      return json(200, rankHistory(app));
+      return json(200, rankHistory(db, app));
     }
 
     // GET /apps/:id/deltas — per-keyword week-over-week movement (animated)
