@@ -92,6 +92,7 @@ import { buildPreview } from "../engine/preview.js";
 import { discoverCompetitors, resolveNameToId } from "../engine/competitorWatch.js";
 import { buildRankAnnotations } from "../engine/rankAnnotations.js";
 import { validateThresholdPatch } from "../thresholds.js";
+import { validateSchedule } from "../schedule.js";
 import {
   captureProposalEdits,
   confirmCompetitor,
@@ -104,6 +105,7 @@ import {
   distinctTrackedKeywords,
   getApp,
   getNotificationPrefs,
+  getSchedule,
   getThresholds,
   getOptOut,
   getUser,
@@ -128,6 +130,7 @@ import {
   setNotificationPrefs,
   setOptOut,
   setRankCadence,
+  setSchedule,
   setThresholds,
   setTier,
   updateRunCopy,
@@ -1779,6 +1782,28 @@ async function thresholdsPost(
   return { thresholds: await setThresholds(env.DB, appId, v.patch) };
 }
 
+// ── Sweep schedule (#52) ──────────────────────────────────────────────────────
+
+/** GET /apps/:id/schedule — the app's sweep schedule (fail-open default). */
+async function scheduleGet(env: Env, userId: string, appId: string): Promise<unknown> {
+  await requireOwnedApp(env, appId, userId);
+  return { schedule: await getSchedule(env.DB, appId) };
+}
+
+/** POST /apps/:id/schedule — set the FULL schedule. Loud 400s on bad input. */
+async function schedulePost(
+  req: Request,
+  env: Env,
+  userId: string,
+  appId: string,
+): Promise<unknown> {
+  await requireOwnedApp(env, appId, userId);
+  const v = validateSchedule(await readJson(req));
+  if (!v.ok) throw new HttpError(400, v.error);
+  await setSchedule(env.DB, appId, v.schedule);
+  return { schedule: v.schedule };
+}
+
 /** GET /apps/:id — detail with the full run history list. */
 async function appDetail(env: Env, userId: string, appId: string): Promise<unknown> {
   const app = await requireOwnedApp(env, appId, userId);
@@ -2827,6 +2852,11 @@ export async function handleApi(req: Request, env: Env): Promise<Response> {
       }
       if (seg.length === 3 && seg[1] && seg[2] === "ranks" && method === "GET") {
         return json(await appRanks(env, user.id, seg[1], url), 200, origin);
+      }
+      // schedule (#52): read / set the sweep schedule
+      if (seg.length === 3 && seg[1] && seg[2] === "schedule") {
+        if (method === "GET") return json(await scheduleGet(env, user.id, seg[1]), 200, origin);
+        if (method === "POST") return json(await schedulePost(req, env, user.id, seg[1]), 200, origin);
       }
       // thresholds (#53): read / partial-update the run-threshold config
       if (seg.length === 3 && seg[1] && seg[2] === "thresholds") {

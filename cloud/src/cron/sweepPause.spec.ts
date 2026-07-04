@@ -126,6 +126,7 @@ describe("sendWeeklyDigests — suppresses paused targets", () => {
       runsOpened: 0,
       skippedTier: 0,
       skippedPaused: 1,
+    skippedNotDue: 0,
       perApp: [
         {
           appId: "app-1",

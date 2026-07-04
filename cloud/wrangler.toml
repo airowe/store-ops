@@ -34,15 +34,19 @@ database_name = "store_ops"
 database_id = "30f6f8cf-90a5-4646-936f-8899ec4f62f6"
 
 # ── Cron Triggers — two schedules, dispatched in scheduled() on event.cron ───
-# "0 9 * * 1" = every Monday 09:00 UTC → the WEEKLY autonomous sweep (unchanged):
-#   re-checks ranks, watches competitors, re-drafts past threshold (prepares only).
+# "0 * * * *" = HOURLY → the autonomous-sweep SCHEDULER (#52): each app is swept
+#   only when its stored schedule (app_settings.schedule_json — default weekly
+#   Monday 09:00 UTC, the historical behavior) says it's due. Cloudflare crons
+#   are global, not per-record, so per-app cadence lives in D1 and the hourly
+#   tick just asks "is this app due?" (isSweepDue) — cheap D1 reads; the real
+#   agent work runs only for due apps.
 # "0 8 * * *" = daily 08:00 UTC → the lightweight DAILY rank SNAPSHOT (#94): for
 #   apps whose owner set rank_cadence='daily' it records a dated rank_snapshots row
 #   and NOTHING else — no proposals, no approval runs, no push. Two triggers fit
 #   Cloudflare's per-Worker cron budget (max 5). src/index.ts branches on the cron
-#   expression so the daily trigger NEVER runs the weekly sweep and vice-versa.
+#   expression so the daily trigger NEVER runs the sweep scheduler and vice-versa.
 [triggers]
-crons = ["0 9 * * 1", "0 8 * * *"]
+crons = ["0 * * * *", "0 8 * * *"]
 
 # ── Workers AI — bound as env.AI (#57) ───────────────────────────────────────
 # Powers the keyword-reasoning step (engine/keywordReasoner.ts): the run path

@@ -1220,6 +1220,24 @@
       return json(200, { deleted: true, id: m[1] });
     }
 
+    // ── Sweep schedule (#52): read / set, Worker-matching validation ─────────
+    if (m = path.match(/^\/apps\/([^/]+)\/schedule$/)) {
+      var sApp = db.apps[m[1]];
+      if (!sApp) return json(404, { error: "app not found" });
+      db.schedules = db.schedules || {};
+      var sDefault = { cadence: "weekly", day: 1, hourUtc: 9 };
+      if (method === "GET") return json(200, { schedule: db.schedules[m[1]] || sDefault });
+      if (method === "POST") {
+        var sb = body || {};
+        if (["daily", "weekly", "biweekly"].indexOf(sb.cadence) === -1) return json(400, { error: "cadence must be daily | weekly | biweekly" });
+        if (!(typeof sb.day === "number" && sb.day >= 0 && sb.day <= 6 && sb.day === Math.floor(sb.day))) return json(400, { error: "day must be an integer 0 (Sunday) - 6 (Saturday)" });
+        if (!(typeof sb.hourUtc === "number" && sb.hourUtc >= 0 && sb.hourUtc <= 23 && sb.hourUtc === Math.floor(sb.hourUtc))) return json(400, { error: "hourUtc must be an integer 0-23" });
+        db.schedules[m[1]] = { cadence: sb.cadence, day: sb.day, hourUtc: sb.hourUtc };
+        ctx.commit();
+        return json(200, { schedule: db.schedules[m[1]] });
+      }
+    }
+
     // ── Run thresholds (#53): read / partial-update, Worker-matching shape ───
     if (m = path.match(/^\/apps\/([^/]+)\/thresholds$/)) {
       var tApp = db.apps[m[1]];

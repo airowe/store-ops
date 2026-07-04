@@ -46,7 +46,8 @@ function entry(appId: string, bundleId: string): CronReport["perApp"][number] {
 }
 
 function report(entries: CronReport["perApp"]): CronReport {
-  return { appsProcessed: entries.length, runsOpened: 0, skippedTier: 0, skippedPaused: 0, perApp: entries };
+  return { appsProcessed: entries.length, runsOpened: 0, skippedTier: 0, skippedPaused: 0,
+    skippedNotDue: 0, perApp: entries };
 }
 
 beforeEach(() => {

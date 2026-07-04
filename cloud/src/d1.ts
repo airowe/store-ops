@@ -1329,3 +1329,67 @@ export async function listCompetitorSnapshots(
     .all<{ comp_id: string; name: string; version: string; rating: string; seen_at: string }>();
   return results ?? [];
 }
+
+// ── App settings: sweep schedule (#52) ────────────────────────────────────────
+import { DEFAULT_SCHEDULE, parseSchedule, type SweepSchedule } from "./schedule.js";
+
+/** Missing row / column / table (deploy-order window) → the default schedule. */
+export async function getSchedule(db: D1Database, appId: string): Promise<SweepSchedule> {
+  try {
+    const row = await db
+      .prepare("SELECT schedule_json FROM app_settings WHERE app_id = ?")
+      .bind(appId)
+      .first<{ schedule_json: string | null }>();
+    return parseSchedule(row?.schedule_json);
+  } catch (e) {
+    if (e instanceof Error && /no such (table|column)/i.test(e.message)) {
+      return { ...DEFAULT_SCHEDULE };
+    }
+    throw e;
+  }
+}
+
+export async function setSchedule(
+  db: D1Database,
+  appId: string,
+  schedule: SweepSchedule,
+): Promise<void> {
+  await db
+    .prepare(
+      `INSERT INTO app_settings (app_id, schedule_json) VALUES (?, ?)
+       ON CONFLICT (app_id) DO UPDATE SET schedule_json = excluded.schedule_json`,
+    )
+    .bind(appId, JSON.stringify(schedule))
+    .run();
+}
+
+/** The app's last COMPLETED sweep timestamp, or null. Fail-open like reads above. */
+export async function getLastSweepAt(db: D1Database, appId: string): Promise<string | null> {
+  try {
+    const row = await db
+      .prepare("SELECT last_sweep_at FROM app_settings WHERE app_id = ?")
+      .bind(appId)
+      .first<{ last_sweep_at: string | null }>();
+    return row?.last_sweep_at ?? null;
+  } catch (e) {
+    if (e instanceof Error && /no such (table|column)/i.test(e.message)) return null;
+    throw e;
+  }
+}
+
+/** Stamp the sweep completion. Best-effort: a failed stamp never fails the sweep. */
+export async function setLastSweepAt(db: D1Database, appId: string, at: string): Promise<void> {
+  try {
+    await db
+      .prepare(
+        `INSERT INTO app_settings (app_id, last_sweep_at) VALUES (?, ?)
+         ON CONFLICT (app_id) DO UPDATE SET last_sweep_at = excluded.last_sweep_at`,
+      )
+      .bind(appId, at)
+      .run();
+  } catch (e) {
+    // SELECT errors say "no such column"; INSERT says "has no column named".
+    if (e instanceof Error && /no such (table|column)|has no column named/i.test(e.message)) return;
+    throw e;
+  }
+}

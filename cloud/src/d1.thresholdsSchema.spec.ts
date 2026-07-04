@@ -88,3 +88,36 @@ describe.skipIf(!sqliteAvailable)("thresholds against the real schema (#53)", ()
     expect(await getThresholds(db, "app-1")).toEqual(DEFAULT_THRESHOLDS);
   });
 });
+
+// ── #52: schedule + last-sweep stamp on the same app_settings row ─────────────
+import { getLastSweepAt, getSchedule, setLastSweepAt, setSchedule } from "./d1.js";
+import { DEFAULT_SCHEDULE } from "./schedule.js";
+
+describe.skipIf(!sqliteAvailable)("schedule against the real schema (#52)", () => {
+  it("missing row → the historical default (weekly Mon 09:00)", async () => {
+    expect(await getSchedule(db, "app-1")).toEqual(DEFAULT_SCHEDULE);
+    expect(await getLastSweepAt(db, "app-1")).toBeNull();
+  });
+
+  it("schedule + thresholds + last-sweep coexist on one row (upserts don't clobber)", async () => {
+    await setThresholds(db, "app-1", { notifyOnly: true });
+    await setSchedule(db, "app-1", { cadence: "daily", day: 1, hourUtc: 6 });
+    await setLastSweepAt(db, "app-1", "2026-07-06T09:00:00Z");
+    expect(await getSchedule(db, "app-1")).toEqual({ cadence: "daily", day: 1, hourUtc: 6 });
+    expect(await getLastSweepAt(db, "app-1")).toBe("2026-07-06T09:00:00Z");
+    expect((await getThresholds(db, "app-1")).notifyOnly).toBe(true);
+  });
+
+  it("DEPLOY ORDER: pre-#52 table (no schedule columns) reads defaults, stamp no-ops", async () => {
+    const schema = readFileSync(SCHEMA_PATH, "utf8");
+    // simulate the production table as #53 created it — threshold_json only
+    const old = schema.replace(
+      /CREATE TABLE IF NOT EXISTS app_settings[\s\S]*?\);/,
+      "CREATE TABLE IF NOT EXISTS app_settings (app_id TEXT PRIMARY KEY REFERENCES apps(id) ON DELETE CASCADE, threshold_json TEXT NOT NULL DEFAULT '{}');",
+    );
+    const bare = d1From(old);
+    expect(await getSchedule(bare, "app-1")).toEqual(DEFAULT_SCHEDULE);
+    expect(await getLastSweepAt(bare, "app-1")).toBeNull();
+    await expect(setLastSweepAt(bare, "app-1", "2026-07-06T09:00:00Z")).resolves.toBeUndefined();
+  });
+});

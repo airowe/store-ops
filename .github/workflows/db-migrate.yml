@@ -110,6 +110,28 @@ jobs:
           d1 "CREATE TABLE IF NOT EXISTS app_settings (app_id TEXT PRIMARY KEY REFERENCES apps(id) ON DELETE CASCADE, threshold_json TEXT NOT NULL DEFAULT '{}')" > /dev/null
           echo "✓ app_settings table ensured"
 
+          # app_settings columns (#52 — sweep schedule + last-sweep stamp).
+          SETTINGS_COLS="$(d1 'PRAGMA table_info(app_settings)' | node -e '
+            let s = "";
+            process.stdin.on("data", (c) => (s += c));
+            process.stdin.on("end", () => {
+              const rows = JSON.parse(s)[0]?.results ?? [];
+              console.log(rows.map((r) => r.name).join(" "));
+            });
+          ')"
+          add_settings_col_if_missing() {
+            local col="$1"; local ddl="$2"
+            if echo " $SETTINGS_COLS " | grep -q " $col "; then
+              echo "✓ app_settings.$col already present — skipping"
+            else
+              echo "→ adding app_settings.$col"
+              d1 "ALTER TABLE app_settings ADD COLUMN $ddl" > /dev/null
+              echo "✓ added app_settings.$col"
+            fi
+          }
+          add_settings_col_if_missing schedule_json "schedule_json TEXT"
+          add_settings_col_if_missing last_sweep_at "last_sweep_at TEXT"
+
       - name: Verify
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
