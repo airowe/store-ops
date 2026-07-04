@@ -2157,6 +2157,17 @@
     }
 
     refreshSummary();
+    // #59: the engine's name-fill note — spare title chars + a scored target
+    // that genuinely fits. A SUGGESTION line, not an applied change: the name
+    // is the user's brand line, so the agent never rewrites it silently.
+    var fill = proposed && proposed.optimization && proposed.optimization.nameFill;
+    var fillHint = fill
+      ? el("div", { class: "faint", id: "nameFillHint", style: "font-size:12px;margin-top:10px" }, [
+          "Your name has " + fill.spare + " unused characters — the strongest ranking surface. " +
+          "A relevant target that fits: “" + fill.proposedName + "”. If you adopt it, drop “" +
+          fill.term + "” from your keyword field (Apple ignores repeats).",
+        ])
+      : null;
     return el("div", { class: "card" }, [
       el("div", { class: "diffhead" }, [
         el("h3", { style: "margin:0" }, ["Proposed changes"]),
@@ -2166,7 +2177,7 @@
         ["Your live listing on the left, the agent's proposal on the right — edit any field before you ship. We re-check Apple's limits on the server, so an invalid edit can't be staged."]),
       el("div", { class: "difflist" }, rows),
       el("div", { class: "faint", style: "font-size:12px;margin-top:10px" }, ["Keyword field is comma-joined with no spaces and shares no words with the title/subtitle — Apple's rules, enforced in code."]),
-    ]);
+    ].concat(fillHint ? [fillHint] : []));
   }
 
 

@@ -341,3 +341,77 @@ describe("optimizeCopy — subtitle never repeats the app name (#42)", () => {
     expect(copy.subtitle.length).toBeGreaterThan(0);
   });
 });
+
+// ── #59: name-fill suggestion — spare title chars, honest candidates only ─────
+
+describe("optimizeCopy — nameFill suggestion (#59)", () => {
+  const sk = (keyword: string, bucket: ScoredKeyword["bucket"], score = 70): ScoredKeyword => ({
+    keyword,
+    volume: 50,
+    difficulty: 30,
+    relevance: 80,
+    score,
+    bucket,
+    field: bucket === "Primary" ? "name" : bucket === "Secondary" ? "subtitle" : "keywords",
+  });
+
+  it("suggests the strongest scored target that FITS the spare chars — name itself untouched", () => {
+    // "Stoic Daily" = 11 chars → 19 spare. "meditation" (10) fits with a space.
+    const copy = optimizeCopy(
+      [sk("meditation", "Primary"), sk("journal", "Long-tail")],
+      { name: "Stoic Daily", subtitle: "Calm mind, clear day", keywords: "" },
+    );
+    expect(copy.name).toBe("Stoic Daily"); // NEVER silently rewritten
+    expect(copy.optimization?.nameFill).toEqual({
+      term: "meditation",
+      proposedName: "Stoic Daily Meditation",
+      spare: CHAR_LIMITS.name - "Stoic Daily".length,
+    });
+    expect(copy.optimization!.nameFill!.proposedName.length).toBeLessThanOrEqual(CHAR_LIMITS.name);
+  });
+
+  it("skips candidates that share a word with the name or proposed subtitle", () => {
+    // "daily" collides with the name; "calm focus" collides with the preserved
+    // subtitle — "journal" is the first honest candidate left.
+    const copy = optimizeCopy(
+      [sk("daily planner", "Primary"), sk("calm focus", "Secondary"), sk("journal", "Long-tail")],
+      { name: "Stoic Daily", subtitle: "Calm mind, clear day", keywords: "" },
+    );
+    expect(copy.optimization?.nameFill?.term).toBe("journal");
+  });
+
+  it("no candidate fits → NO suggestion (never filler-for-filler's-sake)", () => {
+    // 23-char name leaves 7 spare — "meal planner" (12) can't fit, and no
+    // shorter candidate exists. Honest silence, exactly the Mangia case.
+    const copy = optimizeCopy(
+      [sk("meal planner", "Primary")],
+      { name: "Mangia - Recipe Manager", subtitle: "", keywords: "" },
+    );
+    expect(copy.optimization?.nameFill).toBeUndefined();
+  });
+
+  it("a name at (or hugging) the limit gets no suggestion", () => {
+    const name = "X".repeat(CHAR_LIMITS.name); // zero spare
+    const copy = optimizeCopy([sk("zen", "Primary")], { name, subtitle: "", keywords: "" });
+    expect(copy.optimization?.nameFill).toBeUndefined();
+  });
+
+  it("multi-word fills render Title Case in the preview; term stays lowercase", () => {
+    // A STRONG live subtitle is preserved, so the scored term stays available
+    // for the name fill (an authored subtitle would rightly consume it first).
+    const copy = optimizeCopy(
+      [sk("meal planner", "Primary")],
+      { name: "Mangia", subtitle: "Cook with what you have", keywords: "" },
+    );
+    expect(copy.optimization?.nameFill).toEqual({
+      term: "meal planner",
+      proposedName: "Mangia Meal Planner",
+      spare: CHAR_LIMITS.name - "Mangia".length,
+    });
+  });
+
+  it("empty base name → no suggestion (nothing to fill)", () => {
+    const copy = optimizeCopy([sk("zen", "Primary")], { name: "", subtitle: "", keywords: "" });
+    expect(copy.optimization?.nameFill).toBeUndefined();
+  });
+});
