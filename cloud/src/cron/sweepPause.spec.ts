@@ -33,6 +33,7 @@ vi.mock("../d1.js", () => ({
   hasOpenRun: () => hasOpenRun(),
   getUser: () => getUser(),
   getRankHistory: () => getRankHistory(),
+  confirmedCompetitorKeys: async () => [], // #72: sweep watches confirmed rows
 }));
 vi.mock("../engine/index.js", () => ({ runAgent: (input: unknown) => runAgent(input) }));
 vi.mock("../api/runConfig.js", () => ({ buildAppInput: vi.fn(async () => ({})) }));

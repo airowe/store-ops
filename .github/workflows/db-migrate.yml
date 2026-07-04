@@ -101,6 +101,11 @@ jobs:
           d1 "CREATE INDEX IF NOT EXISTS idx_device_tokens_user ON device_tokens(user_id)" > /dev/null
           echo "✓ device_tokens table + index ensured"
 
+          # app_competitors (#72 — competitor watch list: discovery + confirm).
+          d1 "CREATE TABLE IF NOT EXISTS app_competitors (app_id TEXT NOT NULL REFERENCES apps(id) ON DELETE CASCADE, comp_key TEXT NOT NULL, name TEXT NOT NULL DEFAULT '', source TEXT NOT NULL DEFAULT 'user' CHECK (source IN ('user','discovered')), status TEXT NOT NULL DEFAULT 'confirmed' CHECK (status IN ('suggested','confirmed')), created_at TEXT NOT NULL DEFAULT (datetime('now')), PRIMARY KEY (app_id, comp_key))" > /dev/null
+          d1 "CREATE INDEX IF NOT EXISTS idx_app_competitors ON app_competitors(app_id, status)" > /dev/null
+          echo "✓ app_competitors table + index ensured"
+
       - name: Verify
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
@@ -130,5 +135,7 @@ jobs:
               console.log(rows.map((r) => r.name).join(", "));
               if (!rows.some((r) => r.name === "device_tokens")) { console.error("MISSING device_tokens"); process.exit(1); }
               console.log("✓ device_tokens present");
+              if (!rows.some((r) => r.name === "app_competitors")) { console.error("MISSING app_competitors"); process.exit(1); }
+              console.log("✓ app_competitors present");
             });
           '

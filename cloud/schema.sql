@@ -131,6 +131,29 @@ CREATE TABLE IF NOT EXISTS competitor_snapshots (
 );
 CREATE INDEX IF NOT EXISTS idx_comp_app ON competitor_snapshots(app_id, comp_id, seen_at);
 
+-- ── app_competitors ──────────────────────────────────────────────────────────
+-- #72: the competitors an app actually WATCHES. Before this table existed the
+-- weekly "watched competitors" step always ran on an EMPTY list. Rows arrive two
+-- ways: auto-discovery (source='discovered', status='suggested' until the user
+-- confirms) and user entry (source='user', confirmed immediately). Only
+-- status='confirmed' rows feed runs + the weekly sweep — a suggestion is never
+-- silently watched.
+-- ⚠️ DEPLOY ORDER: create this table (db-migrate workflow) BEFORE deploying a
+-- Worker that reads it. Reads are defensively guarded, but the feature is dead
+-- until the table exists.
+CREATE TABLE IF NOT EXISTS app_competitors (
+  app_id      TEXT NOT NULL REFERENCES apps(id) ON DELETE CASCADE,
+  comp_key    TEXT NOT NULL,                          -- App Store trackId (or bundle id)
+  name        TEXT NOT NULL DEFAULT '',
+  source      TEXT NOT NULL DEFAULT 'user'
+                CHECK (source IN ('user', 'discovered')),
+  status      TEXT NOT NULL DEFAULT 'confirmed'
+                CHECK (status IN ('suggested', 'confirmed')),
+  created_at  TEXT NOT NULL DEFAULT (datetime('now')),
+  PRIMARY KEY (app_id, comp_key)
+);
+CREATE INDEX IF NOT EXISTS idx_app_competitors ON app_competitors(app_id, status);
+
 -- ── approvals ────────────────────────────────────────────────────────────────
 -- The human approval gate. One decision row per run. 'approved' is the only
 -- state that unlocks the irreversible push (command handoff).

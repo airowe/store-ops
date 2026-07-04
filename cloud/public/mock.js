@@ -1204,6 +1204,63 @@
       return json(200, { deleted: true, id: m[1] });
     }
 
+    // ── Competitors (#72-C): list / discover / add / confirm / remove ────────
+    // Mirrors the Worker: discovery stores SUGGESTIONS from the app's tracked
+    // keywords; only confirmed rows are watched. Deterministic candidates.
+    if (m = path.match(/^\/apps\/([^/]+)\/competitors(\/.*)?$/)) {
+      var cApp = db.apps[m[1]];
+      if (!cApp) return json(404, { error: "app not found" });
+      db.competitors = db.competitors || {};
+      var comps = db.competitors[m[1]] = db.competitors[m[1]] || [];
+      var rest = m[2] || "";
+      var out = function () { return comps.map(function (r) { return { key: r.key, name: r.name, source: r.source, status: r.status }; }); };
+
+      if (method === "GET" && !rest) return json(200, { competitors: out() });
+
+      if (method === "POST" && rest === "/discover") {
+        var kws = (cApp.keywords && cApp.keywords.length ? cApp.keywords : []).slice(0, 3);
+        if (!kws.length) return json(200, { competitors: out(), discovered: 0, note: "No tracked keywords yet — run the agent once so discovery has real searches to work from." });
+        var added = 0;
+        kws.forEach(function (kw, i) {
+          var key = String(900000 + hash(kw + m[1]) % 90000);
+          if (comps.some(function (r) { return r.key === key; })) return;
+          comps.push({ key: key, name: title(kw) + " Pro", source: "discovered", status: "suggested" });
+          added++;
+        });
+        ctx.commit();
+        return json(200, { competitors: out(), discovered: added });
+      }
+
+      if (method === "POST" && !rest) {
+        var cName = (body && body.name || "").trim();
+        if (!cName) return json(400, { error: "name or key required" });
+        var ukey = String(100000 + hash(cName) % 90000);
+        if (!comps.some(function (r) { return r.key === ukey; })) {
+          comps.push({ key: ukey, name: cName, source: "user", status: "confirmed" });
+        }
+        ctx.commit();
+        return json(201, { competitors: out(), added: { key: ukey, name: cName, source: "user", status: "confirmed" } });
+      }
+
+      var cm = rest.match(/^\/([^/]+)\/confirm$/);
+      if (method === "POST" && cm) {
+        var row = comps.filter(function (r) { return r.key === decodeURIComponent(cm[1]); })[0];
+        if (!row) return json(404, { error: "competitor not found" });
+        row.status = "confirmed";
+        ctx.commit();
+        return json(200, { competitors: out() });
+      }
+
+      var dm = rest.match(/^\/([^/]+)$/);
+      if (method === "DELETE" && dm) {
+        var before = comps.length;
+        comps = db.competitors[m[1]] = comps.filter(function (r) { return r.key !== decodeURIComponent(dm[1]); });
+        if (comps.length === before) return json(404, { error: "competitor not found" });
+        ctx.commit();
+        return json(200, { competitors: out() });
+      }
+    }
+
     // GET /apps/:id/ranks — rank trend time-series for the sparkline
     if (method === "GET" && (m = path.match(/^\/apps\/([^/]+)\/ranks$/))) {
       var app = db.apps[m[1]];

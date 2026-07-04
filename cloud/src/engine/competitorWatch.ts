@@ -217,3 +217,80 @@ export function digestLine(changes: Change[]): string {
   if (err) parts.push(`${err} err`);
   return parts.length ? parts.join(", ") : "no changes";
 }
+
+// ── Competitor auto-discovery (#72-C) ─────────────────────────────────────────
+
+export type DiscoveredCompetitor = {
+  /** App Store trackId, stringified — the watch key `lookup` uses. */
+  key: string;
+  name: string;
+  /** which of the app's tracked keywords this app surfaced for (≥1). */
+  matchedKeywords: string[];
+};
+
+/**
+ * Discover competitor CANDIDATES from real iTunes search results: search each of
+ * the app's tracked keywords, collect the top software results, drop the app
+ * itself, and rank by how many keywords each app surfaced for (then by best
+ * position). These are honest candidates — apps genuinely competing for the same
+ * searches — but they are SUGGESTIONS: the caller stores them unconfirmed and a
+ * human promotes them to watched (#72's "auto-discover, user confirms" hybrid).
+ *
+ * Never throws: a failed keyword search contributes nothing (partial results
+ * beat a dead feature); zero keywords → [] (we never invent seeds).
+ */
+export async function discoverCompetitors(
+  fetchFn: FetchFn,
+  opts: {
+    keywords: string[];
+    /** the app's own identity, excluded from candidates. */
+    selfBundleId?: string;
+    selfName?: string;
+    country?: string;
+    /** max candidates returned (default 8). */
+    limit?: number;
+    /** results fetched per keyword search (default 10). */
+    perKeyword?: number;
+  },
+): Promise<DiscoveredCompetitor[]> {
+  const country = opts.country ?? "US";
+  const limit = opts.limit ?? 8;
+  const perKeyword = opts.perKeyword ?? 10;
+  const selfName = opts.selfName?.trim().toLowerCase();
+
+  type Agg = { key: string; name: string; matched: Set<string>; bestPos: number };
+  const byKey = new Map<string, Agg>();
+
+  for (const kw of opts.keywords) {
+    const term = kw.trim();
+    if (!term) continue;
+    let results: ItunesResult[];
+    try {
+      const url = buildUrl(ITUNES_SEARCH_URL, {
+        term,
+        country,
+        entity: "software",
+        limit: String(perKeyword),
+      });
+      results = asResponse(await fetchJson(fetchFn, url)).results ?? [];
+    } catch {
+      continue; // partial discovery beats none — this keyword contributes nothing
+    }
+    results.forEach((r, pos) => {
+      const tid = r.trackId ? String(r.trackId) : null;
+      if (!tid || !r.trackName) return;
+      // never suggest the app to itself (by bundle id, or name as a fallback)
+      if (opts.selfBundleId && r.bundleId === opts.selfBundleId) return;
+      if (selfName && r.trackName.trim().toLowerCase() === selfName) return;
+      const agg = byKey.get(tid) ?? { key: tid, name: r.trackName, matched: new Set<string>(), bestPos: pos };
+      agg.matched.add(term);
+      if (pos < agg.bestPos) agg.bestPos = pos;
+      byKey.set(tid, agg);
+    });
+  }
+
+  return [...byKey.values()]
+    .sort((a, b) => b.matched.size - a.matched.size || a.bestPos - b.bestPos || a.name.localeCompare(b.name))
+    .slice(0, limit)
+    .map((a) => ({ key: a.key, name: a.name, matchedKeywords: [...a.matched] }));
+}

@@ -1154,3 +1154,122 @@ export async function hasOpenRun(db: D1Database, appId: string): Promise<boolean
     .first<{ id: string }>();
   return row !== null;
 }
+
+// ── App competitors (#72) ─────────────────────────────────────────────────────
+// The competitors an app actually WATCHES. Two sources: auto-discovery
+// (status='suggested' until the human confirms) and user entry (confirmed
+// immediately). Only CONFIRMED rows feed runs + the weekly sweep — a suggestion
+// is never silently watched. All reads are missing-table tolerant (deploy-order
+// safety: a Worker deployed before the db-migrate dispatch degrades to "no
+// competitors", never a crashed run).
+
+export type CompetitorRow = {
+  app_id: string;
+  comp_key: string;
+  name: string;
+  source: "user" | "discovered";
+  status: "suggested" | "confirmed";
+};
+
+/** True for the "table doesn't exist yet" error — the deploy-order window. */
+function isMissingTable(e: unknown): boolean {
+  return e instanceof Error && /no such table/i.test(e.message);
+}
+
+export async function listCompetitors(
+  db: D1Database,
+  appId: string,
+): Promise<CompetitorRow[]> {
+  try {
+    const { results } = await db
+      .prepare(
+        "SELECT app_id, comp_key, name, source, status FROM app_competitors WHERE app_id = ? ORDER BY status DESC, name",
+      )
+      .bind(appId)
+      .all<CompetitorRow>();
+    return results ?? [];
+  } catch (e) {
+    if (isMissingTable(e)) return [];
+    throw e;
+  }
+}
+
+/** The confirmed competitor keys — what runs + the weekly sweep actually watch. */
+export async function confirmedCompetitorKeys(
+  db: D1Database,
+  appId: string,
+): Promise<string[]> {
+  try {
+    const { results } = await db
+      .prepare(
+        "SELECT comp_key FROM app_competitors WHERE app_id = ? AND status = 'confirmed' ORDER BY name",
+      )
+      .bind(appId)
+      .all<{ comp_key: string }>();
+    return (results ?? []).map((r) => r.comp_key);
+  } catch (e) {
+    if (isMissingTable(e)) return [];
+    throw e;
+  }
+}
+
+/**
+ * Insert or refresh a competitor row. An existing row keeps its STATUS (a
+ * user's confirmation is never downgraded by a re-discovery) but takes the
+ * fresher name.
+ */
+export async function upsertCompetitor(
+  db: D1Database,
+  row: { appId: string; compKey: string; name: string; source: CompetitorRow["source"]; status: CompetitorRow["status"] },
+): Promise<void> {
+  await db
+    .prepare(
+      `INSERT INTO app_competitors (app_id, comp_key, name, source, status)
+       VALUES (?, ?, ?, ?, ?)
+       ON CONFLICT (app_id, comp_key) DO UPDATE SET name = excluded.name`,
+    )
+    .bind(row.appId, row.compKey, row.name, row.source, row.status)
+    .run();
+}
+
+/** Confirm a suggested competitor. Returns false when the row doesn't exist. */
+export async function confirmCompetitor(
+  db: D1Database,
+  appId: string,
+  compKey: string,
+): Promise<boolean> {
+  const res = await db
+    .prepare("UPDATE app_competitors SET status = 'confirmed' WHERE app_id = ? AND comp_key = ?")
+    .bind(appId, compKey)
+    .run();
+  return (res.meta?.changes ?? 0) > 0;
+}
+
+/** Remove a competitor (suggested or confirmed). */
+export async function deleteCompetitor(
+  db: D1Database,
+  appId: string,
+  compKey: string,
+): Promise<boolean> {
+  const res = await db
+    .prepare("DELETE FROM app_competitors WHERE app_id = ? AND comp_key = ?")
+    .bind(appId, compKey)
+    .run();
+  return (res.meta?.changes ?? 0) > 0;
+}
+
+/** Distinct tracked keywords for an app (most recent first) — discovery seeds. */
+export async function distinctTrackedKeywords(
+  db: D1Database,
+  appId: string,
+  limit = 5,
+): Promise<string[]> {
+  const { results } = await db
+    .prepare(
+      `SELECT keyword, MAX(checked_at) AS latest FROM rank_snapshots
+       WHERE app_id = ? GROUP BY keyword ORDER BY latest DESC LIMIT ?`,
+    )
+    .bind(appId, limit)
+    .all<{ keyword: string }>();
+  return (results ?? []).map((r) => r.keyword);
+}

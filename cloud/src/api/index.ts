@@ -89,12 +89,17 @@ import {
 } from "../engine/index.js";
 import type { ReasoningTrace, AppRow, FindingsSummary } from "../d1.js";
 import { buildPreview } from "../engine/preview.js";
+import { discoverCompetitors, resolveNameToId } from "../engine/competitorWatch.js";
 import {
   captureProposalEdits,
+  confirmCompetitor,
+  confirmedCompetitorKeys,
   countAppsForUser,
   createApp,
   deleteApp,
+  deleteCompetitor,
   deleteDeviceTokenForUser,
+  distinctTrackedKeywords,
   getApp,
   getNotificationPrefs,
   getOptOut,
@@ -107,6 +112,7 @@ import {
   getUserByStripeCustomer,
   listAllApps,
   listAppsForUser,
+  listCompetitors,
   listRunsForApp,
   persistRun,
   recordApproval,
@@ -120,6 +126,7 @@ import {
   setRankCadence,
   setTier,
   updateRunCopy,
+  upsertCompetitor,
   upsertUser,
 } from "../d1.js";
 import { isExpoPushToken } from "../push.js";
@@ -1205,6 +1212,12 @@ async function connectApp(req: Request, env: Env, userId: string): Promise<unkno
   const overrides: RunOverrides = { auditOnly: true };
   if (body.keywords) { overrides.keywords = body.keywords; delete overrides.auditOnly; }
   if (body.competitors) overrides.competitors = body.competitors;
+  else {
+    // #72: no explicit list → watch the app's CONFIRMED competitors (never
+    // suggestions). Empty when none exist or the table hasn't migrated yet.
+    const confirmed = await confirmedCompetitorKeys(env.DB, app.id);
+    if (confirmed.length) overrides.competitors = confirmed;
+  }
   if (body.baseCopy) overrides.baseCopy = body.baseCopy;
 
   const input = await buildAppInput(app, overrides, {});
@@ -1279,6 +1292,12 @@ async function runApp(
   const overrides: RunOverrides = {};
   if (body.keywords) overrides.keywords = body.keywords;
   if (body.competitors) overrides.competitors = body.competitors;
+  else {
+    // #72: no explicit list → watch the app's CONFIRMED competitors (never
+    // suggestions). Empty when none exist or the table hasn't migrated yet.
+    const confirmed = await confirmedCompetitorKeys(env.DB, appId);
+    if (confirmed.length) overrides.competitors = confirmed;
+  }
   if (body.baseCopy) overrides.baseCopy = body.baseCopy;
   const runReasoner = reasonerForEnv(env.AI);
   if (runReasoner) overrides.reasoner = runReasoner;
@@ -1388,6 +1407,12 @@ async function runAppWithAsc(
   const overrides: RunOverrides = { ascMetadataRead: true };
   if (body.keywords) overrides.keywords = body.keywords;
   if (body.competitors) overrides.competitors = body.competitors;
+  else {
+    // #72: no explicit list → watch the app's CONFIRMED competitors (never
+    // suggestions). Empty when none exist or the table hasn't migrated yet.
+    const confirmed = await confirmedCompetitorKeys(env.DB, appId);
+    if (confirmed.length) overrides.competitors = confirmed;
+  }
   // baseCopy carries the LIVE values read from ASC (the optimizer's floor).
   // We reached here via a SUCCESSFUL ASC localization read, so subtitle/keywords
   // were READ — an `undefined` from the read means the field is EMPTY on the
@@ -1601,6 +1626,128 @@ async function disconnectApp(env: Env, userId: string, appId: string): Promise<u
   const app = await requireOwnedApp(env, appId, userId);
   await deleteApp(env.DB, app.id);
   return { deleted: true, id: app.id };
+}
+
+// ── Competitors (#72-C: auto-discover candidates, the human confirms) ─────────
+
+/** Shape a competitor row for the client (drop the app_id echo). */
+function competitorOut(r: { comp_key: string; name: string; source: string; status: string }) {
+  return { key: r.comp_key, name: r.name, source: r.source, status: r.status };
+}
+
+/** GET /apps/:id/competitors — the watch list (confirmed + suggested). */
+async function competitorsList(env: Env, userId: string, appId: string): Promise<unknown> {
+  await requireOwnedApp(env, appId, userId);
+  const rows = await listCompetitors(env.DB, appId);
+  return { competitors: rows.map(competitorOut) };
+}
+
+/**
+ * POST /apps/:id/competitors/discover — search iTunes by the app's TRACKED
+ * keywords and store new candidates as status='suggested'. Suggestions are
+ * never silently watched: only confirmed rows feed runs/the sweep. Honest
+ * empty-state: an app with no tracked keywords yet gets a note, not invented
+ * seeds.
+ */
+async function competitorsDiscover(env: Env, userId: string, appId: string): Promise<unknown> {
+  const app = await requireOwnedApp(env, appId, userId);
+  const keywords = await distinctTrackedKeywords(env.DB, appId, 5);
+  if (keywords.length === 0) {
+    const rows = await listCompetitors(env.DB, appId);
+    return {
+      competitors: rows.map(competitorOut),
+      discovered: 0,
+      note: "No tracked keywords yet — run the agent once so discovery has real searches to work from.",
+    };
+  }
+  const found = await discoverCompetitors(fetchForEnv(env), {
+    keywords,
+    selfBundleId: app.bundle_id,
+    selfName: app.name,
+    country: app.country,
+  });
+  const existing = new Set((await listCompetitors(env.DB, appId)).map((c) => c.comp_key));
+  let discovered = 0;
+  for (const c of found) {
+    if (existing.has(c.key)) continue;
+    await upsertCompetitor(env.DB, {
+      appId,
+      compKey: c.key,
+      name: c.name,
+      source: "discovered",
+      status: "suggested",
+    });
+    discovered++;
+  }
+  const rows = await listCompetitors(env.DB, appId);
+  return { competitors: rows.map(competitorOut), discovered };
+}
+
+/**
+ * POST /apps/:id/competitors — add a competitor by name (resolved via iTunes
+ * search) or by App Store id. User-added ⇒ confirmed immediately.
+ */
+async function competitorsAdd(
+  req: Request,
+  env: Env,
+  userId: string,
+  appId: string,
+): Promise<unknown> {
+  const app = await requireOwnedApp(env, appId, userId);
+  const body = (await readJson(req)) as { name?: unknown; key?: unknown };
+  const fetchFn = fetchForEnv(env);
+
+  let key: string | null = null;
+  if (typeof body.key === "string" && body.key.trim()) {
+    key = body.key.trim();
+  } else if (typeof body.name === "string" && body.name.trim()) {
+    key = await resolveNameToId(fetchFn, body.name.trim(), { country: app.country });
+    if (!key) throw new HttpError(404, `couldn't find an App Store app for "${body.name.trim()}"`);
+  } else {
+    throw new HttpError(400, "name or key required");
+  }
+
+  // Canonical name from the real listing — also validates an explicit key.
+  const listing = await lookup(fetchFn, key, { by: "id", country: app.country });
+  if (listing.error) throw new HttpError(404, `couldn't look up App Store id ${key}`);
+
+  await upsertCompetitor(env.DB, {
+    appId,
+    compKey: key,
+    name: listing.name,
+    source: "user",
+    status: "confirmed",
+  });
+  const rows = await listCompetitors(env.DB, appId);
+  return { competitors: rows.map(competitorOut), added: competitorOut({ comp_key: key, name: listing.name, source: "user", status: "confirmed" }) };
+}
+
+/** POST /apps/:id/competitors/:key/confirm — promote a suggestion to watched. */
+async function competitorsConfirm(
+  env: Env,
+  userId: string,
+  appId: string,
+  compKey: string,
+): Promise<unknown> {
+  await requireOwnedApp(env, appId, userId);
+  const ok = await confirmCompetitor(env.DB, appId, compKey);
+  if (!ok) throw new HttpError(404, "competitor not found");
+  const rows = await listCompetitors(env.DB, appId);
+  return { competitors: rows.map(competitorOut) };
+}
+
+/** DELETE /apps/:id/competitors/:key — stop watching / dismiss a suggestion. */
+async function competitorsRemove(
+  env: Env,
+  userId: string,
+  appId: string,
+  compKey: string,
+): Promise<unknown> {
+  await requireOwnedApp(env, appId, userId);
+  const ok = await deleteCompetitor(env.DB, appId, compKey);
+  if (!ok) throw new HttpError(404, "competitor not found");
+  const rows = await listCompetitors(env.DB, appId);
+  return { competitors: rows.map(competitorOut) };
 }
 
 /** GET /apps/:id — detail with the full run history list. */
@@ -2638,6 +2785,20 @@ export async function handleApi(req: Request, env: Env): Promise<Response> {
       }
       if (seg.length === 3 && seg[1] && seg[2] === "ranks" && method === "GET") {
         return json(await appRanks(env, user.id, seg[1], url), 200, origin);
+      }
+      // competitors (#72): list / add / discover / confirm / remove
+      if (seg.length === 3 && seg[1] && seg[2] === "competitors") {
+        if (method === "GET") return json(await competitorsList(env, user.id, seg[1]), 200, origin);
+        if (method === "POST") return json(await competitorsAdd(req, env, user.id, seg[1]), 201, origin);
+      }
+      if (seg.length === 4 && seg[1] && seg[2] === "competitors" && seg[3] === "discover" && method === "POST") {
+        return json(await competitorsDiscover(env, user.id, seg[1]), 200, origin);
+      }
+      if (seg.length === 5 && seg[1] && seg[2] === "competitors" && seg[3] && seg[4] === "confirm" && method === "POST") {
+        return json(await competitorsConfirm(env, user.id, seg[1], seg[3]), 200, origin);
+      }
+      if (seg.length === 4 && seg[1] && seg[2] === "competitors" && seg[3] && method === "DELETE") {
+        return json(await competitorsRemove(env, user.id, seg[1], seg[3]), 200, origin);
       }
       if (seg.length === 3 && seg[1] && seg[2] === "deltas" && method === "GET") {
         return json(await appDeltas(env, user.id, seg[1]), 200, origin);

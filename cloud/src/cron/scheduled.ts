@@ -25,6 +25,7 @@
  */
 import { type AgentResult, runAgent } from "../engine/index.js";
 import {
+  confirmedCompetitorKeys,
   getLatestCompetitorMap,
   getRankHistory,
   getTier,
@@ -155,7 +156,17 @@ export async function runWeeklySweep(env: Env): Promise<CronReport> {
 
       const previous = await getLatestCompetitorMap(env.DB, app.id);
       const cronReasoner = reasonerForEnv(env.AI);
-      const input = await buildAppInput(app, cronReasoner ? { reasoner: cronReasoner } : {}, previous);
+      // #72: the sweep watches the app's CONFIRMED competitors — before this,
+      // the "watched competitors" step always ran on an empty list.
+      const confirmed = await confirmedCompetitorKeys(env.DB, app.id);
+      const input = await buildAppInput(
+        app,
+        {
+          ...(cronReasoner ? { reasoner: cronReasoner } : {}),
+          ...(confirmed.length ? { competitors: confirmed } : {}),
+        },
+        previous,
+      );
       const result = await runAgent(fetchForEnv(env), input);
 
       const decision = evaluateThreshold(result);

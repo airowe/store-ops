@@ -864,6 +864,16 @@
       runList(runs),
     ]));
 
+    // Competitors (#72) — the watch list behind "watched competitors": discovery
+    // suggests, the human confirms, only confirmed rows are watched.
+    c.appendChild(el("div", { class: "card" }, [
+      el("h3", {}, ["Competitors"]),
+      el("p", { class: "faint", style: "font-size:12.5px;margin:0 0 10px" }, [
+        "The weekly sweep diffs each watched competitor's visible listing (name, version, price, rating) and flags moves. Discovery suggests apps ranking for your tracked keywords — nothing is watched until you confirm it.",
+      ]),
+      competitorsPanel(app.id),
+    ]));
+
     // Google Play audit — the Play parallel of the ASC read (own-app, via the Play
     // Developer API; the service account is sent once and never stored).
     c.appendChild(el("div", { class: "card" }, [
@@ -1232,6 +1242,100 @@
   // creds are sent once (to /play/verify or /apps/:id/audit-play) and NEVER stored,
   // same posture as the .p8. Play has no keyword field, so this reads the title,
   // short + long description, screenshots, and grades them.
+  // ── Competitors panel (#72-C) ───────────────────────────────────────────────
+  // The app's watch list: auto-discovered SUGGESTIONS (from real iTunes searches
+  // of the app's tracked keywords) + user-added entries. Only what the user
+  // CONFIRMS is watched — a suggestion is never silently tracked, so the weekly
+  // "watched competitors" claim stays honest.
+  function competitorsPanel(appId) {
+    var panel = el("div", { id: "competitorsPanel" });
+    var listBox = el("div", { class: "comp-list" });
+    var note = el("div", { class: "faint", style: "font-size:12px;margin-top:8px" });
+
+    function chip(text, cls) {
+      return el("span", { class: "tag " + cls, style: "margin-left:8px" }, [text]);
+    }
+
+    function render(rows) {
+      clear(listBox);
+      if (!rows.length) {
+        listBox.appendChild(el("div", { class: "faint", style: "padding:6px 0" }, [
+          "No competitors yet — discover candidates from your tracked keywords, or add one by name.",
+        ]));
+        return;
+      }
+      rows.forEach(function (r) {
+        var actions = [];
+        if (r.status === "suggested") {
+          actions.push(el("button", { class: "btn small", onclick: function () { act("POST", "/competitors/" + encodeURIComponent(r.key) + "/confirm", this); } }, ["Watch"]));
+          actions.push(el("button", { class: "btn small ghost", onclick: function () { act("DELETE", "/competitors/" + encodeURIComponent(r.key), this); } }, ["Dismiss"]));
+        } else {
+          actions.push(el("button", { class: "btn small ghost", onclick: function () { act("DELETE", "/competitors/" + encodeURIComponent(r.key), this); } }, ["Remove"]));
+        }
+        listBox.appendChild(el("div", { class: "comp comp-row" }, [
+          el("span", { class: "cname" }, [r.name || r.key]),
+          chip(r.status === "confirmed" ? "watched" : "suggested", r.status === "confirmed" ? "new" : "same"),
+          el("span", { style: "flex:1" }),
+          el("span", { class: "btn-row" }, actions),
+        ]));
+      });
+    }
+
+    function act(method, path, btn) {
+      if (btn) btn.disabled = true;
+      api(method, "/apps/" + appId + path)
+        .then(function (r) { render(r.competitors || []); })
+        .catch(function (e) { toast(e && e.message ? e.message : "Something went wrong."); if (btn) btn.disabled = false; });
+    }
+
+    function refresh() {
+      api("GET", "/apps/" + appId + "/competitors")
+        .then(function (r) { render(r.competitors || []); })
+        .catch(function () { render([]); });
+    }
+
+    var addInput = el("input", { class: "txt", type: "text", placeholder: "Add by App Store name (e.g. “Paprika Recipe Manager”)", autocomplete: "off" });
+    var addBtn = el("button", { class: "btn", onclick: function () {
+      var name = addInput.value.trim();
+      if (!name) { toast("Enter the competitor's App Store name."); return; }
+      addBtn.disabled = true; addBtn.innerHTML = '<span class="spin"></span> Adding…';
+      api("POST", "/apps/" + appId + "/competitors", { name: name })
+        .then(function (r) {
+          addBtn.disabled = false; addBtn.textContent = "Add";
+          addInput.value = "";
+          render(r.competitors || []);
+        })
+        .catch(function (e) {
+          addBtn.disabled = false; addBtn.textContent = "Add";
+          toast(e && e.message ? e.message : "Couldn't add that app.");
+        });
+    } }, ["Add"]);
+
+    var discoverBtn = el("button", { class: "btn primary", id: "discoverCompetitors", onclick: function () {
+      discoverBtn.disabled = true; discoverBtn.innerHTML = '<span class="spin"></span> Searching…';
+      api("POST", "/apps/" + appId + "/competitors/discover")
+        .then(function (r) {
+          discoverBtn.disabled = false; discoverBtn.textContent = "Discover competitors";
+          render(r.competitors || []);
+          note.textContent = r.note
+            ? r.note
+            : (r.discovered > 0
+              ? r.discovered + " candidate" + (r.discovered === 1 ? "" : "s") + " found from your tracked keywords — confirm the real rivals."
+              : "No new candidates — your tracked keywords surfaced nothing you aren't already watching.");
+        })
+        .catch(function (e) {
+          discoverBtn.disabled = false; discoverBtn.textContent = "Discover competitors";
+          toast(e && e.message ? e.message : "Discovery failed.");
+        });
+    } }, ["Discover competitors"]);
+
+    panel.appendChild(listBox);
+    panel.appendChild(el("div", { class: "btn-row", style: "margin-top:10px;align-items:center;gap:8px" }, [discoverBtn, addInput, addBtn]));
+    panel.appendChild(note);
+    refresh();
+    return panel;
+  }
+
   function playAuditPanel(appId) {
     var panel = el("div", { class: "play-audit-panel" });
     panel.appendChild(el("div", { class: "faint", style: "font-size:12.5px;margin:0 0 12px" }, [
@@ -1991,7 +2095,7 @@
     if (compTracked) {
       steps.push({ cls: "", ico: "◎", t: "Watched competitors", d: comp.digest || "No competitor movement this week." });
     } else {
-      steps.push({ cls: "faint", ico: "○", t: "Competitor watch", d: "No competitors added yet — add competitors to track their listing & rank moves." });
+      steps.push({ cls: "faint", ico: "○", t: "Competitor watch", d: "No competitors watched yet — discover or add them in the Competitors card on the app page." });
     }
     var rsn = R.reasoning || [];
     var prim = rsn.find(function (k) { return k.bucket === "Primary"; });
