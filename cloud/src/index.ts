@@ -83,6 +83,13 @@ export type Env = {
   // unset, the export route degrades CLOSED (403). Passed as the `x-rlhf-export`
   // request header; must match exactly.
   RLHF_EXPORT_TOKEN?: string;
+  // #67 post-launch half: the key-encryption key (KEK) for OPT-IN stored store
+  // credentials (envelope encryption; design in docs/prd/credential-storage/).
+  // base64-encoded 32 bytes. Unset → the store-credential feature is honestly
+  // UNAVAILABLE (the opt-in UI hides, the routes 503) — the per-run ephemeral
+  // path is unaffected. Rotation adds CRED_KEK_V2 etc. (lazy re-wrap on use).
+  CRED_KEK_V1?: string;
+  CRED_KEK_V2?: string;
 };
 
 export default {

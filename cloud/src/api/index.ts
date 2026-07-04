@@ -93,6 +93,7 @@ import { discoverCompetitors, resolveNameToId } from "../engine/competitorWatch.
 import { buildRankAnnotations } from "../engine/rankAnnotations.js";
 import { deriveBrandTokens, localizeCopy, LocalizeError, validateLocalizedSubmission } from "../engine/localizeCopy.js";
 import { localizerForEnv } from "./aiLocalizer.js";
+import { credentialsEnabled, deleteCredential, listCredentialMeta, saveCredential, useCredential } from "../credentialStore.js";
 import localesData from "../engine/locales-data.json";
 import { validateThresholdPatch } from "../thresholds.js";
 import { validateSchedule } from "../schedule.js";
@@ -1379,18 +1380,48 @@ async function runAppWithAsc(
   appId: string,
 ): Promise<unknown> {
   const app = await requireOwnedApp(env, appId, userId);
-  const body = (await req.json().catch(() => ({}))) as RunAscBody;
-  if (!body.p8 || !body.keyId || !body.issuerId) {
-    throw new HttpError(400, "p8, keyId, and issuerId are required");
-  }
+  const body = (await req.json().catch(() => ({}))) as RunAscBody & { store?: boolean; useStored?: boolean };
   const locale = body.locale?.trim() || "en-US";
+
+  // #67: a run may authenticate with a STORED credential (opt-in, envelope-
+  // encrypted) instead of in-request creds. `useStored` (or simply omitting the
+  // creds when one exists) decrypts the saved key for this single use — the
+  // plaintext is a transient here, never returned.
+  let cred: { p8: string; keyId: string; issuerId: string };
+  if ((body.useStored || !body.p8) && credentialsEnabled(env)) {
+    const stored = await useCredential(env, userId, appId, "asc");
+    if (!stored) {
+      if (body.useStored) throw new HttpError(404, "no saved App Store Connect key for this app");
+      throw new HttpError(400, "p8, keyId, and issuerId are required");
+    }
+    cred = { p8: stored.plaintext, keyId: stored.meta.keyId, issuerId: stored.meta.issuerId };
+  } else {
+    if (!body.p8 || !body.keyId || !body.issuerId) {
+      throw new HttpError(400, "p8, keyId, and issuerId are required");
+    }
+    cred = { p8: body.p8, keyId: body.keyId, issuerId: body.issuerId };
+  }
 
   // Mint the ephemeral ASC token + read the current live copy.
   let token: string;
   try {
-    token = await mintAscJwt({ p8: body.p8, keyId: body.keyId, issuerId: body.issuerId });
+    token = await mintAscJwt({ p8: cred.p8, keyId: cred.keyId, issuerId: cred.issuerId });
   } catch (e) {
     throw new HttpError(400, e instanceof Error ? e.message : "invalid credentials");
+  }
+
+  // #67 opt-in: persist the credential (envelope-encrypted) AFTER it minted a
+  // token successfully — we never store a key that doesn't work. Best-effort;
+  // a storage failure never fails the run the user asked for.
+  if (body.store && body.p8 && credentialsEnabled(env)) {
+    await saveCredential(env, {
+      userId,
+      appId,
+      kind: "asc",
+      keyId: cred.keyId,
+      issuerId: cred.issuerId,
+      plaintext: cred.p8,
+    }).catch(() => undefined);
   }
   let liveSubtitle: string | undefined;
   let liveKeywords: string | undefined;
@@ -1913,6 +1944,37 @@ async function localizeDeleteRoute(
   const fresh = await getRun(env.DB, runId);
   const freshTrace = JSON.parse(fresh!.reasoning_json) as ReasoningTrace;
   return { approved: Object.keys(freshTrace.localizedCopy ?? {}).sort() };
+}
+
+// ── Stored credentials (#67 post-launch half) — opt-in, write-only custody ───
+
+/** GET /account/credentials — metadata ONLY (never key material). */
+async function credentialsListRoute(env: Env, userId: string): Promise<unknown> {
+  return {
+    enabled: credentialsEnabled(env),
+    credentials: await listCredentialMeta(env, userId),
+  };
+}
+
+/**
+ * DELETE /account/credentials/:kind?app=:appId — remove a stored credential.
+ * Does NOT revoke the key at Apple/Google (the response says so). Honest 404
+ * when nothing was stored.
+ */
+async function credentialsDeleteRoute(
+  env: Env,
+  userId: string,
+  kind: string,
+  url: URL,
+): Promise<unknown> {
+  if (kind !== "asc" && kind !== "play") throw new HttpError(400, "kind must be asc or play");
+  const appId = url.searchParams.get("app");
+  const removed = await deleteCredential(env, userId, appId, kind);
+  if (!removed) throw new HttpError(404, "no stored credential to delete");
+  return {
+    deleted: true,
+    note: "Removed from ShipASO. This does NOT revoke the key at Apple — revoke it in App Store Connect to fully kill it.",
+  };
 }
 
 /** GET /apps/:id — detail with the full run history list. */
@@ -3049,6 +3111,16 @@ export async function handleApi(req: Request, env: Env): Promise<Response> {
     ) {
       return json(await pushTokenDeleteRoute(req, env, user.id), 200, origin, env);
     }
+    // /account/credentials — stored-credential management (#67; write-only)
+    if (seg[0] === "account" && seg[1] === "credentials") {
+      if (seg.length === 2 && method === "GET") {
+        return json(await credentialsListRoute(env, user.id), 200, origin, env);
+      }
+      if (seg.length === 3 && seg[2] && method === "DELETE") {
+        return json(await credentialsDeleteRoute(env, user.id, seg[2], url), 200, origin, env);
+      }
+    }
+
     // /account/notifications — communication prefs (comms-prefs Phase 1)
     if (seg[0] === "account" && seg[1] === "notifications" && seg.length === 2) {
       if (method === "GET") {
