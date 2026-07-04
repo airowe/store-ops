@@ -874,6 +874,16 @@
       competitorsPanel(app.id),
     ]));
 
+    // Agent triggers (#53) — what opens a run for approval. Never changes what
+    // the agent measures; snapshots record every sweep regardless.
+    c.appendChild(el("div", { class: "card" }, [
+      el("h3", {}, ["Agent triggers"]),
+      el("p", { class: "faint", style: "font-size:12.5px;margin:0 0 10px" }, [
+        "Tune what opens a run for your approval. The agent still measures everything every sweep — these only decide when it asks for your attention.",
+      ]),
+      thresholdsPanel(app.id),
+    ]));
+
     // Google Play audit — the Play parallel of the ASC read (own-app, via the Play
     // Developer API; the service account is sent once and never stored).
     c.appendChild(el("div", { class: "card" }, [
@@ -1242,6 +1252,69 @@
   // creds are sent once (to /play/verify or /apps/:id/audit-play) and NEVER stored,
   // same posture as the .p8. Play has no keyword field, so this reads the title,
   // short + long description, screenshots, and grades them.
+  // ── Agent triggers panel (#53) ──────────────────────────────────────────────
+  // What opens an awaiting_approval run. Honest framing baked into the copy:
+  // thresholds gate what NAGS the human — never what the agent measures.
+  function thresholdsPanel(appId) {
+    var panel = el("div", { id: "thresholdsPanel" });
+    var note = el("div", { class: "faint", style: "font-size:12px;margin-top:8px" });
+
+    var unrankedCb = el("input", { type: "checkbox", id: "thUnranked" });
+    var compCb = el("input", { type: "checkbox", id: "thCompetitors" });
+    var notifyCb = el("input", { type: "checkbox", id: "thNotifyOnly" });
+    var dropIn = el("input", { class: "txt", id: "thRankDrop", type: "number", min: "1", max: "200", placeholder: "off", style: "width:80px" });
+    var mutedKwIn = el("input", { class: "txt", id: "thMutedKw", type: "text", placeholder: "e.g. recipe, pantry (never trigger)", autocomplete: "off" });
+
+    function rowCb(cb, label) {
+      return el("label", { style: "display:flex;align-items:center;gap:8px;padding:4px 0;font-size:13.5px;cursor:pointer" }, [cb, label]);
+    }
+
+    function fill(t) {
+      unrankedCb.checked = !!t.unranked;
+      compCb.checked = !!t.competitorChanges;
+      notifyCb.checked = !!t.notifyOnly;
+      dropIn.value = t.rankDropAtLeast == null ? "" : String(t.rankDropAtLeast);
+      mutedKwIn.value = (t.mutedKeywords || []).join(", ");
+    }
+
+    api("GET", "/apps/" + appId + "/thresholds")
+      .then(function (r) { fill(r.thresholds || {}); })
+      .catch(function () { /* fail-open — defaults render unchecked-state below */ });
+
+    var saveBtn = el("button", { class: "btn", id: "thSave", onclick: function () {
+      var drop = dropIn.value.trim();
+      var body = {
+        unranked: unrankedCb.checked,
+        competitorChanges: compCb.checked,
+        notifyOnly: notifyCb.checked,
+        rankDropAtLeast: drop === "" ? null : Number(drop),
+        mutedKeywords: mutedKwIn.value.split(",").map(function (s) { return s.trim(); }).filter(Boolean),
+      };
+      saveBtn.disabled = true; saveBtn.innerHTML = '<span class="spin"></span> Saving…';
+      api("POST", "/apps/" + appId + "/thresholds", body)
+        .then(function (r) {
+          saveBtn.disabled = false; saveBtn.textContent = "Save triggers";
+          fill(r.thresholds || {}); // reconcile from the server's answer
+          note.textContent = "Saved. Snapshots are still recorded every sweep — these only change what opens a run.";
+        })
+        .catch(function (e) {
+          saveBtn.disabled = false; saveBtn.textContent = "Save triggers";
+          toast(e && e.message ? e.message : "Couldn't save.");
+        });
+    } }, ["Save triggers"]);
+
+    panel.appendChild(rowCb(unrankedCb, "Open a run when a targeted keyword is unranked"));
+    panel.appendChild(rowCb(compCb, "Open a run when a watched competitor's listing changes"));
+    panel.appendChild(el("div", { style: "display:flex;align-items:center;gap:8px;padding:4px 0;font-size:13.5px" }, [
+      "Open a run when a rank drops ≥", dropIn, "places week-over-week",
+    ]));
+    panel.appendChild(el("label", { class: "fld", style: "margin-top:6px" }, [el("span", { class: "lab" }, ["Muted keywords (never trigger)"]), mutedKwIn]));
+    panel.appendChild(rowCb(notifyCb, "Notify only — report crossings but never open a run"));
+    panel.appendChild(el("div", { class: "btn-row", style: "margin-top:8px" }, [saveBtn]));
+    panel.appendChild(note);
+    return panel;
+  }
+
   // ── Competitors panel (#72-C) ───────────────────────────────────────────────
   // The app's watch list: auto-discovered SUGGESTIONS (from real iTunes searches
   // of the app's tracked keywords) + user-added entries. Only what the user

@@ -27,6 +27,8 @@ import { type AgentResult, runAgent } from "../engine/index.js";
 import {
   confirmedCompetitorKeys,
   getLatestCompetitorMap,
+  getLatestRanks,
+  getThresholds,
   getRankHistory,
   getTier,
   getUser,
@@ -44,6 +46,7 @@ import { reasonerForEnv } from "../api/aiReasoner.js";
 import { fetchForEnv } from "../fetchAdapter.js";
 import { notifyRunAwaitingApproval } from "../push.js";
 import type { Env } from "../index.js";
+import { DEFAULT_THRESHOLDS, type ThresholdConfig } from "../thresholds.js";
 
 /** Unsubscribe-token lifetime: ~60 days - a fresh token ships with every weekly digest. */
 const UNSUB_TTL_SECONDS = 60 * 24 * 60 * 60;
@@ -56,28 +59,68 @@ export type ThresholdDecision = {
 
 /**
  * Decide if the agent result warrants opening an awaiting_approval run.
- * Pure (testable): unranked target keyword OR competitor movement.
+ * Pure (testable). Default config = the historical behavior: unranked target
+ * keyword OR competitor movement. #53 makes each trigger configurable, adds an
+ * optional week-over-week rank-drop trigger, and lets specific keywords /
+ * competitors be muted. Thresholds gate what OPENS A RUN — never what the
+ * agent measures.
  */
-export function evaluateThreshold(result: AgentResult): ThresholdDecision {
+export function evaluateThreshold(
+  result: AgentResult,
+  config: ThresholdConfig = DEFAULT_THRESHOLDS,
+  previousRanks: Array<{ keyword: string; rank: number | null }> = [],
+): ThresholdDecision {
   const reasons: string[] = [];
+  const mutedKw = new Set(config.mutedKeywords);
+  const mutedComp = new Set(config.mutedCompetitors);
+  const kwMuted = (kw: string) => mutedKw.has(kw.trim().toLowerCase());
 
   // (a) any TARGETED keyword still unranked (not in top 200)
-  const unranked = result.ranks.filter((r) => r.error === "" && r.rank === null);
-  if (unranked.length > 0) {
-    reasons.push(
-      `${unranked.length} targeted keyword(s) unranked: ${unranked
-        .map((r) => r.keyword)
-        .join(", ")}`,
+  if (config.unranked) {
+    const unranked = result.ranks.filter(
+      (r) => r.error === "" && r.rank === null && !kwMuted(r.keyword),
     );
+    if (unranked.length > 0) {
+      reasons.push(
+        `${unranked.length} targeted keyword(s) unranked: ${unranked
+          .map((r) => r.keyword)
+          .join(", ")}`,
+      );
+    }
+  }
+
+  // (a2) #53: rank DROPPED ≥ N places week-over-week (off unless configured).
+  // A keyword that fell out of the top 200 entirely (prev ranked → now null)
+  // counts as crossing any drop threshold.
+  if (config.rankDropAtLeast != null) {
+    const prevByKw = new Map(
+      previousRanks.map((p) => [p.keyword.trim().toLowerCase(), p.rank] as const),
+    );
+    for (const r of result.ranks) {
+      if (r.error !== "" || kwMuted(r.keyword)) continue;
+      const prev = prevByKw.get(r.keyword.trim().toLowerCase());
+      if (prev == null) continue; // no baseline — a drop can't be asserted
+      if (r.rank === null) {
+        reasons.push(`"${r.keyword}" dropped out of the top ${r.limit ?? 200} (was #${prev})`);
+      } else if (r.rank - prev >= config.rankDropAtLeast) {
+        reasons.push(`"${r.keyword}" dropped ${r.rank - prev} places (#${prev} → #${r.rank})`);
+      }
+    }
   }
 
   // (b) competitor movement — a new competitor or a changed visible listing
-  for (const c of result.competitors.changes) {
-    if (c.status === "new") {
-      reasons.push(`new competitor surfaced: ${c.name || c.key}`);
-    } else if (c.status === "changed") {
-      const fields = Object.keys(c.fields).join(", ");
-      reasons.push(`competitor "${c.name || c.key}" changed (${fields})`);
+  if (config.competitorChanges) {
+    for (const c of result.competitors.changes) {
+      const muted =
+        mutedComp.has(String(c.key).trim().toLowerCase()) ||
+        ("name" in c && c.name ? mutedComp.has(c.name.trim().toLowerCase()) : false);
+      if (muted) continue;
+      if (c.status === "new") {
+        reasons.push(`new competitor surfaced: ${c.name || c.key}`);
+      } else if (c.status === "changed") {
+        const fields = Object.keys(c.fields).join(", ");
+        reasons.push(`competitor "${c.name || c.key}" changed (${fields})`);
+      }
     }
   }
 
@@ -169,10 +212,16 @@ export async function runWeeklySweep(env: Env): Promise<CronReport> {
       );
       const result = await runAgent(fetchForEnv(env), input);
 
-      const decision = evaluateThreshold(result);
+      // #53: per-app threshold config (fail-open → historical behavior) + last
+      // week's ranks (read BEFORE this pass persists) for the drop trigger.
+      const thresholds = await getThresholds(env.DB, app.id);
+      const previousRanks =
+        thresholds.rankDropAtLeast != null ? await getLatestRanks(env.DB, app.id) : [];
+      const decision = evaluateThreshold(result, thresholds, previousRanks);
       const alreadyOpen = await hasOpenRun(env.DB, app.id);
+      const openRun = decision.crossed && !alreadyOpen && !thresholds.notifyOnly;
 
-      if (decision.crossed && !alreadyOpen) {
+      if (openRun) {
         // Open an awaiting_approval run (this also records the snapshots +
         // proposals + generated push commands in one atomic write).
         const runId = await persistRun(env.DB, {
@@ -195,9 +244,10 @@ export async function runWeeklySweep(env: Env): Promise<CronReport> {
           reasons: decision.reasons,
         });
       } else {
-        // No threshold crossed (or a run is already open): still persist this
-        // week's snapshots as a recorded pass, but mark the run rejected-equivalent
-        // status 'detected' so the time-series stays complete without nagging.
+        // No threshold crossed (or a run is already open, or the owner set
+        // notify-only #53): still persist this week's snapshots as a recorded
+        // pass, but mark the run rejected-equivalent status 'detected' so the
+        // time-series stays complete without nagging.
         const runId = await persistRun(env.DB, {
           appId: app.id,
           status: "detected",
@@ -206,7 +256,9 @@ export async function runWeeklySweep(env: Env): Promise<CronReport> {
             source: "cron",
             reasons: alreadyOpen
               ? ["snapshot recorded — prior run still awaiting approval"]
-              : ["snapshot recorded — no threshold crossed"],
+              : decision.crossed && thresholds.notifyOnly
+                ? [...decision.reasons, "notify-only mode — threshold crossed but no run opened (owner setting)"]
+                : ["snapshot recorded — no threshold crossed"],
           },
         });
         report.perApp.push({

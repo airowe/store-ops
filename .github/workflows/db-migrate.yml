@@ -106,6 +106,10 @@ jobs:
           d1 "CREATE INDEX IF NOT EXISTS idx_app_competitors ON app_competitors(app_id, status)" > /dev/null
           echo "✓ app_competitors table + index ensured"
 
+          # app_settings (#53 — per-app run-threshold config, fail-open JSON).
+          d1 "CREATE TABLE IF NOT EXISTS app_settings (app_id TEXT PRIMARY KEY REFERENCES apps(id) ON DELETE CASCADE, threshold_json TEXT NOT NULL DEFAULT '{}')" > /dev/null
+          echo "✓ app_settings table ensured"
+
       - name: Verify
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
@@ -137,5 +141,7 @@ jobs:
               console.log("✓ device_tokens present");
               if (!rows.some((r) => r.name === "app_competitors")) { console.error("MISSING app_competitors"); process.exit(1); }
               console.log("✓ app_competitors present");
+              if (!rows.some((r) => r.name === "app_settings")) { console.error("MISSING app_settings"); process.exit(1); }
+              console.log("✓ app_settings present");
             });
           '
