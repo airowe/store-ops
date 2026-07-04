@@ -58,6 +58,7 @@ function routed(path: string): unknown {
   if (/^\/apps\/[^/]+\/competitors$/.test(path)) return { competitors: [{ key: "901", name: "Rival Pro", source: "discovered", status: "suggested" }] };
   if (/^\/apps\/[^/]+\/thresholds$/.test(path)) return { thresholds: { unranked: true, competitorChanges: true, rankDropAtLeast: null, mutedKeywords: [], mutedCompetitors: [], notifyOnly: false } };
   if (/^\/apps\/[^/]+\/schedule$/.test(path)) return { schedule: { cadence: "weekly", day: 1, hourUtc: 9 } };
+  if (path === "/account/credentials") return { enabled: true, credentials: [] };
   if (/^\/apps\/[^/]+\/war-room/.test(path)) return { appName: "Acme", warRoom: [{ keyword: "budget", you: 3, youPrevious: 8, competitors: [{ name: "Rival", rank: 5 }], gapToBest: -2, trend: "gaining", winning: true }], competitors: ["Rival"], window: 7, checkedAt: "2026-06-29" };
   if (/^\/apps\/[^/]+$/.test(path)) return { app: APP, runs: [{ id: "r1", status: "awaiting_approval", created_at: "2026-06-29T11:00:00Z" }] };
   if (/^\/runs\/[^/]+$/.test(path)) return RUN_DETAIL;

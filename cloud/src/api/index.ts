@@ -1423,79 +1423,79 @@ async function runAppWithAsc(
       plaintext: cred.p8,
     }).catch(() => undefined);
   }
+  const { result, resultWithSnapshot } = await keyedAscPass(env, app, token, locale, {
+    ...(body.keywords ? { keywords: body.keywords } : {}),
+    ...(body.competitors ? { competitors: body.competitors } : {}),
+    ...(body.baseCopy ? { baseCopy: body.baseCopy } : {}),
+  });
+
+  const runId = await persistRun(env.DB, {
+    appId: app.id,
+    status: "awaiting_approval",
+    result: resultWithSnapshot,
+    trigger: { source: "manual", reasons: ["manual run requested (App Store Connect read)"] },
+  });
+  return { id: runId, status: "awaiting_approval", digest: result.competitors.digest, ascRead: true };
+}
+
+/**
+ * The keyed (Mode-A) agent pass: read the live ASC listing with `token`, run the
+ * agent against the live copy as the floor, and ENRICH the result with the full
+ * findings/locks/context/coverage/localization set. Shared by the manual
+ * `/run-asc` route and the AUTONOMOUS keyed sweep (#67 Phase 2) so a scheduled
+ * run produces the exact same rich, honest output a manual keyed run does.
+ *
+ * `result` is the client-facing result; `resultWithSnapshot` carries the raw ASC
+ * snapshot SERVER-SIDE only (persistRun never copies it onto the client trace).
+ * A read failure throws `AscWriteError` (callers translate to their own error).
+ */
+export async function keyedAscPass(
+  env: Env,
+  app: AppRow,
+  token: string,
+  locale: string,
+  extra: Pick<RunOverrides, "keywords" | "competitors" | "baseCopy"> = {},
+): Promise<{ result: AgentResult; resultWithSnapshot: AgentResult }> {
   let liveSubtitle: string | undefined;
   let liveKeywords: string | undefined;
   let liveName: string | undefined;
   let liveDescription: string | undefined;
   let ascSnapshot: AscSnapshot | undefined;
+  const ascAppId = await findAscAppId(fetch, token, app.bundle_id);
+  const live = await readAscLocalization(fetch, { token, appId: ascAppId, locale });
+  liveSubtitle = live.subtitle;
+  liveKeywords = live.keywords;
+  liveName = live.name;
+  liveDescription = live.description;
   try {
-    const ascAppId = await findAscAppId(fetch, token, app.bundle_id);
-    const live = await readAscLocalization(fetch, { token, appId: ascAppId, locale });
-    liveSubtitle = live.subtitle;
-    liveKeywords = live.keywords;
-    liveName = live.name;
-    liveDescription = live.description;
-    // The full pre-launch read: screenshots, previews, appInfo, version state,
-    // pricing/IAPs, age rating, custom pages, all locales. Best-effort — a read
-    // failure here records a per-surface error but never strands the run.
-    try {
-      ascSnapshot = await readAscSnapshot(fetch, { token, appId: ascAppId, locale });
-    } catch {
-      ascSnapshot = undefined;
-    }
-  } catch (e) {
-    // A read failure shouldn't strand the user — fall back to an honest iTunes-only
-    // run (subtitle/keywords omitted) and surface the reason.
-    if (e instanceof AscWriteError) throw new HttpError(400, `App Store Connect read failed: ${e.message}`);
-    throw e;
+    ascSnapshot = await readAscSnapshot(fetch, { token, appId: ascAppId, locale });
+  } catch {
+    ascSnapshot = undefined;
   }
 
-  const previous = await getLatestCompetitorMap(env.DB, appId);
+  const previous = await getLatestCompetitorMap(env.DB, app.id);
   const overrides: RunOverrides = { ascMetadataRead: true };
-  if (body.keywords) overrides.keywords = body.keywords;
-  if (body.competitors) overrides.competitors = body.competitors;
+  if (extra.keywords) overrides.keywords = extra.keywords;
+  if (extra.competitors) overrides.competitors = extra.competitors;
   else {
-    // #72: no explicit list → watch the app's CONFIRMED competitors (never
-    // suggestions). Empty when none exist or the table hasn't migrated yet.
-    const confirmed = await confirmedCompetitorKeys(env.DB, appId);
+    const confirmed = await confirmedCompetitorKeys(env.DB, app.id);
     if (confirmed.length) overrides.competitors = confirmed;
   }
-  // baseCopy carries the LIVE values read from ASC (the optimizer's floor).
-  // We reached here via a SUCCESSFUL ASC localization read, so subtitle/keywords
-  // were READ — an `undefined` from the read means the field is EMPTY on the
-  // listing, NOT unknown. Coalesce read-but-empty to "" so it propagates as
-  // seen-but-empty ("empty"), never collapsing into the false "unseen" state
-  // (the honesty bug: an app with no subtitle showed "unseen" instead of "empty",
-  // and an empty keyword field was backfilled with derived guesses shown as live).
   overrides.baseCopy = {
     ...(liveName !== undefined ? { name: liveName } : {}),
     subtitle: liveSubtitle ?? "",
     keywords: liveKeywords ?? "",
-    // Thread the live description so the #57 keyword reasoner can run on keyed
-    // runs (it derives intent keywords from the description; without it the run
-    // falls back to name-tokenization and "manager"/brand tokens leak back in).
     ...(liveDescription !== undefined ? { description: liveDescription } : {}),
-    ...(body.baseCopy ?? {}),
+    ...(extra.baseCopy ?? {}),
   };
   const ascReasoner = reasonerForEnv(env.AI);
   if (ascReasoner) overrides.reasoner = ascReasoner;
 
   const input = await buildAppInput(app, overrides, previous);
   const result = await runAgent(fetchForEnv(env), input);
-  // #44: if we read REAL screenshots from ASC, re-score the audit with them
-  // (dataReliable:true) so the grade is genuine — not the public-iTunes "unknown".
   const ascListing = ascScreenshotsToListing(ascSnapshot?.screenshots);
-  if (ascListing) {
-    result.audit.screenshots = scoreScreenshots(input.app, ascListing);
-  }
-  // PRD 03 / #95: PUBLIC review sentiment is independent of the ASC read — a
-  // keyed run surfaces it too (public RSS data, no ASC/private review API). Best-
-  // effort; computed before findings so the audit carries the reviews section.
+  if (ascListing) result.audit.screenshots = scoreScreenshots(input.app, ascListing);
   await attachReviews(env, app, result);
-  // Mode-A run: compute the FULL findings set from the already-read snapshot
-  // (no new ASC calls) + the screenshot re-score above, plus the slim PII-safe
-  // ascContext. The raw snapshot stays server-side; ONLY findings + ascContext
-  // reach the client (PRD 02 privacy boundary).
   result.findings = auditFindings({
     snapshot: ascSnapshot,
     audit: result.audit,
@@ -1504,9 +1504,6 @@ async function runAppWithAsc(
     hasAscKey: true,
     ...(result.reviews !== undefined ? { reviews: result.reviews } : {}),
   });
-  // #61: a keyed run reads every surface ⇒ it locks NOTHING. We still set the
-  // field (to []) so the serializer is symmetric and the client never re-derives
-  // "is this readable" — a connected run simply carries no locks.
   result.locks = surfaceLocks({
     snapshot: ascSnapshot,
     audit: result.audit,
@@ -1516,41 +1513,19 @@ async function runAppWithAsc(
   });
   const ascContext = buildAscContext(ascSnapshot);
   if (ascContext !== undefined) result.ascContext = ascContext;
-  // PRD 06: winnability opportunities — "where to push next." Same pure compute as
-  // the no-key path; serves curated copy + drivers only (no raw ASC data).
   await attachOpportunities(env, app.id, result);
-  // PRD 03: metadata coverage from the LIVE copy we read from ASC (name + subtitle
-  // + keyword field) — the richest input, so duplicate/brand_repeat/filler waste is
-  // fully populated. Curated counts + copy only; no raw ASC crosses the boundary.
   result.coverage = coverageForRun(result.currentCopy, app.name);
-  // PRD 04 — localization expansion. From the locales we just read + the category,
-  // recommend the highest-ROI markets to expand into (a STATIC, bundled heuristic —
-  // no live install data, no new ASC call). Derived only from locale codes + the
-  // category NAME, so it's PII-safe and reaches the client (findings-only boundary
-  // intact). Only when we actually read the locale set.
   const liveLocaleRows = (ascSnapshot?.locales ?? []) as Array<{ locale?: string | undefined }>;
   const liveLocales = liveLocaleRows
     .map((l) => l.locale)
     .filter((c): c is string => typeof c === "string" && c.length > 0);
   if (liveLocales.length > 0) {
     const category = ascSnapshot?.appInfo?.primaryCategory?.name;
-    const recs = recommendLocales({
-      liveLocales,
-      ...(category !== undefined ? { category } : {}),
-    });
+    const recs = recommendLocales({ liveLocales, ...(category !== undefined ? { category } : {}) });
     if (recs.length > 0) result.localizationExpansion = recs;
   }
-  // Attach the full ASC snapshot to the result so the run carries the rich data
-  // SERVER-SIDE only — persistRun deliberately does NOT copy it onto the trace,
-  // so it never reaches the client (the snapshot stays for future server use).
   const resultWithSnapshot = ascSnapshot ? { ...result, ascSnapshot } : result;
-  const runId = await persistRun(env.DB, {
-    appId: app.id,
-    status: "awaiting_approval",
-    result: resultWithSnapshot,
-    trigger: { source: "manual", reasons: ["manual run requested (App Store Connect read)"] },
-  });
-  return { id: runId, status: "awaiting_approval", digest: result.competitors.digest, ascRead: true };
+  return { result, resultWithSnapshot };
 }
 
 // ── Google Play credentials (parallel of the App Store Connect .p8 path) ──────
@@ -1633,13 +1608,35 @@ async function auditPlayRoute(
   appId: string,
 ): Promise<unknown> {
   await requireOwnedApp(env, appId, userId);
-  const body = await req.json<PlayAuditBody>().catch(() => ({}) as PlayAuditBody);
-  const sa = parseServiceAccount(body.serviceAccount);
+  const body = (await req.json<PlayAuditBody & { store?: boolean; useStored?: boolean }>().catch(
+    () => ({}) as PlayAuditBody,
+  )) as PlayAuditBody & { store?: boolean; useStored?: boolean };
   const packageName = (body.packageName ?? "").trim();
   if (!packageName) {
     throw new HttpError(400, "packageName is required (your Play package id, e.g. com.foo.bar)");
   }
-  void env;
+
+  // #67 Phase 2 (Play parity): a stored service account may authenticate the
+  // audit instead of an in-request one. The saved JSON is a transient here,
+  // never returned. store:true persists it (after it parses) for future use.
+  let saRaw: unknown = body.serviceAccount;
+  if ((body.useStored || body.serviceAccount == null) && credentialsEnabled(env)) {
+    const stored = await useCredential(env, userId, appId, "play");
+    if (!stored) throw new HttpError(404, "no saved Google Play service account for this app");
+    saRaw = stored.plaintext;
+  }
+  const sa = parseServiceAccount(saRaw);
+  if (body.store && body.serviceAccount != null && credentialsEnabled(env)) {
+    const asText = typeof body.serviceAccount === "string" ? body.serviceAccount : JSON.stringify(body.serviceAccount);
+    await saveCredential(env, {
+      userId,
+      appId,
+      kind: "play",
+      keyId: sa.client_email,
+      issuerId: "",
+      plaintext: asText,
+    }).catch(() => undefined);
+  }
 
   let transport;
   try {

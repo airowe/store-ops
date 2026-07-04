@@ -18,6 +18,7 @@ import { useAuth } from "../../src/auth/AuthProvider.js";
 import { setNotifications, setRankCadence } from "../../src/api/endpoints.js";
 import { registerForPush, getLastKnownPushToken } from "../../src/notifications/register.js";
 import { signOutWithCleanup } from "../../src/lib/signout.js";
+import { StoredKeysCard } from "../../src/components/StoredKeysCard.js";
 import { Screen, AppText, Button, Card } from "../../src/components/primitives.js";
 import { palette, spacing } from "../../src/theme/index.js";
 
@@ -141,6 +142,8 @@ export default function Settings() {
 
         {note ? <AppText kind="dim" style={{ color: palette.warn }}>{note}</AppText> : null}
       </Card>
+
+      <StoredKeysCard client={client} />
 
       <Card>
         <AppText kind="lead">Account</AppText>

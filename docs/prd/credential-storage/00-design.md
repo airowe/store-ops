@@ -107,10 +107,21 @@ enforcement style as the mobile `credentials.neverPersisted` suite.
    `stored_credentials` table, save/list/delete routes, the opt-in checkbox
    on the ASC panel, keyed runs use the stored key when present ("Run with
    saved key" button).
-2. **Phase 2 — autonomous keyed sweeps**: the cron uses a stored ASC key to
-   run read-and-improve on schedule (per-app link of credential → app);
-   Play service-account parity; mobile parity for the opt-in + management UI.
-   KEK rotation runbook entry in db-migrate/README.
+2. **Phase 2 — autonomous keyed sweeps** ✅ SHIPPED: the cron uses a stored ASC
+   key to run the full keyed read-and-improve pass on schedule (via the shared
+   `keyedAscPass`), still approval-gated — a stored-key read failure degrades to
+   the public pass, never stranding the sweep. Play service-account save/use
+   parity on the audit route. Mobile management UI (`StoredKeysCard`). The
+   stored plaintext is a transient in the sweep, never persisted onto the run.
+
+### KEK rotation runbook
+1. `wrangler secret put CRED_KEK_V2` (fresh base64 32 bytes).
+2. Deploy. New saves seal under v2; existing rows lazily re-wrap on their next
+   USE (`useCredential` re-wraps when `row.kek_version < current`).
+3. Force-drain if needed: any authenticated read of each stored credential
+   rotates it. Check progress: `SELECT kek_version, COUNT(*) FROM
+   stored_credentials GROUP BY kek_version`.
+4. Once no rows remain on v1, `wrangler secret delete CRED_KEK_V1`.
 
 ## Out of scope
 
