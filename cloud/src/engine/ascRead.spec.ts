@@ -9,6 +9,7 @@ import {
   type AppPricing,
   readAscSnapshot,
   ascScreenshotsToListing,
+  detectDuplicateScreenshots,
 } from "./ascRead.js";
 import { AscWriteError, type FetchLike } from "./ascWrite.js";
 
@@ -924,5 +925,91 @@ describe("ascScreenshotsToListing — ASC set → scoreable Listing (real grade)
     };
     const listing = ascScreenshotsToListing(set);
     expect(listing!.screenshotUrls).toHaveLength(6); // the fuller 6.7" set, not 2+6=8
+  });
+});
+
+// ── #68: duplicate screenshot detection — substantiated signals only ──────────
+
+describe("detectDuplicateScreenshots (#68)", () => {
+  const named = (id: string, fileName: string) => ({
+    id,
+    imageTemplate: `https://asc/${id}.png`,
+    fileName,
+  });
+  const set = (
+    iphone: Array<{ id: string; imageTemplate?: string; fileName?: string }>,
+  ): AscScreenshotSet => ({
+    iphoneScreenshots: [
+      { device: "APP_IPHONE_67", count: iphone.length, screenshots: iphone },
+    ],
+    ipadScreenshots: [],
+    dataReliable: true,
+  });
+
+  it("undefined / empty / all-distinct sets → [] (silence, never a guess)", () => {
+    expect(detectDuplicateScreenshots(undefined)).toEqual([]);
+    expect(detectDuplicateScreenshots(set([]))).toEqual([]);
+    expect(
+      detectDuplicateScreenshots(set([named("a", "hero.png"), named("b", "list.png")])),
+    ).toEqual([]);
+  });
+
+  it("flags shots sharing a source fileName within one device set, with the count", () => {
+    const dups = detectDuplicateScreenshots(
+      set([named("a", "hero.png"), named("b", "hero.png"), named("c", "hero.png"), named("d", "list.png")]),
+    );
+    expect(dups).toEqual([{ family: "iphone", key: "hero.png", count: 3 }]);
+  });
+
+  it("fileName match is case/whitespace-insensitive (same source file, re-uploaded)", () => {
+    const dups = detectDuplicateScreenshots(
+      set([named("a", "Hero.PNG"), named("b", " hero.png ")]),
+    );
+    expect(dups).toEqual([{ family: "iphone", key: "hero.png", count: 2 }]);
+  });
+
+  it("cross-device-SIZE replication is EXPECTED and never flagged (#70)", () => {
+    const five = (sz: string) => ({
+      device: sz,
+      count: 2,
+      screenshots: [
+        { id: `${sz}-1`, imageTemplate: `https://asc/${sz}-1.png`, fileName: "hero.png" },
+        { id: `${sz}-2`, imageTemplate: `https://asc/${sz}-2.png`, fileName: "list.png" },
+      ],
+    });
+    // The SAME 2 logical shots replicated across 3 iPhone sizes — no repeats
+    // WITHIN any single set, so nothing fires.
+    const full: AscScreenshotSet = {
+      iphoneScreenshots: [five("APP_IPHONE_65"), five("APP_IPHONE_67"), five("APP_IPHONE_55")],
+      ipadScreenshots: [],
+      dataReliable: true,
+    };
+    expect(detectDuplicateScreenshots(full)).toEqual([]);
+  });
+
+  it("falls back to the asset URL when ASC exposed no fileName; distinct URLs stay silent", () => {
+    const bare = (id: string, url: string) => ({ id, imageTemplate: url });
+    expect(
+      detectDuplicateScreenshots(set([bare("a", "https://asc/same.png"), bare("b", "https://asc/same.png")])),
+    ).toEqual([{ family: "iphone", key: "https://asc/same.png", count: 2 }]);
+    expect(
+      detectDuplicateScreenshots(set([bare("a", "https://asc/a.png"), bare("b", "https://asc/b.png")])),
+    ).toEqual([]);
+  });
+
+  it("reports iPad repeats under the ipad family, ordered after iPhone groups", () => {
+    const full: AscScreenshotSet = {
+      iphoneScreenshots: [
+        { device: "APP_IPHONE_67", count: 2, screenshots: [named("a", "hero.png"), named("b", "hero.png")] },
+      ],
+      ipadScreenshots: [
+        { device: "APP_IPAD_PRO_3GEN_129", count: 2, screenshots: [named("c", "pad.png"), named("d", "pad.png")] },
+      ],
+      dataReliable: true,
+    };
+    expect(detectDuplicateScreenshots(full)).toEqual([
+      { family: "iphone", key: "hero.png", count: 2 },
+      { family: "ipad", key: "pad.png", count: 2 },
+    ]);
   });
 });

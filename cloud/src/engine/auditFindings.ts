@@ -15,6 +15,7 @@
  *    `info`), never `critical` (the #41 trap).
  *  - Derives ONLY from the captured snapshot — it issues no new ASC reads.
  */
+import { detectDuplicateScreenshots } from "./ascRead.js";
 import type { AscSnapshot, InAppPurchase } from "./ascRead.js";
 import type { Audit } from "./agent.js";
 import type { Rank } from "./rankCheck.js";
@@ -152,6 +153,32 @@ function screenshotFindings(input: AuditFindingsInput): Finding[] {
         title: "No iPad screenshots",
         detail: "Your iPad store page falls back to stretched iPhone shots.",
         fix: "Add iPad screenshots if you ship iPad.",
+      }),
+    );
+  }
+
+  // #68: duplicate screenshots — only when the ASC snapshot SUBSTANTIATES it
+  // (same source fileName / same asset repeated within ONE device set; cross-
+  // size replication never counts). Informational: the grade is untouched until
+  // the signal proves reliable in the wild. No snapshot / no fileNames → silent.
+  const dups = detectDuplicateScreenshots(input.snapshot?.screenshots);
+  if (dups.length > 0) {
+    const wasted = dups.reduce((n, g) => n + (g.count - 1), 0);
+    const names = dups
+      .slice(0, 4)
+      .map((g) => `${g.key} ×${g.count}`)
+      .join(", ");
+    out.push(
+      mk({
+        id: "screenshots_duplicates",
+        surface: "screenshots",
+        severity: "info",
+        impact: "conversion",
+        title: `${wasted} screenshot slot${wasted === 1 ? "" : "s"} spent on repeats`,
+        detail:
+          "Some screenshots share the same source file. Each shown slot should sell a distinct value prop — repeats cost installs.",
+        fix: "Replace the repeated shots with distinct value-prop shots.",
+        evidence: `same source: ${names}`,
       }),
     );
   }
