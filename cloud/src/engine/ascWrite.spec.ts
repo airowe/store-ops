@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
+  createAscVersion,
+  isValidVersionString,
   pickEditableVersion,
   pickReadableVersion,
   buildLocalizationPatch,
@@ -983,5 +985,49 @@ describe("readAscAllLocales — all appStoreVersionLocalizations in one read", (
     await readAscAllLocales(failing, { token: "SECRET_JWT", appId: "APP1" }).catch((e: Error) =>
       expect(e.message).not.toContain("SECRET_JWT"),
     );
+  });
+});
+
+// ── #34: createAscVersion — the per-action draft-version write ────────────────
+
+describe("createAscVersion (#34)", () => {
+  const ok = (body: unknown) =>
+    new Response(JSON.stringify(body), { status: 201, headers: { "content-type": "application/json" } });
+
+  it("POSTs the appStoreVersions payload and returns the created draft", async () => {
+    let captured: { url: string; init: RequestInit | undefined } | null = null;
+    const fetchFn = (async (url: string | URL, init?: RequestInit) => {
+      captured = { url: String(url), init };
+      return ok({ data: { id: "V9", attributes: { versionString: "1.4.3", appStoreState: "PREPARE_FOR_SUBMISSION" } } });
+    }) as never;
+    const created = await createAscVersion(fetchFn, { token: "t", appId: "APP1", versionString: "1.4.3" });
+    expect(created).toEqual({ id: "V9", versionString: "1.4.3", appStoreState: "PREPARE_FOR_SUBMISSION" });
+    expect(captured!.url).toContain("/appStoreVersions");
+    expect(captured!.init?.method).toBe("POST");
+    const sent = JSON.parse(String(captured!.init?.body)) as {
+      data: { type: string; attributes: Record<string, string>; relationships: { app: { data: { id: string } } } };
+    };
+    expect(sent.data.type).toBe("appStoreVersions");
+    expect(sent.data.attributes.versionString).toBe("1.4.3");
+    expect(sent.data.attributes.platform).toBe("IOS");
+    expect(sent.data.relationships.app.data.id).toBe("APP1");
+  });
+
+  it("surfaces an ASC rejection (e.g. version-number conflict) honestly", async () => {
+    const fetchFn = (async () =>
+      new Response(
+        JSON.stringify({ errors: [{ detail: "The version number has already been used." }] }),
+        { status: 409, headers: { "content-type": "application/json" } },
+      )) as never;
+    await expect(
+      createAscVersion(fetchFn, { token: "t", appId: "APP1", versionString: "1.0.0" }),
+    ).rejects.toThrow(/create app store version \(409\): The version number has already been used/);
+  });
+});
+
+describe("isValidVersionString (#34)", () => {
+  it("accepts 1 / 1.2 / 1.2.3; rejects everything else", () => {
+    for (const good of ["1", "1.2", "1.2.3", "12.0.99"]) expect(isValidVersionString(good)).toBe(true);
+    for (const bad of ["", "v1.2", "1.2.3.4", "1..2", "one", "1.2-beta"]) expect(isValidVersionString(bad)).toBe(false);
   });
 });
