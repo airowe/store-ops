@@ -154,6 +154,17 @@ CREATE TABLE IF NOT EXISTS app_competitors (
 );
 CREATE INDEX IF NOT EXISTS idx_app_competitors ON app_competitors(app_id, status);
 
+-- ── app_settings ─────────────────────────────────────────────────────────────
+-- #53: per-app agent configuration. threshold_json holds the run-threshold
+-- config (src/thresholds.ts is the single source of truth for shape/defaults;
+-- reads are FAIL-OPEN: missing row / NULL / garbage → today's behavior).
+-- ⚠️ DEPLOY ORDER: create via the db-migrate workflow BEFORE deploying a
+-- Worker that reads it (reads degrade gracefully, but writes 500 until then).
+CREATE TABLE IF NOT EXISTS app_settings (
+  app_id          TEXT PRIMARY KEY REFERENCES apps(id) ON DELETE CASCADE,
+  threshold_json  TEXT NOT NULL DEFAULT '{}'
+);
+
 -- ── approvals ────────────────────────────────────────────────────────────────
 -- The human approval gate. One decision row per run. 'approved' is the only
 -- state that unlocks the irreversible push (command handoff).

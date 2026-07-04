@@ -90,6 +90,7 @@ import {
 import type { ReasoningTrace, AppRow, FindingsSummary } from "../d1.js";
 import { buildPreview } from "../engine/preview.js";
 import { discoverCompetitors, resolveNameToId } from "../engine/competitorWatch.js";
+import { validateThresholdPatch } from "../thresholds.js";
 import {
   captureProposalEdits,
   confirmCompetitor,
@@ -102,6 +103,7 @@ import {
   distinctTrackedKeywords,
   getApp,
   getNotificationPrefs,
+  getThresholds,
   getOptOut,
   getUser,
   getApproval,
@@ -124,6 +126,7 @@ import {
   setNotificationPrefs,
   setOptOut,
   setRankCadence,
+  setThresholds,
   setTier,
   updateRunCopy,
   upsertCompetitor,
@@ -1750,6 +1753,30 @@ async function competitorsRemove(
   return { competitors: rows.map(competitorOut) };
 }
 
+// ── Run thresholds (#53) ──────────────────────────────────────────────────────
+
+/** GET /apps/:id/thresholds — the app's run-threshold config (fail-open defaults). */
+async function thresholdsGet(env: Env, userId: string, appId: string): Promise<unknown> {
+  await requireOwnedApp(env, appId, userId);
+  return { thresholds: await getThresholds(env.DB, appId) };
+}
+
+/**
+ * POST /apps/:id/thresholds — partial update. User input fails LOUD (400 with
+ * the reason) — a typo must never silently become a default.
+ */
+async function thresholdsPost(
+  req: Request,
+  env: Env,
+  userId: string,
+  appId: string,
+): Promise<unknown> {
+  await requireOwnedApp(env, appId, userId);
+  const v = validateThresholdPatch(await readJson(req));
+  if (!v.ok) throw new HttpError(400, v.error);
+  return { thresholds: await setThresholds(env.DB, appId, v.patch) };
+}
+
 /** GET /apps/:id — detail with the full run history list. */
 async function appDetail(env: Env, userId: string, appId: string): Promise<unknown> {
   const app = await requireOwnedApp(env, appId, userId);
@@ -2785,6 +2812,11 @@ export async function handleApi(req: Request, env: Env): Promise<Response> {
       }
       if (seg.length === 3 && seg[1] && seg[2] === "ranks" && method === "GET") {
         return json(await appRanks(env, user.id, seg[1], url), 200, origin);
+      }
+      // thresholds (#53): read / partial-update the run-threshold config
+      if (seg.length === 3 && seg[1] && seg[2] === "thresholds") {
+        if (method === "GET") return json(await thresholdsGet(env, user.id, seg[1]), 200, origin);
+        if (method === "POST") return json(await thresholdsPost(req, env, user.id, seg[1]), 200, origin);
       }
       // competitors (#72): list / add / discover / confirm / remove
       if (seg.length === 3 && seg[1] && seg[2] === "competitors") {

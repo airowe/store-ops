@@ -1273,3 +1273,42 @@ export async function distinctTrackedKeywords(
     .all<{ keyword: string }>();
   return (results ?? []).map((r) => r.keyword);
 }
+
+// ── App settings: run thresholds (#53) ────────────────────────────────────────
+import { DEFAULT_THRESHOLDS, parseThresholds, type ThresholdConfig } from "./thresholds.js";
+
+/**
+ * The app's run-threshold config. FAIL-OPEN: missing row, NULL, garbage JSON,
+ * or a missing table (deploy-order window) all resolve to DEFAULT_THRESHOLDS —
+ * today's behavior.
+ */
+export async function getThresholds(db: D1Database, appId: string): Promise<ThresholdConfig> {
+  try {
+    const row = await db
+      .prepare("SELECT threshold_json FROM app_settings WHERE app_id = ?")
+      .bind(appId)
+      .first<{ threshold_json: string | null }>();
+    return parseThresholds(row?.threshold_json);
+  } catch (e) {
+    if (e instanceof Error && /no such table/i.test(e.message)) return { ...DEFAULT_THRESHOLDS };
+    throw e;
+  }
+}
+
+/** Merge a validated partial patch into the stored config; returns the result. */
+export async function setThresholds(
+  db: D1Database,
+  appId: string,
+  patch: Partial<ThresholdConfig>,
+): Promise<ThresholdConfig> {
+  const current = await getThresholds(db, appId);
+  const next: ThresholdConfig = { ...current, ...patch };
+  await db
+    .prepare(
+      `INSERT INTO app_settings (app_id, threshold_json) VALUES (?, ?)
+       ON CONFLICT (app_id) DO UPDATE SET threshold_json = excluded.threshold_json`,
+    )
+    .bind(appId, JSON.stringify(next))
+    .run();
+  return next;
+}

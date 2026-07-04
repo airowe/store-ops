@@ -1204,6 +1204,31 @@
       return json(200, { deleted: true, id: m[1] });
     }
 
+    // ── Run thresholds (#53): read / partial-update, Worker-matching shape ───
+    if (m = path.match(/^\/apps\/([^/]+)\/thresholds$/)) {
+      var tApp = db.apps[m[1]];
+      if (!tApp) return json(404, { error: "app not found" });
+      db.thresholds = db.thresholds || {};
+      var defaults = { unranked: true, competitorChanges: true, rankDropAtLeast: null, mutedKeywords: [], mutedCompetitors: [], notifyOnly: false };
+      var cur = Object.assign({}, defaults, db.thresholds[m[1]] || {});
+      if (method === "GET") return json(200, { thresholds: cur });
+      if (method === "POST") {
+        var tb = body || {};
+        // mirror the Worker's loud validation for the fields the UI sends
+        if ("rankDropAtLeast" in tb && tb.rankDropAtLeast !== null &&
+            !(typeof tb.rankDropAtLeast === "number" && tb.rankDropAtLeast >= 1 && tb.rankDropAtLeast <= 200 && tb.rankDropAtLeast === Math.floor(tb.rankDropAtLeast))) {
+          return json(400, { error: "rankDropAtLeast must be null or an integer 1–200" });
+        }
+        var next = Object.assign({}, cur);
+        ["unranked", "competitorChanges", "notifyOnly"].forEach(function (k) { if (typeof tb[k] === "boolean") next[k] = tb[k]; });
+        if ("rankDropAtLeast" in tb) next.rankDropAtLeast = tb.rankDropAtLeast;
+        if (Array.isArray(tb.mutedKeywords)) next.mutedKeywords = tb.mutedKeywords.map(function (s) { return String(s).trim().toLowerCase(); }).filter(Boolean);
+        if (Array.isArray(tb.mutedCompetitors)) next.mutedCompetitors = tb.mutedCompetitors.map(function (s) { return String(s).trim().toLowerCase(); }).filter(Boolean);
+        db.thresholds[m[1]] = next; ctx.commit();
+        return json(200, { thresholds: next });
+      }
+    }
+
     // ── Competitors (#72-C): list / discover / add / confirm / remove ────────
     // Mirrors the Worker: discovery stores SUGGESTIONS from the app's tracked
     // keywords; only confirmed rows are watched. Deterministic candidates.

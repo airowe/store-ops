@@ -34,6 +34,9 @@ vi.mock("../d1.js", () => ({
   getUser: () => getUser(),
   getRankHistory: () => getRankHistory(),
   confirmedCompetitorKeys: async () => [], // #72: sweep watches confirmed rows
+  // #53: fail-open defaults — the historical trigger behavior
+  getThresholds: async () => ({ unranked: true, competitorChanges: true, rankDropAtLeast: null, mutedKeywords: [], mutedCompetitors: [], notifyOnly: false }),
+  getLatestRanks: async () => [],
 }));
 vi.mock("../engine/index.js", () => ({ runAgent: (input: unknown) => runAgent(input) }));
 vi.mock("../api/runConfig.js", () => ({ buildAppInput: vi.fn(async () => ({})) }));
