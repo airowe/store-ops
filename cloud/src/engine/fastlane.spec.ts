@@ -175,3 +175,45 @@ describe("buildFastlaneSupply — gated Google Play handoff", () => {
     expect(readme.toLowerCase()).toContain("credential");
   });
 });
+
+// ── #78 Phase 2: multi-locale bundle — approved locales only ──────────────────
+
+describe("buildFastlaneBundle — localized trees (#78 Phase 2)", () => {
+  const EN = { name: "Mangia", subtitle: "Cook smart", keywords: "meal,plan" };
+  const DE = { name: "Mangia", subtitle: "Koche schlau", keywords: "essensplan" };
+  const JA = { name: "Mangia", subtitle: "かしこく料理", keywords: "献立" };
+
+  it("emits one metadata/<locale>/ tree per approved locale, beside en-US", () => {
+    const bundle = buildFastlaneBundle(EN, { locales: { "de-DE": DE, ja: JA } });
+    const paths = bundle.files.map((f) => f.path);
+    expect(paths).toContain("fastlane/metadata/en-US/name.txt");
+    expect(paths).toContain("fastlane/metadata/de-DE/subtitle.txt");
+    expect(paths).toContain("fastlane/metadata/ja/keywords.txt");
+    const de = bundle.files.find((f) => f.path === "fastlane/metadata/de-DE/subtitle.txt");
+    expect(de!.content).toBe("Koche schlau");
+  });
+
+  it("no approved locales → exactly the single-locale tree (nothing invented)", () => {
+    const single = buildFastlaneBundle(EN);
+    const multi = buildFastlaneBundle(EN, { locales: {} });
+    expect(multi.files.map((f) => f.path)).toEqual(single.files.map((f) => f.path));
+    expect(single.files.some((f) => f.path.includes("/de-DE/"))).toBe(false);
+  });
+
+  it("the README lists the included locales with the machine-translated caveat", () => {
+    const bundle = buildFastlaneBundle(EN, { locales: { "de-DE": DE } });
+    const readme = bundle.files.find((f) => f.path.endsWith("SHIPASO_README.md"))!.content;
+    expect(readme).toContain("de-DE");
+    expect(readme).toContain("MACHINE-TRANSLATED");
+    // and without locales the section is absent (no phantom claims)
+    const plain = buildFastlaneBundle(EN).files.find((f) => f.path.endsWith("SHIPASO_README.md"))!.content;
+    expect(plain).not.toContain("MACHINE-TRANSLATED");
+  });
+
+  it("a locale matching the primary is not emitted twice", () => {
+    const bundle = buildFastlaneBundle(EN, { locales: { "en-US": DE } });
+    const names = bundle.files.filter((f) => f.path === "fastlane/metadata/en-US/name.txt");
+    expect(names).toHaveLength(1);
+    expect(names[0]!.content).toBe("Mangia"); // the primary copy wins
+  });
+});

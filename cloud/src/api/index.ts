@@ -91,6 +91,9 @@ import type { ReasoningTrace, AppRow, FindingsSummary } from "../d1.js";
 import { buildPreview } from "../engine/preview.js";
 import { discoverCompetitors, resolveNameToId } from "../engine/competitorWatch.js";
 import { buildRankAnnotations } from "../engine/rankAnnotations.js";
+import { deriveBrandTokens, localizeCopy, LocalizeError, validateLocalizedSubmission } from "../engine/localizeCopy.js";
+import { localizerForEnv } from "./aiLocalizer.js";
+import localesData from "../engine/locales-data.json";
 import { validateThresholdPatch } from "../thresholds.js";
 import { validateSchedule } from "../schedule.js";
 import {
@@ -102,6 +105,7 @@ import {
   deleteApp,
   deleteCompetitor,
   deleteDeviceTokenForUser,
+  deleteLocalizedCopy,
   distinctTrackedKeywords,
   getApp,
   getNotificationPrefs,
@@ -129,6 +133,7 @@ import {
   setEmailDigestByEmail,
   setNotificationPrefs,
   setOptOut,
+  setLocalizedCopy,
   setRankCadence,
   setSchedule,
   setThresholds,
@@ -174,7 +179,7 @@ import { fetchForEnv } from "../fetchAdapter.js";
 import { buildFastlaneBundle } from "../engine/fastlane.js";
 import { zipStore } from "../engine/zip.js";
 import { mintAscJwt } from "../engine/ascJwt.js";
-import { findAscAppId, applyAscMetadata, createAscVersion, isValidVersionString, readAscLocalization, AscWriteError } from "../engine/ascWrite.js";
+import { findAscAppId, applyAscMetadata, createAscLocalization, createAscVersion, getEditableVersionId, isValidVersionString, readAscLocalization, AscWriteError } from "../engine/ascWrite.js";
 import { readAscSnapshot, ascScreenshotsToListing, type AscSnapshot } from "../engine/ascRead.js";
 import { score as scoreScreenshots } from "../engine/screenshotScore.js";
 import { auditFindings, summarizeFindings, surfaceLocks } from "../engine/auditFindings.js";
@@ -336,6 +341,9 @@ export function serializeRunResult(trace: ReasoningTrace, approved: boolean) {
     ...(trace.localizationExpansion !== undefined
       ? { localizationExpansion: trace.localizationExpansion }
       : {}),
+    // #78 Phase 2: the locales whose drafts the human APPROVED for handoff.
+    // Full copy included so the review lane can render/edit what's stored.
+    ...(trace.localizedCopy !== undefined ? { localizedCopy: trace.localizedCopy } : {}),
     // PRD 03 / #95: PUBLIC review sentiment + observed topics. Sample size is
     // ALWAYS carried and the score is SUPPRESSED below threshold (#78). Public
     // data only — safe to serve. Older traces have none → field omitted.
@@ -1804,6 +1812,109 @@ async function schedulePost(
   return { schedule: v.schedule };
 }
 
+// ── Localization (#78 direction 1, Phase 1): per-locale draft generation ─────
+
+/**
+ * POST /runs/:id/localize — generate an honest per-locale metadata DRAFT from
+ * the run's APPROVED copy. Stateless: nothing stored, nothing written to any
+ * store. Refusals are loud: unknown locale 400s, an unapproved run 403s, a
+ * missing AI binding 503s ("translation needs the AI binding"), and any
+ * provider failure 502s — never a fake deterministic translation.
+ */
+async function localizeRoute(
+  req: Request,
+  env: Env,
+  userId: string,
+  runId: string,
+): Promise<unknown> {
+  const run = await getRun(env.DB, runId);
+  if (!run) throw new HttpError(404, "run not found");
+  await requireOwnedApp(env, run.app_id, userId);
+  if (run.status !== "shipped" && run.status !== "approved") {
+    throw new HttpError(403, "approval required — we localize the copy you approved, never the draft");
+  }
+
+  const body = (await readJson(req)) as { locale?: unknown };
+  const locale = typeof body.locale === "string" ? body.locale.trim() : "";
+  const known = (localesData as { locales: Record<string, unknown> }).locales;
+  if (!locale || !(locale in known)) {
+    throw new HttpError(400, "locale must be a supported App Store locale code (e.g. de-DE)");
+  }
+  if (locale === "en-US") throw new HttpError(400, "en-US is the source locale — nothing to translate");
+
+  const localizer = localizerForEnv(env.AI);
+  if (!localizer) {
+    throw new HttpError(503, "translation needs the AI binding (or a DeepL key) — not configured on this deployment");
+  }
+
+  const trace = JSON.parse(run.reasoning_json) as ReasoningTrace;
+  const source = trace.proposedCopy; // post-approval edits are merged into the trace
+  if (!source?.name) throw new HttpError(400, "this run carries no proposed copy to localize");
+
+  try {
+    return await localizeCopy(localizer, {
+      copy: source,
+      targetLocale: locale,
+      brandTokens: deriveBrandTokens(source.name),
+    });
+  } catch (e) {
+    if (e instanceof LocalizeError) throw new HttpError(502, e.message);
+    throw e;
+  }
+}
+
+/**
+ * POST /runs/:id/localize/approve (#78 Phase 2) — the explicit per-market
+ * approval: store this locale's (possibly human-edited) draft on the run
+ * trace, making it part of the handoff. The server is authoritative: the
+ * submission is re-validated (limits, keyword rules, brand token) and bad
+ * input fails LOUD. Only stored locales ever reach a fastlane bundle.
+ */
+async function localizeApproveRoute(
+  req: Request,
+  env: Env,
+  userId: string,
+  runId: string,
+): Promise<unknown> {
+  const run = await getRun(env.DB, runId);
+  if (!run) throw new HttpError(404, "run not found");
+  await requireOwnedApp(env, run.app_id, userId);
+  if (run.status !== "shipped" && run.status !== "approved") {
+    throw new HttpError(403, "approval required");
+  }
+  const body = (await readJson(req)) as { locale?: unknown; copy?: unknown };
+  const locale = typeof body.locale === "string" ? body.locale.trim() : "";
+  const known = (localesData as { locales: Record<string, unknown> }).locales;
+  if (!locale || !(locale in known)) throw new HttpError(400, "locale must be a supported App Store locale code");
+  if (locale === "en-US") throw new HttpError(400, "en-US is the source locale");
+
+  const trace = JSON.parse(run.reasoning_json) as ReasoningTrace;
+  const v = validateLocalizedSubmission({ copy: body.copy, sourceName: trace.proposedCopy?.name ?? "" });
+  if (!v.ok) throw new HttpError(400, v.error);
+
+  await setLocalizedCopy(env.DB, runId, locale, v.copy);
+  const fresh = await getRun(env.DB, runId);
+  const freshTrace = JSON.parse(fresh!.reasoning_json) as ReasoningTrace;
+  return { approved: Object.keys(freshTrace.localizedCopy ?? {}).sort() };
+}
+
+/** DELETE /runs/:id/localize/:locale — un-approve (drop from the handoff). */
+async function localizeDeleteRoute(
+  env: Env,
+  userId: string,
+  runId: string,
+  locale: string,
+): Promise<unknown> {
+  const run = await getRun(env.DB, runId);
+  if (!run) throw new HttpError(404, "run not found");
+  await requireOwnedApp(env, run.app_id, userId);
+  const removed = await deleteLocalizedCopy(env.DB, runId, locale);
+  if (!removed) throw new HttpError(404, "locale not approved on this run");
+  const fresh = await getRun(env.DB, runId);
+  const freshTrace = JSON.parse(fresh!.reasoning_json) as ReasoningTrace;
+  return { approved: Object.keys(freshTrace.localizedCopy ?? {}).sort() };
+}
+
 /** GET /apps/:id — detail with the full run history list. */
 async function appDetail(env: Env, userId: string, appId: string): Promise<unknown> {
   const app = await requireOwnedApp(env, appId, userId);
@@ -2238,7 +2349,10 @@ async function fastlaneZipRoute(
     throw new HttpError(403, "approval required");
   }
   const trace = JSON.parse(run.reasoning_json) as ReasoningTrace;
-  const bundle = buildFastlaneBundle(trace.proposedCopy);
+  // #78 Phase 2: APPROVED locale drafts ride the bundle — and only those.
+  const bundle = buildFastlaneBundle(trace.proposedCopy, {
+    ...(trace.localizedCopy ? { locales: trace.localizedCopy } : {}),
+  });
   const zip = zipStore(bundle.files);
   // a Uint8Array is a valid BodyInit; copy into a fresh one so the body is backed
   // by a plain ArrayBuffer (not a possibly-shared buffer view).
@@ -2497,6 +2611,96 @@ async function ascCreateVersionRoute(
     const ascAppId = await findAscAppId(fetch, token, app.bundle_id);
     const created = await createAscVersion(fetch, { token, appId: ascAppId, versionString });
     return { ok: true, versionId: created.id, versionString: created.versionString, state: created.appStoreState };
+  } catch (e) {
+    if (e instanceof AscWriteError) return { ok: false, reason: e.message };
+    throw e;
+  }
+}
+
+/** Shared guard for the per-locale ASC writes (#78 Phase 3): flag + run +
+ *  ownership + approval + in-request creds + the locale must be APPROVED on
+ *  the run (pushing a never-approved draft is a 403, not a convenience). */
+async function requireLocalizedAscContext(
+  req: Request,
+  env: Env,
+  userId: string,
+  runId: string,
+): Promise<{ token: string; bundleId: string; locale: string; copy: CopyFields }> {
+  if (!isFlagOn(env.ASC_WRITE_ENABLED)) {
+    throw new HttpError(403, "direct App Store Connect writes are not enabled; use the Fastlane handoff");
+  }
+  const run = await getRun(env.DB, runId);
+  if (!run) throw new HttpError(404, "run not found");
+  const app = await requireOwnedApp(env, run.app_id, userId);
+  if (run.status !== "shipped" && run.status !== "approved") {
+    throw new HttpError(403, "approval required");
+  }
+  const body = (await req
+    .json()
+    .catch(() => ({}))) as { p8?: string; keyId?: string; issuerId?: string; locale?: string };
+  if (!body.p8 || !body.keyId || !body.issuerId) {
+    throw new HttpError(400, "p8, keyId, and issuerId are required");
+  }
+  const locale = (body.locale ?? "").trim();
+  const trace = JSON.parse(run.reasoning_json) as ReasoningTrace;
+  const copy = locale ? trace.localizedCopy?.[locale] : undefined;
+  if (!copy) {
+    throw new HttpError(403, `"${locale || "?"}" is not an approved locale on this run — approve its draft first`);
+  }
+  let token: string;
+  try {
+    token = await mintAscJwt({ p8: body.p8, keyId: body.keyId, issuerId: body.issuerId });
+  } catch (e) {
+    throw new HttpError(400, e instanceof Error ? e.message : "invalid credentials");
+  }
+  return { token, bundleId: app.bundle_id, locale, copy };
+}
+
+/**
+ * POST /runs/:id/asc/push-locale (#78 Phase 3) — push an APPROVED locale draft
+ * into that locale's localization on the editable version. Missing locale on
+ * the version → the honest "create it first" reason; creation is its own
+ * route + click, never chained.
+ */
+async function ascPushLocaleRoute(
+  req: Request,
+  env: Env,
+  userId: string,
+  runId: string,
+): Promise<unknown> {
+  const ctx = await requireLocalizedAscContext(req, env, userId, runId);
+  try {
+    const ascAppId = await findAscAppId(fetch, ctx.token, ctx.bundleId);
+    const result = await applyAscMetadata(fetch, {
+      token: ctx.token,
+      appId: ascAppId,
+      copy: ctx.copy, // the LOCALIZED copy — never en-US
+      locale: ctx.locale,
+    });
+    return result;
+  } catch (e) {
+    if (e instanceof AscWriteError) return { ok: false, reason: e.message };
+    throw e;
+  }
+}
+
+/**
+ * POST /runs/:id/asc/create-localization (#78 Phase 3) — create the locale on
+ * the editable version so a per-market push has somewhere to land. Its own
+ * explicit per-action write (the #34 pattern).
+ */
+async function ascCreateLocalizationRoute(
+  req: Request,
+  env: Env,
+  userId: string,
+  runId: string,
+): Promise<unknown> {
+  const ctx = await requireLocalizedAscContext(req, env, userId, runId);
+  try {
+    const ascAppId = await findAscAppId(fetch, ctx.token, ctx.bundleId);
+    const versionId = await getEditableVersionId(fetch, { token: ctx.token, appId: ascAppId });
+    const created = await createAscLocalization(fetch, { token: ctx.token, versionId, locale: ctx.locale });
+    return { ok: true, localizationId: created.id, locale: created.locale };
   } catch (e) {
     if (e instanceof AscWriteError) return { ok: false, reason: e.message };
     throw e;
@@ -2956,6 +3160,15 @@ export async function handleApi(req: Request, env: Env): Promise<Response> {
       if (seg.length === 3 && method === "POST" && (seg[2] === "approve" || seg[2] === "reject")) {
         return json(await decideRun(req, env, user.id, runId, seg[2]), 200, origin);
       }
+      if (seg.length === 3 && seg[2] === "localize" && method === "POST") {
+        return json(await localizeRoute(req, env, user.id, runId), 200, origin);
+      }
+      if (seg.length === 4 && seg[2] === "localize" && seg[3] === "approve" && method === "POST") {
+        return json(await localizeApproveRoute(req, env, user.id, runId), 200, origin);
+      }
+      if (seg.length === 4 && seg[2] === "localize" && seg[3] && method === "DELETE") {
+        return json(await localizeDeleteRoute(env, user.id, runId, seg[3]), 200, origin);
+      }
       if (seg.length === 3 && seg[2] === "push-commands" && method === "GET") {
         return json(await pushCommandsRoute(env, user.id, runId), 200, origin);
       }
@@ -2970,6 +3183,12 @@ export async function handleApi(req: Request, env: Env): Promise<Response> {
       }
       if (seg.length === 4 && seg[2] === "asc" && seg[3] === "create-version" && method === "POST") {
         return json(await ascCreateVersionRoute(req, env, user.id, runId), 200, origin);
+      }
+      if (seg.length === 4 && seg[2] === "asc" && seg[3] === "push-locale" && method === "POST") {
+        return json(await ascPushLocaleRoute(req, env, user.id, runId), 200, origin);
+      }
+      if (seg.length === 4 && seg[2] === "asc" && seg[3] === "create-localization" && method === "POST") {
+        return json(await ascCreateLocalizationRoute(req, env, user.id, runId), 200, origin);
       }
       if (seg.length === 4 && seg[2] === "github" && seg[3] === "pr" && method === "POST") {
         return json(await githubPrRoute(env, user.id, runId), 200, origin);

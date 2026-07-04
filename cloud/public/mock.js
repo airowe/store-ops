@@ -1361,6 +1361,63 @@
       return json(200, pub);
     }
 
+    // ── Localization (#78): generate / approve / remove per-locale drafts ────
+    // Deterministic pseudo-translation (brand token survives, limits respected)
+    // so e2e can pin the review lane without a model.
+    if (method === "POST" && (m = path.match(/^\/runs\/([^/]+)\/localize$/))) {
+      var lrun = db.runs[m[1]];
+      if (!lrun) return json(404, { error: "run not found" });
+      if (lrun.status !== "approved" && lrun.status !== "shipped") {
+        return json(403, { error: "approval required — we localize the copy you approved, never the draft" });
+      }
+      var lloc = (body && body.locale || "").trim();
+      if (!lloc || lloc === "en-US") return json(400, { error: "locale must be a supported App Store locale code (e.g. de-DE)" });
+      var src = (lrun.result && lrun.result.proposedCopy) || {};
+      var brand = (src.name || "App").split(/[-–—:|·]/)[0].trim() || "App";
+      var mk30 = function (t) { return t.length > 30 ? t.slice(0, 30) : t; };
+      return json(200, {
+        locale: lloc,
+        copy: {
+          name: mk30(brand + " · " + lloc),
+          subtitle: mk30("Übersetzt für " + lloc),
+          keywords: "wort" + lloc.slice(0, 2).toLowerCase() + ",plan,markt",
+        },
+        validation: { pass: true, checks: [] },
+        trimmed: [],
+        label: "draft — machine-translated, review before shipping",
+      });
+    }
+    if (method === "POST" && (m = path.match(/^\/runs\/([^/]+)\/localize\/approve$/))) {
+      var arun = db.runs[m[1]];
+      if (!arun) return json(404, { error: "run not found" });
+      var aloc = (body && body.locale || "").trim();
+      var acopy = body && body.copy;
+      if (!aloc || aloc === "en-US") return json(400, { error: "locale must be a supported App Store locale code" });
+      if (!acopy || typeof acopy.name !== "string" || !acopy.name.trim()) return json(400, { error: "copy.name must not be empty" });
+      if (acopy.name.length > 30 || (acopy.subtitle || "").length > 30 || (acopy.keywords || "").length > 100) {
+        return json(400, { error: "invalid copy — over a field limit" });
+      }
+      var abrand = ((arun.result.proposedCopy || {}).name || "").split(/[-–—:|·]/)[0].trim();
+      if (abrand && acopy.name.toLowerCase().indexOf(abrand.toLowerCase()) === -1) {
+        return json(400, { error: 'the brand token "' + abrand + '" is missing from the localized name' });
+      }
+      arun.result.localizedCopy = arun.result.localizedCopy || {};
+      arun.result.localizedCopy[aloc] = { name: acopy.name, subtitle: acopy.subtitle || "", keywords: acopy.keywords || "" };
+      ctx.commit();
+      return json(200, { approved: Object.keys(arun.result.localizedCopy).sort() });
+    }
+    if (method === "DELETE" && (m = path.match(/^\/runs\/([^/]+)\/localize\/([^/]+)$/))) {
+      var drun = db.runs[m[1]];
+      if (!drun) return json(404, { error: "run not found" });
+      var dloc = decodeURIComponent(m[2]);
+      if (!drun.result.localizedCopy || !(dloc in drun.result.localizedCopy)) {
+        return json(404, { error: "locale not approved on this run" });
+      }
+      delete drun.result.localizedCopy[dloc];
+      ctx.commit();
+      return json(200, { approved: Object.keys(drun.result.localizedCopy).sort() });
+    }
+
     // POST /runs/:id/approve | /reject — the human approval gate
     if (method === "POST" && (m = path.match(/^\/runs\/([^/]+)\/(approve|reject)$/))) {
       var run = db.runs[m[1]];

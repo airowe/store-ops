@@ -37,8 +37,9 @@ test.describe("run page — Expand to more markets card (PRD 04)", () => {
     await expect(card).toBeVisible();
     await expect(card.getByRole("heading", { name: /expand to more markets/i })).toBeVisible();
 
-    // At least 3 locale recommendations render (UI shows top 3–5).
-    const rows = card.locator(".loc-rec");
+    // At least 3 locale recommendations render (UI shows top 3–5; the #78
+    // free-pick row is extra chrome, not a recommendation).
+    const rows = card.locator(".loc-rec:not(.loc-freepick)");
     const count = await rows.count();
     expect(count).toBeGreaterThanOrEqual(3);
     expect(count).toBeLessThanOrEqual(5);
@@ -58,7 +59,7 @@ test.describe("run page — Expand to more markets card (PRD 04)", () => {
     await expect(card.locator(".loc-rec-note")).toContainText(/heuristic|not live install data/i);
   });
 
-  test("the locale CTA honestly routes to the ASC run panel (no fake per-locale draft)", async ({
+  test("each recommendation carries the #78 review lane (drafts are gated on run approval)", async ({
     page,
   }) => {
     await gotoMockDashboard(page);
@@ -72,14 +73,12 @@ test.describe("run page — Expand to more markets card (PRD 04)", () => {
 
     const card = page.locator(".loc-card");
     await expect(card).toBeVisible();
-    // Honest label: there's no per-locale draft flow yet, so the CTA says what it
-    // does — runs the read-and-improve pass via App Store Connect.
-    const draftBtn = card.getByRole("button", { name: /run with app store connect/i }).first();
-    await expect(draftBtn).toBeVisible();
-    await draftBtn.click();
-
-    // Routes to the app page with the ?asc flag (reuses the existing ASC panel).
-    await expect(page).toHaveURL(new RegExp(`#/apps/${id}\\?asc=1`));
+    // #78 replaced the old routes-to-ASC-panel CTA with the real per-locale
+    // review lane. On an UNAPPROVED run there is no generate button — the
+    // honest gate note renders instead (the full flow is localization.e2e.ts).
+    await expect(card.locator(".loc-lane").first()).toBeVisible();
+    await expect(card.getByText(/Approve the run first/).first()).toBeVisible();
+    await expect(card.locator(".loc-generate")).toHaveCount(0);
   });
 
   test("a no-key run does NOT render the card (no fabricated recommendations)", async ({
