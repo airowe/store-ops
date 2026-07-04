@@ -54,6 +54,10 @@ function routed(path: string): unknown {
   if (path === "/auth/me") return ME;
   if (path === "/apps" && true) return { apps: [{ id: "x1", bundle_id: "com.acme.app", name: "Acme", country: "US", created_at: "2026-06-01T00:00:00Z", latest_run: { id: "r1", status: "awaiting_approval", created_at: "2026-06-29T11:00:00Z" }, rank_summary: { lead_keyword: "budget", lead_rank: 4, top10: 1, tracked: 3 }, findings_summary: { critical: 0, warn: 1, good: 0, info: 0, total: 1, topImpact: "ranking", label: "1 fix available" } }] };
   if (/^\/apps\/[^/]+\/deltas$/.test(path)) return { appName: "Acme", entries: [{ keyword: "budget", current: 4, previous: 9, delta: 5, direction: "up" }], anyMovement: true };
+  if (/^\/apps\/[^/]+\/ranks/.test(path)) return { keyword: "budget", points: [{ rank: 4, total: 200, checked_at: "2026-06-29" }], annotations: [{ at: "2026-06-22", kind: "push", label: "You shipped metadata", runId: "r1" }] };
+  if (/^\/apps\/[^/]+\/competitors$/.test(path)) return { competitors: [{ key: "901", name: "Rival Pro", source: "discovered", status: "suggested" }] };
+  if (/^\/apps\/[^/]+\/thresholds$/.test(path)) return { thresholds: { unranked: true, competitorChanges: true, rankDropAtLeast: null, mutedKeywords: [], mutedCompetitors: [], notifyOnly: false } };
+  if (/^\/apps\/[^/]+\/schedule$/.test(path)) return { schedule: { cadence: "weekly", day: 1, hourUtc: 9 } };
   if (/^\/apps\/[^/]+\/war-room/.test(path)) return { appName: "Acme", warRoom: [{ keyword: "budget", you: 3, youPrevious: 8, competitors: [{ name: "Rival", rank: 5 }], gapToBest: -2, trend: "gaining", winning: true }], competitors: ["Rival"], window: 7, checkedAt: "2026-06-29" };
   if (/^\/apps\/[^/]+$/.test(path)) return { app: APP, runs: [{ id: "r1", status: "awaiting_approval", created_at: "2026-06-29T11:00:00Z" }] };
   if (/^\/runs\/[^/]+$/.test(path)) return RUN_DETAIL;

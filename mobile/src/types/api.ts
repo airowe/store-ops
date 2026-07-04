@@ -101,6 +101,9 @@ export type Finding = {
   fix: string;
   /** the data point, when it sharpens the point. */
   evidence?: string;
+  /** #71-C: true = STATUS/CONTEXT (rendered in the Listing status strip, never
+   *  among the actionable fixes). Absent = actionable. */
+  context?: boolean;
 };
 
 /**
@@ -422,7 +425,45 @@ export type AppDetail = {
 
 // ── Trend / movement ───────────────────────────────────────────────────────────
 export type RankPoint = { rank: number | null; total: number | null; checked_at: string };
-export type RanksSeries = { keyword: string; points: RankPoint[] };
+export type RanksSeries = {
+  keyword: string;
+  points: RankPoint[];
+  /** #62: observed-change markers (own approved pushes, competitor visible diffs). */
+  annotations?: RankAnnotation[];
+};
+
+/** #62: one observed change on the rank timeline. Correlational, never causal. */
+export type RankAnnotation = {
+  at: string;
+  kind: "push" | "competitor";
+  label: string;
+  runId?: string;
+};
+
+/** #72: one competitor on the app's watch list. Only confirmed rows are watched. */
+export type Competitor = {
+  key: string;
+  name: string;
+  source: "user" | "discovered";
+  status: "suggested" | "confirmed";
+};
+
+/** #53: what opens an awaiting_approval run. Defaults = historical behavior. */
+export type ThresholdConfig = {
+  unranked: boolean;
+  competitorChanges: boolean;
+  rankDropAtLeast: number | null;
+  mutedKeywords: string[];
+  mutedCompetitors: string[];
+  notifyOnly: boolean;
+};
+
+/** #52: when the autonomous sweep runs for this app (default weekly Mon 09:00 UTC). */
+export type SweepSchedule = {
+  cadence: "daily" | "weekly" | "biweekly";
+  day: number;
+  hourUtc: number;
+};
 
 export type DeltaDirection = "up" | "down" | "flat" | string;
 export type DeltaEntry = {
