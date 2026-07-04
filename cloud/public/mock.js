@@ -145,6 +145,25 @@
     var checks = [fieldCheck("name", name), fieldCheck("subtitle", subtitle), fieldCheck("keywords", keywords), fieldCheck("promo", promo)];
     var proposedCopy = { name: name, subtitle: subtitle, keywords: keywords, promo: promo, validation: { pass: checks.every(function (c) { return c.ok; }), checks: checks } };
 
+    // #59: mirror the engine's name-fill note — when the proposed name leaves
+    // spare chars, suggest the first scored target that fits and shares no word
+    // with the name/subtitle. Suggestion only; the name is never rewritten.
+    var fillSpare = CHAR_LIMITS.name - name.length;
+    if (fillSpare >= 3) {
+      var takenWords = (name + " " + subtitle).toLowerCase().split(/\W+/).filter(Boolean);
+      var fillTerm = longtail.filter(function (t) {
+        var tw = t.toLowerCase().split(/\W+/).filter(Boolean);
+        if (!tw.length) return false;
+        var collides = tw.some(function (w) { return takenWords.indexOf(w) !== -1; });
+        return !collides && name.length + 1 + t.length <= CHAR_LIMITS.name;
+      })[0];
+      if (fillTerm) {
+        proposedCopy.optimization = {
+          nameFill: { term: fillTerm.toLowerCase(), proposedName: name + " " + title(fillTerm), spare: fillSpare },
+        };
+      }
+    }
+
     // currentCopy: the "before" the run page diffs against. With an ASC read we
     // know the live subtitle/keywords; without it they're unknown (omit them).
     // The baseline is a GENERIC live listing (not the agent's proposal) so the

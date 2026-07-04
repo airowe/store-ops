@@ -31,10 +31,25 @@ export type CopyFields = {
  *     ("preserved").
  *   • `droppedKeywords` — gap terms that could NOT be placed for space even
  *     after displacing redundant existing terms. Never a silent no-op (#37.2).
+ *   • `nameFill` — #59: a genuinely searched+relevant scored target that fits
+ *     the name's unused characters. A SUGGESTION only: the proposed name is
+ *     never silently rewritten (it's the user's brand line) — the run page
+ *     surfaces it for the human to adopt.
  */
 export type OptimizationNotes = {
   subtitleMode?: "composed" | "preserved";
   droppedKeywords?: string;
+  nameFill?: NameFill;
+};
+
+/** #59: a concrete, fitting suggestion for the name's spare characters. */
+export type NameFill = {
+  /** the scored target term suggested (as scored, lowercase). */
+  term: string;
+  /** the full name as it would read with the fill — always within the limit. */
+  proposedName: string;
+  /** unused characters in the current proposed name. */
+  spare: number;
 };
 
 export type FieldCheck = {
@@ -320,6 +335,38 @@ export function optimizeCopy(
     if (dropped.length) notes.droppedKeywords = dropped.join(",");
   }
 
+  // #59: unused title characters are the highest-value ASO real estate — the
+  // name is the strongest ranking signal. Suggest filling them ONLY with a
+  // genuinely relevant SCORED target (the reasoner's output — the brand word
+  // never reaches the buckets, and we never pad with filler-for-filler's-sake):
+  // strongest bucket first, first candidate that fits and shares no word with
+  // the name or the proposed subtitle (a cross-surface repeat wastes chars).
+  // Suggestion only — `name` itself is never rewritten here.
+  const spareChars = CHAR_LIMITS.name - name.length;
+  if (base.name && spareChars >= 3) {
+    const taken = new Set([...words(name), ...words(subtitle)]);
+    const fill = [...primary, ...secondary, ...longTail].find((t) => {
+      const tw = [...words(t)];
+      return (
+        tw.length > 0 &&
+        !tw.some((w) => taken.has(w)) &&
+        name.length + 1 + t.trim().length <= CHAR_LIMITS.name
+      );
+    });
+    if (fill) {
+      const pretty = fill
+        .trim()
+        .split(/\s+/)
+        .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+        .join(" ");
+      notes.nameFill = {
+        term: fill.trim().toLowerCase(),
+        proposedName: `${name} ${pretty}`,
+        spare: spareChars,
+      };
+    }
+  }
+
   const fields: CopyFields = {
     name,
     subtitle,
@@ -330,7 +377,10 @@ export function optimizeCopy(
       : {}),
   };
 
-  const hasNotes = notes.subtitleMode !== undefined || notes.droppedKeywords !== undefined;
+  const hasNotes =
+    notes.subtitleMode !== undefined ||
+    notes.droppedKeywords !== undefined ||
+    notes.nameFill !== undefined;
   return {
     ...fields,
     validation: validateCopy(fields),
