@@ -92,10 +92,24 @@ export default function RunDetail() {
       <KeywordGapList gaps={r.keywordGaps} />
       <OpportunityList opportunities={r.opportunities} />
 
-      {r.findings.length > 0 ? (
+      {r.findings.filter((f) => !f.context).length > 0 ? (
         <View style={{ gap: spacing.md }}>
           <AppText kind="title">Findings</AppText>
-          {r.findings.map((f) => <FindingCard key={f.id} finding={f} />)}
+          {r.findings.filter((f) => !f.context).map((f) => <FindingCard key={f.id} finding={f} />)}
+        </View>
+      ) : null}
+
+      {/* #71-C parity: STATUS/CONTEXT findings render in their own compact strip
+          — status is what IS, fixes are what to DO. */}
+      {r.findings.some((f) => f.context) ? (
+        <View testID="listing-status" style={{ gap: spacing.xs }}>
+          <AppText kind="title">Listing status</AppText>
+          {r.findings.filter((f) => f.context).map((f) => (
+            <View key={f.id} style={{ marginTop: spacing.xs }}>
+              <AppText kind="body">{f.title}</AppText>
+              {f.detail ? <AppText kind="micro">{f.detail}</AppText> : null}
+            </View>
+          ))}
         </View>
       ) : null}
 

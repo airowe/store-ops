@@ -11,6 +11,7 @@ import type {
   AuthExchangeResult,
   AuthRequestResult,
   CheckoutResult,
+  Competitor,
   DeltasView,
   Me,
   NotificationPrefs,
@@ -23,6 +24,8 @@ import type {
   RanksSeries,
   ResolveResult,
   RunDetail,
+  SweepSchedule,
+  ThresholdConfig,
   WarRoomView,
 } from "../types/api.js";
 
@@ -124,5 +127,28 @@ export const setRankCadence = (c: ApiClient, cadence: RankCadence) =>
  * (every test fake is {get, post, request}). Server answers { removed } and is
  * idempotent, so sign-out can call this best-effort.
  */
+// ── Competitors (#72): the watch list — only confirmed rows are watched ──────
+export const getCompetitors = (c: ApiClient, appId: string) =>
+  c.get<{ competitors: Competitor[] }>(`/apps/${enc(appId)}/competitors`);
+export const discoverCompetitors = (c: ApiClient, appId: string) =>
+  c.post<{ competitors: Competitor[]; discovered: number; note?: string }>(
+    `/apps/${enc(appId)}/competitors/discover`, {});
+export const addCompetitor = (c: ApiClient, appId: string, name: string) =>
+  c.post<{ competitors: Competitor[] }>(`/apps/${enc(appId)}/competitors`, { name });
+export const confirmCompetitor = (c: ApiClient, appId: string, key: string) =>
+  c.post<{ competitors: Competitor[] }>(`/apps/${enc(appId)}/competitors/${enc(key)}/confirm`, {});
+export const removeCompetitor = (c: ApiClient, appId: string, key: string) =>
+  c.request<{ competitors: Competitor[] }>(`/apps/${enc(appId)}/competitors/${enc(key)}`, { method: "DELETE" });
+
+// ── Agent triggers (#53) + sweep schedule (#52) — per-app config ─────────────
+export const getThresholds = (c: ApiClient, appId: string) =>
+  c.get<{ thresholds: ThresholdConfig }>(`/apps/${enc(appId)}/thresholds`);
+export const setThresholds = (c: ApiClient, appId: string, patch: Partial<ThresholdConfig>) =>
+  c.post<{ thresholds: ThresholdConfig }>(`/apps/${enc(appId)}/thresholds`, patch);
+export const getSchedule = (c: ApiClient, appId: string) =>
+  c.get<{ schedule: SweepSchedule }>(`/apps/${enc(appId)}/schedule`);
+export const setSchedule = (c: ApiClient, appId: string, s: SweepSchedule) =>
+  c.post<{ schedule: SweepSchedule }>(`/apps/${enc(appId)}/schedule`, s);
+
 export const deletePushToken = (c: ApiClient, token: string) =>
   c.request<{ removed: boolean }>("/account/push-token", { method: "DELETE", body: { token } });
