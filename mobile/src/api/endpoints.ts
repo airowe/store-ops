@@ -86,8 +86,19 @@ export type RunCreated = { id: string; status: string; ascRead?: boolean };
 export const runAsc = (
   c: ApiClient,
   appId: string,
-  body: { p8: string; keyId: string; issuerId: string; locale?: string },
+  body: { p8?: string; keyId?: string; issuerId?: string; locale?: string; store?: boolean; useStored?: boolean },
 ) => c.post<RunCreated>(`/apps/${enc(appId)}/run-asc`, body);
+
+// ── stored credentials (#67 Phase 2) — opt-in, write-only management ─────────
+export type StoredCredential = {
+  id: string; appId: string | null; kind: "asc" | "play";
+  keyId: string; issuerId: string; createdAt: string; lastUsedAt: string | null; kekVersion: number;
+};
+export const getCredentials = (c: ApiClient) =>
+  c.get<{ enabled: boolean; credentials: StoredCredential[] }>("/account/credentials");
+export const deleteCredential = (c: ApiClient, kind: "asc" | "play", appId?: string) =>
+  c.request<{ deleted: boolean; note: string }>(
+    `/account/credentials/${kind}${appId ? `?app=${enc(appId)}` : ""}`, { method: "DELETE" });
 
 export const verifyPlay = (c: ApiClient, serviceAccount: string, packageName?: string) =>
   c.post<PlayVerifyResult>("/play/verify", { serviceAccount, ...(packageName ? { packageName } : {}) });
