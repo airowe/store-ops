@@ -904,6 +904,15 @@ svg.spark .lbl { fill: var(--faint); font-family: var(--mono); font-size: 10px; 
 }
 .shots-note { font-size: 12px; font-style: italic; }
 
+/* ── Listing status strip (#71-C) ─────────────────────────────────────────────
+   Compact factual context rows (live version, pricing, confirmed category…) —
+   deliberately quieter than the fix list: status is what IS, fixes are what to DO. */
+.listing-status { margin: 14px 0 4px; padding-top: 10px; border-top: 1px solid var(--line); }
+.listing-status .shots-head { margin-bottom: 6px; }
+.status-row { font-size: 13px; padding: 3px 0; color: var(--ink); }
+.status-title { font-weight: 600; }
+.status-detail { font-size: 12px; }
+
 /* ── Screenshot improvement panel (#55) ───────────────────────────────────────
    Prioritized, quantified C→B→A levers next to the gallery. Each row: the action,
    a point-delta badge, the grade transition, an honest caveat, and (where it

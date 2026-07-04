@@ -1618,7 +1618,12 @@
     var noKey = isNoKeyRun(R);
     // De-dupe the unlock nudge (#56 item 4): on a no-key run it renders as the big
     // bordered CTA below; keep it OUT of the findings list so it shows exactly once.
-    var findings = (R.findings || []).filter(function (f) { return f.id !== "asc_unlock"; });
+    var all = (R.findings || []).filter(function (f) { return f.id !== "asc_unlock"; });
+    // #71-C: STATUS/CONTEXT findings (context:true — live version state, pricing,
+    // confirmed category…) render in their own compact strip below, never mixed
+    // into the actionable fix list where they'd dilute the signal.
+    var findings = all.filter(function (f) { return !f.context; });
+    var statusFindings = all.filter(function (f) { return !!f.context; });
 
     var head = el("div", { class: "audit-head" }, [
       el("h3", { style: "margin:0" }, ["Listing audit"]),
@@ -1689,6 +1694,23 @@
     var cov = coverageSection(R.coverage, noKey, R, appId);
     if (cov) children.push(cov);
     children.push(body);
+    // #71-C: the "Listing status" strip — compact, factual context rows (live
+    // version, pricing, confirmed category…). Separate from the fix list by
+    // design: status is what IS, fixes are what to DO.
+    if (statusFindings.length) {
+      var statusRows = statusFindings.map(function (f) {
+        return el("div", { class: "status-row" }, [
+          el("span", { class: "status-title" }, [f.title]),
+          f.detail ? el("span", { class: "status-detail faint" }, [" — " + f.detail]) : null,
+        ]);
+      });
+      children.push(el("div", { class: "listing-status", id: "listingStatus" }, [
+        el("div", { class: "shots-head" }, [
+          el("span", { class: "shots-title" }, ["Listing status"]),
+          el("span", { class: "shots-count faint" }, [statusFindings.length + " item" + (statusFindings.length === 1 ? "" : "s")]),
+        ]),
+      ].concat(statusRows)));
+    }
     // No-key run → render the unlock CTA below the findings (PRD 04). Driven by the
     // asc_unlock finding (data hook from PRD 01); absent on key-bearing runs. The
     // finding is filtered OUT of the list above so it surfaces only once (#56).
