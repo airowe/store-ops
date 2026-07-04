@@ -155,6 +155,32 @@ const RULES: RuleCase[] = [
     surface: "screenshots",
     trigger: (b) => ({ ...b, audit: audit(shot({ grade: "?" as Grade, score: null })) }),
   },
+  {
+    // #68: repeats substantiated by the ASC source fileName within one device set
+    id: "screenshots_duplicates",
+    severity: "info",
+    impact: "conversion",
+    surface: "screenshots",
+    trigger: (b) => {
+      const snap = healthySnapshot();
+      snap.screenshots = {
+        iphoneScreenshots: [
+          {
+            device: "APP_IPHONE_67",
+            count: 3,
+            screenshots: [
+              { id: "a", imageTemplate: "https://asc/a.png", fileName: "hero.png" },
+              { id: "b", imageTemplate: "https://asc/b.png", fileName: "hero.png" },
+              { id: "c", imageTemplate: "https://asc/c.png", fileName: "list.png" },
+            ],
+          },
+        ],
+        ipadScreenshots: [],
+        dataReliable: true,
+      };
+      return { ...b, snapshot: snap };
+    },
+  },
   // previews
   {
     id: "preview_missing",

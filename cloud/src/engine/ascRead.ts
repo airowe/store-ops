@@ -657,3 +657,62 @@ export function ascScreenshotsToListing(
   if (iphone.length === 0 && ipad.length === 0) return null;
   return { screenshotUrls: iphone, ipadScreenshotUrls: ipad, dataReliable: true };
 }
+
+// ── Duplicate screenshot detection (#68) ─────────────────────────────────────
+
+export type DuplicateShotGroup = {
+  /** device family the repeats were found in. */
+  family: "iphone" | "ipad";
+  /** the shared signal — the source fileName ASC exposed (lowercased), or the
+   *  identical asset URL when no fileName was available. */
+  key: string;
+  /** how many shots in the representative device set share it (always ≥ 2). */
+  count: number;
+};
+
+/**
+ * Detect screenshots that are demonstrably the SAME source asset (#68) —
+ * duplicate shots waste scarce conversion slots.
+ *
+ * HONESTY: only signals we can actually substantiate count — an identical
+ * source fileName (the developer's own upload name, as ASC exposes it) or an
+ * identical asset URL. No perceptual guessing, no invented counts; when ASC
+ * gave us neither signal the answer is [] (silence), never a guess. Public
+ * iTunes data carries no fileName, so no-key runs are silent by construction.
+ *
+ * Cross-device-SIZE repetition is EXPECTED (Apple replicates the same logical
+ * shots per display size — see #70), so only repeats WITHIN one device set
+ * count: we scan the same representative (most-complete) set the count/grade
+ * uses.
+ */
+export function detectDuplicateScreenshots(
+  set: AscScreenshotSet | undefined,
+): DuplicateShotGroup[] {
+  if (!set) return [];
+  const out: DuplicateShotGroup[] = [];
+  const families: Array<[DuplicateShotGroup["family"], AscScreenshotSetPerDevice[]]> = [
+    ["iphone", set.iphoneScreenshots],
+    ["ipad", set.ipadScreenshots],
+  ];
+  for (const [family, sets] of families) {
+    if (sets.length === 0) continue;
+    const best = sets.reduce((a, b) => (b.screenshots.length > a.screenshots.length ? b : a));
+    const counts = new Map<string, number>();
+    for (const s of best.screenshots) {
+      const key = s.fileName?.trim().toLowerCase() || s.imageTemplate;
+      if (!key) continue;
+      counts.set(key, (counts.get(key) ?? 0) + 1);
+    }
+    for (const [key, count] of counts) {
+      if (count >= 2) out.push({ family, key, count });
+    }
+  }
+  // Deterministic order: iPhone first, then biggest repeat groups, then key.
+  out.sort(
+    (a, b) =>
+      (a.family === b.family ? 0 : a.family === "iphone" ? -1 : 1) ||
+      b.count - a.count ||
+      a.key.localeCompare(b.key),
+  );
+  return out;
+}
