@@ -1,0 +1,20 @@
+{
+  "//": "Typecheck the spike TS packages (PRD 01). Bundler resolution mirrors the mobile app (ESM-correct .js specifiers on .ts sources).",
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "lib": ["ES2022", "DOM"],
+    "strict": true,
+    "noEmit": true,
+    "skipLibCheck": true,
+    "esModuleInterop": true,
+    "forceConsistentCasingInFileNames": true,
+    "types": []
+  },
+  "include": [
+    "api/**/*.ts",
+    "honesty/index.d.ts",
+    "tokens/generated/tokens.ts"
+  ]
+}
