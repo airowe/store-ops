@@ -92,6 +92,7 @@ import { buildPreview } from "../engine/preview.js";
 import { discoverCompetitors, resolveNameToId } from "../engine/competitorWatch.js";
 import { buildRankAnnotations } from "../engine/rankAnnotations.js";
 import { deriveBrandTokens, localizeCopy, LocalizeError, validateLocalizedSubmission } from "../engine/localizeCopy.js";
+import { localizeScreenshots, type LayeredSource, type TextSlot } from "../engine/localizeScreenshots.js";
 import { localizerForEnv } from "./aiLocalizer.js";
 import { credentialsEnabled, deleteCredential, listCredentialMeta, saveCredential, useCredential } from "../credentialStore.js";
 import { serializeAsaBundle, verifyAsaCredentials, type AsaKeyBundle } from "../engine/asaAuth.js";
@@ -1893,6 +1894,72 @@ async function localizeRoute(
 }
 
 /**
+ * POST /localize/screenshots (#78 item 3, v1-A) — localize a layered screenshot
+ * source's captions per market. Stateless: nothing stored, nothing rendered here
+ * (this returns the caption plans + honest fit analysis; a downstream renderer
+ * rasterizes). RTL locales come back in `excluded` (stated, never rendered
+ * broken); a missing AI binding 503s; a provider failure 502s — never a fake
+ * translation. Auth-gated (a signed-in user), but not app-scoped: the source is
+ * the caller's own design.
+ */
+async function localizeScreenshotsRoute(req: Request, env: Env): Promise<unknown> {
+  const body = (await readJson(req)) as {
+    source?: unknown;
+    targetLocales?: unknown;
+    brandTokens?: unknown;
+  };
+
+  const rawSlots = (body.source as { slots?: unknown })?.slots;
+  if (!Array.isArray(rawSlots) || rawSlots.length === 0) {
+    throw new HttpError(400, "source.slots must be a non-empty array");
+  }
+  const slots: TextSlot[] = [];
+  for (const s of rawSlots) {
+    const r = s as Record<string, unknown>;
+    const box = r.box as { width?: unknown; height?: unknown } | undefined;
+    if (
+      typeof r.id !== "string" || r.id.trim() === "" ||
+      typeof r.text !== "string" ||
+      typeof r.fontSize !== "number" || !(r.fontSize > 0) ||
+      !box || typeof box.width !== "number" || typeof box.height !== "number" ||
+      !(box.width > 0) || !(box.height > 0)
+    ) {
+      throw new HttpError(400, "each slot needs id, text, positive fontSize, and a positive box {width,height}");
+    }
+    slots.push({
+      id: r.id,
+      text: r.text,
+      box: { width: box.width, height: box.height },
+      fontSize: r.fontSize,
+      ...(typeof r.minFontSize === "number" ? { minFontSize: r.minFontSize } : {}),
+      ...(typeof r.maxLines === "number" ? { maxLines: r.maxLines } : {}),
+      ...(typeof r.lineHeight === "number" ? { lineHeight: r.lineHeight } : {}),
+    });
+  }
+  const source: LayeredSource = { slots };
+
+  const targetLocales = Array.isArray(body.targetLocales)
+    ? body.targetLocales.filter((l): l is string => typeof l === "string" && l.trim() !== "")
+    : [];
+  if (targetLocales.length === 0) throw new HttpError(400, "targetLocales must be a non-empty array of locale codes");
+  const brandTokens = Array.isArray(body.brandTokens)
+    ? body.brandTokens.filter((t): t is string => typeof t === "string")
+    : [];
+
+  const localizer = localizerForEnv(env.AI);
+  if (!localizer) {
+    throw new HttpError(503, "translation needs the AI binding (or a DeepL key) — not configured on this deployment");
+  }
+
+  try {
+    return await localizeScreenshots(localizer, { source, targetLocales, brandTokens });
+  } catch (e) {
+    if (e instanceof LocalizeError) throw new HttpError(502, e.message);
+    throw e;
+  }
+}
+
+/**
  * POST /runs/:id/localize/approve (#78 Phase 2) — the explicit per-market
  * approval: store this locale's (possibly human-edited) draft on the run
  * trace, making it part of the handoff. The server is authoritative: the
@@ -3186,6 +3253,10 @@ export async function handleApi(req: Request, env: Env): Promise<Response> {
     // POST /account/asa-credential — connect + verify an Apple Search Ads key (#78-2)
     if (seg[0] === "account" && seg[1] === "asa-credential" && seg.length === 2 && method === "POST") {
       return json(await asaConnectRoute(req, env, user.id), 200, origin, env);
+    }
+    // POST /localize/screenshots — localize a layered screenshot source (#78 item 3, v1-A)
+    if (seg[0] === "localize" && seg[1] === "screenshots" && seg.length === 2 && method === "POST") {
+      return json(await localizeScreenshotsRoute(req, env), 200, origin, env);
     }
 
     // /account/notifications — communication prefs (comms-prefs Phase 1)
