@@ -20,7 +20,6 @@
     "production": {
       "ios": {
         "appleId": "adaminsley@gmail.com",
-        "ascAppId": "ASC_APP_ID_PLACEHOLDER",
         "appleTeamId": "7WWYCV9VT8"
       },
       "android": {
