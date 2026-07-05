@@ -3868,12 +3868,11 @@
   /* ════════════════════════ theme (dark ⇄ light) ═══════════════════════════
      The pre-paint inline script in index.html already applied any saved choice.
      Here we wire the toggle: flip the <html data-theme>, persist it, and let the
-     CSS custom properties do the rest. No stored choice ⇒ we read the OS default
-     so the first tap flips to the OPPOSITE of what the user is actually seeing. */
+     CSS custom properties do the rest. ShipASO is dark-first — light is opt-in
+     and the CSS does NOT auto-follow the OS — so an absent data-theme means the
+     UI is showing dark, and the first tap goes to light. */
   function currentTheme() {
-    var explicit = document.documentElement.getAttribute("data-theme");
-    if (explicit === "light" || explicit === "dark") return explicit;
-    return (window.matchMedia && window.matchMedia("(prefers-color-scheme: light)").matches) ? "light" : "dark";
+    return document.documentElement.getAttribute("data-theme") === "light" ? "light" : "dark";
   }
   function setTheme(t) {
     document.documentElement.setAttribute("data-theme", t);

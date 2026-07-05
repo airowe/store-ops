@@ -55,11 +55,12 @@
 /* ── light theme ───────────────────────────────────────────────────────────
    "Editorial light": warm paper, not stark white, so the identity survives the
    flip. The accent green darkens (#0f9d63) to clear AA contrast on light
-   surfaces; tints re-tune for the inverted background. Applied three ways:
-     • :root[data-theme="light"]  → explicit user choice (toggle / localStorage)
-     • prefers-color-scheme: light + no explicit choice → auto
-     • :root[data-theme="dark"]   → explicit dark wins back over an auto-light OS
-   The dark values in :root above remain the no-JS / default baseline. */
+   surfaces; tints re-tune for the inverted background.
+
+   ShipASO is dark-FIRST by identity, so light is OPT-IN via the topbar toggle
+   (persisted to `data-theme`) — we deliberately do NOT auto-follow
+   prefers-color-scheme, so the default is always the canonical dark and pinned
+   dark treatments stay stable. The dark values in :root remain the baseline. */
 :root[data-theme="light"] {
   --bg: #f6f7f9;
   --bg-2: #eceff4;
@@ -86,35 +87,6 @@
   --grain: 0;
   --shadow: 0 24px 60px rgba(28, 40, 66, 0.14);
   color-scheme: light;
-}
-@media (prefers-color-scheme: light) {
-  :root:not([data-theme="dark"]) {
-    --bg: #f6f7f9;
-    --bg-2: #eceff4;
-    --panel: #ffffff;
-    --panel-2: #f3f5f9;
-    --line: #d6dceb;
-    --line-soft: #e6eaf2;
-    --ink: #111621;
-    --dim: #4a5468;
-    --faint: #7a8398;
-    --signal: #0f9d63;
-    --signal-dim: #0b7d4e;
-    --signal-glow: rgba(15, 157, 99, 0.14);
-    --brand: #3563e0;
-    --warn: #b7791f;
-    --bad: #dc4a41;
-
-    --raise:   rgba(17, 22, 33, 0.028);
-    --raise-2: rgba(17, 22, 33, 0.022);
-    --raise-3: rgba(17, 22, 33, 0.016);
-    --on-signal: #ffffff;
-    --topbar-bg: rgba(246, 247, 249, 0.82);
-    --overlay:   rgba(28, 34, 46, 0.42);
-    --grain: 0;
-    --shadow: 0 24px 60px rgba(28, 40, 66, 0.14);
-    color-scheme: light;
-  }
 }
 
 * { box-sizing: border-box; }
@@ -292,10 +264,6 @@ header.topbar {
 .theme-toggle .i-moon { display: none; }
 :root[data-theme="light"] .theme-toggle .i-sun { display: none; }
 :root[data-theme="light"] .theme-toggle .i-moon { display: block; }
-@media (prefers-color-scheme: light) {
-  :root:not([data-theme="dark"]) .theme-toggle .i-sun { display: none; }
-  :root:not([data-theme="dark"]) .theme-toggle .i-moon { display: block; }
-}
 
 /* ── hero / agent banner ─────────────────────────────────────── */
 .agentline {

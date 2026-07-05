@@ -71,10 +71,13 @@ single hand-rolled SVG. That's what this proposal targets.
 The web CSS already routed every color through custom properties, which made
 this tractable:
 
-- **Web (complete).** Added `:root[data-theme="light"]` + a
-  `prefers-color-scheme` auto path + an explicit-dark override. The seven
-  hardcoded `rgba(255,255,255,…)` raised-fills, the two `rgba(7,9,14,…)` scrims,
-  and the `#04140d` on-accent text were promoted to semantic tokens
+- **Web (complete).** Added `:root[data-theme="light"]` as an **opt-in** theme
+  driven by the topbar toggle. ShipASO is dark-first by identity, so the CSS
+  deliberately does **not** auto-follow `prefers-color-scheme` — dark stays the
+  guaranteed default and pinned dark treatments (and their e2e assertions) stay
+  stable. The seven hardcoded `rgba(255,255,255,…)` raised-fills, the two
+  `rgba(7,9,14,…)` scrims, and the `#04140d` on-accent text were promoted to
+  semantic tokens
   (`--raise{,-2,-3}`, `--topbar-bg`, `--overlay`, `--on-signal`) so the whole UI
   flips without touching a single component selector. A tiny pre-paint inline
   script in `index.html` applies the saved theme before first paint (no flash).
