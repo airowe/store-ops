@@ -12,7 +12,7 @@ export type Surface = "web" | "legacy";
  * the shell's own health route — so PRD 02 changes NO user-facing routing.
  * PRD 03 adds "/settings", PRD 04 "/", etc.
  */
-export const OWNED_PATHS: readonly string[] = ["/_shell/health"];
+export const OWNED_PATHS: readonly string[] = ["/_shell/health", "/settings"];
 
 /** Decide which surface should serve a pathname. */
 export function resolveSurface(pathname: string, owned: readonly string[] = OWNED_PATHS): Surface {
