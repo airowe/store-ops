@@ -1,0 +1,17 @@
+{
+  "name": "@shipaso/tokens",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Canonical design tokens (source of truth). Generates web CSS custom properties + RN palette from tokens.json.",
+  "type": "module",
+  "exports": {
+    "./tokens.json": "./tokens.json",
+    "./css": "./generated/tokens.css",
+    ".": "./generated/tokens.ts"
+  },
+  "scripts": {
+    "build": "node build.mjs",
+    "verify": "node verify.mjs",
+    "test": "node build.mjs && node verify.mjs"
+  }
+}
