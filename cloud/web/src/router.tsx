@@ -6,12 +6,12 @@
 import { createRootRoute, createRoute, createRouter } from "@tanstack/react-router";
 import { ShellLayout } from "./shell/ShellLayout.js";
 import { Health } from "./routes/health.js";
-import { Landing } from "./routes/landing.js";
+import { DashboardRoute } from "./routes/dashboard.js";
 import { SettingsRoute } from "./routes/settings.js";
 
 const rootRoute = createRootRoute({ component: ShellLayout });
 
-const indexRoute = createRoute({ getParentRoute: () => rootRoute, path: "/", component: Landing });
+const indexRoute = createRoute({ getParentRoute: () => rootRoute, path: "/", component: DashboardRoute });
 const healthRoute = createRoute({ getParentRoute: () => rootRoute, path: "/_shell/health", component: Health });
 const settingsRoute = createRoute({ getParentRoute: () => rootRoute, path: "/settings", component: SettingsRoute });
 

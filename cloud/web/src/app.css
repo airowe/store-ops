@@ -66,3 +66,29 @@ h1 { font-family: var(--display); font-weight: 600; font-size: 30px; letter-spac
 .setting-row > div:first-child > div:first-child { color: var(--ink); }
 .btn.bad { background: transparent; border-color: rgba(248,113,113,.5); color: var(--bad); }
 .btn.bad:hover { border-color: var(--bad); background: rgba(248,113,113,.08); }
+
+.txt { flex: 1; background: var(--bg-2); border: 1px solid var(--line); color: var(--ink); border-radius: 10px; padding: 9px 11px; font: inherit; }
+.txt:focus { outline: none; border-color: var(--signal-dim); box-shadow: 0 0 0 3px var(--signal-glow); }
+
+.grid { display: grid; gap: 14px; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); margin-top: 14px; }
+.appcard { cursor: pointer; transition: border-color .18s, transform .18s; }
+.appcard:hover { border-color: var(--signal-dim); transform: translateY(-2px); }
+.appcard .row1 { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.appcard .name { font-weight: 600; font-size: 16px; color: var(--ink); }
+.appcard .bundle { color: var(--faint); font-size: 12px; font-family: var(--mono); margin-top: 2px; }
+.appcard .meta { margin-top: 12px; font-family: var(--mono); font-size: 14px; color: var(--dim); }
+.appcard .meta b.good { color: var(--signal); }
+.appcard .meta b.none { color: var(--faint); font-weight: 500; }
+.finding-label { margin-top: 8px; font-size: 13px; }
+.mono { font-family: var(--mono); }
+
+.badge {
+  font-family: var(--mono); font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 999px;
+  border: 1px solid var(--line); color: var(--dim); white-space: nowrap;
+}
+.badge.awaiting_approval { color: var(--warn); border-color: rgba(251,191,36,.4); }
+.badge.approved, .badge.shipped { color: var(--signal); border-color: var(--signal-dim); }
+.badge.rejected { color: var(--bad); border-color: rgba(248,113,113,.4); }
+
+.empty { text-align: center; padding: 40px 20px; color: var(--dim); }
+.empty .big { font-size: 36px; margin-bottom: 8px; }

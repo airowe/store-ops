@@ -11,13 +11,19 @@ describe("resolveSurface (strangler edge map)", () => {
   it("normalizes a trailing slash", () => {
     expect(resolveSurface("/_shell/health/", ["/_shell/health"])).toBe("web");
   });
-  it("/settings is now owned by the new app (PRD 03 cutover)", () => {
+  it("owns the migrated routes (/, /settings) — PRD 03/04 cutovers", () => {
     expect(resolveSurface("/settings", OWNED_PATHS)).toBe("web");
+    expect(resolveSurface("/", OWNED_PATHS)).toBe("web");
   });
   it("still proxies un-migrated routes to legacy", () => {
-    for (const p of ["/", "/apps/abc", "/runs/xyz"]) {
+    for (const p of ["/apps/abc", "/runs/xyz"]) {
       expect(resolveSurface(p, OWNED_PATHS)).toBe("legacy");
     }
+  });
+  it("owning '/' does not accidentally own deep paths", () => {
+    // "/" matches only the exact root, never /apps/* etc.
+    expect(resolveSurface("/apps/abc", ["/"])).toBe("legacy");
+    expect(resolveSurface("/", ["/"])).toBe("web");
   });
   it("a prefix must match a full segment (no accidental /settings-foo capture)", () => {
     expect(resolveSurface("/settingsX", ["/settings"])).toBe("legacy");
