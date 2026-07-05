@@ -7,13 +7,15 @@ import { createRootRoute, createRoute, createRouter } from "@tanstack/react-rout
 import { ShellLayout } from "./shell/ShellLayout.js";
 import { Health } from "./routes/health.js";
 import { Landing } from "./routes/landing.js";
+import { SettingsRoute } from "./routes/settings.js";
 
 const rootRoute = createRootRoute({ component: ShellLayout });
 
 const indexRoute = createRoute({ getParentRoute: () => rootRoute, path: "/", component: Landing });
 const healthRoute = createRoute({ getParentRoute: () => rootRoute, path: "/_shell/health", component: Health });
+const settingsRoute = createRoute({ getParentRoute: () => rootRoute, path: "/settings", component: SettingsRoute });
 
-const routeTree = rootRoute.addChildren([indexRoute, healthRoute]);
+const routeTree = rootRoute.addChildren([indexRoute, healthRoute, settingsRoute]);
 
 export const router = createRouter({ routeTree });
 

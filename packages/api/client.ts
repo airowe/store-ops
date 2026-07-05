@@ -18,15 +18,19 @@ export type ClientConfig = {
   credentials?: RequestCredentials;
 };
 
+export type RequestInit_ = { method: string; body?: unknown };
+
 export type ApiClient = {
   get<T>(path: string): Promise<T>;
   post<T>(path: string, body?: unknown): Promise<T>;
+  /** Generic escape hatch (DELETE/PUT/…). Every surface's fake is {get,post,request}. */
+  request<T>(path: string, init: RequestInit_): Promise<T>;
 };
 
 export function createClient(config: ClientConfig): ApiClient {
   const doFetch = config.fetchImpl ?? fetch;
 
-  async function request<T>(method: "GET" | "POST", path: string, body?: unknown): Promise<T> {
+  async function send<T>(method: string, path: string, body?: unknown): Promise<T> {
     const headers: Record<string, string> = { ...(await config.authHeaders?.()) };
     if (body !== undefined) headers["content-type"] = "application/json";
     const res = await doFetch(config.baseUrl + path, {
@@ -45,7 +49,8 @@ export function createClient(config: ClientConfig): ApiClient {
   }
 
   return {
-    get: (path) => request("GET", path),
-    post: (path, body) => request("POST", path, body),
+    get: (path) => send("GET", path),
+    post: (path, body) => send("POST", path, body),
+    request: (path, init) => send(init.method, path, init.body),
   };
 }

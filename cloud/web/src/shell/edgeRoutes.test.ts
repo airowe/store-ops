@@ -11,8 +11,11 @@ describe("resolveSurface (strangler edge map)", () => {
   it("normalizes a trailing slash", () => {
     expect(resolveSurface("/_shell/health/", ["/_shell/health"])).toBe("web");
   });
-  it("proxies un-migrated routes to legacy (default: nothing user-facing is owned)", () => {
-    for (const p of ["/", "/apps/abc", "/runs/xyz", "/settings"]) {
+  it("/settings is now owned by the new app (PRD 03 cutover)", () => {
+    expect(resolveSurface("/settings", OWNED_PATHS)).toBe("web");
+  });
+  it("still proxies un-migrated routes to legacy", () => {
+    for (const p of ["/", "/apps/abc", "/runs/xyz"]) {
       expect(resolveSurface(p, OWNED_PATHS)).toBe("legacy");
     }
   });

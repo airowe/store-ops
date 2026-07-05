@@ -37,3 +37,26 @@ export type DeltasResponse = { entries: DeltaEntry[] };
 
 export type WarRoomResponse = { warRoom: unknown[]; competitors: string[] };
 export type Run = { id: string; app_id: string; status: RunStatus; created_at: string };
+
+// ── settings (comms-prefs) ──────────────────────────────────────────────────
+export type RankCadence = "weekly" | "daily";
+export type EmailDigest = "weekly" | "off";
+export type NotificationPrefs = { push_run_ready: boolean; email_digest: EmailDigest };
+export type Me = {
+  email: string | null;
+  push_run_ready?: boolean;
+  email_digest?: EmailDigest;
+  rank_cadence?: RankCadence;
+};
+
+/** Stored-credential METADATA only — never key material (honesty boundary). */
+export type StoredCredential = {
+  id: string;
+  appId: string | null;
+  kind: "asc" | "play";
+  keyId: string;
+  issuerId: string;
+  createdAt: string;
+  lastUsedAt: string | null;
+  kekVersion: number;
+};
