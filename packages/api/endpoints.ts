@@ -6,6 +6,8 @@
 import type { ApiClient } from "./client.js";
 import type {
   AppListItem,
+  Candidate,
+  ConnectResult,
   DeltasResponse,
   EmailDigest,
   Me,
@@ -19,7 +21,12 @@ import type {
 
 const enc = encodeURIComponent;
 
-export const getApps = (c: ApiClient) => c.get<AppListItem[]>("/apps");
+export const getApps = (c: ApiClient) => c.get<{ apps: AppListItem[] }>("/apps");
+
+export const resolveApps = (c: ApiClient, query: string, offset = 0) =>
+  c.post<{ candidates: Candidate[] }>("/resolve", { query, offset });
+export const connectApp = (c: ApiClient, body: { bundle_id?: string; query?: string; name?: string }) =>
+  c.post<ConnectResult>("/apps", body);
 
 export const getApp = (c: ApiClient, id: string) =>
   c.get<{ app: AppListItem; runs: Run[] }>(`/apps/${enc(id)}`);

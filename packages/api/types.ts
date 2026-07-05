@@ -38,6 +38,18 @@ export type DeltasResponse = { entries: DeltaEntry[] };
 export type WarRoomResponse = { warRoom: unknown[]; competitors: string[] };
 export type Run = { id: string; app_id: string; status: RunStatus; created_at: string };
 
+// ── connect / resolve ───────────────────────────────────────────────────────
+export type Candidate = {
+  bundle_id: string;
+  name: string;
+  publisher?: string;
+  genres?: string[];
+  icon_url?: string;
+};
+export type ConnectResult =
+  | { id: string; name: string; bundleId: string }
+  | { needsChoice: true; candidates: Candidate[] };
+
 // ── settings (comms-prefs) ──────────────────────────────────────────────────
 export type RankCadence = "weekly" | "daily";
 export type EmailDigest = "weekly" | "off";
