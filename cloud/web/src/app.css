@@ -1,0 +1,56 @@
+/* Slim shell styling — the topbar + content column, over the @shipaso/tokens
+   custom properties. The full design system ports in with the route PRDs. */
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  color: var(--ink);
+  background: var(--bg);
+  font: 15px/1.55 var(--sans);
+  -webkit-font-smoothing: antialiased;
+}
+a { color: var(--signal); text-decoration: none; }
+
+.topbar {
+  position: sticky; top: 0; z-index: 30;
+  backdrop-filter: blur(10px);
+  background: var(--topbar-bg);
+  border-bottom: 1px solid var(--line-soft);
+}
+.topbar-in {
+  max-width: 940px; margin: 0 auto; padding: 12px 18px;
+  display: flex; align-items: center; gap: 12px;
+}
+.logo { display: flex; align-items: center; gap: 9px; font-family: var(--mono); font-weight: 700; font-size: 16px; color: var(--ink); }
+.logo .tick {
+  width: 22px; height: 22px; border-radius: 6px; display: grid; place-items: center; flex: none;
+  background: var(--signal-glow); border: 1px solid var(--signal-dim); color: var(--signal); font-size: 13px;
+}
+.logo small { font-family: var(--mono); color: var(--faint); font-weight: 500; font-size: 11px; }
+.spacer { flex: 1; }
+.who { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--dim); }
+
+.env-pill {
+  font-family: var(--mono); font-size: 11px; padding: 2px 8px; border-radius: 999px;
+  border: 1px solid var(--line); color: var(--faint); letter-spacing: .02em;
+}
+.env-pill.live { color: var(--signal); border-color: var(--signal-dim); background: rgba(52, 211, 153, 0.04); }
+.env-pill.demo { color: var(--brand); border-color: rgba(91, 140, 255, 0.4); }
+
+.theme-toggle {
+  appearance: none; cursor: pointer; flex: none;
+  width: 30px; height: 30px; border-radius: 8px;
+  background: var(--raise); border: 1px solid var(--line); color: var(--dim); font-size: 15px;
+}
+.theme-toggle:hover { color: var(--ink); border-color: var(--dim); }
+
+.btn {
+  appearance: none; border: 1px solid var(--line); cursor: pointer;
+  background: var(--raise); color: var(--ink);
+  padding: 5px 12px; border-radius: 10px; font-size: 13px; font-weight: 600; font-family: var(--sans);
+}
+.btn.ghost { background: var(--raise); }
+
+.wrap { max-width: 940px; margin: 0 auto; padding: 24px 18px 80px; }
+h1 { font-family: var(--display); font-weight: 600; font-size: 30px; letter-spacing: -1px; margin: 14px 0 8px; }
+.muted { color: var(--dim); }
+.faint { color: var(--faint); }
