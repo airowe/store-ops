@@ -183,10 +183,10 @@ CREATE TABLE IF NOT EXISTS stored_credentials (
   id            TEXT PRIMARY KEY,                     -- uuid
   user_id       TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   app_id        TEXT REFERENCES apps(id) ON DELETE CASCADE, -- NULL = account-level
-  kind          TEXT NOT NULL CHECK (kind IN ('asc','play')),
+  kind          TEXT NOT NULL CHECK (kind IN ('asc','play','asa')),
   -- non-secret identifiers, shown in the management UI (never key material):
-  key_id        TEXT NOT NULL DEFAULT '',             -- ASC Key ID / Play client_email
-  issuer_id     TEXT NOT NULL DEFAULT '',             -- ASC Issuer ID (empty for play)
+  key_id        TEXT NOT NULL DEFAULT '',             -- ASC Key ID / Play client_email / ASA Key ID
+  issuer_id     TEXT NOT NULL DEFAULT '',             -- ASC Issuer ID (empty for play; ASA orgId for asa)
   -- the envelope (base64) — safe to store; useless without the KEK:
   ciphertext    TEXT NOT NULL,                        -- IV ++ payload-ct+tag
   wrapped_dek   TEXT NOT NULL,                        -- IV ++ wrapped-DEK+tag

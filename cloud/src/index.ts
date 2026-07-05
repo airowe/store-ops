@@ -90,6 +90,12 @@ export type Env = {
   // path is unaffected. Rotation adds CRED_KEK_V2 etc. (lazy re-wrap on use).
   CRED_KEK_V1?: string;
   CRED_KEK_V2?: string;
+  // #78-2: gate for SURFACING Apple Search Ads popularity in scoring/UI. Connect
+  // + store + verify of an ASA key works whenever credential storage is enabled
+  // (a KEK is set); but the popularity NUMBERS stay dark until this is set to
+  // "1"/"true" — flip it only after verifying the v5 popularity read against a
+  // live ASA account (owner action, per docs/prd/localization/asa-data-spike.md).
+  ASA_POPULARITY_ENABLED?: string;
 };
 
 export default {

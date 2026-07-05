@@ -100,3 +100,32 @@ and shares the renderer v1-A would build). Owner decides v1-A-now vs. fold-into-
 Owner picks: (a) build v1-A standalone next cycle, or (b) fold entirely into
 #26 Studio and keep parked. Until then #78 item 3 stays open with this PRD as
 its resolution-of-record.
+
+## Implementation status (owner picked v1-A-now, 2026-07-05)
+
+**v1-A engine + API shipped** — the ASO/localization + typesetting brain, pure
+and fully unit-tested. Pixel rasterization stays downstream (a Worker has no
+font renderer), exactly as `screenshotBrief` produces a plan not an image.
+
+- ✅ `cloud/src/engine/localizeScreenshots.ts` — `localizeScreenshots(localizer,
+  {source, targetLocales, brandTokens})` translates each named text slot via the
+  existing `Localizer` seam (brand tokens preserved verbatim), then runs a
+  **deterministic auto-fit**: try the slot font size, shrink toward a floor, and
+  report `fit | shrunk | overflow`. **No silent clipping** — an unfittable
+  caption is flagged `overflow` + `needsReview`, never truncated; the fit is an
+  honest heuristic ESTIMATE (coarse glyph metrics; CJK per-char), labeled as
+  such. **RTL locales are `excluded` with a reason**, never rendered broken. A
+  provider failure refuses the whole locale (no half-plan). `toScreenshotManifest`
+  flattens to a renderer/fastlane-ready `locale → slot → {text, fontSize}` tree.
+- ✅ `POST /localize/screenshots` — stateless route: validates the layered
+  source, gates on the AI binding (503), 502 on provider failure, returns the
+  per-locale plans + `excluded`. 15 tests (10 engine + 5 route).
+
+### Downstream (NOT built here)
+- **Rasterization**: a renderer (fastlane `frameit`, or an image service) that
+  consumes the manifest + the user's background art + a Noto fallback font stack
+  to produce the actual per-locale PNGs. This is the licensing + asset-weight
+  decision the PRD flags; it lives outside the pure Worker engine.
+- **Upload UI** for the layered source + a per-locale review lane showing the
+  `needsReview`/`overflow` flags before anything ships. Draft-only, never
+  auto-pushed — same gate as text localization.

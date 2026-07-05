@@ -48,7 +48,7 @@ export function credentialsEnabled(env: Env): boolean {
 export type CredentialMeta = {
   id: string;
   appId: string | null;
-  kind: "asc" | "play";
+  kind: "asc" | "play" | "asa";
   keyId: string;
   issuerId: string;
   createdAt: string;
@@ -60,7 +60,7 @@ type Row = {
   id: string;
   user_id: string;
   app_id: string | null;
-  kind: "asc" | "play";
+  kind: "asc" | "play" | "asa";
   key_id: string;
   issuer_id: string;
   ciphertext: string;
@@ -88,7 +88,7 @@ function metaOf(r: Row): CredentialMeta {
 }
 
 /** ctx used for AAD — "-" for the account-level (unlinked) case so it's stable. */
-function ctxFor(userId: string, appId: string | null, kind: "asc" | "play", kekVersion: number): VaultContext {
+function ctxFor(userId: string, appId: string | null, kind: "asc" | "play" | "asa", kekVersion: number): VaultContext {
   return { userId, appId: appId ?? "-", kind, kekVersion };
 }
 
@@ -101,7 +101,7 @@ export async function saveCredential(
   args: {
     userId: string;
     appId: string | null;
-    kind: "asc" | "play";
+    kind: "asc" | "play" | "asa";
     keyId: string;
     issuerId: string;
     plaintext: string;
@@ -133,7 +133,7 @@ export async function saveCredential(
   return metaOf(row!);
 }
 
-async function fetchRow(env: Env, userId: string, appId: string | null, kind: "asc" | "play"): Promise<Row | null> {
+async function fetchRow(env: Env, userId: string, appId: string | null, kind: "asc" | "play" | "asa"): Promise<Row | null> {
   const sql =
     appId === null
       ? "SELECT * FROM stored_credentials WHERE user_id = ? AND app_id IS NULL AND kind = ?"
@@ -147,7 +147,7 @@ export async function getCredentialMeta(
   env: Env,
   userId: string,
   appId: string | null,
-  kind: "asc" | "play",
+  kind: "asc" | "play" | "asa",
 ): Promise<CredentialMeta | null> {
   try {
     const row = await fetchRow(env, userId, appId, kind);
@@ -178,7 +178,7 @@ export async function deleteCredential(
   env: Env,
   userId: string,
   appId: string | null,
-  kind: "asc" | "play",
+  kind: "asc" | "play" | "asa",
 ): Promise<boolean> {
   const sql =
     appId === null
@@ -203,7 +203,7 @@ export async function useCredential(
   env: Env,
   userId: string,
   appId: string | null,
-  kind: "asc" | "play",
+  kind: "asc" | "play" | "asa",
 ): Promise<{ plaintext: string; meta: CredentialMeta } | null> {
   let row: Row | null;
   try {

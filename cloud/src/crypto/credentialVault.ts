@@ -39,8 +39,8 @@ export type VaultContext = {
   userId: string;
   /** app the credential is linked to, or "-" for an account-level (unlinked) key. */
   appId: string;
-  /** "asc" (.p8) | "play" (service-account json). */
-  kind: "asc" | "play";
+  /** "asc" (.p8) | "play" (service-account json) | "asa" (Search Ads key bundle). */
+  kind: "asc" | "play" | "asa";
   kekVersion: number;
 };
 

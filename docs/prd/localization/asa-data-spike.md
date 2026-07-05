@@ -122,3 +122,38 @@ honesty/ToS liability.
 Owner go/no-go on **Path A as an opt-in ASA connect**. Until then #78 item 2
 stays open with this spike as its resolution-of-record. #65's no-fabrication
 stance is unchanged either way.
+
+## Implementation status (owner said "go", 2026-07-05)
+
+Path A is being built in phases; the **server foundation is shipped and fully
+unit-tested**, and it is deliberately DARK until an owner verifies the read
+against a live ASA account:
+
+- ✅ **Phase 1 — credential kind + OAuth auth.** `stored_credentials.kind` now
+  allows `"asa"` (schema CHECK + idempotent prod-table rebuild; no new crypto —
+  the #67 vault is kind-agnostic). `cloud/src/engine/asaAuth.ts` mints the ES256
+  client-secret, exchanges it at `appleid.apple.com` for a bearer token, and
+  verifies a bundle by probing `/acls` for the orgId — same
+  key-never-persisted/logged posture as `ascJwt`.
+- ✅ **Phase 2 — popularity reader (gated seam).** `cloud/src/engine/asaClient.ts`
+  `keywordPopularity()` reads Apple's real search-popularity index, org-scoped,
+  with a tolerant parser and **degrade-safe by construction** (any failure →
+  empty map; never throws into scoring, never fabricates).
+- ✅ **Phase 3a — connect/verify/store API.** `POST /account/asa-credential`
+  verifies the key against Apple BEFORE storing (invalid → 400, key-free reason,
+  never stored); stores the bundle envelope-encrypted (kind:"asa", account-level,
+  write-only). `DELETE /account/credentials/asa` + the list route include it.
+- ⛔ **GATE: `ASA_POPULARITY_ENABLED`.** Connect + verify + store work whenever a
+  KEK is set, but the popularity NUMBERS stay dark until this flag is set — flip
+  it only after confirming the v5 popularity endpoint/shape against a live ASA
+  account (the exact endpoint is Apple's documented shape but unexercised here).
+  The connect response says so honestly ("Popularity insights turn on once
+  ShipASO finishes verifying…") so no UI implies data that isn't flowing.
+
+### Phase 3b — the unlock (post-verification, NOT built yet)
+Once the owner confirms the live read and sets `ASA_POPULARITY_ENABLED`:
+join `keywordPopularity` into keyword scoring as a **labeled "Apple Search Ads
+popularity"** signal distinct from our proxy columns (never silently blended);
+add the opt-in connect card (web + mobile) with the honest empty-state for users
+without ASA. Tests pin: no ASA number is shown unless it came from the user's
+authorized account read; the proxy stays labeled as a proxy.
