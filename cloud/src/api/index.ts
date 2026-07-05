@@ -94,6 +94,7 @@ import { buildRankAnnotations } from "../engine/rankAnnotations.js";
 import { deriveBrandTokens, localizeCopy, LocalizeError, validateLocalizedSubmission } from "../engine/localizeCopy.js";
 import { localizerForEnv } from "./aiLocalizer.js";
 import { credentialsEnabled, deleteCredential, listCredentialMeta, saveCredential, useCredential } from "../credentialStore.js";
+import { serializeAsaBundle, verifyAsaCredentials, type AsaKeyBundle } from "../engine/asaAuth.js";
 import localesData from "../engine/locales-data.json";
 import { validateThresholdPatch } from "../thresholds.js";
 import { validateSchedule } from "../schedule.js";
@@ -1964,14 +1965,79 @@ async function credentialsDeleteRoute(
   kind: string,
   url: URL,
 ): Promise<unknown> {
-  if (kind !== "asc" && kind !== "play") throw new HttpError(400, "kind must be asc or play");
+  if (kind !== "asc" && kind !== "play" && kind !== "asa") {
+    throw new HttpError(400, "kind must be asc, play, or asa");
+  }
   const appId = url.searchParams.get("app");
   const removed = await deleteCredential(env, userId, appId, kind);
   if (!removed) throw new HttpError(404, "no stored credential to delete");
   return {
     deleted: true,
-    note: "Removed from ShipASO. This does NOT revoke the key at Apple — revoke it in App Store Connect to fully kill it.",
+    note:
+      kind === "asa"
+        ? "Removed from ShipASO. This does NOT revoke the key at Apple — revoke it in Apple Search Ads to fully kill it."
+        : "Removed from ShipASO. This does NOT revoke the key at Apple — revoke it in App Store Connect to fully kill it.",
   };
+}
+
+/**
+ * POST /account/asa-credential — connect an Apple Search Ads key so we can read
+ * Apple's OWN keyword search popularity for the user's own terms (#78-2, Path A).
+ * Opt-in, account-level, envelope-encrypted (the same #67 vault; kind:"asa"),
+ * write-only custody. We VERIFY the key against Apple (mint a token + probe
+ * `/acls` for the orgId) BEFORE storing — an invalid/unreachable key is a 400
+ * with an honest, key-free reason, never stored. Requires credential storage to
+ * be enabled (a KEK is set) → 503 otherwise. Returns metadata only.
+ *
+ * NOTE: connecting works today; the popularity NUMBERS stay dark until
+ * ASA_POPULARITY_ENABLED is set (owner action, after live verification). The
+ * response says so, so the UI never implies data that isn't flowing yet.
+ */
+async function asaConnectRoute(req: Request, env: Env, userId: string): Promise<unknown> {
+  if (!credentialsEnabled(env)) {
+    throw new HttpError(503, "credential storage is not enabled on this deployment");
+  }
+  const body = (await req.json().catch(() => ({}))) as Partial<AsaKeyBundle>;
+  const bundle: AsaKeyBundle = {
+    privateKey: (body.privateKey ?? "").toString(),
+    clientId: (body.clientId ?? "").toString().trim(),
+    teamId: (body.teamId ?? "").toString().trim(),
+    keyId: (body.keyId ?? "").toString().trim(),
+    orgId: (body.orgId ?? "").toString().trim(),
+  };
+  if (!bundle.privateKey || !bundle.clientId || !bundle.teamId || !bundle.keyId || !bundle.orgId) {
+    throw new HttpError(400, "privateKey, clientId, teamId, keyId, and orgId are all required");
+  }
+
+  const verdict = await verifyAsaCredentials(fetchForEnv(env), bundle);
+  if (!verdict.ok) {
+    // verdict.reason is key-free by construction (AsaCredError messages).
+    throw new HttpError(400, `Apple Search Ads did not accept this key: ${verdict.reason}`);
+  }
+
+  // Store the whole bundle as one envelope; key_id/issuer_id are the non-secret
+  // identifiers shown in the management UI (keyId + orgId).
+  const meta = await saveCredential(env, {
+    userId,
+    appId: null, // ASA is account-level (popularity is org-scoped, not per-app)
+    kind: "asa",
+    keyId: bundle.keyId,
+    issuerId: bundle.orgId,
+    plaintext: serializeAsaBundle(bundle),
+  });
+  return {
+    credential: meta,
+    popularityLive: asaPopularityEnabled(env),
+    note: asaPopularityEnabled(env)
+      ? "Connected. We'll show Apple's real search popularity for your terms."
+      : "Connected and verified. Popularity insights turn on once ShipASO finishes verifying the Search Ads read on this deployment.",
+  };
+}
+
+/** Whether ASA popularity may be SURFACED (connect/verify works without it). */
+function asaPopularityEnabled(env: Env): boolean {
+  const v = (env.ASA_POPULARITY_ENABLED ?? "").toLowerCase();
+  return v === "1" || v === "true";
 }
 
 /** GET /apps/:id — detail with the full run history list. */
@@ -3116,6 +3182,10 @@ export async function handleApi(req: Request, env: Env): Promise<Response> {
       if (seg.length === 3 && seg[2] && method === "DELETE") {
         return json(await credentialsDeleteRoute(env, user.id, seg[2], url), 200, origin, env);
       }
+    }
+    // POST /account/asa-credential — connect + verify an Apple Search Ads key (#78-2)
+    if (seg[0] === "account" && seg[1] === "asa-credential" && seg.length === 2 && method === "POST") {
+      return json(await asaConnectRoute(req, env, user.id), 200, origin, env);
     }
 
     // /account/notifications — communication prefs (comms-prefs Phase 1)
