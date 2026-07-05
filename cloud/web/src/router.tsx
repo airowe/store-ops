@@ -8,14 +8,16 @@ import { ShellLayout } from "./shell/ShellLayout.js";
 import { Health } from "./routes/health.js";
 import { DashboardRoute } from "./routes/dashboard.js";
 import { SettingsRoute } from "./routes/settings.js";
+import { AppDetailRoute } from "./routes/appDetail.js";
 
 const rootRoute = createRootRoute({ component: ShellLayout });
 
 const indexRoute = createRoute({ getParentRoute: () => rootRoute, path: "/", component: DashboardRoute });
 const healthRoute = createRoute({ getParentRoute: () => rootRoute, path: "/_shell/health", component: Health });
 const settingsRoute = createRoute({ getParentRoute: () => rootRoute, path: "/settings", component: SettingsRoute });
+const appDetailRoute = createRoute({ getParentRoute: () => rootRoute, path: "/apps/$id", component: AppDetailRoute });
 
-const routeTree = rootRoute.addChildren([indexRoute, healthRoute, settingsRoute]);
+const routeTree = rootRoute.addChildren([indexRoute, healthRoute, settingsRoute, appDetailRoute]);
 
 export const router = createRouter({ routeTree });
 

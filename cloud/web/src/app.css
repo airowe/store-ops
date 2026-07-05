@@ -93,6 +93,15 @@ h1 { font-family: var(--display); font-weight: 600; font-size: 30px; letter-spac
 .empty { text-align: center; padding: 40px 20px; color: var(--dim); }
 .empty .big { font-size: 36px; margin-bottom: 8px; }
 
+h2 { font-family: var(--display); font-weight: 600; font-size: 22px; letter-spacing: -.5px; margin: 28px 0 12px; }
+.move-row { display: grid; grid-template-columns: 1fr auto auto; gap: 12px; align-items: center; padding: 8px 0; border-bottom: 1px solid var(--line-soft); }
+.move-row:last-child { border-bottom: 0; }
+.move-row .kw { color: var(--ink); font-weight: 600; }
+.move-row .cur { color: var(--ink); }
+.anno-row { display: flex; gap: 8px; align-items: baseline; margin-top: 8px; }
+.run-row { display: flex; align-items: center; justify-content: space-between; cursor: pointer; }
+.run-row:hover { border-color: var(--signal-dim); }
+
 .rank-chart { width: 100%; }
 /* uPlot chrome tuned to the design tokens (light/dark aware). */
 .rank-chart .u-axis { color: var(--faint); }

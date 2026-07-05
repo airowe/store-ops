@@ -5,6 +5,7 @@
  */
 import type { ApiClient } from "./client.js";
 import type {
+  AppDetail,
   AppListItem,
   Candidate,
   ConnectResult,
@@ -28,8 +29,7 @@ export const resolveApps = (c: ApiClient, query: string, offset = 0) =>
 export const connectApp = (c: ApiClient, body: { bundle_id?: string; query?: string; name?: string }) =>
   c.post<ConnectResult>("/apps", body);
 
-export const getApp = (c: ApiClient, id: string) =>
-  c.get<{ app: AppListItem; runs: Run[] }>(`/apps/${enc(id)}`);
+export const getApp = (c: ApiClient, id: string) => c.get<AppDetail>(`/apps/${enc(id)}`);
 
 export const getRanks = (c: ApiClient, id: string, keyword?: string) =>
   c.get<RanksSeries>(`/apps/${enc(id)}/ranks${keyword ? `?keyword=${enc(keyword)}` : ""}`);

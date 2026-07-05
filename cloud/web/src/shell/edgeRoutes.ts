@@ -7,18 +7,29 @@
  */
 export type Surface = "web" | "legacy";
 
+/** An owned path is a string (exact / prefix) or a RegExp (dynamic segments). */
+export type OwnedPattern = string | RegExp;
+
 /**
  * Paths (exact or prefix) the new app serves. Starts intentionally tiny — only
  * the shell's own health route — so PRD 02 changes NO user-facing routing.
  * PRD 03 adds "/settings", PRD 04 "/", etc.
  */
-export const OWNED_PATHS: readonly string[] = ["/_shell/health", "/settings", "/"];
+export const OWNED_PATHS: readonly OwnedPattern[] = [
+  "/_shell/health",
+  "/settings",
+  "/",
+  // App detail — exactly one segment after /apps. NOT /apps/:id/war-room (still
+  // legacy until PRD 06), and NOT the bare /apps connect endpoint.
+  /^\/apps\/[^/]+$/,
+];
 
 /** Decide which surface should serve a pathname. */
-export function resolveSurface(pathname: string, owned: readonly string[] = OWNED_PATHS): Surface {
+export function resolveSurface(pathname: string, owned: readonly OwnedPattern[] = OWNED_PATHS): Surface {
   const p = pathname.replace(/\/+$/, "") || "/";
-  const isOwned = owned.some((base) => {
-    const b = base.replace(/\/+$/, "") || "/";
+  const isOwned = owned.some((o) => {
+    if (o instanceof RegExp) return o.test(p);
+    const b = o.replace(/\/+$/, "") || "/";
     return p === b || p.startsWith(b + "/");
   });
   return isOwned ? "web" : "legacy";

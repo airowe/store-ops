@@ -19,5 +19,8 @@ export default defineConfig({
     globals: true,
     environment: "jsdom",
     setupFiles: ["./src/vitest.setup.ts"],
+    // Only this app's TS/TSX tests. The spine's node:test *.test.mjs (reachable
+    // via the @shipaso alias) are run by the CI `spine` job, not vitest.
+    include: ["src/**/*.{test,spec}.{ts,tsx}"],
   },
 });
