@@ -16,6 +16,7 @@ import type {
   RankCadence,
   RanksSeries,
   Run,
+  RunDetail,
   StoredCredential,
   WarRoomView,
 } from "./types.js";
@@ -44,6 +45,12 @@ export const warRoom = (c: ApiClient, id: string, competitors?: string[]) =>
 
 export const runApp = (c: ApiClient, id: string) =>
   c.post<Run>(`/apps/${enc(id)}/run`);
+
+// ── run detail (the money screen) ───────────────────────────────────────────
+export const getRun = (c: ApiClient, id: string) => c.get<RunDetail>(`/runs/${enc(id)}`);
+/** The human gate. Returns the updated run; pushCommands are revealed on approve. */
+export const decideRun = (c: ApiClient, id: string, decision: "approve" | "reject") =>
+  c.post<RunDetail>(`/runs/${enc(id)}/${decision}`, { decision });
 
 // ── auth + settings ─────────────────────────────────────────────────────────
 export const me = (c: ApiClient) => c.get<Me>("/auth/me");

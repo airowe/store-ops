@@ -63,6 +63,39 @@ export type AppDetail = {
   runs: RunRow[];
 };
 
+// ── run detail (the money screen) ───────────────────────────────────────────
+export type CopyFields = {
+  name?: string;
+  subtitle?: string;
+  /** the keyword FIELD (comma-joined). */
+  keywords?: string;
+  promo?: string;
+  description?: string;
+  whatsNew?: string;
+};
+export type PushCommand = {
+  store: "appstore" | "googleplay";
+  tool: "asc" | "gplay";
+  description: string;
+  command: string;
+};
+export type RunApproval = { decision: string; decided_at: string };
+export type RunResult = {
+  currentCopy: CopyFields;
+  proposedCopy: CopyFields;
+  /** withheld ([]) until the human approves — the server privacy boundary. */
+  pushCommands: PushCommand[];
+  findingsSummary?: FindingsSummary;
+};
+export type RunDetail = {
+  id: string;
+  app_id: string;
+  status: string;
+  created_at: string;
+  approval: RunApproval | null;
+  result: RunResult;
+};
+
 // ── connect / resolve ───────────────────────────────────────────────────────
 export type Candidate = {
   bundle_id: string;

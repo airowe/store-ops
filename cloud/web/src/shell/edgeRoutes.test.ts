@@ -16,9 +16,15 @@ describe("resolveSurface (strangler edge map)", () => {
     expect(resolveSurface("/", OWNED_PATHS)).toBe("web");
   });
   it("still proxies un-migrated routes to legacy", () => {
-    for (const p of ["/runs/xyz", "/apps/abc/extra/deep"]) {
+    // public surfaces (PRD 09) + nonsense deep paths remain legacy
+    for (const p of ["/preview", "/login", "/apps/abc/extra/deep"]) {
       expect(resolveSurface(p, OWNED_PATHS)).toBe("legacy");
     }
+  });
+
+  it("owns /runs/:id (the money screen) — PRD 07 cutover", () => {
+    expect(resolveSurface("/runs/xyz", OWNED_PATHS)).toBe("web");
+    expect(resolveSurface("/runs/xyz/extra", OWNED_PATHS)).toBe("legacy");
   });
   it("owning '/' does not accidentally own deep paths", () => {
     // "/" matches only the exact root, never /apps/* etc.

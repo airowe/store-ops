@@ -24,6 +24,8 @@ export const OWNED_PATHS: readonly OwnedPattern[] = [
   /^\/apps\/[^/]+$/,
   // War room (PRD 06) — /apps/:id/war-room.
   /^\/apps\/[^/]+\/war-room$/,
+  // Run detail / money screen (PRD 07) — /runs/:id.
+  /^\/runs\/[^/]+$/,
 ];
 
 /** Decide which surface should serve a pathname. */
