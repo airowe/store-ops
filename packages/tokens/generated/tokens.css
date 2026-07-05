@@ -1,0 +1,62 @@
+/* GENERATED from packages/tokens/tokens.json — do not edit by hand. */
+:root {
+  --mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
+  --sans: "Space Grotesk", -apple-system, "Segoe UI", Roboto, sans-serif;
+  --display: "Fraunces", Georgia, serif;
+  --radius: 14px;
+  --bg: #07090e;
+  --bg-2: #0b0e14;
+  --panel: #11151f;
+  --panel-2: #151a26;
+  --line: #222a3b;
+  --line-soft: #1a2130;
+  --ink: #eef1f7;
+  --dim: #97a1b6;
+  --faint: #626c83;
+  --signal: #34d399;
+  --signal-dim: #1f8f66;
+  --signal-glow: rgba(52, 211, 153, 0.18);
+  --brand: #5b8cff;
+  --warn: #fbbf24;
+  --bad: #f87171;
+  --raise: rgba(255, 255, 255, 0.020);
+  --raise-2: rgba(255, 255, 255, 0.015);
+  --raise-3: rgba(255, 255, 255, 0.012);
+  --on-signal: #04140d;
+  --topbar-bg: rgba(7, 9, 14, 0.82);
+  --overlay: rgba(7, 9, 14, 0.74);
+  --grain: 0.025;
+  --shadow: 0 24px 60px rgba(0, 0, 0, 0.5);
+  --color-scheme: dark;
+}
+
+:root[data-theme="light"] {
+  --mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
+  --sans: "Space Grotesk", -apple-system, "Segoe UI", Roboto, sans-serif;
+  --display: "Fraunces", Georgia, serif;
+  --radius: 14px;
+  --bg: #f6f7f9;
+  --bg-2: #eceff4;
+  --panel: #ffffff;
+  --panel-2: #f3f5f9;
+  --line: #d6dceb;
+  --line-soft: #e6eaf2;
+  --ink: #111621;
+  --dim: #4a5468;
+  --faint: #7a8398;
+  --signal: #0f9d63;
+  --signal-dim: #0b7d4e;
+  --signal-glow: rgba(15, 157, 99, 0.14);
+  --brand: #3563e0;
+  --warn: #b7791f;
+  --bad: #dc4a41;
+  --raise: rgba(17, 22, 33, 0.028);
+  --raise-2: rgba(17, 22, 33, 0.022);
+  --raise-3: rgba(17, 22, 33, 0.016);
+  --on-signal: #ffffff;
+  --topbar-bg: rgba(246, 247, 249, 0.82);
+  --overlay: rgba(28, 34, 46, 0.42);
+  --grain: 0;
+  --shadow: 0 24px 60px rgba(28, 40, 66, 0.14);
+  --color-scheme: light;
+}
