@@ -135,6 +135,8 @@ describe.each(WIDTHS)("screens render on %s (width %i)", (_label, width) => {
   });
 
   it("Login", async () => {
+    // Login redirects into `(app)` when authed — render it in its real state.
+    await clearToken();
     renderScreen(<Login />);
     await waitFor(() => expect(screen.getByText("Sign in")).toBeTruthy());
     expect(screen.getByTestId("email-input")).toBeTruthy();

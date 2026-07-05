@@ -7,18 +7,24 @@
  */
 import React, { useState } from "react";
 import { View } from "react-native";
+import { Redirect } from "expo-router";
 import { useAuth } from "../../src/auth/AuthProvider.js";
 import { Screen, AppText, Button, Card } from "../../src/components/primitives.js";
 import { TextField } from "../../src/components/TextField.js";
 
 export default function Login() {
-  const { requestLink, completeMagicLink } = useAuth();
+  const { status, requestLink, completeMagicLink } = useAuth();
   const [email, setEmail] = useState("");
   const [sent, setSent] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const valid = /\S+@\S+\.\S+/.test(email.trim());
+
+  // The `(app)` guard redirects unauthed → here; this is the reverse edge. Auth
+  // can complete while this screen is up (pasted token, or a magic deep link
+  // arriving in the foreground), and nothing else navigates away from it.
+  if (status === "authed") return <Redirect href="/(app)" />;
 
   async function send() {
     if (!valid) return;

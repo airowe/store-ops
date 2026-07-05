@@ -29,6 +29,10 @@ const config: ExpoConfig = {
   orientation: "default",
   userInterfaceStyle: "dark",
   backgroundColor: "#07090e",
+  // The ship mark mirrors the web favicon (cloud/public/index.html).
+  icon: "./assets/icon.png",
+  splash: { image: "./assets/splash.png", resizeMode: "contain", backgroundColor: "#07090e" },
+  notification: { icon: "./assets/notification-icon.png", color: "#34d399" },
   assetBundlePatterns: ["**/*"],
   ios: {
     bundleIdentifier: APP_IDENTIFIER,
@@ -45,6 +49,7 @@ const config: ExpoConfig = {
   android: {
     package: APP_IDENTIFIER,
     versionCode: 1,
+    adaptiveIcon: { foregroundImage: "./assets/adaptive-icon.png", backgroundColor: "#07090e" },
     permissions: ["POST_NOTIFICATIONS"],
     intentFilters: [
       {
@@ -59,7 +64,8 @@ const config: ExpoConfig = {
   experiments: { typedRoutes: true },
   extra: {
     apiBase: API_BASE,
-    eas: { projectId: process.env.EAS_PROJECT_ID ?? "EAS_PROJECT_ID_PLACEHOLDER" },
+    // @airowe/shipaso on expo.dev (created via `eas init`).
+    eas: { projectId: process.env.EAS_PROJECT_ID ?? "8eb364b9-0afc-49af-8393-5feccc7111c3" },
   },
 };
 

@@ -19,13 +19,11 @@
   "submit": {
     "production": {
       "ios": {
-        "//": "Fill from App Store Connect before `eas submit`. appleId / ascAppId / appleTeamId are required; never commit an app-specific password — use EXPO secrets / interactive auth.",
-        "appleId": "APPLE_ID_EMAIL_PLACEHOLDER",
+        "appleId": "adaminsley@gmail.com",
         "ascAppId": "ASC_APP_ID_PLACEHOLDER",
-        "appleTeamId": "APPLE_TEAM_ID_PLACEHOLDER"
+        "appleTeamId": "7WWYCV9VT8"
       },
       "android": {
-        "//": "Provide the Play service-account JSON path via an EAS secret (GOOGLE_SERVICE_ACCOUNT_KEY), not a committed file.",
         "track": "internal",
         "releaseStatus": "draft"
       }

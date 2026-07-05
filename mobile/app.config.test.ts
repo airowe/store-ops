@@ -1,3 +1,4 @@
+import * as fs from "node:fs";
 import config, { APP_IDENTIFIER, ASSOCIATED_HOST } from "./app.config.js";
 
 describe("app.config (ship readiness)", () => {
@@ -24,5 +25,17 @@ describe("app.config (ship readiness)", () => {
 
   it("has a runtimeVersion policy (OTA safety)", () => {
     expect(config.runtimeVersion).toEqual({ policy: "appVersion" });
+  });
+
+  it("references binary assets that exist on disk (EAS build would fail without them)", () => {
+    for (const p of [
+      config.icon,
+      config.splash?.image,
+      config.android?.adaptiveIcon?.foregroundImage,
+      config.notification?.icon,
+    ]) {
+      expect(p).toBeDefined();
+      expect(fs.existsSync(p as string)).toBe(true);
+    }
   });
 });
