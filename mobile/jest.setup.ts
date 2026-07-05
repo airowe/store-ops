@@ -11,7 +11,10 @@ import "@testing-library/react-native";
 jest.mock("react-native-graph", () => {
   const React = require("react");
   const { View } = require("react-native");
-  return { LineGraph: (props: Record<string, unknown>) => React.createElement(View, { testID: "line-graph" }) };
+  return {
+    LineGraph: (_props: Record<string, unknown>) => React.createElement(View, { testID: "line-graph" }),
+    SelectionDot: () => null,
+  };
 });
 
 // In-memory SecureStore so session-token persistence is observable in tests.

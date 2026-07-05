@@ -12,10 +12,12 @@ describe("RankTrendChart", () => {
     expect(toJSON()).toBeNull();
   });
 
-  it("renders the graph for a real series", () => {
+  it("renders the graph for a real series, with the latest rank in the readout", () => {
     const { getByTestId } = render(<RankTrendChart points={[p(20, 1), p(8, 2)]} />);
     expect(getByTestId("rank-trend-chart")).toBeTruthy();
     expect(getByTestId("line-graph")).toBeTruthy();
+    // default readout = latest measured point (#8 on the 2nd)
+    expect(getByTestId("scrub-readout").props.children.join("")).toContain("#8");
   });
 
   it("notes omitted unmeasured points in the caption (honesty)", () => {

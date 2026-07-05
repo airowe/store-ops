@@ -69,15 +69,17 @@ export function AppText({
   style,
   numberOfLines,
   selectable,
+  testID,
 }: {
   kind?: TextKind;
   children: React.ReactNode;
   style?: StyleProp<TextStyle>;
   numberOfLines?: number;
   selectable?: boolean;
+  testID?: string;
 }) {
   return (
-    <Text style={[TEXT_STYLE[kind], style]} numberOfLines={numberOfLines} selectable={selectable}>
+    <Text style={[TEXT_STYLE[kind], style]} numberOfLines={numberOfLines} selectable={selectable} testID={testID}>
       {children}
     </Text>
   );
