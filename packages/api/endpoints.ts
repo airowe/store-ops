@@ -14,6 +14,8 @@ import type {
   Me,
   NotificationPrefs,
   RankCadence,
+  PreviewResult,
+  ProofAggregate,
   RanksSeries,
   Run,
   RunDetail,
@@ -27,6 +29,13 @@ export const getApps = (c: ApiClient) => c.get<{ apps: AppListItem[] }>("/apps")
 
 export const resolveApps = (c: ApiClient, query: string, offset = 0) =>
   c.post<{ candidates: Candidate[] }>("/resolve", { query, offset });
+
+// ── public surfaces (funnel) ────────────────────────────────────────────────
+export const authRequest = (c: ApiClient, email: string) =>
+  c.post<{ sent: true }>("/auth/request", { email });
+export const getProof = (c: ApiClient) => c.get<ProofAggregate>("/proof");
+export const preview = (c: ApiClient, body: { query?: string; bundle_id?: string; offset?: number }) =>
+  c.post<PreviewResult>("/preview", body);
 export const connectApp = (c: ApiClient, body: { bundle_id?: string; query?: string; name?: string }) =>
   c.post<ConnectResult>("/apps", body);
 

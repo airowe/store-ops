@@ -108,6 +108,22 @@ export type ConnectResult =
   | { id: string; name: string; bundleId: string }
   | { needsChoice: true; candidates: Candidate[] };
 
+// ── public surfaces (funnel) ────────────────────────────────────────────────
+export type ProofAggregate = {
+  appsWithWins: number;
+  totalWins: number;
+  bestImprovement: number;
+  medianImprovement: number;
+};
+/** POST /preview → candidate picker, a preview audit, or an error. */
+export type PreviewResult = {
+  needsChoice?: boolean;
+  candidates?: Candidate[];
+  bundleId?: string;
+  error?: string;
+  preview?: { grade?: string | null; summary?: string; findings?: string[] };
+};
+
 // ── settings (comms-prefs) ──────────────────────────────────────────────────
 export type RankCadence = "weekly" | "daily";
 export type EmailDigest = "weekly" | "off";

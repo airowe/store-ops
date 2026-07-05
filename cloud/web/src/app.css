@@ -102,6 +102,14 @@ h2 { font-family: var(--display); font-weight: 600; font-size: 22px; letter-spac
 .run-row { display: flex; align-items: center; justify-content: space-between; cursor: pointer; }
 .run-row:hover { border-color: var(--signal-dim); }
 
+/* public surfaces */
+.stat { text-align: center; }
+.stat-v { font-family: var(--mono); font-size: 30px; font-weight: 700; color: var(--signal); }
+.stat-k { font-family: var(--mono); font-size: 11px; color: var(--faint); text-transform: uppercase; letter-spacing: .05em; margin-top: 4px; }
+.grade { display: inline-flex; align-items: center; justify-content: center; min-width: 30px; height: 30px; padding: 0 6px; border-radius: 8px; font-family: var(--mono); font-weight: 700; background: var(--signal-glow); color: var(--signal); margin-left: 8px; }
+.asc-unlock { padding: 14px; border-radius: 10px; border: 1px dashed var(--signal-dim); background: var(--signal-glow); }
+.asc-unlock b { color: var(--ink); }
+
 /* money screen: diff + budgets + handoff */
 .difflist { display: flex; flex-direction: column; gap: 12px; margin: 8px 0; }
 .diffrow { border: 1px solid var(--line-soft); border-radius: 10px; padding: 12px 14px; background: var(--raise-3); }

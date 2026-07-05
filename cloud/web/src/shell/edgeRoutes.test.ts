@@ -15,9 +15,13 @@ describe("resolveSurface (strangler edge map)", () => {
     expect(resolveSurface("/settings", OWNED_PATHS)).toBe("web");
     expect(resolveSurface("/", OWNED_PATHS)).toBe("web");
   });
-  it("still proxies un-migrated routes to legacy", () => {
-    // public surfaces (PRD 09) + nonsense deep paths remain legacy
-    for (const p of ["/preview", "/login", "/apps/abc/extra/deep"]) {
+  it("owns the public surfaces (PRD 09): /login, /preview, /proof", () => {
+    for (const p of ["/login", "/preview", "/proof"]) {
+      expect(resolveSurface(p, OWNED_PATHS)).toBe("web");
+    }
+  });
+  it("still proxies genuinely unknown/deep paths to legacy", () => {
+    for (const p of ["/apps/abc/extra/deep", "/some-legacy-thing"]) {
       expect(resolveSurface(p, OWNED_PATHS)).toBe("legacy");
     }
   });
