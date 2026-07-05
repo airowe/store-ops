@@ -10,6 +10,7 @@ import { useMutation, useQuery } from "@tanstack/react-query";
 import { useAuth } from "../../../src/auth/AuthProvider.js";
 import { auditPlay, getApp, getDeltas, getRanks, runAsc, verifyPlay } from "../../../src/api/endpoints.js";
 import { RankMovementRow } from "../../../src/components/RankMovementRow.js";
+import { Sparkline } from "../../../src/components/Sparkline.js";
 import { CredentialSheet, type AscSubmit, type PlaySubmit } from "../../../src/components/CredentialSheet.js";
 import { PlayAuditView } from "../../../src/components/PlayAuditView.js";
 import { CompetitorsCard } from "../../../src/components/CompetitorsCard.js";
@@ -77,6 +78,16 @@ export default function AppDetail() {
         <Button label="War room" variant="ghost" onPress={() => router.push(`/(app)/war-room/${a.id}`)} />
         <Button label="Share a win" variant="ghost" onPress={() => void shareWin(a.id)} />
       </View>
+
+      {ranks.data?.points && ranks.data.points.length >= 2 ? (
+        <View testID="rank-trend">
+          <Card>
+            <AppText kind="lead">Rank trend</AppText>
+            <Sparkline points={ranks.data.points} />
+            <AppText kind="micro">Organic rank over time (lower is better). History starts when tracking started.</AppText>
+          </Card>
+        </View>
+      ) : null}
 
       {deltas.data && deltas.data.entries.length > 0 ? (
         <Card>

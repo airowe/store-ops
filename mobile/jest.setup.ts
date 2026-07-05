@@ -5,6 +5,12 @@
  */
 import "@testing-library/react-native";
 
+// AsyncStorage: the library ships an in-memory jest mock; the theme provider
+// (light/dark preference) reads/writes it, so wire it up globally.
+jest.mock("@react-native-async-storage/async-storage", () =>
+  require("@react-native-async-storage/async-storage/jest/async-storage-mock"),
+);
+
 // In-memory SecureStore so session-token persistence is observable in tests.
 jest.mock("expo-secure-store", () => {
   const mem = new Map<string, string>();

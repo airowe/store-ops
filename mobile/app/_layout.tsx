@@ -1,15 +1,16 @@
 /**
- * Root layout — mounts the app-wide providers (React Query for server-state +
- * the navigation Stack) and the dark theme background. Screen groups live under
- * `(public)` (login/preview/proof) and `(app)` (the authed dashboard + details);
- * the auth guard that routes between them lands with Phase 1's session work.
+ * Root layout — mounts the app-wide providers (theme + React Query for
+ * server-state + the navigation Stack). `ThemeProvider` sits outermost so every
+ * screen can read the live light/dark palette; the shell chrome (nav background,
+ * status bar) tracks it too. Screen groups live under `(public)` (login/preview/
+ * proof) and `(app)` (the authed dashboard + details).
  */
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Stack } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { AuthProvider } from "../src/auth/AuthProvider.js";
 import { NotificationsBridge } from "../src/notifications/NotificationsBridge.js";
-import { palette } from "../src/theme/index.js";
+import { ThemeProvider, usePalette, useThemeMode } from "../src/theme/index.js";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -17,19 +18,32 @@ const queryClient = new QueryClient({
   },
 });
 
+/** The navigation shell — inside ThemeProvider so it can read the live palette. */
+function AppShell() {
+  const palette = usePalette();
+  const { scheme } = useThemeMode();
+  return (
+    <>
+      <StatusBar style={scheme === "light" ? "dark" : "light"} />
+      <Stack
+        screenOptions={{
+          headerShown: false,
+          contentStyle: { backgroundColor: palette.bg },
+        }}
+      />
+    </>
+  );
+}
+
 export default function RootLayout() {
   return (
-    <QueryClientProvider client={queryClient}>
-      <AuthProvider>
-        <NotificationsBridge />
-        <StatusBar style="light" />
-        <Stack
-          screenOptions={{
-            headerShown: false,
-            contentStyle: { backgroundColor: palette.bg },
-          }}
-        />
-      </AuthProvider>
-    </QueryClientProvider>
+    <ThemeProvider>
+      <QueryClientProvider client={queryClient}>
+        <AuthProvider>
+          <NotificationsBridge />
+          <AppShell />
+        </AuthProvider>
+      </QueryClientProvider>
+    </ThemeProvider>
   );
 }

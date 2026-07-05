@@ -3466,12 +3466,23 @@
     var svgNS = "http://www.w3.org/2000/svg";
     var svg = document.createElementNS(svgNS, "svg");
     svg.setAttribute("class", "spark"); svg.setAttribute("viewBox", "0 0 " + W + " " + H); svg.setAttribute("preserveAspectRatio", "none");
+    // Theme-aware fill: resolve --signal at render time (unique gradient id per
+    // chart so light/dark repaints and multiple sparklines never collide).
+    var signal = (getComputedStyle(document.documentElement).getPropertyValue("--signal") || "#34d399").trim();
+    var gid = "sparkfill-" + Math.random().toString(36).slice(2, 8);
+    // faint horizontal gridlines (quarter divisions) — a modern chart floor.
+    var grid = "";
+    for (var gi = 1; gi <= 3; gi++) {
+      var gy = (pad + (gi / 4) * (H - pad * 2)).toFixed(1);
+      grid += '<line class="grid" x1="' + pad + '" y1="' + gy + '" x2="' + (W - pad) + '" y2="' + gy + '"/>';
+    }
     svg.innerHTML =
-      '<defs><linearGradient id="sparkfill" x1="0" y1="0" x2="0" y2="1">' +
-      '<stop offset="0%" stop-color="#34d399" stop-opacity="0.35"/>' +
-      '<stop offset="100%" stop-color="#34d399" stop-opacity="0"/></linearGradient></defs>' +
+      '<defs><linearGradient id="' + gid + '" x1="0" y1="0" x2="0" y2="1">' +
+      '<stop offset="0%" stop-color="' + signal + '" stop-opacity="0.28"/>' +
+      '<stop offset="100%" stop-color="' + signal + '" stop-opacity="0"/></linearGradient></defs>' +
+      grid +
       '<line class="axis" x1="' + pad + '" y1="' + (H - pad) + '" x2="' + (W - pad) + '" y2="' + (H - pad) + '"/>' +
-      '<path class="area" d="' + dArea + '"/>' +
+      '<path class="area" style="fill:url(#' + gid + ')" d="' + dArea + '"/>' +
       '<path class="line" d="' + dLine + '"/>';
     // endpoint dot + labels
     points.forEach(function (p, i) {
@@ -3854,9 +3865,32 @@
     return viewDashboard();
   }
 
+  /* ════════════════════════ theme (dark ⇄ light) ═══════════════════════════
+     The pre-paint inline script in index.html already applied any saved choice.
+     Here we wire the toggle: flip the <html data-theme>, persist it, and let the
+     CSS custom properties do the rest. No stored choice ⇒ we read the OS default
+     so the first tap flips to the OPPOSITE of what the user is actually seeing. */
+  function currentTheme() {
+    var explicit = document.documentElement.getAttribute("data-theme");
+    if (explicit === "light" || explicit === "dark") return explicit;
+    return (window.matchMedia && window.matchMedia("(prefers-color-scheme: light)").matches) ? "light" : "dark";
+  }
+  function setTheme(t) {
+    document.documentElement.setAttribute("data-theme", t);
+    try { localStorage.setItem("store-ops:theme", t); } catch (e) {}
+  }
+  function wireThemeToggle() {
+    var btn = document.getElementById("themeToggle");
+    if (!btn) return;
+    btn.addEventListener("click", function () {
+      setTheme(currentTheme() === "light" ? "dark" : "light");
+    });
+  }
+
   window.addEventListener("hashchange", route);
   window.addEventListener("DOMContentLoaded", function () {
     document.getElementById("logo").addEventListener("click", function () { go("#/"); });
+    wireThemeToggle();
     // wire the demo "acting as" field. Typing an email opts into the demo path
     // (only works when the backend runs APP_ENV=demo); clearing it logs out of
     // demo and falls back to the real login screen. Empty by default — we never

@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { fonts, palette, theme } from "./tokens.js";
+import { fonts, lightPalette, palette, paletteFor, theme } from "./tokens.js";
 
 /** The web's canonical design system — the single source of truth. */
 const stylesCss = readFileSync(
@@ -11,6 +11,21 @@ const stylesCss = readFileSync(
 /** Pull a `--name: value;` custom property out of the web's :root block. */
 function cssVar(name: string): string | null {
   const m = stylesCss.match(new RegExp(`--${name}:\\s*([^;]+);`));
+  return m ? m[1]!.trim() : null;
+}
+
+/** The web's explicit light theme block (`:root[data-theme="light"] { … }`). */
+const lightBlock = (() => {
+  const start = stylesCss.indexOf(':root[data-theme="light"]');
+  if (start < 0) return "";
+  const open = stylesCss.indexOf("{", start);
+  const close = stylesCss.indexOf("}", open);
+  return stylesCss.slice(open, close);
+})();
+
+/** Pull a `--name: value;` custom property out of the web's light block. */
+function lightVar(name: string): string | null {
+  const m = lightBlock.match(new RegExp(`--${name}:\\s*([^;]+);`));
   return m ? m[1]!.trim() : null;
 }
 
@@ -44,6 +59,37 @@ describe("theme tokens", () => {
     const fromCss = cssVar(cssName);
     expect(fromCss).not.toBeNull(); // --${cssName} must exist in styles.css
     expect(palette[key].toLowerCase()).toBe(fromCss!.toLowerCase());
+  });
+
+  // The light palette binds to the web's :root[data-theme="light"] block, the
+  // same source-of-truth discipline as dark — a light-token change on the web
+  // that isn't mirrored here breaks the build.
+  it.each([
+    ["bg", "bg"],
+    ["bg-2", "bg2"],
+    ["panel", "panel"],
+    ["panel-2", "panel2"],
+    ["line", "line"],
+    ["line-soft", "lineSoft"],
+    ["ink", "ink"],
+    ["dim", "dim"],
+    ["faint", "faint"],
+    ["signal", "signal"],
+    ["signal-dim", "signalDim"],
+    ["brand", "brand"],
+    ["warn", "warn"],
+    ["bad", "bad"],
+  ] as const)("light --%s matches lightPalette.%s", (cssName, key) => {
+    const fromCss = lightVar(cssName);
+    expect(fromCss).not.toBeNull(); // --${cssName} must exist in the light block
+    expect(lightPalette[key].toLowerCase()).toBe(fromCss!.toLowerCase());
+  });
+
+  it("paletteFor resolves scheme → palette", () => {
+    expect(paletteFor("dark")).toBe(palette);
+    expect(paletteFor("light")).toBe(lightPalette);
+    // both schemes carry the same key set (so components can swap freely)
+    expect(Object.keys(lightPalette).sort()).toEqual(Object.keys(palette).sort());
   });
 
   it("exposes the three canonical font families", () => {
