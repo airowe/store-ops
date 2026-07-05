@@ -19,9 +19,11 @@ export const OWNED_PATHS: readonly OwnedPattern[] = [
   "/_shell/health",
   "/settings",
   "/",
-  // App detail — exactly one segment after /apps. NOT /apps/:id/war-room (still
-  // legacy until PRD 06), and NOT the bare /apps connect endpoint.
+  // App detail — exactly one segment after /apps. NOT the bare /apps connect
+  // endpoint.
   /^\/apps\/[^/]+$/,
+  // War room (PRD 06) — /apps/:id/war-room.
+  /^\/apps\/[^/]+\/war-room$/,
 ];
 
 /** Decide which surface should serve a pathname. */

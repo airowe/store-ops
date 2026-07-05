@@ -16,7 +16,7 @@ describe("resolveSurface (strangler edge map)", () => {
     expect(resolveSurface("/", OWNED_PATHS)).toBe("web");
   });
   it("still proxies un-migrated routes to legacy", () => {
-    for (const p of ["/runs/xyz", "/apps/abc/war-room"]) {
+    for (const p of ["/runs/xyz", "/apps/abc/extra/deep"]) {
       expect(resolveSurface(p, OWNED_PATHS)).toBe("legacy");
     }
   });
@@ -26,9 +26,9 @@ describe("resolveSurface (strangler edge map)", () => {
     expect(resolveSurface("/", ["/"])).toBe("web");
   });
 
-  it("owns /apps/:id (one segment) but NOT its children or the bare /apps", () => {
+  it("owns /apps/:id and /apps/:id/war-room, but not the bare /apps", () => {
     expect(resolveSurface("/apps/abc", OWNED_PATHS)).toBe("web"); // PRD 05
-    expect(resolveSurface("/apps/abc/war-room", OWNED_PATHS)).toBe("legacy"); // PRD 06, not yet
+    expect(resolveSurface("/apps/abc/war-room", OWNED_PATHS)).toBe("web"); // PRD 06
     expect(resolveSurface("/apps", OWNED_PATHS)).toBe("legacy"); // connect endpoint, not a page
   });
   it("a prefix must match a full segment (no accidental /settings-foo capture)", () => {

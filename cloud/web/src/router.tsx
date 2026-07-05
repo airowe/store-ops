@@ -9,6 +9,7 @@ import { Health } from "./routes/health.js";
 import { DashboardRoute } from "./routes/dashboard.js";
 import { SettingsRoute } from "./routes/settings.js";
 import { AppDetailRoute } from "./routes/appDetail.js";
+import { WarRoomRoute } from "./routes/warRoom.js";
 
 const rootRoute = createRootRoute({ component: ShellLayout });
 
@@ -16,8 +17,9 @@ const indexRoute = createRoute({ getParentRoute: () => rootRoute, path: "/", com
 const healthRoute = createRoute({ getParentRoute: () => rootRoute, path: "/_shell/health", component: Health });
 const settingsRoute = createRoute({ getParentRoute: () => rootRoute, path: "/settings", component: SettingsRoute });
 const appDetailRoute = createRoute({ getParentRoute: () => rootRoute, path: "/apps/$id", component: AppDetailRoute });
+const warRoomRoute = createRoute({ getParentRoute: () => rootRoute, path: "/apps/$id/war-room", component: WarRoomRoute });
 
-const routeTree = rootRoute.addChildren([indexRoute, healthRoute, settingsRoute, appDetailRoute]);
+const routeTree = rootRoute.addChildren([indexRoute, healthRoute, settingsRoute, appDetailRoute, warRoomRoute]);
 
 export const router = createRouter({ routeTree });
 

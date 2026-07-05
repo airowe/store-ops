@@ -35,7 +35,26 @@ export type DeltaEntry = {
 };
 export type DeltasResponse = { entries: DeltaEntry[] };
 
-export type WarRoomResponse = { warRoom: unknown[]; competitors: string[] };
+export type WarTrend = "gaining" | "losing" | "flat" | "new" | "lost" | (string & {});
+export type HeadToHead = {
+  keyword: string;
+  /** your current rank, or null if unranked (never 0). */
+  you: number | null;
+  /** your prior rank, or null when there's only one snapshot (skip count-up). */
+  youPrevious: number | null;
+  competitors: Array<{ name: string; rank: number | null }>;
+  /** your rank − best competitor rank; null when there's no gap to close. */
+  gapToBest: number | null;
+  trend: WarTrend;
+  winning: boolean;
+};
+export type WarRoomView = {
+  appName: string;
+  warRoom: HeadToHead[];
+  competitors: string[];
+  window: number;
+  checkedAt: string;
+};
 export type Run = { id: string; app_id: string; status: RunStatus; created_at: string };
 
 export type RunRow = { id: string; status: RunStatus; created_at: string };

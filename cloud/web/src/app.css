@@ -102,6 +102,24 @@ h2 { font-family: var(--display); font-weight: 600; font-size: 22px; letter-spac
 .run-row { display: flex; align-items: center; justify-content: space-between; cursor: pointer; }
 .run-row:hover { border-color: var(--signal-dim); }
 
+.war-selector { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 10px 0 14px; }
+.war-chip { font: inherit; font-size: 12.5px; cursor: pointer; padding: 5px 11px; border-radius: 999px; border: 1px solid var(--line); background: transparent; color: var(--dim); }
+.war-chip:hover { border-color: var(--signal); }
+.war-chip.on { border-color: var(--signal); color: var(--signal); background: rgba(52,211,153,.1); }
+.war-grid-wrap { overflow-x: auto; }
+.war-grid { width: 100%; border-collapse: collapse; font-size: 13px; }
+.war-grid th, .war-grid td { padding: 8px 10px; text-align: center; border-bottom: 1px solid var(--line-soft); }
+.war-grid th { color: var(--faint); font-weight: 600; font-size: 11.5px; text-transform: uppercase; letter-spacing: .04em; }
+.war-grid th.left, .war-grid td.left { text-align: left; }
+.war-grid .war-kw { font-weight: 600; color: var(--ink); }
+.war-grid tr.winning td.left { box-shadow: inset 3px 0 0 var(--signal); }
+.war-grid .pos { font-family: var(--mono); font-weight: 700; font-variant-numeric: tabular-nums; color: var(--ink); }
+.war-grid .pos.good { color: var(--signal); }
+.war-gap { font-family: var(--mono); font-weight: 700; }
+.war-gap.good { color: var(--signal); } .war-gap.bad { color: var(--bad); } .war-gap.neutral { color: var(--faint); }
+.war-trend { font-size: 12px; color: var(--dim); }
+.war-asof { margin-top: 10px; }
+
 .rank-chart { width: 100%; }
 /* uPlot chrome tuned to the design tokens (light/dark aware). */
 .rank-chart .u-axis { color: var(--faint); }
