@@ -102,6 +102,31 @@ h2 { font-family: var(--display); font-weight: 600; font-size: 22px; letter-spac
 .run-row { display: flex; align-items: center; justify-content: space-between; cursor: pointer; }
 .run-row:hover { border-color: var(--signal-dim); }
 
+/* money screen: diff + budgets + handoff */
+.difflist { display: flex; flex-direction: column; gap: 12px; margin: 8px 0; }
+.diffrow { border: 1px solid var(--line-soft); border-radius: 10px; padding: 12px 14px; background: var(--raise-3); }
+.diffrow.is-changed { border-color: var(--signal-dim); }
+.dfield { display: flex; align-items: baseline; gap: 10px; margin-bottom: 8px; }
+.dfield .fname { font-family: var(--mono); font-size: 12px; color: var(--faint); text-transform: uppercase; letter-spacing: .05em; }
+.charcount { margin-left: auto; font-family: var(--mono); font-size: 12px; color: var(--dim); font-variant-numeric: tabular-nums; }
+.charcount.over { color: var(--bad); font-weight: 700; }
+.diffcols { display: grid; grid-template-columns: 1fr auto 1fr; gap: 12px; align-items: stretch; }
+.diffside { min-width: 0; padding: 8px 10px; border-radius: 8px; font-size: 14px; word-break: break-word; }
+.diffside.was { background: rgba(248,113,113,0.06); border: 1px solid rgba(248,113,113,0.18); }
+.diffside.now { background: var(--signal-glow); border: 1px solid var(--signal-dim); }
+.diffside.now.invalid { background: rgba(248,113,113,0.10); border-color: var(--bad); }
+.diffside .strike { text-decoration: line-through; color: var(--faint); }
+.darrow { display: flex; align-items: center; color: var(--dim); }
+.diff-issues { color: var(--bad); font-size: 12px; margin-top: 6px; }
+.run-status { font-weight: 700; margin-top: 14px; }
+.run-status.good { color: var(--signal); }
+.handoff { margin-top: 16px; }
+.cmd-block { margin-top: 10px; }
+.cmd-block pre { margin: 4px 0 0; padding: 10px 12px; background: var(--bg-2); border: 1px solid var(--line-soft); border-radius: 8px; font-family: var(--mono); font-size: 12.5px; overflow-x: auto; color: var(--ink); }
+.store-tag { font-family: var(--mono); font-size: 10.5px; font-weight: 700; padding: 1px 6px; border-radius: 5px; }
+.store-tag.appstore { background: rgba(91,140,255,.16); color: var(--brand); }
+.store-tag.googleplay { background: var(--signal-glow); color: var(--signal); }
+
 .war-selector { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 10px 0 14px; }
 .war-chip { font: inherit; font-size: 12.5px; cursor: pointer; padding: 5px 11px; border-radius: 999px; border: 1px solid var(--line); background: transparent; color: var(--dim); }
 .war-chip:hover { border-color: var(--signal); }
