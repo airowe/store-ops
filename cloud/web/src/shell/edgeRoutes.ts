@@ -18,6 +18,9 @@ export type OwnedPattern = string | RegExp;
 export const OWNED_PATHS: readonly OwnedPattern[] = [
   "/_shell/health",
   "/settings",
+  "/login",
+  "/preview",
+  "/proof",
   "/",
   // App detail — exactly one segment after /apps. NOT the bare /apps connect
   // endpoint.
