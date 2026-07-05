@@ -154,6 +154,7 @@ h2 { font-family: var(--display); font-weight: 600; font-size: 22px; letter-spac
 .war-asof { margin-top: 10px; }
 
 .rank-chart { width: 100%; }
+.chart-readout { font-family: var(--mono); font-size: 13px; color: var(--signal); font-variant-numeric: tabular-nums; margin-bottom: 6px; min-height: 18px; }
 /* uPlot chrome tuned to the design tokens (light/dark aware). */
 .rank-chart .u-axis { color: var(--faint); }
 .rank-chart .u-legend { display: none; }
