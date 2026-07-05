@@ -17,7 +17,7 @@ import type {
   RanksSeries,
   Run,
   StoredCredential,
-  WarRoomResponse,
+  WarRoomView,
 } from "./types.js";
 
 const enc = encodeURIComponent;
@@ -37,8 +37,10 @@ export const getRanks = (c: ApiClient, id: string, keyword?: string) =>
 export const getDeltas = (c: ApiClient, id: string) =>
   c.get<DeltasResponse>(`/apps/${enc(id)}/deltas`);
 
-export const warRoom = (c: ApiClient, id: string, competitors: string[]) =>
-  c.get<WarRoomResponse>(`/apps/${enc(id)}/war-room?competitors=${enc(competitors.join(","))}`);
+export const warRoom = (c: ApiClient, id: string, competitors?: string[]) =>
+  c.get<WarRoomView>(
+    `/apps/${enc(id)}/war-room${competitors?.length ? `?competitors=${enc(competitors.join(","))}` : ""}`,
+  );
 
 export const runApp = (c: ApiClient, id: string) =>
   c.post<Run>(`/apps/${enc(id)}/run`);
