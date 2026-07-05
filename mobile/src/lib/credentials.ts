@@ -8,7 +8,7 @@
  * ONLY reads (document-picker → string) and validates; it has NO write/persist
  * path by construction, and `credentials.neverPersisted.test.ts` enforces it.
  */
-import * as FileSystem from "expo-file-system";
+import * as FileSystem from "expo-file-system/legacy";
 
 /** Read a picked document's contents into a string. No caching, no persistence. */
 export async function readCredentialFile(

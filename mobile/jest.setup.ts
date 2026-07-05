@@ -23,7 +23,7 @@ jest.mock("expo-document-picker", () => ({
 
 // File system: observable spies so the never-persisted credential tests can
 // assert that NO write API is ever handed a credential value.
-jest.mock("expo-file-system", () => ({
+jest.mock("expo-file-system/legacy", () => ({
   cacheDirectory: "file:///cache/",
   documentDirectory: "file:///docs/",
   readAsStringAsync: jest.fn(async () => ""),

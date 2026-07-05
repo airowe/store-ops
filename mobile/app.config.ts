@@ -31,8 +31,6 @@ const config: ExpoConfig = {
   backgroundColor: "#07090e",
   // The ship mark mirrors the web favicon (cloud/public/index.html).
   icon: "./assets/icon.png",
-  splash: { image: "./assets/splash.png", resizeMode: "contain", backgroundColor: "#07090e" },
-  notification: { icon: "./assets/notification-icon.png", color: "#34d399" },
   assetBundlePatterns: ["**/*"],
   ios: {
     bundleIdentifier: APP_IDENTIFIER,
@@ -60,7 +58,17 @@ const config: ExpoConfig = {
       },
     ],
   },
-  plugins: ["expo-router", "expo-secure-store", "expo-font", "expo-notifications"],
+  // splash + notification config moved into plugins with SDK 52+.
+  plugins: [
+    "expo-router",
+    "expo-secure-store",
+    "expo-font",
+    ["expo-notifications", { icon: "./assets/notification-icon.png", color: "#34d399" }],
+    [
+      "expo-splash-screen",
+      { image: "./assets/splash.png", resizeMode: "contain", backgroundColor: "#07090e" },
+    ],
+  ],
   experiments: { typedRoutes: true },
   extra: {
     apiBase: API_BASE,

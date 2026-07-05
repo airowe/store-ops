@@ -7,7 +7,7 @@
  *
  * Injectable deps (fs/sharing/getToken) keep it unit-testable headlessly.
  */
-import * as FileSystem from "expo-file-system";
+import * as FileSystem from "expo-file-system/legacy";
 import * as Sharing from "expo-sharing";
 import { apiBase } from "./config.js";
 import { getToken } from "../auth/session.js";

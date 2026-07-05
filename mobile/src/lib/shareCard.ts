@@ -4,7 +4,7 @@
  * show (we never dress up a hold or a slip), which we surface honestly so the
  * button only "fires" on a genuine win. Injectable deps keep it unit-testable.
  */
-import * as FileSystem from "expo-file-system";
+import * as FileSystem from "expo-file-system/legacy";
 import * as Sharing from "expo-sharing";
 import { apiBase } from "./config.js";
 import { getToken } from "../auth/session.js";

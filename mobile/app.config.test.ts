@@ -18,9 +18,11 @@ describe("app.config (ship readiness)", () => {
 
   it("declares the push permission + notifications plugin", () => {
     expect(config.android?.permissions).toContain("POST_NOTIFICATIONS");
-    expect(config.plugins).toContain("expo-notifications");
-    expect(config.plugins).toContain("expo-router");
-    expect(config.plugins).toContain("expo-secure-store");
+    const pluginNames = (config.plugins ?? []).map((p) => (Array.isArray(p) ? p[0] : p));
+    expect(pluginNames).toContain("expo-notifications");
+    expect(pluginNames).toContain("expo-router");
+    expect(pluginNames).toContain("expo-secure-store");
+    expect(pluginNames).toContain("expo-splash-screen");
   });
 
   it("has a runtimeVersion policy (OTA safety)", () => {
@@ -28,11 +30,15 @@ describe("app.config (ship readiness)", () => {
   });
 
   it("references binary assets that exist on disk (EAS build would fail without them)", () => {
+    const pluginOpts = (name: string): Record<string, unknown> => {
+      const entry = (config.plugins ?? []).find((p) => Array.isArray(p) && p[0] === name);
+      return (Array.isArray(entry) ? (entry[1] as Record<string, unknown>) : undefined) ?? {};
+    };
     for (const p of [
       config.icon,
-      config.splash?.image,
+      pluginOpts("expo-splash-screen").image,
       config.android?.adaptiveIcon?.foregroundImage,
-      config.notification?.icon,
+      pluginOpts("expo-notifications").icon,
     ]) {
       expect(p).toBeDefined();
       expect(fs.existsSync(p as string)).toBe(true);
