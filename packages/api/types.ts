@@ -38,6 +38,12 @@ export type DeltasResponse = { entries: DeltaEntry[] };
 export type WarRoomResponse = { warRoom: unknown[]; competitors: string[] };
 export type Run = { id: string; app_id: string; status: RunStatus; created_at: string };
 
+export type RunRow = { id: string; status: RunStatus; created_at: string };
+export type AppDetail = {
+  app: { id: string; bundle_id: string; name: string; country: string };
+  runs: RunRow[];
+};
+
 // ── connect / resolve ───────────────────────────────────────────────────────
 export type Candidate = {
   bundle_id: string;
