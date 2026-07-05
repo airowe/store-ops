@@ -25,3 +25,13 @@ export function buildSparkGeometry(
   points: readonly SparkPoint[],
   opts: { width: number; height: number; pad: number },
 ): SparkGeometry;
+
+export type RankSeriesPoint = { rank: number | null; checked_at: string };
+export type RankSeries = {
+  t: number[];
+  rank: (number | null)[];
+  loRank: number;
+  hiRank: number;
+  empty: boolean;
+};
+export function toRankSeries(points: readonly RankSeriesPoint[]): RankSeries;

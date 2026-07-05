@@ -14,7 +14,8 @@
     "@tanstack/react-query": "^5.51.0",
     "@tanstack/react-router": "^1.95.3",
     "react": "^19.0.0",
-    "react-dom": "^19.0.0"
+    "react-dom": "^19.0.0",
+    "uplot": "^1.6.32"
   },
   "devDependencies": {
     "@testing-library/jest-dom": "^6.6.3",

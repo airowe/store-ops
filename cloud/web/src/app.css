@@ -92,3 +92,8 @@ h1 { font-family: var(--display); font-weight: 600; font-size: 30px; letter-spac
 
 .empty { text-align: center; padding: 40px 20px; color: var(--dim); }
 .empty .big { font-size: 36px; margin-bottom: 8px; }
+
+.rank-chart { width: 100%; }
+/* uPlot chrome tuned to the design tokens (light/dark aware). */
+.rank-chart .u-axis { color: var(--faint); }
+.rank-chart .u-legend { display: none; }
