@@ -5,6 +5,15 @@
  */
 import "@testing-library/react-native";
 
+// react-native-graph renders via Skia + reanimated worklets (native) — mock it
+// to a plain View so component tests stay headless. The honest data mapping is
+// tested separately (src/lib/rankSeries.test.ts).
+jest.mock("react-native-graph", () => {
+  const React = require("react");
+  const { View } = require("react-native");
+  return { LineGraph: (props: Record<string, unknown>) => React.createElement(View, { testID: "line-graph" }) };
+});
+
 // In-memory SecureStore so session-token persistence is observable in tests.
 jest.mock("expo-secure-store", () => {
   const mem = new Map<string, string>();
