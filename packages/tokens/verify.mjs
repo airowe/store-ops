@@ -36,24 +36,45 @@ const rootBody = block(":root");
 const lightBody = block(':root[data-theme="light"]');
 
 let failures = 0;
-for (const [themeName, selectorBody] of [["dark", rootBody], ["light", lightBody]]) {
-  const theme = tokens.themes[themeName];
+
+// 1) DARK parity — the hard proof: every palette key in tokens.json must match
+// the value shipping in styles.css :root today. This is a no-op or it's drift.
+for (const key of tokens.paletteKeys) {
+  const want = norm(tokens.themes.dark[key]);
+  const got = rootBody ? cssVar(rootBody, key) : null;
+  if (got == null) {
+    console.error(`  ✗ [dark] --${key} missing from styles.css`);
+    failures++;
+  } else if (norm(got) !== want) {
+    console.error(`  ✗ [dark] --${key}: styles.css=${got} tokens.json=${tokens.themes.dark[key]}`);
+    failures++;
+  }
+}
+
+// 2) LIGHT completeness — the light palette is the forward token set (the SoT
+// the web light theme will generate FROM). It need not exist in styles.css yet,
+// but it MUST be swap-compatible with dark: same key set, all non-empty. If a
+// light [data-theme="light"] block IS present, additionally assert it matches.
+const lightKeys = tokens.paletteKeys.filter((k) => typeof tokens.themes.light[k] === "string" && tokens.themes.light[k].length);
+if (lightKeys.length !== tokens.paletteKeys.length) {
+  console.error(`  ✗ [light] palette is incomplete: ${lightKeys.length}/${tokens.paletteKeys.length} keys`);
+  failures++;
+}
+if (lightBody) {
   for (const key of tokens.paletteKeys) {
-    const want = norm(theme[key]);
-    const got = selectorBody ? cssVar(selectorBody, key) : null;
-    if (got == null) {
-      console.error(`  ✗ [${themeName}] --${key} missing from styles.css`);
-      failures++;
-    } else if (norm(got) !== want) {
-      console.error(`  ✗ [${themeName}] --${key}: styles.css=${got} tokens.json=${theme[key]}`);
+    const got = cssVar(lightBody, key);
+    if (got != null && norm(got) !== norm(tokens.themes.light[key])) {
+      console.error(`  ✗ [light] --${key}: styles.css=${got} tokens.json=${tokens.themes.light[key]}`);
       failures++;
     }
   }
 }
 
-const total = tokens.paletteKeys.length * 2;
 if (failures) {
-  console.error(`\n[tokens] DRIFT: ${failures}/${total} palette values disagree with styles.css`);
+  console.error(`\n[tokens] DRIFT: ${failures} check(s) failed against cloud/public/styles.css`);
   process.exit(1);
 }
-console.log(`[tokens] OK: all ${total} palette values (dark+light) match cloud/public/styles.css`);
+console.log(
+  `[tokens] OK: ${tokens.paletteKeys.length} dark palette values match styles.css` +
+    (lightBody ? " (+ light block matches)" : "; light palette complete + swap-compatible"),
+);

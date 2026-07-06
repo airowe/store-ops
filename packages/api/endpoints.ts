@@ -4,14 +4,42 @@
  * Worker API (api.shipaso.com) is unchanged by the migration.
  */
 import type { ApiClient } from "./client.js";
-import type { AppListItem, DeltasResponse, RanksSeries, Run, WarRoomResponse } from "./types.js";
+import type {
+  AppDetail,
+  AppListItem,
+  Candidate,
+  ConnectResult,
+  DeltasResponse,
+  EmailDigest,
+  Me,
+  NotificationPrefs,
+  RankCadence,
+  PreviewResult,
+  ProofAggregate,
+  RanksSeries,
+  Run,
+  RunDetail,
+  StoredCredential,
+  WarRoomView,
+} from "./types.js";
 
 const enc = encodeURIComponent;
 
-export const getApps = (c: ApiClient) => c.get<AppListItem[]>("/apps");
+export const getApps = (c: ApiClient) => c.get<{ apps: AppListItem[] }>("/apps");
 
-export const getApp = (c: ApiClient, id: string) =>
-  c.get<{ app: AppListItem; runs: Run[] }>(`/apps/${enc(id)}`);
+export const resolveApps = (c: ApiClient, query: string, offset = 0) =>
+  c.post<{ candidates: Candidate[] }>("/resolve", { query, offset });
+
+// ── public surfaces (funnel) ────────────────────────────────────────────────
+export const authRequest = (c: ApiClient, email: string) =>
+  c.post<{ sent: true }>("/auth/request", { email });
+export const getProof = (c: ApiClient) => c.get<ProofAggregate>("/proof");
+export const preview = (c: ApiClient, body: { query?: string; bundle_id?: string; offset?: number }) =>
+  c.post<PreviewResult>("/preview", body);
+export const connectApp = (c: ApiClient, body: { bundle_id?: string; query?: string; name?: string }) =>
+  c.post<ConnectResult>("/apps", body);
+
+export const getApp = (c: ApiClient, id: string) => c.get<AppDetail>(`/apps/${enc(id)}`);
 
 export const getRanks = (c: ApiClient, id: string, keyword?: string) =>
   c.get<RanksSeries>(`/apps/${enc(id)}/ranks${keyword ? `?keyword=${enc(keyword)}` : ""}`);
@@ -19,8 +47,34 @@ export const getRanks = (c: ApiClient, id: string, keyword?: string) =>
 export const getDeltas = (c: ApiClient, id: string) =>
   c.get<DeltasResponse>(`/apps/${enc(id)}/deltas`);
 
-export const warRoom = (c: ApiClient, id: string, competitors: string[]) =>
-  c.get<WarRoomResponse>(`/apps/${enc(id)}/war-room?competitors=${enc(competitors.join(","))}`);
+export const warRoom = (c: ApiClient, id: string, competitors?: string[]) =>
+  c.get<WarRoomView>(
+    `/apps/${enc(id)}/war-room${competitors?.length ? `?competitors=${enc(competitors.join(","))}` : ""}`,
+  );
 
 export const runApp = (c: ApiClient, id: string) =>
   c.post<Run>(`/apps/${enc(id)}/run`);
+
+// ── run detail (the money screen) ───────────────────────────────────────────
+export const getRun = (c: ApiClient, id: string) => c.get<RunDetail>(`/runs/${enc(id)}`);
+/** The human gate. Returns the updated run; pushCommands are revealed on approve. */
+export const decideRun = (c: ApiClient, id: string, decision: "approve" | "reject") =>
+  c.post<RunDetail>(`/runs/${enc(id)}/${decision}`, { decision });
+
+// ── auth + settings ─────────────────────────────────────────────────────────
+export const me = (c: ApiClient) => c.get<Me>("/auth/me");
+export const logout = (c: ApiClient) => c.post<{ ok?: boolean }>("/auth/logout");
+
+export const getNotifications = (c: ApiClient) => c.get<NotificationPrefs>("/account/notifications");
+export const setNotifications = (c: ApiClient, patch: Partial<NotificationPrefs>) =>
+  c.post<NotificationPrefs>("/account/notifications", patch);
+export const setRankCadence = (c: ApiClient, cadence: RankCadence) =>
+  c.post<{ rank_cadence: RankCadence }>("/account/rank-cadence", { cadence });
+
+export const getCredentials = (c: ApiClient) =>
+  c.get<{ enabled: boolean; credentials: StoredCredential[] }>("/account/credentials");
+export const deleteCredential = (c: ApiClient, kind: "asc" | "play", appId?: string) =>
+  c.request<{ deleted: boolean; note: string }>(
+    `/account/credentials/${kind}${appId ? `?app=${enc(appId)}` : ""}`,
+    { method: "DELETE" },
+  );

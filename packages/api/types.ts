@@ -35,5 +35,114 @@ export type DeltaEntry = {
 };
 export type DeltasResponse = { entries: DeltaEntry[] };
 
-export type WarRoomResponse = { warRoom: unknown[]; competitors: string[] };
+export type WarTrend = "gaining" | "losing" | "flat" | "new" | "lost" | (string & {});
+export type HeadToHead = {
+  keyword: string;
+  /** your current rank, or null if unranked (never 0). */
+  you: number | null;
+  /** your prior rank, or null when there's only one snapshot (skip count-up). */
+  youPrevious: number | null;
+  competitors: Array<{ name: string; rank: number | null }>;
+  /** your rank − best competitor rank; null when there's no gap to close. */
+  gapToBest: number | null;
+  trend: WarTrend;
+  winning: boolean;
+};
+export type WarRoomView = {
+  appName: string;
+  warRoom: HeadToHead[];
+  competitors: string[];
+  window: number;
+  checkedAt: string;
+};
 export type Run = { id: string; app_id: string; status: RunStatus; created_at: string };
+
+export type RunRow = { id: string; status: RunStatus; created_at: string };
+export type AppDetail = {
+  app: { id: string; bundle_id: string; name: string; country: string };
+  runs: RunRow[];
+};
+
+// ── run detail (the money screen) ───────────────────────────────────────────
+export type CopyFields = {
+  name?: string;
+  subtitle?: string;
+  /** the keyword FIELD (comma-joined). */
+  keywords?: string;
+  promo?: string;
+  description?: string;
+  whatsNew?: string;
+};
+export type PushCommand = {
+  store: "appstore" | "googleplay";
+  tool: "asc" | "gplay";
+  description: string;
+  command: string;
+};
+export type RunApproval = { decision: string; decided_at: string };
+export type RunResult = {
+  currentCopy: CopyFields;
+  proposedCopy: CopyFields;
+  /** withheld ([]) until the human approves — the server privacy boundary. */
+  pushCommands: PushCommand[];
+  findingsSummary?: FindingsSummary;
+};
+export type RunDetail = {
+  id: string;
+  app_id: string;
+  status: string;
+  created_at: string;
+  approval: RunApproval | null;
+  result: RunResult;
+};
+
+// ── connect / resolve ───────────────────────────────────────────────────────
+export type Candidate = {
+  bundle_id: string;
+  name: string;
+  publisher?: string;
+  genres?: string[];
+  icon_url?: string;
+};
+export type ConnectResult =
+  | { id: string; name: string; bundleId: string }
+  | { needsChoice: true; candidates: Candidate[] };
+
+// ── public surfaces (funnel) ────────────────────────────────────────────────
+export type ProofAggregate = {
+  appsWithWins: number;
+  totalWins: number;
+  bestImprovement: number;
+  medianImprovement: number;
+};
+/** POST /preview → candidate picker, a preview audit, or an error. */
+export type PreviewResult = {
+  needsChoice?: boolean;
+  candidates?: Candidate[];
+  bundleId?: string;
+  error?: string;
+  preview?: { grade?: string | null; summary?: string; findings?: string[] };
+};
+
+// ── settings (comms-prefs) ──────────────────────────────────────────────────
+export type RankCadence = "weekly" | "daily";
+export type EmailDigest = "weekly" | "off";
+export type NotificationPrefs = { push_run_ready: boolean; email_digest: EmailDigest };
+export type Me = {
+  email: string | null;
+  push_run_ready?: boolean;
+  email_digest?: EmailDigest;
+  rank_cadence?: RankCadence;
+};
+
+/** Stored-credential METADATA only — never key material (honesty boundary). */
+export type StoredCredential = {
+  id: string;
+  appId: string | null;
+  kind: "asc" | "play";
+  keyId: string;
+  issuerId: string;
+  createdAt: string;
+  lastUsedAt: string | null;
+  kekVersion: number;
+};

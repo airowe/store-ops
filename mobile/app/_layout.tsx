@@ -1,10 +1,12 @@
 /**
  * Root layout — mounts the app-wide providers (theme + React Query for
- * server-state + the navigation Stack). `ThemeProvider` sits outermost so every
+ * server-state + the navigation Stack). `GestureHandlerRootView` is outermost
+ * (required for react-native-graph's pan-scrubber), then `ThemeProvider` so every
  * screen can read the live light/dark palette; the shell chrome (nav background,
  * status bar) tracks it too. Screen groups live under `(public)` (login/preview/
  * proof) and `(app)` (the authed dashboard + details).
  */
+import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Stack } from "expo-router";
 import { StatusBar } from "expo-status-bar";
@@ -37,13 +39,16 @@ function AppShell() {
 
 export default function RootLayout() {
   return (
-    <ThemeProvider>
-      <QueryClientProvider client={queryClient}>
-        <AuthProvider>
-          <NotificationsBridge />
-          <AppShell />
-        </AuthProvider>
-      </QueryClientProvider>
-    </ThemeProvider>
+    // GestureHandlerRootView is required for react-native-graph's pan-scrubber.
+    <GestureHandlerRootView style={{ flex: 1 }}>
+      <ThemeProvider>
+        <QueryClientProvider client={queryClient}>
+          <AuthProvider>
+            <NotificationsBridge />
+            <AppShell />
+          </AuthProvider>
+        </QueryClientProvider>
+      </ThemeProvider>
+    </GestureHandlerRootView>
   );
 }
