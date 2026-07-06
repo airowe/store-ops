@@ -107,3 +107,57 @@ describe("runAgent — currentCopy carries the 'before' for the diff", () => {
     expect("keywords" in r.currentCopy).toBe(false);
   });
 });
+
+describe("audit — storefront screenshot fallback (lookup returns empty sets)", () => {
+  const SHOT = (name: string) => ({
+    screenshot: {
+      template: `https://is1-ssl.mzstatic.com/image/thumb/P/v4/${name}/{w}x{h}{c}.{f}`,
+      width: 1290,
+      height: 2796,
+    },
+  });
+  const storefrontHtml = JSON.stringify({
+    data: [{ data: { shelfMapping: { product_media_phone_: { items: [SHOT("a"), SHOT("b")] } } } }],
+  });
+  const page = `<script type="application/json" id="serialized-server-data">${storefrontHtml}</script>`;
+
+  function fetchWithStorefront(pageBody: string | null) {
+    return async (url: string) => {
+      if (url.includes("/lookup")) {
+        return new Response(
+          JSON.stringify({
+            resultCount: 1,
+            results: [
+              {
+                bundleId: "com.acme.app",
+                trackName: "Acme",
+                trackViewUrl: "https://apps.apple.com/us/app/acme/id111",
+                screenshotUrls: [],
+                ipadScreenshotUrls: [],
+              },
+            ],
+          }),
+          { status: 200 },
+        );
+      }
+      if (url.startsWith("https://apps.apple.com/")) {
+        return pageBody === null
+          ? new Response("nope", { status: 403 })
+          : new Response(pageBody, { status: 200 });
+      }
+      return new Response(JSON.stringify({ resultCount: 0, results: [] }), { status: 200 });
+    };
+  }
+
+  it("scores the storefront set when the lookup API omits screenshots", async () => {
+    const r = await runAgent(fetchWithStorefront(page) as never, baseInput());
+    expect(r.audit.screenshots?.iphoneCount).toBe(2);
+    expect(r.audit.screenshots?.grade).not.toBe("?");
+  });
+
+  it("keeps the honest unknown state when the storefront page also fails", async () => {
+    const r = await runAgent(fetchWithStorefront(null) as never, baseInput());
+    expect(r.audit.screenshots?.grade).toBe("?");
+    expect(r.audit.screenshots?.screenshotUrls).toEqual([]);
+  });
+});

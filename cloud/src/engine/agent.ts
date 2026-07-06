@@ -32,6 +32,7 @@ import { findKeywordGaps, type KeywordGap } from "./keywordGap.js";
 import { optimizeCopy, type ProposedCopy } from "./optimize.js";
 import { type Rank, ranksFor } from "./rankCheck.js";
 import { score as scoreScreenshots, type ShotScore } from "./screenshotScore.js";
+import { fetchStorefrontShots } from "./storefrontShots.js";
 import type { Finding, SurfaceLock } from "./auditFindings.js";
 import type { AscContext } from "./ascContext.js";
 import type { Opportunity } from "./rankOpportunity.js";
@@ -176,12 +177,22 @@ async function audit(fetchFn: FetchFn, input: AppInput): Promise<Audit> {
       liveName = r.trackName ?? "";
       const desc = r.description?.trim();
       if (desc) liveDescription = desc;
-      screenshots = scoreScreenshots(input.app, {
+      let shots = {
         screenshotUrls: r.screenshotUrls ?? [],
         ipadScreenshotUrls: r.ipadScreenshotUrls ?? [],
-        // #41: this is the public iTunes API — it frequently omits screenshots
-        // for apps that have them. An empty set here is UNKNOWN, not zero, so we
-        // never assert a false "grade F / can't convert".
+      };
+      // #41 fallback: the lookup API frequently omits screenshots for apps that
+      // have them. The public storefront page still carries the real set — read
+      // it before declaring the set unknown. Best-effort; never fails the audit.
+      if (shots.screenshotUrls.length === 0 && r.trackViewUrl) {
+        const fromPage = await fetchStorefrontShots(fetchFn, r.trackViewUrl);
+        if (fromPage) shots = fromPage;
+      }
+      screenshots = scoreScreenshots(input.app, {
+        ...shots,
+        // #41: public sources — an EMPTY set here is UNKNOWN, not zero, so we
+        // never assert a false "grade F / can't convert". A non-empty set (from
+        // either source) is real and scores normally.
         dataReliable: false,
       });
     }

@@ -134,6 +134,7 @@ export type ItunesResult = {
   bundleId?: string;
   trackId?: number;
   trackName?: string;
+  trackViewUrl?: string;
   version?: string;
   description?: string;
   formattedPrice?: string;
