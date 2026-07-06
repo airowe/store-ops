@@ -32,7 +32,7 @@ import { findKeywordGaps, type KeywordGap } from "./keywordGap.js";
 import { optimizeCopy, type ProposedCopy } from "./optimize.js";
 import { type Rank, ranksFor } from "./rankCheck.js";
 import { score as scoreScreenshots, type ShotScore } from "./screenshotScore.js";
-import { fetchStorefrontShots } from "./storefrontShots.js";
+import { fetchStorefrontListing } from "./storefrontListing.js";
 import type { Finding, SurfaceLock } from "./auditFindings.js";
 import type { AscContext } from "./ascContext.js";
 import type { Opportunity } from "./rankOpportunity.js";
@@ -70,6 +70,9 @@ export type Audit = {
   /** The live listing's description, when iTunes returns one — used as baseCopy
    *  so a connect-by-name proposal isn't blank (issue #12). */
   liveDescription?: string;
+  /** The live subtitle, read from the PUBLIC storefront page (the lookup API
+   *  never returns it) — lets keyless runs see the real subtitle honestly. */
+  liveSubtitle?: string;
 };
 
 export type AgentResult = {
@@ -169,6 +172,7 @@ async function audit(fetchFn: FetchFn, input: AppInput): Promise<Audit> {
   let screenshots: ShotScore | null = null;
   let liveName = "";
   let liveDescription: string | undefined;
+  let liveSubtitle: string | undefined;
   try {
     const url = buildUrl(ITUNES_LOOKUP_URL, { bundleId: input.bundleId, country });
     const data = asResponse(await fetchJson(fetchFn, url));
@@ -177,17 +181,16 @@ async function audit(fetchFn: FetchFn, input: AppInput): Promise<Audit> {
       liveName = r.trackName ?? "";
       const desc = r.description?.trim();
       if (desc) liveDescription = desc;
+      // The public storefront page carries what the lookup API doesn't: the
+      // subtitle always, and the screenshot set the lookup frequently omits
+      // (#41). One best-effort fetch enriches both; never fails the audit.
+      const page = r.trackViewUrl ? await fetchStorefrontListing(fetchFn, r.trackViewUrl) : null;
+      if (page?.subtitle) liveSubtitle = page.subtitle;
       let shots = {
         screenshotUrls: r.screenshotUrls ?? [],
         ipadScreenshotUrls: r.ipadScreenshotUrls ?? [],
       };
-      // #41 fallback: the lookup API frequently omits screenshots for apps that
-      // have them. The public storefront page still carries the real set — read
-      // it before declaring the set unknown. Best-effort; never fails the audit.
-      if (shots.screenshotUrls.length === 0 && r.trackViewUrl) {
-        const fromPage = await fetchStorefrontShots(fetchFn, r.trackViewUrl);
-        if (fromPage) shots = fromPage;
-      }
+      if (shots.screenshotUrls.length === 0 && page?.shots) shots = page.shots;
       screenshots = scoreScreenshots(input.app, {
         ...shots,
         // #41: public sources — an EMPTY set here is UNKNOWN, not zero, so we
@@ -205,6 +208,7 @@ async function audit(fetchFn: FetchFn, input: AppInput): Promise<Audit> {
     screenshots,
     liveName,
     ...(liveDescription !== undefined ? { liveDescription } : {}),
+    ...(liveSubtitle !== undefined ? { liveSubtitle } : {}),
   };
 }
 
@@ -279,7 +283,9 @@ export async function runAgent(fetchFn: FetchFn, input: AppInput): Promise<Agent
   const description = input.baseCopy?.description ?? auditResult.liveDescription;
   // The CURRENT copy: exactly what the optimizer treats as its floor. Captured so
   // the run page can render a current → proposed diff. Only include subtitle/
-  // keywords when we actually READ them from ASC (else they're unknown, not empty).
+  // keywords when we actually READ them: subtitle from ASC or, failing that, the
+  // public storefront page (it IS the live subtitle); keywords are ASC-only —
+  // genuinely private, so without a key they stay unknown, never empty.
   const currentCopy: AgentResult["currentCopy"] = {
     ...(input.baseCopy?.name ?? auditResult.liveName ? { name: input.baseCopy?.name ?? auditResult.liveName } : {}),
     ...(input.ascMetadataRead === true
@@ -287,7 +293,9 @@ export async function runAgent(fetchFn: FetchFn, input: AppInput): Promise<Agent
           ...(input.baseCopy?.subtitle !== undefined ? { subtitle: input.baseCopy.subtitle } : {}),
           ...(input.baseCopy?.keywords !== undefined ? { keywords: input.baseCopy.keywords } : {}),
         }
-      : {}),
+      : {
+          ...(auditResult.liveSubtitle !== undefined ? { subtitle: auditResult.liveSubtitle } : {}),
+        }),
     ...(input.baseCopy?.promo !== undefined ? { promo: input.baseCopy.promo } : {}),
     ...(description !== undefined ? { description } : {}),
   };

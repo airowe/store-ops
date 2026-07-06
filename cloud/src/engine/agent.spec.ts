@@ -161,3 +161,55 @@ describe("audit — storefront screenshot fallback (lookup returns empty sets)",
     expect(r.audit.screenshots?.screenshotUrls).toEqual([]);
   });
 });
+
+describe("audit — storefront listing enriches public runs", () => {
+  const storefrontPage = (subtitle: string) =>
+    `<script type="application/json" id="serialized-server-data">${JSON.stringify({
+      data: [{ data: { lockup: { subtitle }, shelfMapping: {} } }],
+    })}</script>`;
+
+  function fetchWithPage(subtitle: string) {
+    return async (url: string) => {
+      if (url.includes("/lookup")) {
+        return new Response(
+          JSON.stringify({
+            resultCount: 1,
+            results: [
+              {
+                bundleId: "com.acme.app",
+                trackName: "Acme",
+                trackViewUrl: "https://apps.apple.com/us/app/acme/id111",
+                screenshotUrls: ["https://cdn/a/{w}x{h}bb.png"],
+                ipadScreenshotUrls: [],
+              },
+            ],
+          }),
+          { status: 200 },
+        );
+      }
+      if (url.startsWith("https://apps.apple.com/")) {
+        return new Response(storefrontPage(subtitle), { status: 200 });
+      }
+      return new Response(JSON.stringify({ resultCount: 0, results: [] }), { status: 200 });
+    };
+  }
+
+  it("surfaces the public subtitle in currentCopy on runs without ASC (it IS read, honestly)", async () => {
+    const r = await runAgent(fetchWithPage("Stoic calm for atheists") as never, {
+      ...baseInput(),
+      ascMetadataRead: false as const,
+    });
+    expect(r.currentCopy.subtitle).toBe("Stoic calm for atheists");
+    // keywords remain genuinely private to ASC — still unseen.
+    expect("keywords" in r.currentCopy).toBe(false);
+  });
+
+  it("prefers the ASC-read subtitle over the storefront one", async () => {
+    const r = await runAgent(fetchWithPage("storefront subtitle") as never, {
+      ...baseInput(),
+      ascMetadataRead: true as const,
+      baseCopy: { name: "Acme", subtitle: "asc subtitle", keywords: "k", description: "d" },
+    });
+    expect(r.currentCopy.subtitle).toBe("asc subtitle");
+  });
+});
