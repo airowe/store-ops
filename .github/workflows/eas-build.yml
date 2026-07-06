@@ -1,0 +1,66 @@
+# EAS build — manual trigger only.
+#
+# Builds run on Expo's infrastructure and each one spends EAS build credits, so
+# this is workflow_dispatch rather than push-triggered: kick it from the Actions
+# tab (or `gh workflow run eas-build.yml -f platform=ios`) when a release build
+# is wanted. `--no-wait` hands off to EAS and frees the runner — watch progress
+# at expo.dev/accounts/airowe/projects/shipaso/builds.
+#
+# Requires the EXPO_TOKEN repo secret (expo.dev → Account settings → Access
+# tokens). Submission stays a manual step on purpose (see mobile/STORE.md).
+
+name: eas-build
+
+on:
+  workflow_dispatch:
+    inputs:
+      platform:
+        description: "Platform to build"
+        type: choice
+        options: [ios, android, all]
+        default: ios
+      profile:
+        description: "eas.json build profile"
+        type: choice
+        options: [production, preview, development]
+        default: production
+
+concurrency:
+  group: eas-build-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: mobile
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: mobile/package-lock.json
+
+      - uses: expo/expo-github-action@v8
+        with:
+          eas-version: latest
+          token: ${{ secrets.EXPO_TOKEN }}
+
+      - name: Install
+        run: npm ci
+
+      # The same gate as ci.yml — never hand a red tree to EAS.
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Test
+        run: npm test
+
+      - name: Build
+        run: |
+          eas build --platform ${{ inputs.platform }} \
+            --profile ${{ inputs.profile }} \
+            --non-interactive --no-wait
