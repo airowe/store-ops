@@ -30,6 +30,46 @@ export const palette = {
 } as const;
 
 export type PaletteKey = keyof typeof palette;
+/** Widened palette shape (string values) so light + dark are interchangeable. */
+export type Palette = Record<PaletteKey, string>;
+
+/**
+ * Light palette — the phone's half of the web's "editorial light" theme
+ * (`cloud/public/styles.css :root[data-theme="light"]`). Same key set as the
+ * dark `palette` so `paletteFor` stays typed; the accent green darkens
+ * (#0f9d63) to clear AA contrast on light surfaces. `tokens.test.ts` pins these
+ * to the web's light block, the same source-of-truth discipline as dark.
+ */
+export const lightPalette: Palette = {
+  bg: "#f6f7f9",
+  bg2: "#eceff4",
+  panel: "#ffffff",
+  panel2: "#f3f5f9",
+  line: "#d6dceb",
+  lineSoft: "#e6eaf2",
+  ink: "#111621",
+  dim: "#4a5468",
+  faint: "#7a8398",
+  signal: "#0f9d63",
+  signalDim: "#0b7d4e",
+  signalGlow: "rgba(15, 157, 99, 0.14)",
+  brand: "#3563e0",
+  warn: "#b7791f",
+  bad: "#dc4a41",
+};
+
+/** The two schemes, keyed by resolved color scheme. */
+export const palettes = { dark: palette, light: lightPalette } as const;
+
+/** User preference: follow the OS, or pin one scheme. */
+export type ThemeMode = "system" | "light" | "dark";
+/** A resolved scheme (what actually renders). */
+export type Scheme = "light" | "dark";
+
+/** Pure: pick the palette for a resolved scheme. */
+export function paletteFor(scheme: Scheme): Palette {
+  return scheme === "light" ? lightPalette : palette;
+}
 
 /**
  * Font FAMILIES (the names the app loads via expo-font). Matching the web's
@@ -76,4 +116,5 @@ export const theme = {
   spacing,
 } as const;
 
-export type Theme = typeof theme;
+/** The theme shape, with a widened `palette` so the live light/dark palette fits. */
+export type Theme = Omit<typeof theme, "palette"> & { palette: Palette };
