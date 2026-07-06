@@ -8,10 +8,13 @@ import { ActivityIndicator, Pressable, View } from "react-native";
 import { Stack, useLocalSearchParams, useRouter } from "expo-router";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { useAuth } from "../../../src/auth/AuthProvider.js";
-import { auditPlay, getApp, getDeltas, runAsc, verifyPlay } from "../../../src/api/endpoints.js";
+import { auditPlay, getApp, getDeltas, getRanks, runAsc, verifyPlay } from "../../../src/api/endpoints.js";
 import { RankMovementRow } from "../../../src/components/RankMovementRow.js";
+import { RankTrendChart } from "../../../src/components/RankTrendChart.js";
 import { CredentialSheet, type AscSubmit, type PlaySubmit } from "../../../src/components/CredentialSheet.js";
 import { PlayAuditView } from "../../../src/components/PlayAuditView.js";
+import { CompetitorsCard } from "../../../src/components/CompetitorsCard.js";
+import { AgentTriggersCard } from "../../../src/components/AgentTriggersCard.js";
 import { EmptyState } from "../../../src/components/EmptyState.js";
 import { Screen, AppText, Button, Card, Centered } from "../../../src/components/primitives.js";
 import { humanizeStatus, timeAgo } from "../../../src/lib/format.js";
@@ -27,6 +30,8 @@ export default function AppDetail() {
 
   const app = useQuery({ queryKey: ["app", id], queryFn: () => getApp(client, id!), enabled: !!id });
   const deltas = useQuery({ queryKey: ["deltas", id], queryFn: () => getDeltas(client, id!), enabled: !!id });
+  // #62 parity: the rank series carries observed-change annotations.
+  const ranks = useQuery({ queryKey: ["ranks", id], queryFn: () => getRanks(client, id!), enabled: !!id });
 
   const [showCreds, setShowCreds] = useState(false);
   const [playAudit, setPlayAudit] = useState<PlayAudit | null>(null);
@@ -74,6 +79,8 @@ export default function AppDetail() {
         <Button label="Share a win" variant="ghost" onPress={() => void shareWin(a.id)} />
       </View>
 
+      {ranks.data?.points ? <RankTrendChart points={ranks.data.points} /> : null}
+
       {deltas.data && deltas.data.entries.length > 0 ? (
         <Card>
           <AppText kind="lead">Rank movement</AppText>
@@ -82,6 +89,32 @@ export default function AppDetail() {
           ))}
         </Card>
       ) : null}
+
+      {ranks.data?.annotations && ranks.data.annotations.length > 0 ? (
+        <View testID="rank-annotations">
+        <Card>
+          <AppText kind="lead">What changed</AppText>
+          {ranks.data.annotations.slice(-8).map((an, i) => (
+            <View key={`${an.at}-${i}`} style={{ flexDirection: "row", gap: spacing.sm, marginTop: spacing.xs }}>
+              <AppText kind="body" style={{ color: an.kind === "push" ? palette.signal : palette.warn }}>
+                {an.kind === "push" ? "▲" : "◆"}
+              </AppText>
+              <View style={{ flex: 1 }}>
+                <AppText kind="body">{an.label}</AppText>
+                <AppText kind="micro">{an.at.slice(0, 10)}</AppText>
+              </View>
+            </View>
+          ))}
+          <AppText kind="micro" style={{ marginTop: spacing.sm }}>
+            ▲ your approved pushes · ◆ competitor visible changes (their keyword fields aren’t
+            public). Correlation, not causation — history starts when tracking started.
+          </AppText>
+        </Card>
+        </View>
+      ) : null}
+
+      <CompetitorsCard client={client} appId={a.id} />
+      <AgentTriggersCard client={client} appId={a.id} />
 
       <Card>
         <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>

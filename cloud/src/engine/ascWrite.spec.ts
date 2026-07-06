@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
+  createAscLocalization,
   createAscVersion,
+  getEditableVersionId,
   isValidVersionString,
   pickEditableVersion,
   pickReadableVersion,
@@ -1029,5 +1031,51 @@ describe("isValidVersionString (#34)", () => {
   it("accepts 1 / 1.2 / 1.2.3; rejects everything else", () => {
     for (const good of ["1", "1.2", "1.2.3", "12.0.99"]) expect(isValidVersionString(good)).toBe(true);
     for (const bad of ["", "v1.2", "1.2.3.4", "1..2", "one", "1.2-beta"]) expect(isValidVersionString(bad)).toBe(false);
+  });
+});
+
+// ── #78 Phase 3: per-market localization writes ───────────────────────────────
+
+describe("createAscLocalization + getEditableVersionId (#78 Phase 3)", () => {
+  it("creates the locale on the editable version with the right payload", async () => {
+    let captured: { url: string; init: RequestInit | undefined } | null = null;
+    const fetchFn = (async (url: string | URL, init?: RequestInit) => {
+      captured = { url: String(url), init };
+      return new Response(
+        JSON.stringify({ data: { id: "LOC9", attributes: { locale: "de-DE" } } }),
+        { status: 201, headers: { "content-type": "application/json" } },
+      );
+    }) as never;
+    const created = await createAscLocalization(fetchFn, { token: "t", versionId: "V1", locale: "de-DE" });
+    expect(created).toEqual({ id: "LOC9", locale: "de-DE" });
+    expect(captured!.url).toContain("/appStoreVersionLocalizations");
+    const sent = JSON.parse(String(captured!.init?.body)) as {
+      data: { attributes: { locale: string }; relationships: { appStoreVersion: { data: { id: string } } } };
+    };
+    expect(sent.data.attributes.locale).toBe("de-DE");
+    expect(sent.data.relationships.appStoreVersion.data.id).toBe("V1");
+  });
+
+  it("surfaces ASC rejections honestly (e.g. locale already exists)", async () => {
+    const fetchFn = (async () =>
+      new Response(JSON.stringify({ errors: [{ detail: "The resource already exists." }] }), {
+        status: 409,
+        headers: { "content-type": "application/json" },
+      })) as never;
+    await expect(
+      createAscLocalization(fetchFn, { token: "t", versionId: "V1", locale: "de-DE" }),
+    ).rejects.toThrow(/create version localization \(409\): The resource already exists/);
+  });
+
+  it("getEditableVersionId picks the draft version; none → the honest error", async () => {
+    const versions = (states: string[]) => (async () =>
+      new Response(
+        JSON.stringify({ data: states.map((st, i) => ({ id: `V${i}`, attributes: { appStoreState: st } })) }),
+        { status: 200, headers: { "content-type": "application/json" } },
+      )) as never;
+    expect(await getEditableVersionId(versions(["READY_FOR_SALE", "PREPARE_FOR_SUBMISSION"]), { token: "t", appId: "A" })).toBe("V1");
+    await expect(
+      getEditableVersionId(versions(["READY_FOR_SALE"]), { token: "t", appId: "A" }),
+    ).rejects.toThrow(/No editable App Store version/);
   });
 });

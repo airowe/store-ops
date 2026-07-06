@@ -18,11 +18,14 @@ import { useAuth } from "../../src/auth/AuthProvider.js";
 import { setNotifications, setRankCadence } from "../../src/api/endpoints.js";
 import { registerForPush, getLastKnownPushToken } from "../../src/notifications/register.js";
 import { signOutWithCleanup } from "../../src/lib/signout.js";
+import { StoredKeysCard } from "../../src/components/StoredKeysCard.js";
 import { Screen, AppText, Button, Card } from "../../src/components/primitives.js";
-import { palette, spacing } from "../../src/theme/index.js";
+import { spacing, usePalette, useThemeMode, type ThemeMode } from "../../src/theme/index.js";
 
 export default function Settings() {
   const { me, client, signOut } = useAuth();
+  const palette = usePalette();
+  const { mode: themeMode, setMode: setThemeMode } = useThemeMode();
 
   const [digestOn, setDigestOn] = useState((me?.email_digest ?? "weekly") === "weekly");
   const [pushOn, setPushOn] = useState(me?.push_run_ready ?? true);
@@ -141,6 +144,24 @@ export default function Settings() {
 
         {note ? <AppText kind="dim" style={{ color: palette.warn }}>{note}</AppText> : null}
       </Card>
+
+      <Card>
+        <AppText kind="lead">Appearance</AppText>
+        <AppText kind="micro">Theme for this device. “System” follows your OS light/dark setting.</AppText>
+        <View style={{ flexDirection: "row", gap: spacing.xs, marginTop: spacing.sm }}>
+          {(["system", "light", "dark"] as ThemeMode[]).map((m) => (
+            <Button
+              key={m}
+              testID={`theme-${m}`}
+              label={m[0]!.toUpperCase() + m.slice(1)}
+              variant={themeMode === m ? "primary" : "ghost"}
+              onPress={() => setThemeMode(m)}
+            />
+          ))}
+        </View>
+      </Card>
+
+      <StoredKeysCard client={client} />
 
       <Card>
         <AppText kind="lead">Account</AppText>

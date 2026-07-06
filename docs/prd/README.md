@@ -41,6 +41,10 @@ fancy tier before the basic one converts. Bias all effort toward Phase 0 → 1.
 - [`visual-assets/`](./visual-assets/00-overview.md) — help users improve
   screenshots/videos: link-out + ASO-aware brief now (Phase A), in-product
   generation deferred to #26 (Phase B)
+- [`web-migration/`](./web-migration/00-overview.md) — re-platform the vanilla-JS
+  dashboard to TanStack Start via a shared spine (tokens/API/honesty), migrated
+  route-by-route with the honesty-model E2E as the contract (10-PRD suite:
+  spine → shell → routes → charts → public surfaces) *(proposal)*
 
 ## Competitive
 

@@ -5,6 +5,24 @@
  */
 import "@testing-library/react-native";
 
+// AsyncStorage: the library ships an in-memory jest mock; the theme provider
+// (light/dark preference) reads/writes it, so wire it up globally.
+jest.mock("@react-native-async-storage/async-storage", () =>
+  require("@react-native-async-storage/async-storage/jest/async-storage-mock"),
+);
+
+// react-native-graph renders via Skia + reanimated worklets (native) — mock it
+// to a plain View so component tests stay headless. The honest data mapping is
+// tested separately (src/lib/rankSeries.test.ts).
+jest.mock("react-native-graph", () => {
+  const React = require("react");
+  const { View } = require("react-native");
+  return {
+    LineGraph: (_props: Record<string, unknown>) => React.createElement(View, { testID: "line-graph" }),
+    SelectionDot: () => null,
+  };
+});
+
 // In-memory SecureStore so session-token persistence is observable in tests.
 jest.mock("expo-secure-store", () => {
   const mem = new Map<string, string>();

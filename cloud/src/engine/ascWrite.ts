@@ -785,3 +785,50 @@ export async function createAscVersion(
 export function isValidVersionString(v: string): boolean {
   return /^\d+(\.\d+){0,2}$/.test(v.trim());
 }
+
+// ── Per-market localization writes (#78 Phase 3) ──────────────────────────────
+
+/** The editable (draft) version's id, or an honest AscWriteError when none. */
+export async function getEditableVersionId(
+  fetchFn: FetchLike,
+  opts: { token: string; appId: string },
+): Promise<string> {
+  const res = await fetchFn(
+    `${ASC_BASE}/apps/${encodeURIComponent(opts.appId)}/appStoreVersions?limit=50`,
+    { headers: { authorization: `Bearer ${opts.token}` } },
+  );
+  if (!res.ok) throw await ascError(res, "list app store versions");
+  const body = (await res.json().catch(() => ({}))) as { data?: Version[] };
+  return pickEditableVersion(body.data ?? []).id;
+}
+
+/**
+ * #78 Phase 3: create a NEW locale on the editable version (POST
+ * /v1/appStoreVersionLocalizations) so a per-market push has somewhere to
+ * land. OUTWARD WRITE — only ever called from its own explicitly-clicked
+ * per-action route (the #34 discipline), never chained into a push. ASC
+ * rejections (already exists, locale unsupported) surface honestly.
+ */
+export async function createAscLocalization(
+  fetchFn: FetchLike,
+  opts: { token: string; versionId: string; locale: string },
+): Promise<{ id: string; locale: string }> {
+  const res = await fetchFn(`${ASC_BASE}/appStoreVersionLocalizations`, {
+    method: "POST",
+    headers: { authorization: `Bearer ${opts.token}`, "content-type": "application/json" },
+    body: JSON.stringify({
+      data: {
+        type: "appStoreVersionLocalizations",
+        attributes: { locale: opts.locale },
+        relationships: {
+          appStoreVersion: { data: { type: "appStoreVersions", id: opts.versionId } },
+        },
+      },
+    }),
+  });
+  if (!res.ok) throw await ascError(res, "create version localization");
+  const body = (await res.json().catch(() => ({}))) as {
+    data?: { id?: string; attributes?: { locale?: string } };
+  };
+  return { id: body.data?.id ?? "", locale: body.data?.attributes?.locale ?? opts.locale };
+}

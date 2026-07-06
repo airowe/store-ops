@@ -1216,12 +1216,50 @@
     panel.appendChild(el("label", { class: "fld" }, [el("span", { class: "lab" }, ["Key ID"]), keyId]));
     panel.appendChild(el("label", { class: "fld" }, [el("span", { class: "lab" }, [".p8 private key"]), p8]));
     panel.appendChild(p8FileInput(p8, keyId));
+    // #67 opt-in: "save this key" checkbox — only when the deployment enables
+    // credential storage (the /account/credentials probe sets storeEnabled).
+    // Unchecked by default = today's per-run ephemeral behavior, byte-for-byte.
+    var storeCbId = "store-asc-" + appId;
+    var storeCb = el("input", { type: "checkbox", id: storeCbId });
+    var storeRow = el("div", { class: "checkbox-row", id: "storeAscRow", style: "display:none;margin-top:6px" }, [
+      storeCb,
+      el("label", { "for": storeCbId, style: "font-size:12.5px" }, [
+        "Save this key for scheduled runs — ",
+        el("b", { style: "color:var(--dim)" }, ["stored encrypted, write-only"]),
+        " (usable & deletable, never viewable). Delete anytime; revoke at Apple to fully kill it.",
+      ]),
+    ]);
+
     var ascBtn = el("button", { class: "btn primary", onclick: function () {
       var creds = { issuerId: issuer.value.trim(), keyId: keyId.value.trim(), p8: p8.value };
       if (!creds.issuerId || !creds.keyId || !creds.p8.trim()) { toast("Issuer ID, Key ID, and .p8 are all required."); return; }
+      if (storeCb.checked) creds.store = true;
       triggerRunAsc(appId, ascBtn, creds);
     } }, ["▶ Run with ASC read"]);
     panel.appendChild(el("div", { class: "btn-row", style: "margin-top:4px" }, [ascBtn]));
+    panel.appendChild(storeRow);
+
+    // "Run with saved key" — appears when a stored ASC key exists for this app
+    // (or account-level). One click, no re-typing (the #67 payoff).
+    var savedRow = el("div", { class: "btn-row", id: "savedKeyRow", style: "display:none;margin-top:8px;align-items:center;gap:10px" });
+    panel.appendChild(savedRow);
+    api("GET", "/account/credentials").then(function (r) {
+      if (!r || !r.enabled) return;
+      storeRow.style.display = ""; // storage available → offer the opt-in
+      var saved = (r.credentials || []).filter(function (c) {
+        return c.kind === "asc" && (c.appId === appId || c.appId === null);
+      })[0];
+      if (saved) {
+        var savedBtn = el("button", { class: "btn primary", id: "runSavedKey", onclick: function () {
+          triggerRunAsc(appId, savedBtn, { useStored: true });
+        } }, ["▶ Run with saved key"]);
+        savedRow.appendChild(savedBtn);
+        savedRow.appendChild(el("span", { class: "faint", style: "font-size:12px" }, [
+          "Using your saved key" + (saved.keyId ? " (" + saved.keyId + ")" : "") + " — no re-typing. Manage it in Settings.",
+        ]));
+        savedRow.style.display = "";
+      }
+    }).catch(function () { /* storage probe is best-effort — panel still works */ });
 
     // Opt-out: no ASC key → reveal the blind run (leaves subtitle/keywords as-is).
     var cbId = "no-asc-key-" + appId;
@@ -1245,9 +1283,10 @@
     var inter = runInterstitial(["Reading your live subtitle & keywords from App Store Connect"].concat(RUN_STEPS.slice(1)));
     api("POST", "/apps/" + appId + "/run-asc", creds)
       .then(function (r) {
-        // Remember the creds in-memory for THIS session so the push step doesn't
-        // re-prompt (never persisted; cleared on the next route()).
-        ascCredsMemory = { issuerId: creds.issuerId, keyId: creds.keyId, p8: creds.p8 };
+        // Remember the in-request creds in-memory for THIS session so the push
+        // step doesn't re-prompt (never persisted; cleared on the next route()).
+        // A saved-key run carries no plaintext to remember.
+        if (creds.p8) ascCredsMemory = { issuerId: creds.issuerId, keyId: creds.keyId, p8: creds.p8 };
         inter.settle(); toast("Read your live listing — review the proposal."); go("#/runs/" + r.id);
       })
       .catch(function (e) { btn.disabled = false; btn.textContent = "▶ Run with ASC read"; inter.fail(e.message || "The App Store Connect run failed.", function () { triggerRunAsc(appId, btn, creds); }, "#/apps/" + appId); });
@@ -1599,7 +1638,7 @@
     //     below the findings card when the run computed locale recommendations
     //     (a Mode-A/ASC run); the locale_single finding above is the headline, this
     //     is the workbench. Absent → nothing renders.
-    var locCard = localizationExpansionCard(R, run.app_id);
+    var locCard = localizationExpansionCard(R, run);
     if (locCard) c.appendChild(locCard);
 
     // 2) THE DIFF — lead with current → proposed, like a PR review (devs). The
@@ -2171,7 +2210,8 @@
     "hi-IN": "Hindi", "en-GB": "English (UK)", "en-AU": "English (Australia)",
   };
 
-  function localizationExpansionCard(R, appId) {
+  function localizationExpansionCard(R, run) {
+    var approvedMap = (R && R.localizedCopy) || {};
     var recs = (R && R.localizationExpansion) || [];
     if (!recs.length) return null; // no recommendations → no card
 
@@ -2196,13 +2236,7 @@
         el("span", { class: "impact-chip " + tier.cls }, [tier.label]),
         el("span", { class: "loc-effort-badge " + r.effort, title: effortTitle }, [effortLabel]),
       ]);
-      // Honest label: a per-locale draft flow doesn't exist yet, so this routes to
-      // the ASC run panel (which runs the full read-and-improve). Say what it does.
-      var draftBtn = el("button", {
-        class: "btn small", title: "Run a read-and-improve pass with your App Store Connect key",
-        onclick: function () { go("#/apps/" + appId + "?asc=1"); },
-      }, ["Run with App Store Connect →"]);
-
+      // #78 Phase 4: the per-market review lane — generate → edit → approve.
       body.appendChild(el("div", { class: "loc-rec flip-in", style: "--i:" + i }, [
         el("div", { class: "loc-rec-head" }, [
           el("span", { class: "loc-rec-code" }, [r.locale]),
@@ -2210,15 +2244,132 @@
         ]),
         el("div", { class: "loc-rec-rationale" }, [r.rationale]),
         meta,
-        el("div", { class: "btn-row", style: "margin-top:2px" }, [draftBtn]),
+        localeReviewLane(run, r.locale, approvedMap),
       ]));
     });
 
+    // Free pick: the recommendations are a starting point, not a fence.
+    var freeIn = el("input", { class: "txt mono", id: "locFreePick", type: "text", placeholder: "any App Store locale, e.g. nl-NL", style: "max-width:200px", autocomplete: "off" });
+    var freeLane = el("div", {});
+    var freeBtn = el("button", { class: "btn small", id: "locFreeGo", onclick: function () {
+      var code = freeIn.value.trim();
+      if (!code) { toast("Enter a locale code, e.g. nl-NL."); return; }
+      clear(freeLane);
+      freeLane.appendChild(localeReviewLane(run, code, approvedMap, true));
+    } }, ["Add locale"]);
+    body.appendChild(el("div", { class: "loc-rec loc-freepick", style: "border-top:1px dashed var(--line);padding-top:10px" }, [
+      el("div", { class: "btn-row", style: "align-items:center;gap:8px" }, [freeIn, freeBtn]),
+      freeLane,
+    ]));
+
     var note = el("p", { class: "faint loc-rec-note" }, [
-      "Each locale is a separate ranking surface. Opportunity is ranked by a static market-size heuristic — not live install data.",
+      "Each locale is a separate ranking surface. Opportunity is ranked by a static market-size heuristic — not live install data. Drafts are machine-translated and never ship without your review — only locales you approve join the handoff.",
     ]);
 
     return el("div", { class: "card loc-card" }, [head, body, note]);
+  }
+
+  // ── #78 Phase 4: one locale's generate → review/edit → approve lane ─────────
+  // Honest states: run not approved → say so (generation sources the APPROVED
+  // copy); 503 → "translation needs the AI binding"; provider failure → the
+  // error verbatim + retry. An approved locale shows the "in handoff" chip and
+  // can be removed. The MT label renders verbatim on every draft.
+  function localeReviewLane(run, locale, approvedMap, autoOpen) {
+    var lane = el("div", { class: "loc-lane", "data-locale": locale });
+    var status = el("span", { class: "faint", style: "font-size:12px" });
+    var editor = el("div", { class: "loc-editor", style: "display:none;margin-top:8px" });
+    var approvedNow = !!(approvedMap && approvedMap[locale]);
+
+    function chipRow() {
+      var row = el("div", { class: "btn-row", style: "margin-top:4px;align-items:center;gap:10px;flex-wrap:wrap" });
+      if (approvedNow) {
+        row.appendChild(el("span", { class: "tag new loc-inhandoff" }, ["in handoff"]));
+        row.appendChild(el("button", { class: "btn small ghost", onclick: function () { removeLocale(); } }, ["Remove"]));
+        row.appendChild(el("button", { class: "btn small ghost", onclick: function () { openEditor(approvedMap[locale], []); } }, ["Edit"]));
+      } else if (run.status === "approved" || run.status === "shipped") {
+        row.appendChild(el("button", { class: "btn small loc-generate", onclick: function () { generate(this); } }, ["Generate draft"]));
+      } else {
+        row.appendChild(el("span", { class: "faint", style: "font-size:12px" }, ["Approve the run first — drafts translate the copy you approved."]));
+      }
+      row.appendChild(status);
+      return row;
+    }
+
+    var actions = chipRow();
+    lane.appendChild(actions);
+    lane.appendChild(editor);
+
+    function rerenderActions() {
+      var fresh = chipRow();
+      lane.replaceChild(fresh, actions);
+      actions = fresh;
+    }
+
+    function generate(btn) {
+      if (btn) { btn.disabled = true; btn.innerHTML = '<span class="spin"></span> Translating…'; }
+      status.textContent = "";
+      api("POST", "/runs/" + run.id + "/localize", { locale: locale })
+        .then(function (draft) {
+          if (btn) { btn.disabled = false; btn.textContent = "Generate draft"; }
+          openEditor(draft.copy || {}, draft.trimmed || [], draft.label);
+        })
+        .catch(function (e) {
+          if (btn) { btn.disabled = false; btn.textContent = "Generate draft"; }
+          status.textContent = "✕ " + (e.message || "Generation failed.") + " — try again.";
+          status.style.color = "var(--bad)";
+        });
+    }
+
+    function openEditor(copy, trimmed, label) {
+      clear(editor);
+      editor.style.display = "";
+      editor.appendChild(el("div", { class: "loc-draft-label", style: "font-size:12px;color:var(--warn);font-weight:600" }, [label || "draft — machine-translated, review before shipping"]));
+      if (trimmed && trimmed.length) {
+        editor.appendChild(el("div", { class: "faint", style: "font-size:12px" }, ["Trimmed to fit: " + trimmed.join(", ") + "."]));
+      }
+      var fields = [["name", "Name", 30], ["subtitle", "Subtitle", 30], ["keywords", "Keyword field", 100]];
+      if (copy.promo !== undefined) fields.push(["promo", "Promotional text", 170]);
+      var inputs = {};
+      fields.forEach(function (f) {
+        var input = el("input", { class: "txt loc-field", "data-field": f[0], type: "text", value: copy[f[0]] || "", autocomplete: "off", spellcheck: "false" });
+        inputs[f[0]] = input;
+        editor.appendChild(el("label", { class: "fld" }, [el("span", { class: "lab" }, [f[1] + " (≤" + f[2] + ")"]), input]));
+      });
+      var saveBtn = el("button", { class: "btn primary small loc-approve", onclick: function () {
+        var body = { locale: locale, copy: { name: inputs.name.value, subtitle: inputs.subtitle.value, keywords: inputs.keywords.value } };
+        if (inputs.promo) body.copy.promo = inputs.promo.value;
+        saveBtn.disabled = true; saveBtn.innerHTML = '<span class="spin"></span> Approving…';
+        api("POST", "/runs/" + run.id + "/localize/approve", body)
+          .then(function () {
+            saveBtn.disabled = false; saveBtn.textContent = "Approve for handoff";
+            approvedNow = true;
+            if (approvedMap) approvedMap[locale] = body.copy;
+            editor.style.display = "none";
+            rerenderActions();
+            toast(locale + " approved — it now rides the fastlane bundle.");
+          })
+          .catch(function (e) {
+            saveBtn.disabled = false; saveBtn.textContent = "Approve for handoff";
+            toast(e && e.message ? e.message : "Couldn't approve.");
+          });
+      } }, ["Approve for handoff"]);
+      editor.appendChild(el("div", { class: "btn-row", style: "margin-top:8px" }, [saveBtn]));
+    }
+
+    function removeLocale() {
+      api("DELETE", "/runs/" + run.id + "/localize/" + encodeURIComponent(locale))
+        .then(function () {
+          approvedNow = false;
+          if (approvedMap) delete approvedMap[locale];
+          editor.style.display = "none";
+          rerenderActions();
+          toast(locale + " removed from the handoff.");
+        })
+        .catch(function (e) { toast(e && e.message ? e.message : "Couldn't remove."); });
+    }
+
+    if (autoOpen && (run.status === "approved" || run.status === "shipped") && !approvedNow) generate(null);
+    return lane;
   }
 
   function reasoningCard(R) {
@@ -2886,6 +3037,13 @@
       // panels render the EDITED values that actually ship — not the agent's
       // original proposal.
       card.appendChild(el("p", { class: "muted", style: "margin-top:0" }, ["Approved. Hand the metadata to your build pipeline (recommended) — that path is credential-free. Or upload straight to App Store Connect below; ShipASO uses your key once and never stores it."]));
+      // #78 Phase 2: say exactly which locales ride the bundle — approved ones only.
+      var locKeys = Object.keys(R.localizedCopy || {}).sort();
+      if (locKeys.length) {
+        card.appendChild(el("p", { class: "faint", id: "handoffLocales", style: "font-size:12.5px;margin-top:0" }, [
+          "Bundle includes en-US + " + locKeys.join(", ") + " — " + locKeys.length + " machine-translated draft" + (locKeys.length === 1 ? "" : "s") + " you approved.",
+        ]));
+      }
       card.appendChild(ascPushCta(run.id));
       card.appendChild(commandsBox(R.pushCommands || [], run.id, R.proposedCopy || {}, R.currentCopy || {}));
     }
@@ -3308,12 +3466,23 @@
     var svgNS = "http://www.w3.org/2000/svg";
     var svg = document.createElementNS(svgNS, "svg");
     svg.setAttribute("class", "spark"); svg.setAttribute("viewBox", "0 0 " + W + " " + H); svg.setAttribute("preserveAspectRatio", "none");
+    // Theme-aware fill: resolve --signal at render time (unique gradient id per
+    // chart so light/dark repaints and multiple sparklines never collide).
+    var signal = (getComputedStyle(document.documentElement).getPropertyValue("--signal") || "#34d399").trim();
+    var gid = "sparkfill-" + Math.random().toString(36).slice(2, 8);
+    // faint horizontal gridlines (quarter divisions) — a modern chart floor.
+    var grid = "";
+    for (var gi = 1; gi <= 3; gi++) {
+      var gy = (pad + (gi / 4) * (H - pad * 2)).toFixed(1);
+      grid += '<line class="grid" x1="' + pad + '" y1="' + gy + '" x2="' + (W - pad) + '" y2="' + gy + '"/>';
+    }
     svg.innerHTML =
-      '<defs><linearGradient id="sparkfill" x1="0" y1="0" x2="0" y2="1">' +
-      '<stop offset="0%" stop-color="#34d399" stop-opacity="0.35"/>' +
-      '<stop offset="100%" stop-color="#34d399" stop-opacity="0"/></linearGradient></defs>' +
+      '<defs><linearGradient id="' + gid + '" x1="0" y1="0" x2="0" y2="1">' +
+      '<stop offset="0%" stop-color="' + signal + '" stop-opacity="0.28"/>' +
+      '<stop offset="100%" stop-color="' + signal + '" stop-opacity="0"/></linearGradient></defs>' +
+      grid +
       '<line class="axis" x1="' + pad + '" y1="' + (H - pad) + '" x2="' + (W - pad) + '" y2="' + (H - pad) + '"/>' +
-      '<path class="area" d="' + dArea + '"/>' +
+      '<path class="area" style="fill:url(#' + gid + ')" d="' + dArea + '"/>' +
       '<path class="line" d="' + dLine + '"/>';
     // endpoint dot + labels
     points.forEach(function (p, i) {
@@ -3561,6 +3730,63 @@
     c.appendChild(backlink("#/", "Back to dashboard"));
     c.appendChild(el("h2", {}, ["Settings"]));
     c.appendChild(commsSettingsCard(me));
+    c.appendChild(storedKeysCard());
+  }
+
+  // #67: stored-credential management — metadata only (the API never returns key
+  // material). Delete is one click and honest: it does NOT revoke at Apple.
+  function storedKeysCard() {
+    var card = el("div", { class: "card", id: "storedKeysCard" }, [el("h3", {}, ["Saved keys"])]);
+    var body = el("div", { id: "storedKeysBody" });
+    card.appendChild(body);
+
+    function render(r) {
+      clear(body);
+      if (!r || !r.enabled) {
+        body.appendChild(el("p", { class: "faint", style: "font-size:13px" }, [
+          "Saving keys isn't enabled on this deployment. Runs use your key once and never store it.",
+        ]));
+        return;
+      }
+      body.appendChild(el("p", { class: "faint", style: "font-size:13px;margin-top:0" }, [
+        "Keys you chose to save are stored encrypted (envelope encryption; write-only — usable and deletable, never viewable) so scheduled runs can read your live listing. ",
+        el("b", { style: "color:var(--dim)" }, ["Deleting here does not revoke the key at Apple"]),
+        " — do that in App Store Connect.",
+      ]));
+      var creds = (r.credentials || []);
+      if (!creds.length) {
+        body.appendChild(el("div", { class: "faint", id: "noSavedKeys", style: "padding:6px 0" }, [
+          "No saved keys. Tick “Save this key” when you run with App Store Connect to add one.",
+        ]));
+        return;
+      }
+      creds.forEach(function (cd) {
+        var label = (cd.kind === "asc" ? "App Store Connect" : "Google Play") +
+          (cd.keyId ? " · " + cd.keyId : "") + (cd.appId ? "" : " · account-level");
+        var meta = "saved " + (cd.createdAt ? cd.createdAt.slice(0, 10) : "") +
+          (cd.lastUsedAt ? " · last used " + cd.lastUsedAt.slice(0, 10) : " · never used");
+        var delBtn = el("button", { class: "btn small ghost", onclick: function () {
+          delBtn.disabled = true;
+          var path = "/account/credentials/" + cd.kind + (cd.appId ? "?app=" + encodeURIComponent(cd.appId) : "");
+          api("DELETE", path).then(function () { load(); toast("Saved key deleted (revoke it at Apple too)."); })
+            .catch(function (e) { delBtn.disabled = false; toast(e && e.message ? e.message : "Couldn't delete."); });
+        } }, ["Delete"]);
+        body.appendChild(el("div", { class: "comp", "data-key": cd.id }, [
+          el("span", { class: "cname" }, [label]),
+          el("span", { class: "cdetail" }, [meta]),
+          el("span", { style: "flex:1" }),
+          delBtn,
+        ]));
+      });
+    }
+
+    function load() {
+      api("GET", "/account/credentials").then(render).catch(function () {
+        render({ enabled: false });
+      });
+    }
+    load();
+    return card;
   }
 
   function commsSettingsCard(me) {
@@ -3639,9 +3865,31 @@
     return viewDashboard();
   }
 
+  /* ════════════════════════ theme (dark ⇄ light) ═══════════════════════════
+     The pre-paint inline script in index.html already applied any saved choice.
+     Here we wire the toggle: flip the <html data-theme>, persist it, and let the
+     CSS custom properties do the rest. ShipASO is dark-first — light is opt-in
+     and the CSS does NOT auto-follow the OS — so an absent data-theme means the
+     UI is showing dark, and the first tap goes to light. */
+  function currentTheme() {
+    return document.documentElement.getAttribute("data-theme") === "light" ? "light" : "dark";
+  }
+  function setTheme(t) {
+    document.documentElement.setAttribute("data-theme", t);
+    try { localStorage.setItem("store-ops:theme", t); } catch (e) {}
+  }
+  function wireThemeToggle() {
+    var btn = document.getElementById("themeToggle");
+    if (!btn) return;
+    btn.addEventListener("click", function () {
+      setTheme(currentTheme() === "light" ? "dark" : "light");
+    });
+  }
+
   window.addEventListener("hashchange", route);
   window.addEventListener("DOMContentLoaded", function () {
     document.getElementById("logo").addEventListener("click", function () { go("#/"); });
+    wireThemeToggle();
     // wire the demo "acting as" field. Typing an email opts into the demo path
     // (only works when the backend runs APP_ENV=demo); clearing it logs out of
     // demo and falls back to the real login screen. Empty by default — we never

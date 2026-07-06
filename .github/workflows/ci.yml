@@ -53,3 +53,56 @@ jobs:
         # they pass deterministically serially. The retry absorbs residual flake
         # without masking a real failure.
         run: ./node_modules/.bin/playwright test --workers=1 --retries=1
+
+  # Shared spine (PRD 01): design-token source-of-truth parity, pure honesty
+  # helpers, and the transport-agnostic API client types. Dependency-light + fast
+  # — its own job so a spine regression is a distinct red check.
+  spine:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: packages
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: packages/package-lock.json
+
+      - name: Install
+        run: npm ci
+
+      - name: Test (token parity + honesty + typecheck)
+        run: npm test
+
+  # New TanStack web dashboard (PRD 02+). Migrates cloud/public/app.js
+  # route-by-route; consumes the @shipaso spine by path alias. Its own job:
+  # typecheck + unit tests + a production build (build success = the spine wiring
+  # + router bundle are sound). Not yet deployed — coexists behind the edge map.
+  web:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: cloud/web
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: cloud/web/package-lock.json
+
+      - name: Install
+        run: npm ci
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Test
+        run: npm test
+
+      - name: Build
+        run: npm run build

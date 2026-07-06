@@ -132,6 +132,34 @@ jobs:
           add_settings_col_if_missing schedule_json "schedule_json TEXT"
           add_settings_col_if_missing last_sweep_at "last_sweep_at TEXT"
 
+          # stored_credentials (#67 — opt-in envelope-encrypted store credentials).
+          # Fresh DBs get the widened CHECK (incl. 'asa' for #78-2 Search Ads keys).
+          d1 "CREATE TABLE IF NOT EXISTS stored_credentials (id TEXT PRIMARY KEY, user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE, app_id TEXT REFERENCES apps(id) ON DELETE CASCADE, kind TEXT NOT NULL CHECK (kind IN ('asc','play','asa')), key_id TEXT NOT NULL DEFAULT '', issuer_id TEXT NOT NULL DEFAULT '', ciphertext TEXT NOT NULL, wrapped_dek TEXT NOT NULL, kek_version INTEGER NOT NULL, created_at TEXT NOT NULL DEFAULT (datetime('now')), last_used_at TEXT, UNIQUE (user_id, app_id, kind))" > /dev/null
+          d1 "CREATE INDEX IF NOT EXISTS idx_stored_cred_user ON stored_credentials(user_id)" > /dev/null
+          echo "✓ stored_credentials table + index ensured"
+
+          # #78-2: widen the kind CHECK on an EXISTING table to allow 'asa'.
+          # SQLite can't ALTER a CHECK in place → rebuild, but only when needed
+          # (idempotent: skip if the current schema already allows 'asa').
+          NEEDS_ASA=$(npx wrangler d1 execute store_ops --remote --json --command "SELECT sql FROM sqlite_master WHERE type='table' AND name='stored_credentials'" | node -e '
+            let s=""; process.stdin.on("data",c=>s+=c); process.stdin.on("end",()=>{
+              const sql = (JSON.parse(s)[0]?.results?.[0]?.sql) || "";
+              process.stdout.write(sql.includes("'"'"'asa'"'"'") ? "no" : "yes");
+            });')
+          if [ "$NEEDS_ASA" = "yes" ]; then
+            echo "→ widening stored_credentials.kind CHECK to include 'asa' (table rebuild)"
+            d1 "PRAGMA foreign_keys=OFF" > /dev/null
+            d1 "CREATE TABLE stored_credentials_new (id TEXT PRIMARY KEY, user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE, app_id TEXT REFERENCES apps(id) ON DELETE CASCADE, kind TEXT NOT NULL CHECK (kind IN ('asc','play','asa')), key_id TEXT NOT NULL DEFAULT '', issuer_id TEXT NOT NULL DEFAULT '', ciphertext TEXT NOT NULL, wrapped_dek TEXT NOT NULL, kek_version INTEGER NOT NULL, created_at TEXT NOT NULL DEFAULT (datetime('now')), last_used_at TEXT, UNIQUE (user_id, app_id, kind))" > /dev/null
+            d1 "INSERT INTO stored_credentials_new SELECT id, user_id, app_id, kind, key_id, issuer_id, ciphertext, wrapped_dek, kek_version, created_at, last_used_at FROM stored_credentials" > /dev/null
+            d1 "DROP TABLE stored_credentials" > /dev/null
+            d1 "ALTER TABLE stored_credentials_new RENAME TO stored_credentials" > /dev/null
+            d1 "CREATE INDEX IF NOT EXISTS idx_stored_cred_user ON stored_credentials(user_id)" > /dev/null
+            d1 "PRAGMA foreign_keys=ON" > /dev/null
+            echo "✓ stored_credentials.kind now allows 'asa'"
+          else
+            echo "✓ stored_credentials.kind already allows 'asa'"
+          fi
+
       - name: Verify
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
@@ -165,5 +193,7 @@ jobs:
               console.log("✓ app_competitors present");
               if (!rows.some((r) => r.name === "app_settings")) { console.error("MISSING app_settings"); process.exit(1); }
               console.log("✓ app_settings present");
+              if (!rows.some((r) => r.name === "stored_credentials")) { console.error("MISSING stored_credentials"); process.exit(1); }
+              console.log("✓ stored_credentials present");
             });
           '

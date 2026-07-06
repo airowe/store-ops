@@ -1,6 +1,9 @@
-// Source uses ESM-correct ".js" import specifiers on ".ts(x)" files (for tsc's
-// Bundler resolution); jest maps them back in jest.config.js moduleNameMapper.
-// Metro resolves specifiers literally, so mirror that mapping here.
+// Metro config. The app writes ESM-correct ".js" import specifiers on ".ts"/
+// ".tsx" sources (matching tsconfig "Bundler" resolution + jest's
+// moduleNameMapper). Metro does NOT remap ".js" -> ".ts"/".tsx" on its own, so a
+// relative ".js" specifier with no real ".js" on disk fails to bundle. This
+// resolver retries the TS source in that case — the one piece that lets the app
+// actually bundle for `expo export` / `expo start` / EAS.
 const { getDefaultConfig } = require("expo/metro-config");
 
 const config = getDefaultConfig(__dirname);
@@ -15,18 +18,16 @@ config.resolver.blockList = [
   /\.test\.(ts|tsx)$/,
 ].filter(Boolean);
 
-const defaultResolveRequest = config.resolver.resolveRequest;
 config.resolver.resolveRequest = (context, moduleName, platform) => {
-  const resolve = defaultResolveRequest ?? context.resolveRequest;
-  if (/^\.\.?\//.test(moduleName) && moduleName.endsWith(".js")) {
+  if ((moduleName.startsWith("./") || moduleName.startsWith("../")) && moduleName.endsWith(".js")) {
     try {
-      return resolve(context, moduleName.slice(0, -3), platform);
+      return context.resolveRequest(context, moduleName, platform);
     } catch {
-      // No .ts/.tsx source behind the specifier — fall through to the literal
-      // path so real .js files still resolve.
+      // Fall back to the TS source the ".js" specifier actually points at.
+      return context.resolveRequest(context, moduleName.slice(0, -3), platform);
     }
   }
-  return resolve(context, moduleName, platform);
+  return context.resolveRequest(context, moduleName, platform);
 };
 
 module.exports = config;

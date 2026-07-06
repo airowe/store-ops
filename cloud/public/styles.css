@@ -37,6 +37,56 @@
 
   --radius: 14px;
   --shadow: 0 24px 60px rgba(0, 0, 0, 0.5);
+
+  /* ── semantic surface / tint tokens (theme-aware; see the light overrides
+     below). Every hardcoded rgba(255,255,255,…) raised-fill and the two
+     bg-colored scrims used to live inline; routing them through tokens is what
+     lets the whole UI flip to light without touching component selectors. ── */
+  --raise:   rgba(255, 255, 255, 0.020);  /* subtle raised fill on a panel */
+  --raise-2: rgba(255, 255, 255, 0.015);
+  --raise-3: rgba(255, 255, 255, 0.012);
+  --on-signal: #04140d;                    /* text/icon ON a solid --signal fill */
+  --topbar-bg: rgba(7, 9, 14, 0.82);       /* sticky header scrim */
+  --overlay:   rgba(7, 9, 14, 0.74);       /* modal backdrop */
+  --grain: 0.025;                          /* fractal-noise texture opacity */
+  color-scheme: dark;
+}
+
+/* ── light theme ───────────────────────────────────────────────────────────
+   "Editorial light": warm paper, not stark white, so the identity survives the
+   flip. The accent green darkens (#0f9d63) to clear AA contrast on light
+   surfaces; tints re-tune for the inverted background.
+
+   ShipASO is dark-FIRST by identity, so light is OPT-IN via the topbar toggle
+   (persisted to `data-theme`) — we deliberately do NOT auto-follow
+   prefers-color-scheme, so the default is always the canonical dark and pinned
+   dark treatments stay stable. The dark values in :root remain the baseline. */
+:root[data-theme="light"] {
+  --bg: #f6f7f9;
+  --bg-2: #eceff4;
+  --panel: #ffffff;
+  --panel-2: #f3f5f9;
+  --line: #d6dceb;
+  --line-soft: #e6eaf2;
+  --ink: #111621;
+  --dim: #4a5468;
+  --faint: #7a8398;
+  --signal: #0f9d63;
+  --signal-dim: #0b7d4e;
+  --signal-glow: rgba(15, 157, 99, 0.14);
+  --brand: #3563e0;
+  --warn: #b7791f;
+  --bad: #dc4a41;
+
+  --raise:   rgba(17, 22, 33, 0.028);
+  --raise-2: rgba(17, 22, 33, 0.022);
+  --raise-3: rgba(17, 22, 33, 0.016);
+  --on-signal: #ffffff;
+  --topbar-bg: rgba(246, 247, 249, 0.82);
+  --overlay:   rgba(28, 34, 46, 0.42);
+  --grain: 0;
+  --shadow: 0 24px 60px rgba(28, 40, 66, 0.14);
+  color-scheme: light;
 }
 
 * { box-sizing: border-box; }
@@ -63,7 +113,7 @@ body {
 
 /* faint grain overlay for texture */
 body::before {
-  content: ""; position: fixed; inset: 0; pointer-events: none; z-index: 0; opacity: 0.025;
+  content: ""; position: fixed; inset: 0; pointer-events: none; z-index: 0; opacity: var(--grain, 0.025);
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
 }
 
@@ -146,7 +196,7 @@ a:hover { text-decoration: underline; }
 header.topbar {
   position: sticky; top: 0; z-index: 30;
   backdrop-filter: blur(10px);
-  background: rgba(7, 9, 14, 0.82);
+  background: var(--topbar-bg);
   border-bottom: 1px solid var(--line-soft);
 }
 .topbar-in {
@@ -196,6 +246,24 @@ header.topbar {
 }
 .env-pill.live { color: var(--signal); border-color: var(--signal-dim); background: rgba(52, 211, 153, 0.04); }
 .env-pill.demo { color: var(--brand); border-color: rgba(91, 140, 255, 0.4); }
+
+/* ── theme toggle (dark ⇄ light) ──────────────────────────────────────────── */
+.theme-toggle {
+  appearance: none; cursor: pointer; flex: none;
+  width: 30px; height: 30px; border-radius: 8px;
+  display: grid; place-items: center;
+  background: var(--raise); border: 1px solid var(--line); color: var(--dim);
+  transition: border-color .15s, color .15s, background .15s, transform .12s;
+}
+.theme-toggle:hover { color: var(--ink); border-color: var(--dim); }
+.theme-toggle:active { transform: scale(.94); }
+.theme-toggle svg { width: 15px; height: 15px; display: block; }
+.theme-toggle:focus-visible { outline: none; border-color: var(--signal-dim); box-shadow: 0 0 0 3px var(--signal-glow); }
+/* show the sun in dark mode (tap → go light) and the moon in light mode */
+.theme-toggle .i-sun { display: block; }
+.theme-toggle .i-moon { display: none; }
+:root[data-theme="light"] .theme-toggle .i-sun { display: none; }
+:root[data-theme="light"] .theme-toggle .i-moon { display: block; }
 
 /* ── hero / agent banner ─────────────────────────────────────── */
 .agentline {
@@ -312,7 +380,7 @@ input.mono { font-family: var(--mono); }
 
 .btn {
   appearance: none; border: 1px solid var(--line); cursor: pointer;
-  background: rgba(255,255,255,0.02); color: var(--ink);
+  background: var(--raise); color: var(--ink);
   padding: 10px 16px; border-radius: 11px; font-size: 14px; font-weight: 600;
   font-family: var(--sans);
   display: inline-flex; align-items: center; gap: 8px;
@@ -320,13 +388,13 @@ input.mono { font-family: var(--mono); }
 }
 .btn:hover { transform: translateY(-1px); border-color: var(--dim); }
 .btn:disabled { opacity: .5; cursor: not-allowed; transform: none; }
-.btn.primary { background: var(--signal); border-color: var(--signal); color: #04140d; box-shadow: 0 0 0 0 var(--signal-glow); }
+.btn.primary { background: var(--signal); border-color: var(--signal); color: var(--on-signal); box-shadow: 0 0 0 0 var(--signal-glow); }
 .btn.primary:hover { transform: translateY(-1px); box-shadow: 0 12px 30px -8px var(--signal-glow); border-color: var(--signal); }
-.btn.ok { background: var(--signal); border-color: var(--signal); color: #04140d; }
+.btn.ok { background: var(--signal); border-color: var(--signal); color: var(--on-signal); }
 .btn.ok:hover { transform: translateY(-1px); box-shadow: 0 12px 30px -8px var(--signal-glow); }
 .btn.bad { background: transparent; border-color: rgba(248,113,113,.5); color: var(--bad); }
 .btn.bad:hover { border-color: var(--bad); background: rgba(248,113,113,.08); }
-.btn.ghost { background: rgba(255,255,255,0.02); }
+.btn.ghost { background: var(--raise); }
 .btn-row { display: flex; gap: 10px; flex-wrap: wrap; }
 
 /* ── reasoning / agent log ───────────────────────────────────── */
@@ -560,7 +628,7 @@ table.kw .score { font-family: var(--mono); font-weight: 700; color: var(--ink);
 .rawcmds .cmd { margin-top: 10px; }
 
 /* ── primary "run with App Store Connect" panel ──────────────── */
-.asc-run-panel { margin: 0 0 14px; padding: 12px 14px; border: 1px solid var(--line-soft); border-radius: 11px; background: rgba(255,255,255,0.015); }
+.asc-run-panel { margin: 0 0 14px; padding: 12px 14px; border: 1px solid var(--line-soft); border-radius: 11px; background: var(--raise-2); }
 .asc-run-panel .checkbox-row {
   display: flex; align-items: center; gap: 8px;
   margin: 14px 0 0; padding-top: 12px; border-top: 1px solid var(--line-soft);
@@ -576,7 +644,7 @@ table.kw .score { font-family: var(--mono); font-weight: 700; color: var(--ink);
   background: linear-gradient(180deg, var(--panel), var(--bg-2));
   border: 1px solid var(--line); border-radius: 10px; overflow: hidden;
 }
-.cmd .cmd-h { display: flex; align-items: center; gap: 8px; padding: 8px 11px; border-bottom: 1px solid var(--line-soft); background: rgba(255,255,255,0.015); }
+.cmd .cmd-h { display: flex; align-items: center; gap: 8px; padding: 8px 11px; border-bottom: 1px solid var(--line-soft); background: var(--raise-2); }
 .cmd .store-tag { font-family: var(--mono); font-size: 11px; font-weight: 700; padding: 1px 7px; border-radius: 5px; }
 .cmd .store-tag.appstore { background: rgba(91,140,255,.16); color: var(--brand); }
 .cmd .store-tag.googleplay { background: var(--signal-glow); color: var(--signal); }
@@ -591,7 +659,7 @@ table.kw .score { font-family: var(--mono); font-weight: 700; color: var(--ink);
 .locked {
   text-align: center; padding: 26px 18px; color: var(--dim);
   border: 1px dashed var(--line); border-radius: 12px; font-size: 14px;
-  background: rgba(255,255,255,0.012);
+  background: var(--raise-3);
 }
 .locked .lock { font-size: 22px; display: block; margin-bottom: 8px; }
 
@@ -616,9 +684,13 @@ table.kw .score { font-family: var(--mono); font-weight: 700; color: var(--ink);
 
 svg.spark { display: block; width: 100%; height: auto; }
 svg.spark .axis { stroke: var(--line); stroke-width: 1; }
-svg.spark .line { fill: none; stroke: var(--signal); stroke-width: 2; }
-svg.spark .area { fill: url(#sparkfill); opacity: .5; }
-svg.spark .dot { fill: var(--signal); }
+/* faint horizontal gridlines — a modern chart floor, quiet enough not to compete
+   with the trajectory. Emitted by the sparkline() builder. */
+svg.spark .grid { stroke: var(--line-soft); stroke-width: 1; }
+svg.spark .line { fill: none; stroke: var(--signal); stroke-width: 2.25; stroke-linecap: round; stroke-linejoin: round; }
+/* fill is set inline per-chart (a unique, theme-resolved gradient id). */
+svg.spark .area { opacity: .9; }
+svg.spark .dot { fill: var(--signal); stroke: var(--panel); stroke-width: 2; }
 svg.spark .lbl { fill: var(--faint); font-family: var(--mono); font-size: 10px; }
 /* #62: observed-change markers on the trajectory (▲ push / ◆ competitor) */
 svg.spark .anno-line { stroke-width: 1; stroke-dasharray: 3 3; opacity: .55; }
@@ -656,7 +728,7 @@ svg.spark .anno-competitor .anno-glyph { fill: var(--warn); }
 }
 .freshness-banner.show { display: flex; opacity: 1; transform: translateX(-50%) translateY(0); }
 .freshness-banner .fresh-msg { color: var(--dim); }
-.freshness-banner .btn { padding: 5px 12px; font-size: 13px; background: var(--signal); border-color: var(--signal); color: #04140d; }
+.freshness-banner .btn { padding: 5px 12px; font-size: 13px; background: var(--signal); border-color: var(--signal); color: var(--on-signal); }
 .freshness-banner .btn:hover { transform: translateY(-1px); box-shadow: 0 12px 30px -8px var(--signal-glow); border-color: var(--signal); }
 .freshness-banner .fresh-x {
   background: transparent; border: 0; color: var(--faint); cursor: pointer;
@@ -677,7 +749,7 @@ svg.spark .anno-competitor .anno-glyph { fill: var(--warn); }
 .diffhead { display: flex; align-items: baseline; gap: 12px; }
 .diffsummary { margin-left: auto; font-family: var(--mono); font-size: 12px; color: var(--dim); }
 .difflist { display: flex; flex-direction: column; gap: 14px; }
-.diffrow { border: 1px solid var(--line-soft); border-radius: 10px; padding: 12px 14px; background: rgba(255,255,255,0.012); }
+.diffrow { border: 1px solid var(--line-soft); border-radius: 10px; padding: 12px 14px; background: var(--raise-3); }
 .diffrow.is-changed { border-color: var(--signal-dim); }
 .dfield { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
 .dfield .fname { font-family: var(--mono); font-size: 12px; color: var(--faint); text-transform: uppercase; letter-spacing: .05em; }
@@ -753,7 +825,7 @@ svg.spark .anno-competitor .anno-glyph { fill: var(--warn); }
   position: fixed; inset: 0; z-index: 100;
   display: flex; align-items: center; justify-content: center;
   padding: 24px;
-  background: rgba(7, 9, 14, 0.74);
+  background: var(--overlay);
   backdrop-filter: blur(3px);
   animation: tlmIn 140ms ease-out;
 }
@@ -1007,7 +1079,7 @@ svg.spark .anno-competitor .anno-glyph { fill: var(--warn); }
 .finding-link a:hover { text-decoration: underline; }
 
 /* ── Google Play audit panel (parallel of the ASC run panel) ───────────────── */
-.play-audit-panel { margin: 0 0 14px; padding: 12px 14px; border: 1px solid var(--line-soft); border-radius: 11px; background: rgba(255,255,255,0.015); }
+.play-audit-panel { margin: 0 0 14px; padding: 12px 14px; border: 1px solid var(--line-soft); border-radius: 11px; background: var(--raise-2); }
 .play-audit-result .play-note.ok  { color: var(--signal); }
 .play-audit-result .play-note.err { color: var(--bad); }
 .play-audit-out .play-findings    { display: flex; flex-direction: column; }

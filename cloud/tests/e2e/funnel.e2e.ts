@@ -94,7 +94,9 @@ test.describe("dashboard funnel (mock backend)", () => {
   test("the picker auto-loads more on scroll (infinite scroll sentinel)", async ({
     page,
   }) => {
-    await gotoMockDashboard(page);
+    // the ONE spec that exercises the scroll path — keep IntersectionObserver
+    // (the harness disables it by default to make click-pagination deterministic)
+    await gotoMockDashboard(page, "#/", { intersectionObserver: true });
     const search = page.getByPlaceholder(/app name, app store .* link, or bundle id/i);
     await search.fill("meditation");
     await expect(page.locator(".appcard").first()).toBeVisible({ timeout: 10_000 });

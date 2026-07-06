@@ -83,6 +83,19 @@ export type Env = {
   // unset, the export route degrades CLOSED (403). Passed as the `x-rlhf-export`
   // request header; must match exactly.
   RLHF_EXPORT_TOKEN?: string;
+  // #67 post-launch half: the key-encryption key (KEK) for OPT-IN stored store
+  // credentials (envelope encryption; design in docs/prd/credential-storage/).
+  // base64-encoded 32 bytes. Unset → the store-credential feature is honestly
+  // UNAVAILABLE (the opt-in UI hides, the routes 503) — the per-run ephemeral
+  // path is unaffected. Rotation adds CRED_KEK_V2 etc. (lazy re-wrap on use).
+  CRED_KEK_V1?: string;
+  CRED_KEK_V2?: string;
+  // #78-2: gate for SURFACING Apple Search Ads popularity in scoring/UI. Connect
+  // + store + verify of an ASA key works whenever credential storage is enabled
+  // (a KEK is set); but the popularity NUMBERS stay dark until this is set to
+  // "1"/"true" — flip it only after verifying the v5 popularity read against a
+  // live ASA account (owner action, per docs/prd/localization/asa-data-spike.md).
+  ASA_POPULARITY_ENABLED?: string;
 };
 
 export default {

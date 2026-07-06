@@ -45,6 +45,9 @@ import { type DigestAppInput, planDigests } from "../digest.js";
 import { emailSenderForEnv } from "../emailSender.js";
 import { mintUnsubToken, resolveSessionSecret } from "../auth.js";
 import { buildAppInput } from "../api/runConfig.js";
+import { keyedAscPass } from "../api/index.js";
+import { mintAscJwt } from "../engine/ascJwt.js";
+import { credentialsEnabled, useCredential } from "../credentialStore.js";
 import { reasonerForEnv } from "../api/aiReasoner.js";
 import { fetchForEnv } from "../fetchAdapter.js";
 import { notifyRunAwaitingApproval } from "../push.js";
@@ -223,20 +226,50 @@ export async function runWeeklySweep(
         continue;
       }
 
+      // #67 Phase 2: AUTONOMOUS KEYED SWEEP. When the owner OPTED IN to storing
+      // an ASC key for this app, the sweep runs the FULL read-and-improve pass
+      // (real subtitle/keyword proposals, real findings) instead of the public
+      // iTunes-only audit — the product's core loop finally running unattended.
+      // Still approval-gated: this only PREPARES the run; nothing is pushed. A
+      // stored-key read failure degrades to the public pass (never strands the
+      // sweep). The stored key's plaintext is a transient here, never persisted
+      // onto the run.
       const previous = await getLatestCompetitorMap(env.DB, app.id);
       const cronReasoner = reasonerForEnv(env.AI);
-      // #72: the sweep watches the app's CONFIRMED competitors — before this,
-      // the "watched competitors" step always ran on an empty list.
       const confirmed = await confirmedCompetitorKeys(env.DB, app.id);
-      const input = await buildAppInput(
-        app,
-        {
-          ...(cronReasoner ? { reasoner: cronReasoner } : {}),
-          ...(confirmed.length ? { competitors: confirmed } : {}),
-        },
-        previous,
-      );
-      const result = await runAgent(fetchForEnv(env), input);
+      const storedAsc = credentialsEnabled(env)
+        ? await useCredential(env, app.user_id, app.id, "asc")
+        : null;
+      let passed: { result: AgentResult; resultWithSnapshot: AgentResult } | null = null;
+      if (storedAsc) {
+        try {
+          const token = await mintAscJwt({
+            p8: storedAsc.plaintext,
+            keyId: storedAsc.meta.keyId,
+            issuerId: storedAsc.meta.issuerId,
+          });
+          passed = await keyedAscPass(env, app, token, "en-US", {
+            ...(confirmed.length ? { competitors: confirmed } : {}),
+          });
+        } catch {
+          passed = null; // stored-key read failed → fall back to the public pass
+        }
+      }
+      const keyed = passed !== null;
+      if (!passed) {
+        const input = await buildAppInput(
+          app,
+          {
+            ...(cronReasoner ? { reasoner: cronReasoner } : {}),
+            ...(confirmed.length ? { competitors: confirmed } : {}),
+          },
+          previous,
+        );
+        const r = await runAgent(fetchForEnv(env), input);
+        passed = { result: r, resultWithSnapshot: r };
+      }
+      const result = passed.result;
+      const resultWithSnapshot = passed.resultWithSnapshot;
 
       // #53: per-app threshold config (fail-open → historical behavior) + last
       // week's ranks (read BEFORE this pass persists) for the drop trigger.
@@ -253,8 +286,11 @@ export async function runWeeklySweep(
         const runId = await persistRun(env.DB, {
           appId: app.id,
           status: "awaiting_approval",
-          result,
-          trigger: { source: "cron", reasons: decision.reasons },
+          result: resultWithSnapshot,
+          trigger: {
+            source: "cron",
+            reasons: keyed ? [...decision.reasons, "read via your saved App Store Connect key"] : decision.reasons,
+          },
         });
         report.runsOpened++;
         // Notify the owner on their phone — the whole point of push: a run opened
@@ -277,7 +313,7 @@ export async function runWeeklySweep(
         const runId = await persistRun(env.DB, {
           appId: app.id,
           status: "detected",
-          result,
+          result: resultWithSnapshot,
           trigger: {
             source: "cron",
             reasons: alreadyOpen

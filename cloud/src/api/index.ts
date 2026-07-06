@@ -91,6 +91,12 @@ import type { ReasoningTrace, AppRow, FindingsSummary } from "../d1.js";
 import { buildPreview } from "../engine/preview.js";
 import { discoverCompetitors, resolveNameToId } from "../engine/competitorWatch.js";
 import { buildRankAnnotations } from "../engine/rankAnnotations.js";
+import { deriveBrandTokens, localizeCopy, LocalizeError, validateLocalizedSubmission } from "../engine/localizeCopy.js";
+import { localizeScreenshots, type LayeredSource, type TextSlot } from "../engine/localizeScreenshots.js";
+import { localizerForEnv } from "./aiLocalizer.js";
+import { credentialsEnabled, deleteCredential, listCredentialMeta, saveCredential, useCredential } from "../credentialStore.js";
+import { serializeAsaBundle, verifyAsaCredentials, type AsaKeyBundle } from "../engine/asaAuth.js";
+import localesData from "../engine/locales-data.json";
 import { validateThresholdPatch } from "../thresholds.js";
 import { validateSchedule } from "../schedule.js";
 import {
@@ -102,6 +108,7 @@ import {
   deleteApp,
   deleteCompetitor,
   deleteDeviceTokenForUser,
+  deleteLocalizedCopy,
   distinctTrackedKeywords,
   getApp,
   getNotificationPrefs,
@@ -129,6 +136,7 @@ import {
   setEmailDigestByEmail,
   setNotificationPrefs,
   setOptOut,
+  setLocalizedCopy,
   setRankCadence,
   setSchedule,
   setThresholds,
@@ -174,7 +182,7 @@ import { fetchForEnv } from "../fetchAdapter.js";
 import { buildFastlaneBundle } from "../engine/fastlane.js";
 import { zipStore } from "../engine/zip.js";
 import { mintAscJwt } from "../engine/ascJwt.js";
-import { findAscAppId, applyAscMetadata, createAscVersion, isValidVersionString, readAscLocalization, AscWriteError } from "../engine/ascWrite.js";
+import { findAscAppId, applyAscMetadata, createAscLocalization, createAscVersion, getEditableVersionId, isValidVersionString, readAscLocalization, AscWriteError } from "../engine/ascWrite.js";
 import { readAscSnapshot, ascScreenshotsToListing, type AscSnapshot } from "../engine/ascRead.js";
 import { score as scoreScreenshots } from "../engine/screenshotScore.js";
 import { auditFindings, summarizeFindings, surfaceLocks } from "../engine/auditFindings.js";
@@ -336,6 +344,9 @@ export function serializeRunResult(trace: ReasoningTrace, approved: boolean) {
     ...(trace.localizationExpansion !== undefined
       ? { localizationExpansion: trace.localizationExpansion }
       : {}),
+    // #78 Phase 2: the locales whose drafts the human APPROVED for handoff.
+    // Full copy included so the review lane can render/edit what's stored.
+    ...(trace.localizedCopy !== undefined ? { localizedCopy: trace.localizedCopy } : {}),
     // PRD 03 / #95: PUBLIC review sentiment + observed topics. Sample size is
     // ALWAYS carried and the score is SUPPRESSED below threshold (#78). Public
     // data only — safe to serve. Older traces have none → field omitted.
@@ -1371,92 +1382,122 @@ async function runAppWithAsc(
   appId: string,
 ): Promise<unknown> {
   const app = await requireOwnedApp(env, appId, userId);
-  const body = (await req.json().catch(() => ({}))) as RunAscBody;
-  if (!body.p8 || !body.keyId || !body.issuerId) {
-    throw new HttpError(400, "p8, keyId, and issuerId are required");
-  }
+  const body = (await req.json().catch(() => ({}))) as RunAscBody & { store?: boolean; useStored?: boolean };
   const locale = body.locale?.trim() || "en-US";
+
+  // #67: a run may authenticate with a STORED credential (opt-in, envelope-
+  // encrypted) instead of in-request creds. `useStored` (or simply omitting the
+  // creds when one exists) decrypts the saved key for this single use — the
+  // plaintext is a transient here, never returned.
+  let cred: { p8: string; keyId: string; issuerId: string };
+  if ((body.useStored || !body.p8) && credentialsEnabled(env)) {
+    const stored = await useCredential(env, userId, appId, "asc");
+    if (!stored) {
+      if (body.useStored) throw new HttpError(404, "no saved App Store Connect key for this app");
+      throw new HttpError(400, "p8, keyId, and issuerId are required");
+    }
+    cred = { p8: stored.plaintext, keyId: stored.meta.keyId, issuerId: stored.meta.issuerId };
+  } else {
+    if (!body.p8 || !body.keyId || !body.issuerId) {
+      throw new HttpError(400, "p8, keyId, and issuerId are required");
+    }
+    cred = { p8: body.p8, keyId: body.keyId, issuerId: body.issuerId };
+  }
 
   // Mint the ephemeral ASC token + read the current live copy.
   let token: string;
   try {
-    token = await mintAscJwt({ p8: body.p8, keyId: body.keyId, issuerId: body.issuerId });
+    token = await mintAscJwt({ p8: cred.p8, keyId: cred.keyId, issuerId: cred.issuerId });
   } catch (e) {
     throw new HttpError(400, e instanceof Error ? e.message : "invalid credentials");
   }
+
+  // #67 opt-in: persist the credential (envelope-encrypted) AFTER it minted a
+  // token successfully — we never store a key that doesn't work. Best-effort;
+  // a storage failure never fails the run the user asked for.
+  if (body.store && body.p8 && credentialsEnabled(env)) {
+    await saveCredential(env, {
+      userId,
+      appId,
+      kind: "asc",
+      keyId: cred.keyId,
+      issuerId: cred.issuerId,
+      plaintext: cred.p8,
+    }).catch(() => undefined);
+  }
+  const { result, resultWithSnapshot } = await keyedAscPass(env, app, token, locale, {
+    ...(body.keywords ? { keywords: body.keywords } : {}),
+    ...(body.competitors ? { competitors: body.competitors } : {}),
+    ...(body.baseCopy ? { baseCopy: body.baseCopy } : {}),
+  });
+
+  const runId = await persistRun(env.DB, {
+    appId: app.id,
+    status: "awaiting_approval",
+    result: resultWithSnapshot,
+    trigger: { source: "manual", reasons: ["manual run requested (App Store Connect read)"] },
+  });
+  return { id: runId, status: "awaiting_approval", digest: result.competitors.digest, ascRead: true };
+}
+
+/**
+ * The keyed (Mode-A) agent pass: read the live ASC listing with `token`, run the
+ * agent against the live copy as the floor, and ENRICH the result with the full
+ * findings/locks/context/coverage/localization set. Shared by the manual
+ * `/run-asc` route and the AUTONOMOUS keyed sweep (#67 Phase 2) so a scheduled
+ * run produces the exact same rich, honest output a manual keyed run does.
+ *
+ * `result` is the client-facing result; `resultWithSnapshot` carries the raw ASC
+ * snapshot SERVER-SIDE only (persistRun never copies it onto the client trace).
+ * A read failure throws `AscWriteError` (callers translate to their own error).
+ */
+export async function keyedAscPass(
+  env: Env,
+  app: AppRow,
+  token: string,
+  locale: string,
+  extra: Pick<RunOverrides, "keywords" | "competitors" | "baseCopy"> = {},
+): Promise<{ result: AgentResult; resultWithSnapshot: AgentResult }> {
   let liveSubtitle: string | undefined;
   let liveKeywords: string | undefined;
   let liveName: string | undefined;
   let liveDescription: string | undefined;
   let ascSnapshot: AscSnapshot | undefined;
+  const ascAppId = await findAscAppId(fetch, token, app.bundle_id);
+  const live = await readAscLocalization(fetch, { token, appId: ascAppId, locale });
+  liveSubtitle = live.subtitle;
+  liveKeywords = live.keywords;
+  liveName = live.name;
+  liveDescription = live.description;
   try {
-    const ascAppId = await findAscAppId(fetch, token, app.bundle_id);
-    const live = await readAscLocalization(fetch, { token, appId: ascAppId, locale });
-    liveSubtitle = live.subtitle;
-    liveKeywords = live.keywords;
-    liveName = live.name;
-    liveDescription = live.description;
-    // The full pre-launch read: screenshots, previews, appInfo, version state,
-    // pricing/IAPs, age rating, custom pages, all locales. Best-effort — a read
-    // failure here records a per-surface error but never strands the run.
-    try {
-      ascSnapshot = await readAscSnapshot(fetch, { token, appId: ascAppId, locale });
-    } catch {
-      ascSnapshot = undefined;
-    }
-  } catch (e) {
-    // A read failure shouldn't strand the user — fall back to an honest iTunes-only
-    // run (subtitle/keywords omitted) and surface the reason.
-    if (e instanceof AscWriteError) throw new HttpError(400, `App Store Connect read failed: ${e.message}`);
-    throw e;
+    ascSnapshot = await readAscSnapshot(fetch, { token, appId: ascAppId, locale });
+  } catch {
+    ascSnapshot = undefined;
   }
 
-  const previous = await getLatestCompetitorMap(env.DB, appId);
+  const previous = await getLatestCompetitorMap(env.DB, app.id);
   const overrides: RunOverrides = { ascMetadataRead: true };
-  if (body.keywords) overrides.keywords = body.keywords;
-  if (body.competitors) overrides.competitors = body.competitors;
+  if (extra.keywords) overrides.keywords = extra.keywords;
+  if (extra.competitors) overrides.competitors = extra.competitors;
   else {
-    // #72: no explicit list → watch the app's CONFIRMED competitors (never
-    // suggestions). Empty when none exist or the table hasn't migrated yet.
-    const confirmed = await confirmedCompetitorKeys(env.DB, appId);
+    const confirmed = await confirmedCompetitorKeys(env.DB, app.id);
     if (confirmed.length) overrides.competitors = confirmed;
   }
-  // baseCopy carries the LIVE values read from ASC (the optimizer's floor).
-  // We reached here via a SUCCESSFUL ASC localization read, so subtitle/keywords
-  // were READ — an `undefined` from the read means the field is EMPTY on the
-  // listing, NOT unknown. Coalesce read-but-empty to "" so it propagates as
-  // seen-but-empty ("empty"), never collapsing into the false "unseen" state
-  // (the honesty bug: an app with no subtitle showed "unseen" instead of "empty",
-  // and an empty keyword field was backfilled with derived guesses shown as live).
   overrides.baseCopy = {
     ...(liveName !== undefined ? { name: liveName } : {}),
     subtitle: liveSubtitle ?? "",
     keywords: liveKeywords ?? "",
-    // Thread the live description so the #57 keyword reasoner can run on keyed
-    // runs (it derives intent keywords from the description; without it the run
-    // falls back to name-tokenization and "manager"/brand tokens leak back in).
     ...(liveDescription !== undefined ? { description: liveDescription } : {}),
-    ...(body.baseCopy ?? {}),
+    ...(extra.baseCopy ?? {}),
   };
   const ascReasoner = reasonerForEnv(env.AI);
   if (ascReasoner) overrides.reasoner = ascReasoner;
 
   const input = await buildAppInput(app, overrides, previous);
   const result = await runAgent(fetchForEnv(env), input);
-  // #44: if we read REAL screenshots from ASC, re-score the audit with them
-  // (dataReliable:true) so the grade is genuine — not the public-iTunes "unknown".
   const ascListing = ascScreenshotsToListing(ascSnapshot?.screenshots);
-  if (ascListing) {
-    result.audit.screenshots = scoreScreenshots(input.app, ascListing);
-  }
-  // PRD 03 / #95: PUBLIC review sentiment is independent of the ASC read — a
-  // keyed run surfaces it too (public RSS data, no ASC/private review API). Best-
-  // effort; computed before findings so the audit carries the reviews section.
+  if (ascListing) result.audit.screenshots = scoreScreenshots(input.app, ascListing);
   await attachReviews(env, app, result);
-  // Mode-A run: compute the FULL findings set from the already-read snapshot
-  // (no new ASC calls) + the screenshot re-score above, plus the slim PII-safe
-  // ascContext. The raw snapshot stays server-side; ONLY findings + ascContext
-  // reach the client (PRD 02 privacy boundary).
   result.findings = auditFindings({
     snapshot: ascSnapshot,
     audit: result.audit,
@@ -1465,9 +1506,6 @@ async function runAppWithAsc(
     hasAscKey: true,
     ...(result.reviews !== undefined ? { reviews: result.reviews } : {}),
   });
-  // #61: a keyed run reads every surface ⇒ it locks NOTHING. We still set the
-  // field (to []) so the serializer is symmetric and the client never re-derives
-  // "is this readable" — a connected run simply carries no locks.
   result.locks = surfaceLocks({
     snapshot: ascSnapshot,
     audit: result.audit,
@@ -1477,41 +1515,19 @@ async function runAppWithAsc(
   });
   const ascContext = buildAscContext(ascSnapshot);
   if (ascContext !== undefined) result.ascContext = ascContext;
-  // PRD 06: winnability opportunities — "where to push next." Same pure compute as
-  // the no-key path; serves curated copy + drivers only (no raw ASC data).
   await attachOpportunities(env, app.id, result);
-  // PRD 03: metadata coverage from the LIVE copy we read from ASC (name + subtitle
-  // + keyword field) — the richest input, so duplicate/brand_repeat/filler waste is
-  // fully populated. Curated counts + copy only; no raw ASC crosses the boundary.
   result.coverage = coverageForRun(result.currentCopy, app.name);
-  // PRD 04 — localization expansion. From the locales we just read + the category,
-  // recommend the highest-ROI markets to expand into (a STATIC, bundled heuristic —
-  // no live install data, no new ASC call). Derived only from locale codes + the
-  // category NAME, so it's PII-safe and reaches the client (findings-only boundary
-  // intact). Only when we actually read the locale set.
   const liveLocaleRows = (ascSnapshot?.locales ?? []) as Array<{ locale?: string | undefined }>;
   const liveLocales = liveLocaleRows
     .map((l) => l.locale)
     .filter((c): c is string => typeof c === "string" && c.length > 0);
   if (liveLocales.length > 0) {
     const category = ascSnapshot?.appInfo?.primaryCategory?.name;
-    const recs = recommendLocales({
-      liveLocales,
-      ...(category !== undefined ? { category } : {}),
-    });
+    const recs = recommendLocales({ liveLocales, ...(category !== undefined ? { category } : {}) });
     if (recs.length > 0) result.localizationExpansion = recs;
   }
-  // Attach the full ASC snapshot to the result so the run carries the rich data
-  // SERVER-SIDE only — persistRun deliberately does NOT copy it onto the trace,
-  // so it never reaches the client (the snapshot stays for future server use).
   const resultWithSnapshot = ascSnapshot ? { ...result, ascSnapshot } : result;
-  const runId = await persistRun(env.DB, {
-    appId: app.id,
-    status: "awaiting_approval",
-    result: resultWithSnapshot,
-    trigger: { source: "manual", reasons: ["manual run requested (App Store Connect read)"] },
-  });
-  return { id: runId, status: "awaiting_approval", digest: result.competitors.digest, ascRead: true };
+  return { result, resultWithSnapshot };
 }
 
 // ── Google Play credentials (parallel of the App Store Connect .p8 path) ──────
@@ -1594,13 +1610,35 @@ async function auditPlayRoute(
   appId: string,
 ): Promise<unknown> {
   await requireOwnedApp(env, appId, userId);
-  const body = await req.json<PlayAuditBody>().catch(() => ({}) as PlayAuditBody);
-  const sa = parseServiceAccount(body.serviceAccount);
+  const body = (await req.json<PlayAuditBody & { store?: boolean; useStored?: boolean }>().catch(
+    () => ({}) as PlayAuditBody,
+  )) as PlayAuditBody & { store?: boolean; useStored?: boolean };
   const packageName = (body.packageName ?? "").trim();
   if (!packageName) {
     throw new HttpError(400, "packageName is required (your Play package id, e.g. com.foo.bar)");
   }
-  void env;
+
+  // #67 Phase 2 (Play parity): a stored service account may authenticate the
+  // audit instead of an in-request one. The saved JSON is a transient here,
+  // never returned. store:true persists it (after it parses) for future use.
+  let saRaw: unknown = body.serviceAccount;
+  if ((body.useStored || body.serviceAccount == null) && credentialsEnabled(env)) {
+    const stored = await useCredential(env, userId, appId, "play");
+    if (!stored) throw new HttpError(404, "no saved Google Play service account for this app");
+    saRaw = stored.plaintext;
+  }
+  const sa = parseServiceAccount(saRaw);
+  if (body.store && body.serviceAccount != null && credentialsEnabled(env)) {
+    const asText = typeof body.serviceAccount === "string" ? body.serviceAccount : JSON.stringify(body.serviceAccount);
+    await saveCredential(env, {
+      userId,
+      appId,
+      kind: "play",
+      keyId: sa.client_email,
+      issuerId: "",
+      plaintext: asText,
+    }).catch(() => undefined);
+  }
 
   let transport;
   try {
@@ -1802,6 +1840,271 @@ async function schedulePost(
   if (!v.ok) throw new HttpError(400, v.error);
   await setSchedule(env.DB, appId, v.schedule);
   return { schedule: v.schedule };
+}
+
+// ── Localization (#78 direction 1, Phase 1): per-locale draft generation ─────
+
+/**
+ * POST /runs/:id/localize — generate an honest per-locale metadata DRAFT from
+ * the run's APPROVED copy. Stateless: nothing stored, nothing written to any
+ * store. Refusals are loud: unknown locale 400s, an unapproved run 403s, a
+ * missing AI binding 503s ("translation needs the AI binding"), and any
+ * provider failure 502s — never a fake deterministic translation.
+ */
+async function localizeRoute(
+  req: Request,
+  env: Env,
+  userId: string,
+  runId: string,
+): Promise<unknown> {
+  const run = await getRun(env.DB, runId);
+  if (!run) throw new HttpError(404, "run not found");
+  await requireOwnedApp(env, run.app_id, userId);
+  if (run.status !== "shipped" && run.status !== "approved") {
+    throw new HttpError(403, "approval required — we localize the copy you approved, never the draft");
+  }
+
+  const body = (await readJson(req)) as { locale?: unknown };
+  const locale = typeof body.locale === "string" ? body.locale.trim() : "";
+  const known = (localesData as { locales: Record<string, unknown> }).locales;
+  if (!locale || !(locale in known)) {
+    throw new HttpError(400, "locale must be a supported App Store locale code (e.g. de-DE)");
+  }
+  if (locale === "en-US") throw new HttpError(400, "en-US is the source locale — nothing to translate");
+
+  const localizer = localizerForEnv(env.AI);
+  if (!localizer) {
+    throw new HttpError(503, "translation needs the AI binding (or a DeepL key) — not configured on this deployment");
+  }
+
+  const trace = JSON.parse(run.reasoning_json) as ReasoningTrace;
+  const source = trace.proposedCopy; // post-approval edits are merged into the trace
+  if (!source?.name) throw new HttpError(400, "this run carries no proposed copy to localize");
+
+  try {
+    return await localizeCopy(localizer, {
+      copy: source,
+      targetLocale: locale,
+      brandTokens: deriveBrandTokens(source.name),
+    });
+  } catch (e) {
+    if (e instanceof LocalizeError) throw new HttpError(502, e.message);
+    throw e;
+  }
+}
+
+/**
+ * POST /localize/screenshots (#78 item 3, v1-A) — localize a layered screenshot
+ * source's captions per market. Stateless: nothing stored, nothing rendered here
+ * (this returns the caption plans + honest fit analysis; a downstream renderer
+ * rasterizes). RTL locales come back in `excluded` (stated, never rendered
+ * broken); a missing AI binding 503s; a provider failure 502s — never a fake
+ * translation. Auth-gated (a signed-in user), but not app-scoped: the source is
+ * the caller's own design.
+ */
+async function localizeScreenshotsRoute(req: Request, env: Env): Promise<unknown> {
+  const body = (await readJson(req)) as {
+    source?: unknown;
+    targetLocales?: unknown;
+    brandTokens?: unknown;
+  };
+
+  const rawSlots = (body.source as { slots?: unknown })?.slots;
+  if (!Array.isArray(rawSlots) || rawSlots.length === 0) {
+    throw new HttpError(400, "source.slots must be a non-empty array");
+  }
+  const slots: TextSlot[] = [];
+  for (const s of rawSlots) {
+    const r = s as Record<string, unknown>;
+    const box = r.box as { width?: unknown; height?: unknown } | undefined;
+    if (
+      typeof r.id !== "string" || r.id.trim() === "" ||
+      typeof r.text !== "string" ||
+      typeof r.fontSize !== "number" || !(r.fontSize > 0) ||
+      !box || typeof box.width !== "number" || typeof box.height !== "number" ||
+      !(box.width > 0) || !(box.height > 0)
+    ) {
+      throw new HttpError(400, "each slot needs id, text, positive fontSize, and a positive box {width,height}");
+    }
+    slots.push({
+      id: r.id,
+      text: r.text,
+      box: { width: box.width, height: box.height },
+      fontSize: r.fontSize,
+      ...(typeof r.minFontSize === "number" ? { minFontSize: r.minFontSize } : {}),
+      ...(typeof r.maxLines === "number" ? { maxLines: r.maxLines } : {}),
+      ...(typeof r.lineHeight === "number" ? { lineHeight: r.lineHeight } : {}),
+    });
+  }
+  const source: LayeredSource = { slots };
+
+  const targetLocales = Array.isArray(body.targetLocales)
+    ? body.targetLocales.filter((l): l is string => typeof l === "string" && l.trim() !== "")
+    : [];
+  if (targetLocales.length === 0) throw new HttpError(400, "targetLocales must be a non-empty array of locale codes");
+  const brandTokens = Array.isArray(body.brandTokens)
+    ? body.brandTokens.filter((t): t is string => typeof t === "string")
+    : [];
+
+  const localizer = localizerForEnv(env.AI);
+  if (!localizer) {
+    throw new HttpError(503, "translation needs the AI binding (or a DeepL key) — not configured on this deployment");
+  }
+
+  try {
+    return await localizeScreenshots(localizer, { source, targetLocales, brandTokens });
+  } catch (e) {
+    if (e instanceof LocalizeError) throw new HttpError(502, e.message);
+    throw e;
+  }
+}
+
+/**
+ * POST /runs/:id/localize/approve (#78 Phase 2) — the explicit per-market
+ * approval: store this locale's (possibly human-edited) draft on the run
+ * trace, making it part of the handoff. The server is authoritative: the
+ * submission is re-validated (limits, keyword rules, brand token) and bad
+ * input fails LOUD. Only stored locales ever reach a fastlane bundle.
+ */
+async function localizeApproveRoute(
+  req: Request,
+  env: Env,
+  userId: string,
+  runId: string,
+): Promise<unknown> {
+  const run = await getRun(env.DB, runId);
+  if (!run) throw new HttpError(404, "run not found");
+  await requireOwnedApp(env, run.app_id, userId);
+  if (run.status !== "shipped" && run.status !== "approved") {
+    throw new HttpError(403, "approval required");
+  }
+  const body = (await readJson(req)) as { locale?: unknown; copy?: unknown };
+  const locale = typeof body.locale === "string" ? body.locale.trim() : "";
+  const known = (localesData as { locales: Record<string, unknown> }).locales;
+  if (!locale || !(locale in known)) throw new HttpError(400, "locale must be a supported App Store locale code");
+  if (locale === "en-US") throw new HttpError(400, "en-US is the source locale");
+
+  const trace = JSON.parse(run.reasoning_json) as ReasoningTrace;
+  const v = validateLocalizedSubmission({ copy: body.copy, sourceName: trace.proposedCopy?.name ?? "" });
+  if (!v.ok) throw new HttpError(400, v.error);
+
+  await setLocalizedCopy(env.DB, runId, locale, v.copy);
+  const fresh = await getRun(env.DB, runId);
+  const freshTrace = JSON.parse(fresh!.reasoning_json) as ReasoningTrace;
+  return { approved: Object.keys(freshTrace.localizedCopy ?? {}).sort() };
+}
+
+/** DELETE /runs/:id/localize/:locale — un-approve (drop from the handoff). */
+async function localizeDeleteRoute(
+  env: Env,
+  userId: string,
+  runId: string,
+  locale: string,
+): Promise<unknown> {
+  const run = await getRun(env.DB, runId);
+  if (!run) throw new HttpError(404, "run not found");
+  await requireOwnedApp(env, run.app_id, userId);
+  const removed = await deleteLocalizedCopy(env.DB, runId, locale);
+  if (!removed) throw new HttpError(404, "locale not approved on this run");
+  const fresh = await getRun(env.DB, runId);
+  const freshTrace = JSON.parse(fresh!.reasoning_json) as ReasoningTrace;
+  return { approved: Object.keys(freshTrace.localizedCopy ?? {}).sort() };
+}
+
+// ── Stored credentials (#67 post-launch half) — opt-in, write-only custody ───
+
+/** GET /account/credentials — metadata ONLY (never key material). */
+async function credentialsListRoute(env: Env, userId: string): Promise<unknown> {
+  return {
+    enabled: credentialsEnabled(env),
+    credentials: await listCredentialMeta(env, userId),
+  };
+}
+
+/**
+ * DELETE /account/credentials/:kind?app=:appId — remove a stored credential.
+ * Does NOT revoke the key at Apple/Google (the response says so). Honest 404
+ * when nothing was stored.
+ */
+async function credentialsDeleteRoute(
+  env: Env,
+  userId: string,
+  kind: string,
+  url: URL,
+): Promise<unknown> {
+  if (kind !== "asc" && kind !== "play" && kind !== "asa") {
+    throw new HttpError(400, "kind must be asc, play, or asa");
+  }
+  const appId = url.searchParams.get("app");
+  const removed = await deleteCredential(env, userId, appId, kind);
+  if (!removed) throw new HttpError(404, "no stored credential to delete");
+  return {
+    deleted: true,
+    note:
+      kind === "asa"
+        ? "Removed from ShipASO. This does NOT revoke the key at Apple — revoke it in Apple Search Ads to fully kill it."
+        : "Removed from ShipASO. This does NOT revoke the key at Apple — revoke it in App Store Connect to fully kill it.",
+  };
+}
+
+/**
+ * POST /account/asa-credential — connect an Apple Search Ads key so we can read
+ * Apple's OWN keyword search popularity for the user's own terms (#78-2, Path A).
+ * Opt-in, account-level, envelope-encrypted (the same #67 vault; kind:"asa"),
+ * write-only custody. We VERIFY the key against Apple (mint a token + probe
+ * `/acls` for the orgId) BEFORE storing — an invalid/unreachable key is a 400
+ * with an honest, key-free reason, never stored. Requires credential storage to
+ * be enabled (a KEK is set) → 503 otherwise. Returns metadata only.
+ *
+ * NOTE: connecting works today; the popularity NUMBERS stay dark until
+ * ASA_POPULARITY_ENABLED is set (owner action, after live verification). The
+ * response says so, so the UI never implies data that isn't flowing yet.
+ */
+async function asaConnectRoute(req: Request, env: Env, userId: string): Promise<unknown> {
+  if (!credentialsEnabled(env)) {
+    throw new HttpError(503, "credential storage is not enabled on this deployment");
+  }
+  const body = (await req.json().catch(() => ({}))) as Partial<AsaKeyBundle>;
+  const bundle: AsaKeyBundle = {
+    privateKey: (body.privateKey ?? "").toString(),
+    clientId: (body.clientId ?? "").toString().trim(),
+    teamId: (body.teamId ?? "").toString().trim(),
+    keyId: (body.keyId ?? "").toString().trim(),
+    orgId: (body.orgId ?? "").toString().trim(),
+  };
+  if (!bundle.privateKey || !bundle.clientId || !bundle.teamId || !bundle.keyId || !bundle.orgId) {
+    throw new HttpError(400, "privateKey, clientId, teamId, keyId, and orgId are all required");
+  }
+
+  const verdict = await verifyAsaCredentials(fetchForEnv(env), bundle);
+  if (!verdict.ok) {
+    // verdict.reason is key-free by construction (AsaCredError messages).
+    throw new HttpError(400, `Apple Search Ads did not accept this key: ${verdict.reason}`);
+  }
+
+  // Store the whole bundle as one envelope; key_id/issuer_id are the non-secret
+  // identifiers shown in the management UI (keyId + orgId).
+  const meta = await saveCredential(env, {
+    userId,
+    appId: null, // ASA is account-level (popularity is org-scoped, not per-app)
+    kind: "asa",
+    keyId: bundle.keyId,
+    issuerId: bundle.orgId,
+    plaintext: serializeAsaBundle(bundle),
+  });
+  return {
+    credential: meta,
+    popularityLive: asaPopularityEnabled(env),
+    note: asaPopularityEnabled(env)
+      ? "Connected. We'll show Apple's real search popularity for your terms."
+      : "Connected and verified. Popularity insights turn on once ShipASO finishes verifying the Search Ads read on this deployment.",
+  };
+}
+
+/** Whether ASA popularity may be SURFACED (connect/verify works without it). */
+function asaPopularityEnabled(env: Env): boolean {
+  const v = (env.ASA_POPULARITY_ENABLED ?? "").toLowerCase();
+  return v === "1" || v === "true";
 }
 
 /** GET /apps/:id — detail with the full run history list. */
@@ -2238,7 +2541,10 @@ async function fastlaneZipRoute(
     throw new HttpError(403, "approval required");
   }
   const trace = JSON.parse(run.reasoning_json) as ReasoningTrace;
-  const bundle = buildFastlaneBundle(trace.proposedCopy);
+  // #78 Phase 2: APPROVED locale drafts ride the bundle — and only those.
+  const bundle = buildFastlaneBundle(trace.proposedCopy, {
+    ...(trace.localizedCopy ? { locales: trace.localizedCopy } : {}),
+  });
   const zip = zipStore(bundle.files);
   // a Uint8Array is a valid BodyInit; copy into a fresh one so the body is backed
   // by a plain ArrayBuffer (not a possibly-shared buffer view).
@@ -2497,6 +2803,96 @@ async function ascCreateVersionRoute(
     const ascAppId = await findAscAppId(fetch, token, app.bundle_id);
     const created = await createAscVersion(fetch, { token, appId: ascAppId, versionString });
     return { ok: true, versionId: created.id, versionString: created.versionString, state: created.appStoreState };
+  } catch (e) {
+    if (e instanceof AscWriteError) return { ok: false, reason: e.message };
+    throw e;
+  }
+}
+
+/** Shared guard for the per-locale ASC writes (#78 Phase 3): flag + run +
+ *  ownership + approval + in-request creds + the locale must be APPROVED on
+ *  the run (pushing a never-approved draft is a 403, not a convenience). */
+async function requireLocalizedAscContext(
+  req: Request,
+  env: Env,
+  userId: string,
+  runId: string,
+): Promise<{ token: string; bundleId: string; locale: string; copy: CopyFields }> {
+  if (!isFlagOn(env.ASC_WRITE_ENABLED)) {
+    throw new HttpError(403, "direct App Store Connect writes are not enabled; use the Fastlane handoff");
+  }
+  const run = await getRun(env.DB, runId);
+  if (!run) throw new HttpError(404, "run not found");
+  const app = await requireOwnedApp(env, run.app_id, userId);
+  if (run.status !== "shipped" && run.status !== "approved") {
+    throw new HttpError(403, "approval required");
+  }
+  const body = (await req
+    .json()
+    .catch(() => ({}))) as { p8?: string; keyId?: string; issuerId?: string; locale?: string };
+  if (!body.p8 || !body.keyId || !body.issuerId) {
+    throw new HttpError(400, "p8, keyId, and issuerId are required");
+  }
+  const locale = (body.locale ?? "").trim();
+  const trace = JSON.parse(run.reasoning_json) as ReasoningTrace;
+  const copy = locale ? trace.localizedCopy?.[locale] : undefined;
+  if (!copy) {
+    throw new HttpError(403, `"${locale || "?"}" is not an approved locale on this run — approve its draft first`);
+  }
+  let token: string;
+  try {
+    token = await mintAscJwt({ p8: body.p8, keyId: body.keyId, issuerId: body.issuerId });
+  } catch (e) {
+    throw new HttpError(400, e instanceof Error ? e.message : "invalid credentials");
+  }
+  return { token, bundleId: app.bundle_id, locale, copy };
+}
+
+/**
+ * POST /runs/:id/asc/push-locale (#78 Phase 3) — push an APPROVED locale draft
+ * into that locale's localization on the editable version. Missing locale on
+ * the version → the honest "create it first" reason; creation is its own
+ * route + click, never chained.
+ */
+async function ascPushLocaleRoute(
+  req: Request,
+  env: Env,
+  userId: string,
+  runId: string,
+): Promise<unknown> {
+  const ctx = await requireLocalizedAscContext(req, env, userId, runId);
+  try {
+    const ascAppId = await findAscAppId(fetch, ctx.token, ctx.bundleId);
+    const result = await applyAscMetadata(fetch, {
+      token: ctx.token,
+      appId: ascAppId,
+      copy: ctx.copy, // the LOCALIZED copy — never en-US
+      locale: ctx.locale,
+    });
+    return result;
+  } catch (e) {
+    if (e instanceof AscWriteError) return { ok: false, reason: e.message };
+    throw e;
+  }
+}
+
+/**
+ * POST /runs/:id/asc/create-localization (#78 Phase 3) — create the locale on
+ * the editable version so a per-market push has somewhere to land. Its own
+ * explicit per-action write (the #34 pattern).
+ */
+async function ascCreateLocalizationRoute(
+  req: Request,
+  env: Env,
+  userId: string,
+  runId: string,
+): Promise<unknown> {
+  const ctx = await requireLocalizedAscContext(req, env, userId, runId);
+  try {
+    const ascAppId = await findAscAppId(fetch, ctx.token, ctx.bundleId);
+    const versionId = await getEditableVersionId(fetch, { token: ctx.token, appId: ascAppId });
+    const created = await createAscLocalization(fetch, { token: ctx.token, versionId, locale: ctx.locale });
+    return { ok: true, localizationId: created.id, locale: created.locale };
   } catch (e) {
     if (e instanceof AscWriteError) return { ok: false, reason: e.message };
     throw e;
@@ -2845,6 +3241,24 @@ export async function handleApi(req: Request, env: Env): Promise<Response> {
     ) {
       return json(await pushTokenDeleteRoute(req, env, user.id), 200, origin, env);
     }
+    // /account/credentials — stored-credential management (#67; write-only)
+    if (seg[0] === "account" && seg[1] === "credentials") {
+      if (seg.length === 2 && method === "GET") {
+        return json(await credentialsListRoute(env, user.id), 200, origin, env);
+      }
+      if (seg.length === 3 && seg[2] && method === "DELETE") {
+        return json(await credentialsDeleteRoute(env, user.id, seg[2], url), 200, origin, env);
+      }
+    }
+    // POST /account/asa-credential — connect + verify an Apple Search Ads key (#78-2)
+    if (seg[0] === "account" && seg[1] === "asa-credential" && seg.length === 2 && method === "POST") {
+      return json(await asaConnectRoute(req, env, user.id), 200, origin, env);
+    }
+    // POST /localize/screenshots — localize a layered screenshot source (#78 item 3, v1-A)
+    if (seg[0] === "localize" && seg[1] === "screenshots" && seg.length === 2 && method === "POST") {
+      return json(await localizeScreenshotsRoute(req, env), 200, origin, env);
+    }
+
     // /account/notifications — communication prefs (comms-prefs Phase 1)
     if (seg[0] === "account" && seg[1] === "notifications" && seg.length === 2) {
       if (method === "GET") {
@@ -2956,6 +3370,15 @@ export async function handleApi(req: Request, env: Env): Promise<Response> {
       if (seg.length === 3 && method === "POST" && (seg[2] === "approve" || seg[2] === "reject")) {
         return json(await decideRun(req, env, user.id, runId, seg[2]), 200, origin);
       }
+      if (seg.length === 3 && seg[2] === "localize" && method === "POST") {
+        return json(await localizeRoute(req, env, user.id, runId), 200, origin);
+      }
+      if (seg.length === 4 && seg[2] === "localize" && seg[3] === "approve" && method === "POST") {
+        return json(await localizeApproveRoute(req, env, user.id, runId), 200, origin);
+      }
+      if (seg.length === 4 && seg[2] === "localize" && seg[3] && method === "DELETE") {
+        return json(await localizeDeleteRoute(env, user.id, runId, seg[3]), 200, origin);
+      }
       if (seg.length === 3 && seg[2] === "push-commands" && method === "GET") {
         return json(await pushCommandsRoute(env, user.id, runId), 200, origin);
       }
@@ -2970,6 +3393,12 @@ export async function handleApi(req: Request, env: Env): Promise<Response> {
       }
       if (seg.length === 4 && seg[2] === "asc" && seg[3] === "create-version" && method === "POST") {
         return json(await ascCreateVersionRoute(req, env, user.id, runId), 200, origin);
+      }
+      if (seg.length === 4 && seg[2] === "asc" && seg[3] === "push-locale" && method === "POST") {
+        return json(await ascPushLocaleRoute(req, env, user.id, runId), 200, origin);
+      }
+      if (seg.length === 4 && seg[2] === "asc" && seg[3] === "create-localization" && method === "POST") {
+        return json(await ascCreateLocalizationRoute(req, env, user.id, runId), 200, origin);
       }
       if (seg.length === 4 && seg[2] === "github" && seg[3] === "pr" && method === "POST") {
         return json(await githubPrRoute(env, user.id, runId), 200, origin);

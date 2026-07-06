@@ -1179,9 +1179,23 @@
       var app = db.apps[m[1]];
       if (!app) return json(404, { error: "app not found" });
       var ascRead = m[2] === "-asc";
-      if (ascRead && !(body && body.p8 && body.keyId && body.issuerId)) {
+      // #67: a run may use a stored key (useStored) instead of in-request creds.
+      db.storedCreds = db.storedCreds || [];
+      var storedAsc = db.storedCreds.filter(function (c) {
+        return c.kind === "asc" && (c.appId === m[1] || c.appId === null);
+      })[0];
+      if (ascRead && (body && body.useStored)) {
+        if (!storedAsc) return json(404, { error: "no saved App Store Connect key for this app" });
+      } else if (ascRead && !(body && body.p8 && body.keyId && body.issuerId)) {
         return json(400, { error: "p8, keyId, and issuerId are required" });
       }
+      // #67 opt-in: persist the credential (metadata only in the mock) after it
+      // "minted a token" — i.e. a real p8 was supplied with store:true.
+      if (ascRead && body && body.store && body.p8) {
+        db.storedCreds = db.storedCreds.filter(function (c) { return !(c.kind === "asc" && c.appId === m[1]); });
+        db.storedCreds.push({ id: uid(), appId: m[1], kind: "asc", keyId: body.keyId, issuerId: body.issuerId, createdAt: nowISO(), lastUsedAt: null });
+      }
+      if (ascRead && body && body.useStored && storedAsc) storedAsc.lastUsedAt = nowISO();
       var result = runAgentMock(app, ascRead);
       app._prevCompetitors = result._listingsSnapshot;
       var runId = uid();
@@ -1220,7 +1234,30 @@
       return json(200, { deleted: true, id: m[1] });
     }
 
-    // ── Sweep schedule (#52): read / set, Worker-matching validation ─────────
+    // ── Stored credentials (#67): opt-in, write-only metadata ────────────────
+    // The mock enables storage so e2e can drive the opt-in + management flow.
+    if (path === "/account/credentials") {
+      db.storedCreds = db.storedCreds || [];
+      if (method === "GET") {
+        var metas = db.storedCreds.map(function (c) {
+          return { id: c.id, appId: c.appId, kind: c.kind, keyId: c.keyId, issuerId: c.issuerId, createdAt: c.createdAt, lastUsedAt: c.lastUsedAt, kekVersion: 1 };
+        });
+        return json(200, { enabled: true, credentials: metas });
+      }
+    }
+    if (method === "DELETE" && (m = path.match(/^\/account\/credentials\/([^/?]+)/))) {
+      db.storedCreds = db.storedCreds || [];
+      var dk = m[1];
+      var dApp = null, qi = path.indexOf("?app=");
+      if (qi !== -1) dApp = decodeURIComponent(path.slice(qi + 5));
+      var before = db.storedCreds.length;
+      db.storedCreds = db.storedCreds.filter(function (c) { return !(c.kind === dk && c.appId === dApp); });
+      if (db.storedCreds.length === before) return json(404, { error: "no stored credential to delete" });
+      ctx.commit();
+      return json(200, { deleted: true, note: "Removed from ShipASO. This does NOT revoke the key at Apple — revoke it in App Store Connect to fully kill it." });
+    }
+
+    // ── Sweep schedule (#52): read / set, Worker-matching validation ─────────    // ── Sweep schedule (#52): read / set, Worker-matching validation ─────────
     if (m = path.match(/^\/apps\/([^/]+)\/schedule$/)) {
       var sApp = db.apps[m[1]];
       if (!sApp) return json(404, { error: "app not found" });
@@ -1359,6 +1396,63 @@
       var result = Object.assign({}, run.result, { pushCommands: approved ? run.result.pushCommands : [] });
       var pub = { id: run.id, app_id: run.app_id, status: run.status, created_at: run.created_at, result: result };
       return json(200, pub);
+    }
+
+    // ── Localization (#78): generate / approve / remove per-locale drafts ────
+    // Deterministic pseudo-translation (brand token survives, limits respected)
+    // so e2e can pin the review lane without a model.
+    if (method === "POST" && (m = path.match(/^\/runs\/([^/]+)\/localize$/))) {
+      var lrun = db.runs[m[1]];
+      if (!lrun) return json(404, { error: "run not found" });
+      if (lrun.status !== "approved" && lrun.status !== "shipped") {
+        return json(403, { error: "approval required — we localize the copy you approved, never the draft" });
+      }
+      var lloc = (body && body.locale || "").trim();
+      if (!lloc || lloc === "en-US") return json(400, { error: "locale must be a supported App Store locale code (e.g. de-DE)" });
+      var src = (lrun.result && lrun.result.proposedCopy) || {};
+      var brand = (src.name || "App").split(/[-–—:|·]/)[0].trim() || "App";
+      var mk30 = function (t) { return t.length > 30 ? t.slice(0, 30) : t; };
+      return json(200, {
+        locale: lloc,
+        copy: {
+          name: mk30(brand + " · " + lloc),
+          subtitle: mk30("Übersetzt für " + lloc),
+          keywords: "wort" + lloc.slice(0, 2).toLowerCase() + ",plan,markt",
+        },
+        validation: { pass: true, checks: [] },
+        trimmed: [],
+        label: "draft — machine-translated, review before shipping",
+      });
+    }
+    if (method === "POST" && (m = path.match(/^\/runs\/([^/]+)\/localize\/approve$/))) {
+      var arun = db.runs[m[1]];
+      if (!arun) return json(404, { error: "run not found" });
+      var aloc = (body && body.locale || "").trim();
+      var acopy = body && body.copy;
+      if (!aloc || aloc === "en-US") return json(400, { error: "locale must be a supported App Store locale code" });
+      if (!acopy || typeof acopy.name !== "string" || !acopy.name.trim()) return json(400, { error: "copy.name must not be empty" });
+      if (acopy.name.length > 30 || (acopy.subtitle || "").length > 30 || (acopy.keywords || "").length > 100) {
+        return json(400, { error: "invalid copy — over a field limit" });
+      }
+      var abrand = ((arun.result.proposedCopy || {}).name || "").split(/[-–—:|·]/)[0].trim();
+      if (abrand && acopy.name.toLowerCase().indexOf(abrand.toLowerCase()) === -1) {
+        return json(400, { error: 'the brand token "' + abrand + '" is missing from the localized name' });
+      }
+      arun.result.localizedCopy = arun.result.localizedCopy || {};
+      arun.result.localizedCopy[aloc] = { name: acopy.name, subtitle: acopy.subtitle || "", keywords: acopy.keywords || "" };
+      ctx.commit();
+      return json(200, { approved: Object.keys(arun.result.localizedCopy).sort() });
+    }
+    if (method === "DELETE" && (m = path.match(/^\/runs\/([^/]+)\/localize\/([^/]+)$/))) {
+      var drun = db.runs[m[1]];
+      if (!drun) return json(404, { error: "run not found" });
+      var dloc = decodeURIComponent(m[2]);
+      if (!drun.result.localizedCopy || !(dloc in drun.result.localizedCopy)) {
+        return json(404, { error: "locale not approved on this run" });
+      }
+      delete drun.result.localizedCopy[dloc];
+      ctx.commit();
+      return json(200, { approved: Object.keys(drun.result.localizedCopy).sort() });
     }
 
     // POST /runs/:id/approve | /reject — the human approval gate

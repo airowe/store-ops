@@ -1,0 +1,12 @@
+{
+  "name": "@shipaso/api",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Transport-agnostic REST client + types for the store-ops Worker API. One client, injected fetch + auth, shared by web and native.",
+  "type": "module",
+  "main": "./index.ts",
+  "types": "./index.ts",
+  "exports": {
+    ".": "./index.ts"
+  }
+}

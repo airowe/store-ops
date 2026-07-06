@@ -11,6 +11,7 @@ import type {
   AuthExchangeResult,
   AuthRequestResult,
   CheckoutResult,
+  Competitor,
   DeltasView,
   Me,
   NotificationPrefs,
@@ -23,6 +24,8 @@ import type {
   RanksSeries,
   ResolveResult,
   RunDetail,
+  SweepSchedule,
+  ThresholdConfig,
   WarRoomView,
 } from "../types/api.js";
 
@@ -83,8 +86,19 @@ export type RunCreated = { id: string; status: string; ascRead?: boolean };
 export const runAsc = (
   c: ApiClient,
   appId: string,
-  body: { p8: string; keyId: string; issuerId: string; locale?: string },
+  body: { p8?: string; keyId?: string; issuerId?: string; locale?: string; store?: boolean; useStored?: boolean },
 ) => c.post<RunCreated>(`/apps/${enc(appId)}/run-asc`, body);
+
+// ── stored credentials (#67 Phase 2) — opt-in, write-only management ─────────
+export type StoredCredential = {
+  id: string; appId: string | null; kind: "asc" | "play";
+  keyId: string; issuerId: string; createdAt: string; lastUsedAt: string | null; kekVersion: number;
+};
+export const getCredentials = (c: ApiClient) =>
+  c.get<{ enabled: boolean; credentials: StoredCredential[] }>("/account/credentials");
+export const deleteCredential = (c: ApiClient, kind: "asc" | "play", appId?: string) =>
+  c.request<{ deleted: boolean; note: string }>(
+    `/account/credentials/${kind}${appId ? `?app=${enc(appId)}` : ""}`, { method: "DELETE" });
 
 export const verifyPlay = (c: ApiClient, serviceAccount: string, packageName?: string) =>
   c.post<PlayVerifyResult>("/play/verify", { serviceAccount, ...(packageName ? { packageName } : {}) });
@@ -124,5 +138,28 @@ export const setRankCadence = (c: ApiClient, cadence: RankCadence) =>
  * (every test fake is {get, post, request}). Server answers { removed } and is
  * idempotent, so sign-out can call this best-effort.
  */
+// ── Competitors (#72): the watch list — only confirmed rows are watched ──────
+export const getCompetitors = (c: ApiClient, appId: string) =>
+  c.get<{ competitors: Competitor[] }>(`/apps/${enc(appId)}/competitors`);
+export const discoverCompetitors = (c: ApiClient, appId: string) =>
+  c.post<{ competitors: Competitor[]; discovered: number; note?: string }>(
+    `/apps/${enc(appId)}/competitors/discover`, {});
+export const addCompetitor = (c: ApiClient, appId: string, name: string) =>
+  c.post<{ competitors: Competitor[] }>(`/apps/${enc(appId)}/competitors`, { name });
+export const confirmCompetitor = (c: ApiClient, appId: string, key: string) =>
+  c.post<{ competitors: Competitor[] }>(`/apps/${enc(appId)}/competitors/${enc(key)}/confirm`, {});
+export const removeCompetitor = (c: ApiClient, appId: string, key: string) =>
+  c.request<{ competitors: Competitor[] }>(`/apps/${enc(appId)}/competitors/${enc(key)}`, { method: "DELETE" });
+
+// ── Agent triggers (#53) + sweep schedule (#52) — per-app config ─────────────
+export const getThresholds = (c: ApiClient, appId: string) =>
+  c.get<{ thresholds: ThresholdConfig }>(`/apps/${enc(appId)}/thresholds`);
+export const setThresholds = (c: ApiClient, appId: string, patch: Partial<ThresholdConfig>) =>
+  c.post<{ thresholds: ThresholdConfig }>(`/apps/${enc(appId)}/thresholds`, patch);
+export const getSchedule = (c: ApiClient, appId: string) =>
+  c.get<{ schedule: SweepSchedule }>(`/apps/${enc(appId)}/schedule`);
+export const setSchedule = (c: ApiClient, appId: string, s: SweepSchedule) =>
+  c.post<{ schedule: SweepSchedule }>(`/apps/${enc(appId)}/schedule`, s);
+
 export const deletePushToken = (c: ApiClient, token: string) =>
   c.request<{ removed: boolean }>("/account/push-token", { method: "DELETE", body: { token } });

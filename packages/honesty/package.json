@@ -1,0 +1,15 @@
+{
+  "name": "@shipaso/honesty",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Pure, shared honesty + formatting + chart-geometry helpers (formatRank, classifyDelta, buildSparkGeometry). One definition, enforced identically on web + native.",
+  "type": "module",
+  "main": "./index.mjs",
+  "types": "./index.d.ts",
+  "exports": {
+    ".": { "types": "./index.d.ts", "default": "./index.mjs" }
+  },
+  "scripts": {
+    "test": "node --test"
+  }
+}
