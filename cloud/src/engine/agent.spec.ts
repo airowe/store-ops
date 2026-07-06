@@ -213,3 +213,111 @@ describe("audit — storefront listing enriches public runs", () => {
     expect(r.currentCopy.subtitle).toBe("asc subtitle");
   });
 });
+
+// The storefront page is fetched ONCE in audit(); everything it carries beyond
+// the already-consumed subtitle + shots rides the audit as `storefront`, so
+// downstream feature work reads it from the run trace instead of editing audit().
+describe("audit — storefront intel rides the audit (audit.storefront)", () => {
+  const SHOT = {
+    screenshot: {
+      template: "https://is1-ssl.mzstatic.com/image/thumb/P1/v4/aa/a.png/{w}x{h}{c}.{f}",
+      width: 1290,
+      height: 2796,
+    },
+  };
+  const pageOf = (data: Record<string, unknown>) =>
+    `<script type="application/json" id="serialized-server-data">${JSON.stringify({
+      data: [{ data }],
+    })}</script>`;
+
+  const intelPage = pageOf({
+    lockup: { subtitle: "Stoic calm for atheists" },
+    shelfMapping: {
+      product_media_phone_: { items: [SHOT] },
+      productRatings: {
+        items: [{ ratingAverage: 4.6, totalNumberOfRatings: 128, ratingCounts: [1, 2, 5, 20, 100] }],
+      },
+      mostRecentVersion: { items: [{ text: "Welcome.\n\n- 366 daily quotes" }] },
+      privacyTypes: { items: [{ identifier: "DATA_NOT_COLLECTED" }] },
+      information: {
+        items: [
+          { title: "Category", items: [{ text: "Lifestyle" }] },
+          { title: "Languages", items: [{ text: "English, German" }] },
+          { title: "In-App Purchases", items: [{ textPairs: [["Pro Yearly", "$29.99"]] }] },
+        ],
+      },
+      similarItems: {
+        items: [{ bundleId: "molozhenko.Sober", title: "Sober not Sorry" }],
+      },
+      moreByDeveloper: {
+        items: [{ bundleId: "com.airowe.mangia", title: "Mangia - Recipe Manager" }],
+      },
+    },
+  });
+
+  function fetchWith(pageBody: string | null) {
+    return async (url: string) => {
+      if (url.includes("/lookup")) {
+        return new Response(
+          JSON.stringify({
+            resultCount: 1,
+            results: [
+              {
+                bundleId: "com.acme.app",
+                trackName: "Acme",
+                trackViewUrl: "https://apps.apple.com/us/app/acme/id111",
+                screenshotUrls: [],
+                ipadScreenshotUrls: [],
+              },
+            ],
+          }),
+          { status: 200 },
+        );
+      }
+      if (url.startsWith("https://apps.apple.com/")) {
+        return pageBody === null
+          ? new Response("nope", { status: 403 })
+          : new Response(pageBody, { status: 200 });
+      }
+      return new Response(JSON.stringify({ resultCount: 0, results: [] }), { status: 200 });
+    };
+  }
+
+  it("carries the remaining listing fields verbatim", async () => {
+    const r = await runAgent(fetchWith(intelPage) as never, baseInput());
+    expect(r.audit.storefront).toEqual({
+      ratings: { average: 4.6, count: 128, histogram: [1, 2, 5, 20, 100] },
+      whatsNew: "Welcome.\n\n- 366 daily quotes",
+      privacyLabels: ["DATA_NOT_COLLECTED"],
+      languages: ["English", "German"],
+      category: "Lifestyle",
+      inAppPurchases: [{ name: "Pro Yearly", price: "$29.99" }],
+      similarApps: [{ bundleId: "molozhenko.Sober", name: "Sober not Sorry" }],
+      moreByDeveloper: [{ bundleId: "com.airowe.mangia", name: "Mangia - Recipe Manager" }],
+    });
+  });
+
+  it("never duplicates the already-consumed subtitle + shots into storefront", async () => {
+    const r = await runAgent(fetchWith(intelPage) as never, baseInput());
+    expect(r.audit.storefront).not.toHaveProperty("subtitle");
+    expect(r.audit.storefront).not.toHaveProperty("shots");
+    // …and they still land where they always did.
+    expect(r.audit.liveSubtitle).toBe("Stoic calm for atheists");
+    expect(r.audit.screenshots?.iphoneCount).toBe(1);
+  });
+
+  it("stays absent (unknown, never {}) when the storefront page is unreadable", async () => {
+    const r = await runAgent(fetchWith(null) as never, baseInput());
+    expect("storefront" in r.audit).toBe(false);
+  });
+
+  it("stays absent when the page carries only subtitle + shots (nothing remaining)", async () => {
+    const subtitleOnly = pageOf({
+      lockup: { subtitle: "just a subtitle" },
+      shelfMapping: { product_media_phone_: { items: [SHOT] } },
+    });
+    const r = await runAgent(fetchWith(subtitleOnly) as never, baseInput());
+    expect("storefront" in r.audit).toBe(false);
+    expect(r.audit.liveSubtitle).toBe("just a subtitle");
+  });
+});

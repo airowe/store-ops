@@ -303,6 +303,35 @@ describe("serializeRunResult — review sentiment (#95)", () => {
   });
 });
 
+describe("serializeRunResult — storefront intel on the audit (one thread-through)", () => {
+  it("survives the reasoning_json persist round-trip and reaches the client verbatim", () => {
+    const trace = noKeyTrace();
+    trace.audit = {
+      ...audit("A"),
+      storefront: {
+        ratings: { average: 4.6, count: 128, histogram: [1, 2, 5, 20, 100] },
+        whatsNew: "- 366 daily quotes",
+        privacyLabels: ["DATA_NOT_COLLECTED"],
+        languages: ["English", "German"],
+        category: "Lifestyle",
+        inAppPurchases: [{ name: "Pro Yearly", price: "$29.99" }],
+        similarApps: [{ bundleId: "molozhenko.Sober", name: "Sober not Sorry" }],
+        moreByDeveloper: [{ bundleId: "com.airowe.mangia", name: "Mangia - Recipe Manager" }],
+      },
+    };
+    // persistRun stores the trace as JSON in runs.reasoning_json; runView parses
+    // it back. The round-trip must not drop or reshape the storefront intel.
+    const persisted = JSON.parse(JSON.stringify(trace)) as ReasoningTrace;
+    const result = serializeRunResult(persisted, false);
+    expect(result.audit.storefront).toEqual(trace.audit.storefront);
+  });
+
+  it("stays absent on an audit that never read the page (unknown, never {})", () => {
+    const result = serializeRunResult(noKeyTrace(), false);
+    expect("storefront" in result.audit).toBe(false);
+  });
+});
+
 describe("serializeRunResult — approval gate still holds", () => {
   it("withholds pushCommands until approved (unchanged by PRD 02)", () => {
     const trace = modeATrace();

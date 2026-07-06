@@ -32,7 +32,7 @@ import { findKeywordGaps, type KeywordGap } from "./keywordGap.js";
 import { optimizeCopy, type ProposedCopy } from "./optimize.js";
 import { type Rank, ranksFor } from "./rankCheck.js";
 import { score as scoreScreenshots, type ShotScore } from "./screenshotScore.js";
-import { fetchStorefrontListing } from "./storefrontListing.js";
+import { fetchStorefrontListing, type StorefrontListing } from "./storefrontListing.js";
 import type { Finding, SurfaceLock } from "./auditFindings.js";
 import type { AscContext } from "./ascContext.js";
 import type { Opportunity } from "./rankOpportunity.js";
@@ -62,6 +62,15 @@ export type AppInput = {
   country?: string;
 };
 
+/**
+ * The REMAINING storefront listing intel — everything the one public page fetch
+ * carries beyond the subtitle + shots the audit already consumes. Carried on the
+ * audit (and thus the persisted run trace) so downstream feature work reads it
+ * from a stored run instead of editing audit() again. Every field is optional
+ * and independently extracted: a structure drift degrades a field, never a run.
+ */
+export type StorefrontIntel = Omit<StorefrontListing, "subtitle" | "shots">;
+
 export type Audit = {
   app: string;
   bundleId: string;
@@ -73,6 +82,11 @@ export type Audit = {
   /** The live subtitle, read from the PUBLIC storefront page (the lookup API
    *  never returns it) — lets keyless runs see the real subtitle honestly. */
   liveSubtitle?: string;
+  /** The rest of the public storefront page (ratings, What's New, privacy labels,
+   *  languages, category, IAPs, similar apps, more-by-developer) from the SAME
+   *  single fetch. Absent when the page was unreadable or carried none of these —
+   *  unknown, never an empty object. */
+  storefront?: StorefrontIntel;
 };
 
 export type AgentResult = {
@@ -173,6 +187,7 @@ async function audit(fetchFn: FetchFn, input: AppInput): Promise<Audit> {
   let liveName = "";
   let liveDescription: string | undefined;
   let liveSubtitle: string | undefined;
+  let storefront: StorefrontIntel | undefined;
   try {
     const url = buildUrl(ITUNES_LOOKUP_URL, { bundleId: input.bundleId, country });
     const data = asResponse(await fetchJson(fetchFn, url));
@@ -186,6 +201,13 @@ async function audit(fetchFn: FetchFn, input: AppInput): Promise<Audit> {
       // (#41). One best-effort fetch enriches both; never fails the audit.
       const page = r.trackViewUrl ? await fetchStorefrontListing(fetchFn, r.trackViewUrl) : null;
       if (page?.subtitle) liveSubtitle = page.subtitle;
+      // Thread the REST of the page through ONCE (#feature-work never edits
+      // audit() again): everything but the subtitle + shots consumed below.
+      // Absent when nothing remains — unknown, never an empty object.
+      if (page) {
+        const { subtitle: _subtitle, shots: _shots, ...intel } = page;
+        if (Object.keys(intel).length > 0) storefront = intel;
+      }
       let shots = {
         screenshotUrls: r.screenshotUrls ?? [],
         ipadScreenshotUrls: r.ipadScreenshotUrls ?? [],
@@ -209,6 +231,7 @@ async function audit(fetchFn: FetchFn, input: AppInput): Promise<Audit> {
     liveName,
     ...(liveDescription !== undefined ? { liveDescription } : {}),
     ...(liveSubtitle !== undefined ? { liveSubtitle } : {}),
+    ...(storefront !== undefined ? { storefront } : {}),
   };
 }
 
