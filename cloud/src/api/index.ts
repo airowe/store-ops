@@ -1336,6 +1336,7 @@ async function runApp(
     appName: app.name,
     hasAscKey: false,
     ...(result.reviews !== undefined ? { reviews: result.reviews } : {}),
+    ...(result.audit.storefront !== undefined ? { storefront: result.audit.storefront } : {}),
   });
   // #61: the per-surface "unlock to see + improve" locks. On a no-key run this is
   // the canonical blind-spot list (subtitle, keywords, screenshots, …); the UI
@@ -1505,6 +1506,7 @@ export async function keyedAscPass(
     appName: app.name,
     hasAscKey: true,
     ...(result.reviews !== undefined ? { reviews: result.reviews } : {}),
+    ...(result.audit.storefront !== undefined ? { storefront: result.audit.storefront } : {}),
   });
   result.locks = surfaceLocks({
     snapshot: ascSnapshot,

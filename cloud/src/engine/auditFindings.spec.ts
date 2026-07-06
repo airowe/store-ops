@@ -11,7 +11,7 @@ import {
   surfaceLocks,
 } from "./auditFindings.js";
 import type { AscSnapshot } from "./ascRead.js";
-import type { Audit } from "./agent.js";
+import type { Audit, StorefrontIntel } from "./agent.js";
 import type { ShotScore, Grade } from "./screenshotScore.js";
 
 // ── Fixtures ─────────────────────────────────────────────────────────────────
@@ -849,6 +849,83 @@ describe("reviews surface (#95)", () => {
     const blob = rv.map((f) => `${f.title} ${f.detail} ${f.evidence ?? ""}`).join(" ");
     expect(blob).toContain("sync");
     expect(rv.every((f) => f.severity !== "critical")).toBe(true);
+  });
+});
+
+// ── ratings surface (storefront-intel PRD 01) ────────────────────────────────
+
+describe("ratings surface (storefront-intel PRD 01)", () => {
+  /** Apple's verbatim read for a polarized listing: 1★ 22% · 5★ 61% of 4,812. */
+  const POLARIZED: StorefrontIntel = {
+    ratings: { average: 3.9, count: 4812, histogram: [1059, 200, 300, 340, 2913] },
+  };
+  /** Apple's own "Not Enough Ratings" territory. */
+  const THIN: StorefrontIntel = {
+    ratings: { average: 4.8, count: 12, histogram: [1, 0, 1, 2, 8] },
+  };
+
+  it("a bimodal histogram emits exactly ratings_polarized with verbatim share evidence", () => {
+    const findings = auditFindings(input({ storefront: POLARIZED }));
+    const rt = findings.filter((f) => f.surface === "ratings");
+    expect(rt.length).toBe(1);
+    expect(rt[0]?.id).toBe("ratings_polarized");
+    expect(rt[0]?.severity).toBe("warn");
+    expect(rt[0]?.impact).toBe("trust");
+    // evidence carries the observed shares verbatim, labeled with Apple's count.
+    expect(rt[0]?.evidence).toBe("1★ 22% · 5★ 61% (n=4,812)");
+    expect(rt[0]?.title).toContain("polarized");
+    // fix points at the 1★ cohort, cross-referencing review topics.
+    expect(rt[0]?.fix).toMatch(/1★/);
+  });
+
+  it("a thin count emits ratings_thin as an info CONTEXT finding framed as Apple's own status", () => {
+    const findings = auditFindings(input({ storefront: THIN }));
+    const rt = findings.filter((f) => f.surface === "ratings");
+    expect(rt.length).toBe(1);
+    expect(rt[0]?.id).toBe("ratings_thin");
+    expect(rt[0]?.severity).toBe("info");
+    expect(rt[0]?.impact).toBe("trust");
+    expect(rt[0]?.context).toBe(true);
+    // Apple's own count, verbatim — a fact, never a deficiency claim.
+    expect(rt[0]?.title).toBe("Only 12 ratings — too few to read the shape");
+    expect(rt[0]?.evidence).toContain("n=12 ratings");
+  });
+
+  it("a healthy, well-rated storefront emits ZERO ratings findings", () => {
+    const healthy: StorefrontIntel = {
+      ratings: { average: 4.7, count: 5000, histogram: [100, 100, 300, 1000, 3500] },
+    };
+    const findings = auditFindings(input({ storefront: healthy }));
+    expect(findings.filter((f) => f.surface === "ratings")).toEqual([]);
+  });
+
+  type SilentCase = { name: string; storefront: StorefrontIntel | undefined };
+  const SILENT: SilentCase[] = [
+    { name: "storefront absent", storefront: undefined },
+    { name: "ratings absent", storefront: { whatsNew: "Bug fixes." } },
+    {
+      name: "histogram unreadable ([] fallback) — both findings suppressed",
+      storefront: { ratings: { average: 4.8, count: 12, histogram: [] } },
+    },
+  ];
+
+  it.each(SILENT)("$name ⇒ zero ratings findings", ({ storefront }) => {
+    const findings = auditFindings(input({ storefront }));
+    expect(findings.filter((f) => f.surface === "ratings")).toEqual([]);
+  });
+
+  it("invariant: no ratings finding is EVER critical (low-signal surface)", () => {
+    const cases: Array<StorefrontIntel | undefined> = [
+      POLARIZED,
+      THIN,
+      undefined,
+      { ratings: { average: 1.2, count: 100000, histogram: [90000, 5000, 3000, 1000, 1000] } },
+      { ratings: { average: 3.0, count: 300, histogram: [150, 0, 0, 0, 150] } },
+    ];
+    for (const storefront of cases) {
+      const rt = auditFindings(input({ storefront })).filter((f) => f.surface === "ratings");
+      expect(rt.every((f) => f.severity !== "critical")).toBe(true);
+    }
   });
 });
 
