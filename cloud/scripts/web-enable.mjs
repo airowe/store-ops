@@ -20,7 +20,7 @@
 import { readFileSync, writeFileSync, mkdirSync, cpSync, existsSync } from "node:fs";
 import { join, resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
-import { extractOwnedArray } from "./webEnable.mjs";
+import { extractOwnedArray, NEW_APP_ENTRY } from "./webEnable.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const cloudRoot = resolve(here, "..");
@@ -85,8 +85,9 @@ export async function onRequest(context) {
   const url = new URL(request.url);
   const accept = request.headers.get("accept") || "";
   if (isNavigationRequest(request.method, url.pathname, accept) && resolveSurface(url.pathname) === "web") {
-    // Serve the new app's HTML shell; the SPA router takes the path from there.
-    return next(new Request(new URL("/_web.html", url), request));
+    // Serve the new app's shell; the SPA router takes the path from there.
+    // Request ${NEW_APP_ENTRY} (extensionless) — Pages 308-redirects *.html away.
+    return next(new Request(new URL("${NEW_APP_ENTRY}", url), request));
   }
   return next();
 }
