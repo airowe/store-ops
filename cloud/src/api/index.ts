@@ -90,6 +90,10 @@ import {
 import type { ReasoningTrace, AppRow, FindingsSummary } from "../d1.js";
 import { buildPreview } from "../engine/preview.js";
 import { discoverCompetitors, resolveNameToId } from "../engine/competitorWatch.js";
+import { resolveSimilarCompetitors } from "../engine/competitorDiscover.js";
+import { fetchStorefrontListing } from "../engine/storefrontListing.js";
+import { asResponse, buildUrl, fetchJson } from "../engine/itunes.js";
+import { ITUNES_LOOKUP_URL } from "../engine/constants.js";
 import { buildRankAnnotations } from "../engine/rankAnnotations.js";
 import { deriveBrandTokens, localizeCopy, LocalizeError, validateLocalizedSubmission } from "../engine/localizeCopy.js";
 import { localizeScreenshots, type LayeredSource, type TextSlot } from "../engine/localizeScreenshots.js";
@@ -1708,16 +1712,51 @@ async function competitorsDiscover(env: Env, userId: string, appId: string): Pro
       note: "No tracked keywords yet — run the agent once so discovery has real searches to work from.",
     };
   }
-  const found = await discoverCompetitors(fetchForEnv(env), {
+  const fetchFn = fetchForEnv(env);
+
+  // Source 1: apps that surface for the app's tracked keyword searches (#72-C).
+  const searchFound = await discoverCompetitors(fetchFn, {
     keywords,
     selfBundleId: app.bundle_id,
     selfName: app.name,
     country: app.country,
   });
+
+  // Source 2: Apple's own "You Might Also Like" shelf (storefront-intel PRD 02).
+  // Best-effort: an unreadable page degrades discovery to search-only, never
+  // an error. Search rows win a key collision (they carry keyword evidence), so
+  // resolve the storefront candidates and drop any key search already produced.
+  let similarFound: Awaited<ReturnType<typeof resolveSimilarCompetitors>> = [];
+  let storefrontRead = false;
+  try {
+    const lookupUrl = buildUrl(ITUNES_LOOKUP_URL, { bundleId: app.bundle_id, country: app.country });
+    const trackViewUrl = asResponse(await fetchJson(fetchFn, lookupUrl)).results?.[0]?.trackViewUrl;
+    const listing = trackViewUrl ? await fetchStorefrontListing(fetchFn, trackViewUrl) : null;
+    if (listing) {
+      storefrontRead = true;
+      if (listing.similarApps) {
+        const searchKeys = new Set(searchFound.map((c) => c.key));
+        similarFound = (
+          await resolveSimilarCompetitors(fetchFn, listing.similarApps, {
+            selfBundleId: app.bundle_id,
+            selfName: app.name,
+            country: app.country,
+          })
+        ).filter((c) => !searchKeys.has(c.key));
+      }
+    }
+  } catch {
+    // Storefront discovery is additive — a failure leaves search-only intact.
+  }
+
   const existing = new Set((await listCompetitors(env.DB, appId)).map((c) => c.comp_key));
   let discovered = 0;
-  for (const c of found) {
-    if (existing.has(c.key)) continue;
+  // NOTE: the schema `source` CHECK is still ('user','discovered'); Apple-similar
+  // rows persist as 'discovered' until the CHECK-widening D1 migration lands
+  // (PRD 02). The finer origin is carried on the response for the UI meanwhile.
+  const persist = async (c: { key: string; name: string }) => {
+    if (existing.has(c.key)) return;
+    existing.add(c.key);
     await upsertCompetitor(env.DB, {
       appId,
       compKey: c.key,
@@ -1726,9 +1765,20 @@ async function competitorsDiscover(env: Env, userId: string, appId: string): Pro
       status: "suggested",
     });
     discovered++;
-  }
+  };
+  for (const c of searchFound) await persist(c);
+  for (const c of similarFound) await persist(c);
+
   const rows = await listCompetitors(env.DB, appId);
-  return { competitors: rows.map(competitorOut), discovered };
+  return {
+    competitors: rows.map(competitorOut),
+    discovered,
+    sources: {
+      search: searchFound.length,
+      appleSimilar: similarFound.length,
+      ...(storefrontRead ? {} : { note: "Apple's similar-apps shelf was unreadable — discovered from keyword search only." }),
+    },
+  };
 }
 
 /**
