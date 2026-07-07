@@ -39,6 +39,7 @@ import type { Opportunity } from "./rankOpportunity.js";
 import type { CoverageReport } from "./metadataCoverage.js";
 import type { LocaleRecommendation } from "./localizationExpansion.js";
 import type { LanguageCoverage } from "./languageCoverage.js";
+import type { ChartRank } from "./chartRank.js";
 import type { ReviewSentiment } from "./reviewSentiment.js";
 
 /** Everything the agent needs to run one app's loop. Pure data in. */
@@ -88,6 +89,11 @@ export type Audit = {
    *  single fetch. Absent when the page was unreadable or carried none of these —
    *  unknown, never an empty object. */
   storefront?: StorefrontIntel;
+  /** App Store trackId (from lookup) — the id to find in a chart feed. */
+  trackId?: string;
+  /** Primary genre id + name (from lookup) — the CATEGORY chart to check. */
+  primaryGenreId?: string;
+  primaryGenreName?: string;
 };
 
 export type AgentResult = {
@@ -152,6 +158,12 @@ export type AgentResult = {
    */
   localizationExpansion?: LocaleRecommendation[] | undefined;
   /**
+   * PUBLIC category chart rank (analytics-reports PRD 04 map). A measured
+   * position when ranked, `ranked:false` when read-but-absent, undefined when
+   * unknown. Public (keyless-friendly); safe to serialize.
+   */
+  chartRank?: ChartRank | undefined;
+  /**
    * Storefront-intel PRD 03 — MEASURED, language-level localization coverage for
    * KEYLESS runs, from the public page's language list. Language-level (labeled
    * `source:"storefront"`), never claiming locale-level knowledge. Present only on
@@ -197,12 +209,18 @@ async function audit(fetchFn: FetchFn, input: AppInput): Promise<Audit> {
   let liveDescription: string | undefined;
   let liveSubtitle: string | undefined;
   let storefront: StorefrontIntel | undefined;
+  let trackId: string | undefined;
+  let primaryGenreId: string | undefined;
+  let primaryGenreName: string | undefined;
   try {
     const url = buildUrl(ITUNES_LOOKUP_URL, { bundleId: input.bundleId, country });
     const data = asResponse(await fetchJson(fetchFn, url));
     const r = (data.results ?? [])[0] as ItunesResult | undefined;
     if (r) {
       liveName = r.trackName ?? "";
+      if (r.trackId) trackId = String(r.trackId);
+      if (r.primaryGenreId) primaryGenreId = r.primaryGenreId;
+      if (r.primaryGenreName) primaryGenreName = r.primaryGenreName;
       const desc = r.description?.trim();
       if (desc) liveDescription = desc;
       // The public storefront page carries what the lookup API doesn't: the
@@ -241,6 +259,9 @@ async function audit(fetchFn: FetchFn, input: AppInput): Promise<Audit> {
     ...(liveDescription !== undefined ? { liveDescription } : {}),
     ...(liveSubtitle !== undefined ? { liveSubtitle } : {}),
     ...(storefront !== undefined ? { storefront } : {}),
+    ...(trackId !== undefined ? { trackId } : {}),
+    ...(primaryGenreId !== undefined ? { primaryGenreId } : {}),
+    ...(primaryGenreName !== undefined ? { primaryGenreName } : {}),
   };
 }
 

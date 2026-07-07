@@ -43,6 +43,31 @@ export function buildReviewsRssUrl(
   return `${ITUNES_REVIEWS_RSS_BASE}/${cc}/rss/customerreviews/page=${page}/id=${appId}/sortby=mostrecent/json`;
 }
 
+/** Legacy RSS "feed name" per chart — the only variant that honors ?genre=. */
+export const CHART_FEEDS = {
+  "top-free": "topfreeapplications",
+  "top-paid": "toppaidapplications",
+  "top-grossing": "topgrossingapplications",
+} as const;
+export type ChartKind = keyof typeof CHART_FEEDS;
+
+/**
+ * Build the legacy top-charts RSS JSON feed URL, genre-scoped. Unlike the newer
+ * rss.marketingtools.apple.com feed (which ignores ?genre=), this path returns a
+ * real CATEGORY chart. Shape:
+ *   /{country}/rss/{feed}/limit=N/genre=ID/json
+ */
+export function buildChartFeedUrl(opts: {
+  chart: ChartKind;
+  genreId: string;
+  country?: string;
+  limit?: number;
+}): string {
+  const cc = (opts.country ?? "us").toLowerCase();
+  const limit = opts.limit ?? 100;
+  return `${ITUNES_REVIEWS_RSS_BASE}/${cc}/rss/${CHART_FEEDS[opts.chart]}/limit=${limit}/genre=${opts.genreId}/json`;
+}
+
 // Retry policy for the public endpoints (from aso_rank_check.py).
 export const MAX_RETRIES = 3;
 export const BACKOFF_BASE = 1.5; // seconds: 1.5, 3.0, 6.0

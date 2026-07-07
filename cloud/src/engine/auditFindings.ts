@@ -22,6 +22,7 @@ import type { Rank } from "./rankCheck.js";
 import type { ReviewSentiment } from "./reviewSentiment.js";
 import { ratingsSignal } from "./ratingsSignal.js";
 import { recommendLocalesFromLanguages } from "./languageCoverage.js";
+import type { ChartRank } from "./chartRank.js";
 
 /**
  * `snapshot.locales` is typed `LiveListingCopy[]` on the snapshot, but the reader
@@ -77,6 +78,13 @@ export type AuditFindingsInput = {
    * other absent surface.
    */
   storefront?: StorefrontIntel | undefined;
+  /**
+   * PUBLIC category chart rank (analytics-reports PRD 04 map). `ranked:true`
+   * carries a MEASURED position; `ranked:false` means we read the chart and the
+   * app isn't in the top N; `undefined`/null means the chart was unreadable or
+   * the genre unknown — the `chart` surface then emits NOTHING (unknown ≠ zero).
+   */
+  chartRank?: ChartRank | null | undefined;
 };
 
 /** ASC "in review / pending" states — metadata is locked while in these. */
@@ -985,6 +993,48 @@ function releaseFindings(input: AuditFindingsInput): Finding[] {
   ];
 }
 
+/**
+ * chart — the app's PUBLIC category chart position (analytics-reports PRD 04
+ * map). A measured position when ranked; a "not in the top N of your category"
+ * status when the chart was read but the app is absent; silence when unknown
+ * (unreadable chart / unknown genre). Keyless-friendly — no ASC needed.
+ */
+function chartRankFindings(input: AuditFindingsInput): Finding[] {
+  const cr = input.chartRank;
+  if (!cr) return []; // null/undefined ⇒ unknown ⇒ silence
+  const where = cr.genreName ?? "your category";
+  const chartLabel =
+    cr.chart === "top-free" ? "Top Free" : cr.chart === "top-paid" ? "Top Paid" : "Top Grossing";
+  if (cr.ranked) {
+    return [
+      mk({
+        id: "chart_rank_present",
+        surface: "chart",
+        severity: "good",
+        impact: "ranking",
+        title: `#${cr.position} in ${where} (${chartLabel})`,
+        detail: `You're charting at #${cr.position} of the top ${cr.outOf} ${where} apps in ${cr.country.toUpperCase()} — real category visibility.`,
+        fix: "Hold it: sustained ranking compounds. Watch this move as you ship changes.",
+        evidence: `#${cr.position}/${cr.outOf} · ${chartLabel} · ${cr.country.toUpperCase()}`,
+        context: true,
+      }),
+    ];
+  }
+  return [
+    mk({
+      id: "chart_rank_absent",
+      surface: "chart",
+      severity: "info",
+      impact: "ranking",
+      title: `Not in the top ${cr.outOf} of ${where}`,
+      detail: `You're outside the ${chartLabel} chart for ${where} in ${cr.country.toUpperCase()} — category charts drive browse discovery you're not capturing.`,
+      fix: "Keyword + conversion wins lift installs, which is what moves chart position.",
+      evidence: `outside top ${cr.outOf} · ${chartLabel} · ${cr.country.toUpperCase()}`,
+      context: true,
+    }),
+  ];
+}
+
 // ── Public entrypoint ────────────────────────────────────────────────────────
 
 /**
@@ -1010,6 +1060,7 @@ export function auditFindings(input: AuditFindingsInput): Finding[] {
     ...privacyFindings(input),
     ...iapFindings(input),
     ...releaseFindings(input),
+    ...chartRankFindings(input),
     ...metaFindings(input),
   ];
 

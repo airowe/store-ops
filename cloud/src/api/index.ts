@@ -95,6 +95,7 @@ import { fetchStorefrontListing } from "../engine/storefrontListing.js";
 import { asResponse, buildUrl, fetchJson } from "../engine/itunes.js";
 import { ITUNES_LOOKUP_URL } from "../engine/constants.js";
 import { detectPortfolio } from "../engine/portfolio.js";
+import { fetchChartRank } from "../engine/chartRank.js";
 import { buildRankAnnotations } from "../engine/rankAnnotations.js";
 import { deriveBrandTokens, localizeCopy, LocalizeError, validateLocalizedSubmission } from "../engine/localizeCopy.js";
 import { localizeScreenshots, type LayeredSource, type TextSlot } from "../engine/localizeScreenshots.js";
@@ -355,6 +356,9 @@ export function serializeRunResult(trace: ReasoningTrace, approved: boolean) {
     // (source:"storefront"). Public data only — safe to serve. Keyed runs never
     // carry it (ASC's locale list is authoritative). Omitted when absent.
     ...(trace.languageCoverage !== undefined ? { languageCoverage: trace.languageCoverage } : {}),
+    // PUBLIC category chart rank (analytics-reports PRD 04 map). Public data —
+    // safe to serve. Absent when unknown/unread.
+    ...(trace.chartRank !== undefined ? { chartRank: trace.chartRank } : {}),
     // #78 Phase 2: the locales whose drafts the human APPROVED for handoff.
     // Full copy included so the review lane can render/edit what's stored.
     ...(trace.localizedCopy !== undefined ? { localizedCopy: trace.localizedCopy } : {}),
@@ -391,6 +395,24 @@ async function attachReviews(env: Env, app: AppRow, result: AgentResult): Promis
   if (candidates.length > 0) {
     result.keywordGaps = withReviewCandidates(result.keywordGaps ?? [], candidates);
   }
+}
+
+/**
+ * Attach the PUBLIC category chart rank (analytics-reports PRD 04 map). Best-
+ * effort and keyless: reads the app's primary-genre chart from the free RSS feed
+ * and locates the app. Absent trackId/genre or an unreadable feed leaves
+ * `chartRank` undefined (unknown) — never a false "not charting".
+ */
+async function attachChartRank(env: Env, app: AppRow, result: AgentResult): Promise<void> {
+  const { trackId, primaryGenreId, primaryGenreName } = result.audit;
+  if (!trackId || !primaryGenreId) return;
+  const cr = await fetchChartRank(fetchForEnv(env), {
+    appId: trackId,
+    genreId: primaryGenreId,
+    ...(primaryGenreName !== undefined ? { genreName: primaryGenreName } : {}),
+    country: app.country?.toLowerCase() || "us",
+  });
+  if (cr) result.chartRank = cr;
 }
 
 /**
@@ -1338,6 +1360,7 @@ async function runApp(
   // candidates. Best-effort; computed BEFORE findings so the audit can surface
   // the reviews section. Never strands the run.
   await attachReviews(env, app, result);
+  await attachChartRank(env, app, result);
   // No-key run: compute the thin (public-only) findings set + the `asc_unlock`
   // CTA. EVERY run carries findings, ASC or not (PRD 02). No snapshot ⇒ no
   // ascContext — only the ASC-read path has one.
@@ -1348,6 +1371,7 @@ async function runApp(
     hasAscKey: false,
     ...(result.reviews !== undefined ? { reviews: result.reviews } : {}),
     ...(result.audit.storefront !== undefined ? { storefront: result.audit.storefront } : {}),
+    ...(result.chartRank !== undefined ? { chartRank: result.chartRank } : {}),
   });
   // #61: the per-surface "unlock to see + improve" locks. On a no-key run this is
   // the canonical blind-spot list (subtitle, keywords, screenshots, …); the UI
@@ -1523,6 +1547,7 @@ export async function keyedAscPass(
   const ascListing = ascScreenshotsToListing(ascSnapshot?.screenshots);
   if (ascListing) result.audit.screenshots = scoreScreenshots(input.app, ascListing);
   await attachReviews(env, app, result);
+  await attachChartRank(env, app, result);
   result.findings = auditFindings({
     snapshot: ascSnapshot,
     audit: result.audit,
@@ -1531,6 +1556,7 @@ export async function keyedAscPass(
     hasAscKey: true,
     ...(result.reviews !== undefined ? { reviews: result.reviews } : {}),
     ...(result.audit.storefront !== undefined ? { storefront: result.audit.storefront } : {}),
+    ...(result.chartRank !== undefined ? { chartRank: result.chartRank } : {}),
   });
   result.locks = surfaceLocks({
     snapshot: ascSnapshot,
