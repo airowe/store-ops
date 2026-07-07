@@ -1067,3 +1067,106 @@ describe("language_single (keyless localization signal)", () => {
     expect(byId(findings, "locale_single")).toBeDefined();
   });
 });
+
+// ── listing findings pack: privacy · IAP · release (storefront-intel PRD 04) ──
+describe("privacy findings (storefront.privacyLabels)", () => {
+  const withStorefront = (s: StorefrontIntel) =>
+    auditFindings(input({ snapshot: undefined, hasAscKey: false, storefront: s }));
+
+  it("DATA_NOT_COLLECTED alone → privacy_data_not_collected (good), not _observed", () => {
+    const f = withStorefront({ privacyLabels: ["DATA_NOT_COLLECTED"] });
+    expect(byId(f, "privacy_data_not_collected")).toBeDefined();
+    expect(byId(f, "privacy_data_not_collected")!.severity).toBe("good");
+    expect(byId(f, "privacy_labels_observed")).toBeUndefined();
+  });
+
+  it("other labels → privacy_labels_observed listing them as evidence", () => {
+    const f = withStorefront({ privacyLabels: ["DATA_LINKED_TO_YOU", "DATA_USED_TO_TRACK_YOU"] });
+    const obs = byId(f, "privacy_labels_observed")!;
+    expect(obs).toBeDefined();
+    expect(obs.evidence).toContain("DATA_LINKED_TO_YOU");
+    expect(byId(f, "privacy_data_not_collected")).toBeUndefined();
+  });
+
+  it("absent privacyLabels → no privacy finding (unknown, not 'no labels')", () => {
+    expect(byId(withStorefront({ whatsNew: "x" }), "privacy_data_not_collected")).toBeUndefined();
+    expect(byId(withStorefront({ whatsNew: "x" }), "privacy_labels_observed")).toBeUndefined();
+  });
+});
+
+describe("IAP findings (storefront.inAppPurchases)", () => {
+  const ranked = (kw: string[]) => kw.map((k, i) => ({ keyword: k, rank: i + 1, total: 200, checked_at: "2026-07-01" }));
+  const run = (iaps: Array<{ name: string; price: string }>, keywords: string[]) =>
+    auditFindings(input({ snapshot: undefined, hasAscKey: false, ranks: ranked(keywords) as never, storefront: { inAppPurchases: iaps } }));
+
+  it("an IAP name containing a tracked keyword (case-insensitive) → iap_names_keyword_bearing", () => {
+    const f = run([{ name: "Budget Pro Yearly", price: "$29.99" }], ["budget"]);
+    const kb = byId(f, "iap_names_keyword_bearing")!;
+    expect(kb).toBeDefined();
+    expect(kb.impact).toBe("ranking");
+    expect(kb.evidence).toContain("Budget Pro Yearly");
+  });
+
+  it("IAPs present but no tracked-keyword overlap → iap_names_generic", () => {
+    const f = run([{ name: "Premium Monthly", price: "$4.99" }], ["budget"]);
+    expect(byId(f, "iap_names_generic")).toBeDefined();
+    expect(byId(f, "iap_names_keyword_bearing")).toBeUndefined();
+  });
+
+  it("an untracked-term match does NOT fire keyword_bearing", () => {
+    const f = run([{ name: "Deluxe Yearly", price: "$9.99" }], ["budget"]);
+    expect(byId(f, "iap_names_keyword_bearing")).toBeUndefined();
+  });
+
+  it("never emits price advice verbs in any IAP finding copy", () => {
+    const f = run([{ name: "Premium Monthly", price: "$4.99" }], ["budget"]);
+    for (const finding of f.filter((x) => x.surface === "iap")) {
+      expect(`${finding.title} ${finding.detail} ${finding.fix}`).not.toMatch(/\b(raise|lower|increase|decrease|reprice|discount)\b/i);
+    }
+  });
+
+  it("absent inAppPurchases → no IAP finding", () => {
+    expect(auditFindings(input({ snapshot: undefined, hasAscKey: false, storefront: { whatsNew: "x" } })).filter((x) => x.surface === "iap")).toEqual([]);
+  });
+});
+
+describe("release findings (storefront.whatsNew)", () => {
+  const wn = (text: string) =>
+    auditFindings(input({ snapshot: undefined, hasAscKey: false, storefront: { whatsNew: text } }));
+
+  it("boilerplate What's New → whats_new_boilerplate (info)", () => {
+    const f = byId(wn("Bug fixes and performance improvements."), "whats_new_boilerplate")!;
+    expect(f).toBeDefined();
+    expect(f.severity).toBe("info");
+  });
+
+  it("substantive What's New → no boilerplate finding", () => {
+    expect(byId(wn("Added a 366-day quote library and offline mode."), "whats_new_boilerplate")).toBeUndefined();
+  });
+
+  it("no release finding ever claims a date or staleness", () => {
+    for (const finding of wn("Bug fixes.").filter((x) => x.surface === "release")) {
+      expect(`${finding.title} ${finding.detail} ${finding.fix}`).not.toMatch(/\b(days?|weeks?|months?|years?|stale|outdated|long time|since)\b/i);
+    }
+  });
+
+  it("absent whatsNew → no release finding", () => {
+    expect(auditFindings(input({ snapshot: undefined, hasAscKey: false, storefront: { privacyLabels: ["DATA_NOT_COLLECTED"] } })).filter((x) => x.surface === "release")).toEqual([]);
+  });
+});
+
+describe("listing pack — safe degradation", () => {
+  it("audit.storefront absent → the three families contribute nothing, no throw", () => {
+    const f = auditFindings(input({ snapshot: undefined, hasAscKey: false }));
+    expect(f.filter((x) => ["privacy", "iap", "release"].includes(x.surface))).toEqual([]);
+  });
+
+  it("is deterministic — same input twice → deep-equal", () => {
+    const s: StorefrontIntel = {
+      privacyLabels: ["DATA_NOT_COLLECTED"],
+      inAppPurchases: [{ name: "Pro", price: "$1" }],
+      whatsNew: "Bug fixes.",
+    };
+    expect(auditFindings(input({ storefront: s }))).toEqual(auditFindings(input({ storefront: s })));
+  });
+});

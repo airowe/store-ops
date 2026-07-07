@@ -867,6 +867,124 @@ function ratingsFindings(input: AuditFindingsInput): Finding[] {
   return out;
 }
 
+/**
+ * privacy — the public storefront nutrition labels (storefront-intel PRD 04).
+ * Absent labels ⇒ silence (extraction-degrade is indistinguishable from genuine
+ * absence — never "you have no privacy labels").
+ */
+function privacyFindings(input: AuditFindingsInput): Finding[] {
+  const labels = input.storefront?.privacyLabels;
+  if (!labels || labels.length === 0) return [];
+  if (labels.length === 1 && labels[0] === "DATA_NOT_COLLECTED") {
+    return [
+      mk({
+        id: "privacy_data_not_collected",
+        surface: "privacy",
+        severity: "good",
+        impact: "trust",
+        title: "Privacy label: Data Not Collected",
+        detail:
+          "Your product page shows Apple's \"Data Not Collected\" label — a real trust and conversion signal shoppers see before they install.",
+        fix: "Nice — keep it accurate as the app evolves.",
+        evidence: "DATA_NOT_COLLECTED",
+        context: true,
+      }),
+    ];
+  }
+  return [
+    mk({
+      id: "privacy_labels_observed",
+      surface: "privacy",
+      severity: "info",
+      impact: "trust",
+      title: "Privacy labels on your listing",
+      detail: "These are the privacy labels shoppers see on your product page.",
+      fix: "Confirm they match what your app actually does — mismatches risk review rejection.",
+      evidence: labels.join(", "),
+      context: true,
+    }),
+  ];
+}
+
+/**
+ * IAP visibility — display names are public and can surface in App Store search
+ * (storefront-intel PRD 04). Keyword claims only against TRACKED keywords from
+ * ranks; prices are quoted as observed facts, never priced advice. Absent ⇒
+ * silence.
+ */
+function iapFindings(input: AuditFindingsInput): Finding[] {
+  const iaps = input.storefront?.inAppPurchases;
+  if (!iaps || iaps.length === 0) return [];
+  const tracked = topKeywords(input.ranks, 10).map((k) => k.toLowerCase());
+  const matches = iaps.filter((iap) =>
+    tracked.some((kw) => iap.name.toLowerCase().includes(kw)),
+  );
+  if (matches.length > 0) {
+    return [
+      mk({
+        id: "iap_names_keyword_bearing",
+        surface: "iap",
+        severity: "good",
+        impact: "ranking",
+        title: "Your in-app purchase names carry tracked keywords",
+        detail:
+          "IAP display names are public and can surface in App Store search — yours already work as extra keyword surface.",
+        fix: "Keep new IAP names descriptive and keyword-bearing.",
+        evidence: matches.map((m) => m.name).join(", "),
+        context: true,
+      }),
+    ];
+  }
+  return [
+    mk({
+      id: "iap_names_generic",
+      surface: "iap",
+      severity: "info",
+      impact: "ranking",
+      title: "In-app purchase names are generic",
+      detail:
+        "IAP display names show in App Store search but none of yours contain a keyword you track — a wasted free surface.",
+      fix: "Give in-app purchases descriptive, keyword-bearing display names (not just \"Premium Monthly\").",
+      evidence: iaps.map((i) => i.name).join(", "),
+      context: true,
+    }),
+  ];
+}
+
+/** Boilerplate What's New patterns — measured against text we actually captured. */
+const WHATS_NEW_BOILERPLATE = [
+  /^bug fixes\.?$/i,
+  /bug fixes and performance improvements/i,
+  /minor (bug )?fixes/i,
+  /performance improvements\.?$/i,
+  /various (bug fixes|improvements)/i,
+  /stability improvements/i,
+];
+
+/**
+ * release — the public What's New text (storefront-intel PRD 04). v1 ONLY flags
+ * boilerplate in text we have; NO date/staleness claim (the extractor carries no
+ * release date — see the PRD). Absent whatsNew ⇒ silence.
+ */
+function releaseFindings(input: AuditFindingsInput): Finding[] {
+  const text = input.storefront?.whatsNew?.trim();
+  if (!text) return [];
+  if (!WHATS_NEW_BOILERPLATE.some((re) => re.test(text))) return [];
+  return [
+    mk({
+      id: "whats_new_boilerplate",
+      surface: "release",
+      severity: "info",
+      impact: "conversion",
+      title: "Your \"What's New\" is boilerplate",
+      detail:
+        "The release notes shoppers see are a generic \"bug fixes\" line — a missed spot to show momentum and highlight what shipped.",
+      fix: "Name what actually changed; a specific note reads as an actively-maintained app.",
+      evidence: text.length > 60 ? `${text.slice(0, 57)}…` : text,
+    }),
+  ];
+}
+
 // ── Public entrypoint ────────────────────────────────────────────────────────
 
 /**
@@ -889,6 +1007,9 @@ export function auditFindings(input: AuditFindingsInput): Finding[] {
     ...localeFindings(input),
     ...reviewFindings(input),
     ...ratingsFindings(input),
+    ...privacyFindings(input),
+    ...iapFindings(input),
+    ...releaseFindings(input),
     ...metaFindings(input),
   ];
 
