@@ -94,6 +94,7 @@ import { resolveSimilarCompetitors } from "../engine/competitorDiscover.js";
 import { fetchStorefrontListing } from "../engine/storefrontListing.js";
 import { asResponse, buildUrl, fetchJson } from "../engine/itunes.js";
 import { ITUNES_LOOKUP_URL } from "../engine/constants.js";
+import { detectPortfolio } from "../engine/portfolio.js";
 import { buildRankAnnotations } from "../engine/rankAnnotations.js";
 import { deriveBrandTokens, localizeCopy, LocalizeError, validateLocalizedSubmission } from "../engine/localizeCopy.js";
 import { localizeScreenshots, type LayeredSource, type TextSlot } from "../engine/localizeScreenshots.js";
@@ -126,6 +127,7 @@ import {
   getRun,
   getTier,
   getUserByStripeCustomer,
+  latestRunTraceForApp,
   listAllApps,
   listAppsForUser,
   listCompetitors,
@@ -1710,6 +1712,35 @@ async function competitorsList(env: Env, userId: string, appId: string): Promise
   await requireOwnedApp(env, appId, userId);
   const rows = await listCompetitors(env.DB, appId);
   return { competitors: rows.map(competitorOut) };
+}
+
+/**
+ * GET /apps/:id/portfolio — the seller's OTHER apps, read from the latest run's
+ * storefront intel (storefront-intel PRD 05). Suggestions only; tracking stays
+ * a user action (POST /apps). Absent shelf / no runs / old trace → known:false
+ * with an honest note, never a 500.
+ */
+async function appPortfolio(env: Env, userId: string, appId: string): Promise<unknown> {
+  const app = await requireOwnedApp(env, appId, userId);
+  const latest = await latestRunTraceForApp(env.DB, appId);
+  if (!latest) {
+    return { portfolio: { known: false, note: "Run the agent once so it can read the storefront." } };
+  }
+  const tracked = (await listAppsForUser(env.DB, userId)).map((a) => a.bundle_id);
+  const result = detectPortfolio(
+    latest.trace.audit.storefront?.moreByDeveloper,
+    tracked,
+    app.bundle_id,
+  );
+  if (!result.known) {
+    return {
+      portfolio: {
+        known: false,
+        note: "The latest run didn't read the seller's other apps from the storefront.",
+      },
+    };
+  }
+  return { portfolio: { known: true, suggestions: result.suggestions, asOf: latest.createdAt } };
 }
 
 /**
@@ -3412,6 +3443,10 @@ export async function handleApi(req: Request, env: Env): Promise<Response> {
       }
       if (seg.length === 4 && seg[1] && seg[2] === "competitors" && seg[3] && method === "DELETE") {
         return json(await competitorsRemove(env, user.id, seg[1], seg[3]), 200, origin);
+      }
+      // portfolio (storefront-intel PRD 05): the seller's other apps, suggested.
+      if (seg.length === 3 && seg[1] && seg[2] === "portfolio" && method === "GET") {
+        return json(await appPortfolio(env, user.id, seg[1]), 200, origin);
       }
       if (seg.length === 3 && seg[1] && seg[2] === "deltas" && method === "GET") {
         return json(await appDeltas(env, user.id, seg[1]), 200, origin);
