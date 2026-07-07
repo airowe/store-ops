@@ -142,6 +142,9 @@ export type ItunesResult = {
   averageUserRating?: number;
   userRatingCount?: number;
   genres?: string[];
+  /** primary App Store genre id (e.g. "6012" Lifestyle) — the chart to check. */
+  primaryGenreId?: string;
+  primaryGenreName?: string;
   screenshotUrls?: string[];
   ipadScreenshotUrls?: string[];
 };

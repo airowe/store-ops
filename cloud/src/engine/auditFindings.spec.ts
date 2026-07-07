@@ -1170,3 +1170,33 @@ describe("listing pack — safe degradation", () => {
     expect(auditFindings(input({ storefront: s }))).toEqual(auditFindings(input({ storefront: s })));
   });
 });
+
+// ── chart surface (analytics-reports PRD 04 map) ─────────────────────────────
+describe("chart_rank findings (public category chart)", () => {
+  const base = { genreId: "6012", genreName: "Lifestyle", chart: "top-free" as const, country: "us", outOf: 100 };
+
+  it("ranked → chart_rank_present (good) with the measured position", () => {
+    const f = byId(auditFindings(input({ chartRank: { ...base, ranked: true, position: 7 } })), "chart_rank_present")!;
+    expect(f).toBeDefined();
+    expect(f.severity).toBe("good");
+    expect(f.title).toContain("#7");
+    expect(f.title).toContain("Lifestyle");
+  });
+
+  it("read-but-absent → chart_rank_absent (info), never a fabricated number", () => {
+    const f = byId(auditFindings(input({ chartRank: { ...base, ranked: false } })), "chart_rank_absent")!;
+    expect(f).toBeDefined();
+    expect(f.severity).toBe("info");
+    expect(`${f.title} ${f.detail} ${f.evidence}`).not.toMatch(/#\d/);
+  });
+
+  it("undefined/null chartRank → the chart surface is silent (unknown ≠ zero)", () => {
+    expect(auditFindings(input({ chartRank: undefined })).filter((x) => x.surface === "chart")).toEqual([]);
+    expect(auditFindings(input({ chartRank: null })).filter((x) => x.surface === "chart")).toEqual([]);
+  });
+
+  it("is deterministic", () => {
+    const cr = { ...base, ranked: true, position: 3 } as const;
+    expect(auditFindings(input({ chartRank: cr }))).toEqual(auditFindings(input({ chartRank: cr })));
+  });
+});

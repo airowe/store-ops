@@ -229,6 +229,12 @@ export {
   recommendLocalesFromLanguages,
 } from "./languageCoverage.js";
 export {
+  type ChartRank,
+  chartRankFromEntries,
+  parseChartFeed,
+  fetchChartRank,
+} from "./chartRank.js";
+export {
   type RankSnapshot as WarRoomRankSnapshot,
   type HeadToHead,
   type WarTrend,
