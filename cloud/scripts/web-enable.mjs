@@ -105,4 +105,6 @@ writeFileSync(
 
 console.log("web-enable: combined dist ready.");
 console.log("  legacy root + new app at /_web.html + functions/_middleware.js");
-console.log("  preview: wrangler pages deploy dist --project-name store-ops-dashboard --branch web-preview");
+console.log("  preview (isolated project — never touches production):");
+console.log("    npm run deploy:web-preview");
+console.log("    → wrangler pages deploy dist --project-name store-ops-web-preview");
