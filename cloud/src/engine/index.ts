@@ -224,6 +224,11 @@ export {
   rankAll as rankAllLocales,
 } from "./localizationExpansion.js";
 export {
+  type LanguageCoverage,
+  coverageFromLanguages,
+  recommendLocalesFromLanguages,
+} from "./languageCoverage.js";
+export {
   type RankSnapshot as WarRoomRankSnapshot,
   type HeadToHead,
   type WarTrend,

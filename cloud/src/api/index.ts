@@ -200,6 +200,7 @@ import { withReviewCandidates } from "../engine/keywordGap.js";
 import { buildAscContext } from "../engine/ascContext.js";
 import { metadataCoverage } from "../engine/metadataCoverage.js";
 import { recommendLocales } from "../engine/localizationExpansion.js";
+import { recommendLocalesFromLanguages } from "../engine/languageCoverage.js";
 import { mintAppJwt, installationToken, GithubAppError } from "../engine/githubApp.js";
 import { openMetadataPr } from "../engine/githubPr.js";
 import { handleMcp } from "../mcp/server.js";
@@ -348,6 +349,10 @@ export function serializeRunResult(trace: ReasoningTrace, approved: boolean) {
     ...(trace.localizationExpansion !== undefined
       ? { localizationExpansion: trace.localizationExpansion }
       : {}),
+    // storefront-intel PRD 03: MEASURED language-level coverage for keyless runs
+    // (source:"storefront"). Public data only — safe to serve. Keyed runs never
+    // carry it (ASC's locale list is authoritative). Omitted when absent.
+    ...(trace.languageCoverage !== undefined ? { languageCoverage: trace.languageCoverage } : {}),
     // #78 Phase 2: the locales whose drafts the human APPROVED for handoff.
     // Full copy included so the review lane can render/edit what's stored.
     ...(trace.localizedCopy !== undefined ? { localizedCopy: trace.localizedCopy } : {}),
@@ -1358,6 +1363,19 @@ async function runApp(
   // name — subtitle/keywords aren't read without a key, so they stay empty). Still
   // a useful name-budget read; richer once an ASC run fills the other fields.
   result.coverage = coverageForRun(result.currentCopy, app.name);
+  // storefront-intel PRD 03: measured localization coverage for this keyless run,
+  // from the public page's language list. Language-level; the keyed path (which
+  // has ASC's authoritative locale list) never reaches here.
+  const languages = result.audit.storefront?.languages;
+  if (languages && languages.length > 0) {
+    const category = result.audit.storefront?.category;
+    const { recommendations, coverage } = recommendLocalesFromLanguages({
+      languages,
+      ...(category !== undefined ? { category } : {}),
+    });
+    result.languageCoverage = coverage;
+    if (recommendations.length > 0) result.localizationExpansion = recommendations;
+  }
   const runId = await persistRun(env.DB, {
     appId: app.id,
     status: "awaiting_approval",

@@ -18,6 +18,7 @@ import type {
   CoverageReport,
   Finding,
   KeywordGap,
+  LanguageCoverage,
   LocaleRecommendation,
   Opportunity,
   ProposedCopy,
@@ -201,6 +202,8 @@ export type ReasoningTrace = {
    * to serve to the client. Present only on a Mode-A run that read the locale set.
    */
   localizationExpansion?: LocaleRecommendation[] | undefined;
+  /** storefront-intel PRD 03 — measured language-level coverage for keyless runs. */
+  languageCoverage?: LanguageCoverage | undefined;
   /**
    * PUBLIC review sentiment (#95) — overall sentiment + ranked OBSERVED topics
    * from Apple's free RSS customer-reviews feed. Sample size `n` ALWAYS carried;
@@ -822,6 +825,7 @@ export async function persistRun(
     ...(result.localizationExpansion !== undefined
       ? { localizationExpansion: result.localizationExpansion }
       : {}),
+    ...(result.languageCoverage !== undefined ? { languageCoverage: result.languageCoverage } : {}),
     // PUBLIC review sentiment (#95): sample-size-honest sentiment + observed
     // topics from the free RSS feed. Public data only — safe to persist + serve.
     ...(result.reviews !== undefined ? { reviews: result.reviews } : {}),

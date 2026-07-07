@@ -21,6 +21,7 @@ import type { Audit, StorefrontIntel } from "./agent.js";
 import type { Rank } from "./rankCheck.js";
 import type { ReviewSentiment } from "./reviewSentiment.js";
 import { ratingsSignal } from "./ratingsSignal.js";
+import { recommendLocalesFromLanguages } from "./languageCoverage.js";
 
 /**
  * `snapshot.locales` is typed `LiveListingCopy[]` on the snapshot, but the reader
@@ -626,9 +627,12 @@ function cppFindings(input: AuditFindingsInput): Finding[] {
 }
 
 /** locales — `snapshot.locales[]`. */
-function localeFindings(snapshot: AscSnapshot | undefined): Finding[] {
+function localeFindings(input: AuditFindingsInput): Finding[] {
+  const snapshot = input.snapshot;
   const locales = snapshot?.locales as LocaleRow[] | undefined;
-  if (!locales) return [];
+  // Keyless run: no ASC locale list, but the public page may list languages.
+  // language_single fires only here, so it can never double up with locale_single.
+  if (!locales) return languageFindings(input);
   const out: Finding[] = [];
 
   if (locales.length === 1) {
@@ -676,6 +680,42 @@ function localeFindings(snapshot: AscSnapshot | undefined): Finding[] {
 /** The locale tag of a listing-copy row (the snapshot carries it at runtime). */
 function localeKey(loc: LocaleRow | undefined): string {
   return loc?.locale ?? "this locale";
+}
+
+/**
+ * languages — the PUBLIC storefront language list (storefront-intel PRD 03),
+ * used only when there's no ASC locale snapshot (keyless runs). Language-level:
+ * we say "listed in N languages", never "live in N locales". Absent/unreadable
+ * languages ⇒ no finding (unknown, never "EN-only"). The actionable per-market
+ * recommendations live in the expansion card (same #71-C no-double-count rule).
+ */
+function languageFindings(input: AuditFindingsInput): Finding[] {
+  const languages = input.storefront?.languages;
+  if (!languages || languages.length !== 1) return [];
+  const { recommendations } = recommendLocalesFromLanguages({
+    languages,
+    category: input.storefront?.category,
+  });
+  // A MEASURED count of a bundled heuristic — large-tier storefronts in other
+  // languages the static model ranks. Never a per-market volume claim.
+  const largeCount = recommendations.filter((r) => r.storefrontTier === "large").length;
+  const detail =
+    largeCount > 0
+      ? `${largeCount} large storefront${largeCount === 1 ? "" : "s"} in other languages are separate keyword surfaces you haven't claimed.`
+      : "Each additional language is a separate keyword surface and audience.";
+  return [
+    mk({
+      id: "language_single",
+      surface: "locales",
+      severity: "info",
+      impact: "ranking",
+      title: `Listed in 1 language (${languages[0]})`,
+      detail,
+      fix: "See the market recommendations below — each is a concrete language to add.",
+      evidence: languages[0],
+      context: true,
+    }),
+  ];
 }
 
 /** cross-surface / meta — the no-key unlock CTA + optional read-error notes. */
@@ -846,7 +886,7 @@ export function auditFindings(input: AuditFindingsInput): Finding[] {
     ...pricingFindings(input.snapshot),
     ...ageRatingFindings(input.snapshot),
     ...cppFindings(input),
-    ...localeFindings(input.snapshot),
+    ...localeFindings(input),
     ...reviewFindings(input),
     ...ratingsFindings(input),
     ...metaFindings(input),

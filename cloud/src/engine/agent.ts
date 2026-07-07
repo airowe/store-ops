@@ -38,6 +38,7 @@ import type { AscContext } from "./ascContext.js";
 import type { Opportunity } from "./rankOpportunity.js";
 import type { CoverageReport } from "./metadataCoverage.js";
 import type { LocaleRecommendation } from "./localizationExpansion.js";
+import type { LanguageCoverage } from "./languageCoverage.js";
 import type { ReviewSentiment } from "./reviewSentiment.js";
 
 /** Everything the agent needs to run one app's loop. Pure data in. */
@@ -150,6 +151,14 @@ export type AgentResult = {
    * the client. Present on a Mode-A (ASC) run where we read all locales + category.
    */
   localizationExpansion?: LocaleRecommendation[] | undefined;
+  /**
+   * Storefront-intel PRD 03 — MEASURED, language-level localization coverage for
+   * KEYLESS runs, from the public page's language list. Language-level (labeled
+   * `source:"storefront"`), never claiming locale-level knowledge. Present only on
+   * a no-key run whose storefront page listed languages; the keyed ASC locale
+   * list stays authoritative and never carries this. Optional; safe to serialize.
+   */
+  languageCoverage?: LanguageCoverage | undefined;
   /**
    * PUBLIC review sentiment (#95) — overall sentiment + ranked OBSERVED topics
    * from Apple's free RSS customer-reviews feed. Computed best-effort in the API

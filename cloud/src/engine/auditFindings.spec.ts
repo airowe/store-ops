@@ -1021,3 +1021,49 @@ describe("status vs fixes separation (#71-C)", () => {
     expect(byId(findings, "version_no_draft")!.context).toBe(true);
   });
 });
+
+// ── languages surface (storefront-intel PRD 03) ──────────────────────────────
+describe("language_single (keyless localization signal)", () => {
+  /** Keyless input: no ASC snapshot; the public page lists languages. */
+  function keyless(languages: string[], category?: string): AuditFindingsInput {
+    return input({
+      snapshot: undefined,
+      hasAscKey: false,
+      storefront: { languages, ...(category ? { category } : {}) },
+    });
+  }
+
+  it("fires on a keyless run listed in exactly one language", () => {
+    const findings = auditFindings(keyless(["English"]));
+    const f = byId(findings, "language_single")!;
+    expect(f).toBeDefined();
+    expect(f.context).toBe(true);
+    expect(f.severity).toBe("info");
+    expect(f.title).toBe("Listed in 1 language (English)");
+  });
+
+  it("never fabricates per-market volume in its copy", () => {
+    const f = byId(auditFindings(keyless(["English"])), "language_single")!;
+    expect(f.detail).not.toMatch(/volume|installs?|downloads?|%/i);
+  });
+
+  it("does not fire with multiple languages", () => {
+    const findings = auditFindings(keyless(["English", "German"]));
+    expect(byId(findings, "language_single")).toBeUndefined();
+  });
+
+  it("does not fire when the storefront/languages are absent (unknown, not EN-only)", () => {
+    expect(byId(auditFindings(input({ snapshot: undefined, hasAscKey: false })), "language_single")).toBeUndefined();
+    expect(
+      byId(auditFindings(input({ snapshot: undefined, hasAscKey: false, storefront: { whatsNew: "x" } })), "language_single"),
+    ).toBeUndefined();
+  });
+
+  it("is suppressed on a keyed run — locale_single owns that surface (no double-count)", () => {
+    const snap = healthySnapshot();
+    snap.locales = locales([{ locale: "en-US", name: "Demo", subtitle: "Do it", keywords: "a,b" }]);
+    const findings = auditFindings(input({ snapshot: snap, storefront: { languages: ["English"] } }));
+    expect(byId(findings, "language_single")).toBeUndefined();
+    expect(byId(findings, "locale_single")).toBeDefined();
+  });
+});
