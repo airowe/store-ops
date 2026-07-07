@@ -17,9 +17,11 @@
  */
 import { detectDuplicateScreenshots } from "./ascRead.js";
 import type { AscSnapshot, InAppPurchase } from "./ascRead.js";
-import type { Audit } from "./agent.js";
+import type { Audit, StorefrontIntel } from "./agent.js";
 import type { Rank } from "./rankCheck.js";
 import type { ReviewSentiment } from "./reviewSentiment.js";
+import { ratingsSignal } from "./ratingsSignal.js";
+import { recommendLocalesFromLanguages } from "./languageCoverage.js";
 
 /**
  * `snapshot.locales` is typed `LiveListingCopy[]` on the snapshot, but the reader
@@ -68,6 +70,13 @@ export type AuditFindingsInput = {
    * and a SUPPRESSED score below threshold (#78).
    */
   reviews?: ReviewSentiment | undefined;
+  /**
+   * PUBLIC storefront-page intel (storefront-intel PRD 01) — carries Apple's
+   * own ratings read `{ average, count, histogram }`. Undefined when the page
+   * wasn't readable — the `ratings` surface then emits NOTHING, like every
+   * other absent surface.
+   */
+  storefront?: StorefrontIntel | undefined;
 };
 
 /** ASC "in review / pending" states — metadata is locked while in these. */
@@ -618,9 +627,12 @@ function cppFindings(input: AuditFindingsInput): Finding[] {
 }
 
 /** locales — `snapshot.locales[]`. */
-function localeFindings(snapshot: AscSnapshot | undefined): Finding[] {
+function localeFindings(input: AuditFindingsInput): Finding[] {
+  const snapshot = input.snapshot;
   const locales = snapshot?.locales as LocaleRow[] | undefined;
-  if (!locales) return [];
+  // Keyless run: no ASC locale list, but the public page may list languages.
+  // language_single fires only here, so it can never double up with locale_single.
+  if (!locales) return languageFindings(input);
   const out: Finding[] = [];
 
   if (locales.length === 1) {
@@ -668,6 +680,42 @@ function localeFindings(snapshot: AscSnapshot | undefined): Finding[] {
 /** The locale tag of a listing-copy row (the snapshot carries it at runtime). */
 function localeKey(loc: LocaleRow | undefined): string {
   return loc?.locale ?? "this locale";
+}
+
+/**
+ * languages — the PUBLIC storefront language list (storefront-intel PRD 03),
+ * used only when there's no ASC locale snapshot (keyless runs). Language-level:
+ * we say "listed in N languages", never "live in N locales". Absent/unreadable
+ * languages ⇒ no finding (unknown, never "EN-only"). The actionable per-market
+ * recommendations live in the expansion card (same #71-C no-double-count rule).
+ */
+function languageFindings(input: AuditFindingsInput): Finding[] {
+  const languages = input.storefront?.languages;
+  if (!languages || languages.length !== 1) return [];
+  const { recommendations } = recommendLocalesFromLanguages({
+    languages,
+    category: input.storefront?.category,
+  });
+  // A MEASURED count of a bundled heuristic — large-tier storefronts in other
+  // languages the static model ranks. Never a per-market volume claim.
+  const largeCount = recommendations.filter((r) => r.storefrontTier === "large").length;
+  const detail =
+    largeCount > 0
+      ? `${largeCount} large storefront${largeCount === 1 ? "" : "s"} in other languages are separate keyword surfaces you haven't claimed.`
+      : "Each additional language is a separate keyword surface and audience.";
+  return [
+    mk({
+      id: "language_single",
+      surface: "locales",
+      severity: "info",
+      impact: "ranking",
+      title: `Listed in 1 language (${languages[0]})`,
+      detail,
+      fix: "See the market recommendations below — each is a concrete language to add.",
+      evidence: languages[0],
+      context: true,
+    }),
+  ];
 }
 
 /** cross-surface / meta — the no-key unlock CTA + optional read-error notes. */
@@ -760,6 +808,183 @@ function reviewFindings(input: AuditFindingsInput): Finding[] {
   return out;
 }
 
+/**
+ * ratings — Apple's own storefront histogram (storefront-intel PRD 01).
+ * Low-signal surface like `reviews`: NEVER critical.
+ *   • `storefront`/`ratings` absent → no findings (unknown stays absent).
+ *   • `histogram: []` (unreadable) → shape is unknown, BOTH findings are
+ *     suppressed — we don't editorialize a shape we couldn't read.
+ *   • bimodal 1★/5★ split → `ratings_polarized` (warn/trust) with the observed
+ *     shares verbatim, labeled with Apple's own count (`n=<count>`), never
+ *     blended with the RSS review sample.
+ *   • thin count → `ratings_thin` (info/trust, context) — Apple's own "Not
+ *     Enough Ratings" stance, a fact that frames the audit, never a
+ *     deficiency claim about the app.
+ */
+function ratingsFindings(input: AuditFindingsInput): Finding[] {
+  const signal = ratingsSignal(input.storefront?.ratings);
+  // No shares ⇒ the histogram was unreadable — suppress the whole surface
+  // rather than assert anything about a shape we didn't measure.
+  if (!signal?.shares) return [];
+  const out: Finding[] = [];
+
+  if (signal.polarization?.bimodal) {
+    const oneStar = Math.round(signal.shares[0] * 100);
+    const fiveStar = Math.round(signal.shares[4] * 100);
+    const observed = `1★ ${oneStar}% · 5★ ${fiveStar}%`;
+    out.push(
+      mk({
+        id: "ratings_polarized",
+        surface: "ratings",
+        severity: "warn",
+        impact: "trust",
+        title: `Ratings are polarized (${observed})`,
+        detail:
+          `Apple's histogram over all ${signal.count.toLocaleString("en-US")} ratings is bimodal — ` +
+          `a large 1★ cohort hides behind the ${signal.average} average.`,
+        fix: "Find what the 1★ cohort hits — cross-reference the review topics above when present.",
+        evidence: `${observed} (n=${signal.count.toLocaleString("en-US")})`,
+      }),
+    );
+  }
+
+  if (signal.thin) {
+    out.push(
+      mk({
+        id: "ratings_thin",
+        surface: "ratings",
+        severity: "info",
+        impact: "trust",
+        title: `Only ${signal.count.toLocaleString("en-US")} ratings — too few to read the shape`,
+        detail:
+          "Apple itself shows \"Not Enough Ratings\" territory at counts this low — a fact about the ratings base, not a verdict on the app.",
+        fix: "No action required — ratings context only. In-app rating prompts at the right moment grow the base.",
+        evidence: `n=${signal.count.toLocaleString("en-US")} ratings`,
+        context: true,
+      }),
+    );
+  }
+  return out;
+}
+
+/**
+ * privacy — the public storefront nutrition labels (storefront-intel PRD 04).
+ * Absent labels ⇒ silence (extraction-degrade is indistinguishable from genuine
+ * absence — never "you have no privacy labels").
+ */
+function privacyFindings(input: AuditFindingsInput): Finding[] {
+  const labels = input.storefront?.privacyLabels;
+  if (!labels || labels.length === 0) return [];
+  if (labels.length === 1 && labels[0] === "DATA_NOT_COLLECTED") {
+    return [
+      mk({
+        id: "privacy_data_not_collected",
+        surface: "privacy",
+        severity: "good",
+        impact: "trust",
+        title: "Privacy label: Data Not Collected",
+        detail:
+          "Your product page shows Apple's \"Data Not Collected\" label — a real trust and conversion signal shoppers see before they install.",
+        fix: "Nice — keep it accurate as the app evolves.",
+        evidence: "DATA_NOT_COLLECTED",
+        context: true,
+      }),
+    ];
+  }
+  return [
+    mk({
+      id: "privacy_labels_observed",
+      surface: "privacy",
+      severity: "info",
+      impact: "trust",
+      title: "Privacy labels on your listing",
+      detail: "These are the privacy labels shoppers see on your product page.",
+      fix: "Confirm they match what your app actually does — mismatches risk review rejection.",
+      evidence: labels.join(", "),
+      context: true,
+    }),
+  ];
+}
+
+/**
+ * IAP visibility — display names are public and can surface in App Store search
+ * (storefront-intel PRD 04). Keyword claims only against TRACKED keywords from
+ * ranks; prices are quoted as observed facts, never priced advice. Absent ⇒
+ * silence.
+ */
+function iapFindings(input: AuditFindingsInput): Finding[] {
+  const iaps = input.storefront?.inAppPurchases;
+  if (!iaps || iaps.length === 0) return [];
+  const tracked = topKeywords(input.ranks, 10).map((k) => k.toLowerCase());
+  const matches = iaps.filter((iap) =>
+    tracked.some((kw) => iap.name.toLowerCase().includes(kw)),
+  );
+  if (matches.length > 0) {
+    return [
+      mk({
+        id: "iap_names_keyword_bearing",
+        surface: "iap",
+        severity: "good",
+        impact: "ranking",
+        title: "Your in-app purchase names carry tracked keywords",
+        detail:
+          "IAP display names are public and can surface in App Store search — yours already work as extra keyword surface.",
+        fix: "Keep new IAP names descriptive and keyword-bearing.",
+        evidence: matches.map((m) => m.name).join(", "),
+        context: true,
+      }),
+    ];
+  }
+  return [
+    mk({
+      id: "iap_names_generic",
+      surface: "iap",
+      severity: "info",
+      impact: "ranking",
+      title: "In-app purchase names are generic",
+      detail:
+        "IAP display names show in App Store search but none of yours contain a keyword you track — a wasted free surface.",
+      fix: "Give in-app purchases descriptive, keyword-bearing display names (not just \"Premium Monthly\").",
+      evidence: iaps.map((i) => i.name).join(", "),
+      context: true,
+    }),
+  ];
+}
+
+/** Boilerplate What's New patterns — measured against text we actually captured. */
+const WHATS_NEW_BOILERPLATE = [
+  /^bug fixes\.?$/i,
+  /bug fixes and performance improvements/i,
+  /minor (bug )?fixes/i,
+  /performance improvements\.?$/i,
+  /various (bug fixes|improvements)/i,
+  /stability improvements/i,
+];
+
+/**
+ * release — the public What's New text (storefront-intel PRD 04). v1 ONLY flags
+ * boilerplate in text we have; NO date/staleness claim (the extractor carries no
+ * release date — see the PRD). Absent whatsNew ⇒ silence.
+ */
+function releaseFindings(input: AuditFindingsInput): Finding[] {
+  const text = input.storefront?.whatsNew?.trim();
+  if (!text) return [];
+  if (!WHATS_NEW_BOILERPLATE.some((re) => re.test(text))) return [];
+  return [
+    mk({
+      id: "whats_new_boilerplate",
+      surface: "release",
+      severity: "info",
+      impact: "conversion",
+      title: "Your \"What's New\" is boilerplate",
+      detail:
+        "The release notes shoppers see are a generic \"bug fixes\" line — a missed spot to show momentum and highlight what shipped.",
+      fix: "Name what actually changed; a specific note reads as an actively-maintained app.",
+      evidence: text.length > 60 ? `${text.slice(0, 57)}…` : text,
+    }),
+  ];
+}
+
 // ── Public entrypoint ────────────────────────────────────────────────────────
 
 /**
@@ -779,8 +1004,12 @@ export function auditFindings(input: AuditFindingsInput): Finding[] {
     ...pricingFindings(input.snapshot),
     ...ageRatingFindings(input.snapshot),
     ...cppFindings(input),
-    ...localeFindings(input.snapshot),
+    ...localeFindings(input),
     ...reviewFindings(input),
+    ...ratingsFindings(input),
+    ...privacyFindings(input),
+    ...iapFindings(input),
+    ...releaseFindings(input),
     ...metaFindings(input),
   ];
 

@@ -18,6 +18,7 @@ import type {
   CoverageReport,
   Finding,
   KeywordGap,
+  LanguageCoverage,
   LocaleRecommendation,
   Opportunity,
   ProposedCopy,
@@ -201,6 +202,8 @@ export type ReasoningTrace = {
    * to serve to the client. Present only on a Mode-A run that read the locale set.
    */
   localizationExpansion?: LocaleRecommendation[] | undefined;
+  /** storefront-intel PRD 03 — measured language-level coverage for keyless runs. */
+  languageCoverage?: LanguageCoverage | undefined;
   /**
    * PUBLIC review sentiment (#95) — overall sentiment + ranked OBSERVED topics
    * from Apple's free RSS customer-reviews feed. Sample size `n` ALWAYS carried;
@@ -822,6 +825,7 @@ export async function persistRun(
     ...(result.localizationExpansion !== undefined
       ? { localizationExpansion: result.localizationExpansion }
       : {}),
+    ...(result.languageCoverage !== undefined ? { languageCoverage: result.languageCoverage } : {}),
     // PUBLIC review sentiment (#95): sample-size-honest sentiment + observed
     // topics from the free RSS feed. Public data only — safe to persist + serve.
     ...(result.reviews !== undefined ? { reviews: result.reviews } : {}),
@@ -892,6 +896,31 @@ export async function getRun(db: D1Database, runId: string): Promise<RunRow | nu
     )
     .bind(runId)
     .first<RunRow>();
+}
+
+/**
+ * The latest run's decoded trace for an app (storefront-intel PRD 05 —
+ * portfolio detection reads `trace.audit.storefront.moreByDeveloper`). Returns
+ * null when the app has no runs or the stored JSON won't parse (safe-degrade:
+ * the caller reports `known:false`, never a 500).
+ */
+export async function latestRunTraceForApp(
+  db: D1Database,
+  appId: string,
+): Promise<{ runId: string; createdAt: string; trace: ReasoningTrace } | null> {
+  const row = await db
+    .prepare(
+      "SELECT id, created_at, reasoning_json FROM runs WHERE app_id = ? ORDER BY created_at DESC, id DESC LIMIT 1",
+    )
+    .bind(appId)
+    .first<{ id: string; created_at: string; reasoning_json: string }>();
+  if (!row) return null;
+  try {
+    const trace = JSON.parse(row.reasoning_json) as ReasoningTrace;
+    return { runId: row.id, createdAt: row.created_at, trace };
+  } catch {
+    return null;
+  }
 }
 
 /** All runs for an app, newest first (for the app-detail run history list). */

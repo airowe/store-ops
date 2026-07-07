@@ -168,6 +168,7 @@ export const TOOLS: McpToolDef[] = [
         ranks: result.ranks,
         appName: app.name,
         hasAscKey: false,
+        ...(result.audit.storefront !== undefined ? { storefront: result.audit.storefront } : {}),
       });
       return { audit: result.audit, findings, summary: summarizeFindings(findings) };
     },
