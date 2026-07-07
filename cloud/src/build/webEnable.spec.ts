@@ -86,8 +86,11 @@ describe("serveDecision", () => {
     );
   });
 
-  it("exposes the new-app entry path the middleware serves", () => {
-    expect(NEW_APP_ENTRY).toBe("/_web.html");
+  it("serves the new-app shell via the EXTENSIONLESS path (Pages 308s *.html away)", () => {
+    // Regression: the file is _web.html on disk, but Cloudflare Pages redirects
+    // /_web.html → /_web, which broke the middleware rewrite. Must be /_web.
+    expect(NEW_APP_ENTRY).toBe("/_web");
+    expect(NEW_APP_ENTRY.endsWith(".html")).toBe(false);
   });
 });
 

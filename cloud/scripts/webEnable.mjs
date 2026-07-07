@@ -14,8 +14,13 @@
  * and otherwise falls through to static assets (legacy pages, /assets/*, files).
  */
 
-/** The new app's HTML entry inside the combined dist (not "index.html" — that's legacy). */
-export const NEW_APP_ENTRY = "/_web.html";
+/**
+ * The path the middleware sub-requests to serve the new app's shell. The file
+ * on disk is `_web.html`, but Cloudflare Pages 308-redirects `*.html` to its
+ * extensionless form — so a `next()` to `/_web.html` fails. Request `/_web`
+ * (what Pages actually serves the shell at) instead. Preview caught this.
+ */
+export const NEW_APP_ENTRY = "/_web";
 
 /**
  * Extract the `OWNED_PATHS = [ ... ]` array literal from edgeRoutes.ts source,
