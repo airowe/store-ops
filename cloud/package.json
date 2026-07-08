@@ -15,7 +15,7 @@
     "typecheck": "tsc --noEmit",
     "build:dashboard": "node scripts/stamp-assets.mjs",
     "deploy:dashboard": "npm run build:dashboard && wrangler pages deploy dist --project-name store-ops-dashboard",
-    "build:web": "npm --prefix web ci && npm --prefix web run build",
+    "build:web": "npm --prefix web ci && VITE_API_BASE=\"${VITE_API_BASE:-https://api.shipaso.com}\" npm --prefix web run build",
     "build:combined": "npm run build:dashboard && npm run build:web && node scripts/web-enable.mjs",
     "deploy:web-preview": "npm run build:combined && wrangler pages deploy dist --project-name store-ops-web-preview --branch main",
     "db:migrate": "wrangler d1 execute store_ops --file=./schema.sql",
