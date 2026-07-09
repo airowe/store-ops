@@ -9,6 +9,7 @@
  */
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ApiError, decideRun, getRun } from "@shipaso/api";
+import type { RunDetail } from "@shipaso/api";
 import { CopyDiff } from "./CopyDiff.js";
 
 export function RunView({ client, id }: { client: import("@shipaso/api").ApiClient; id: string }) {
@@ -16,11 +17,29 @@ export function RunView({ client, id }: { client: import("@shipaso/api").ApiClie
   const runQ = useQuery({ queryKey: ["run", id], queryFn: () => getRun(client, id) });
   const decide = useMutation({
     mutationFn: (d: "approve" | "reject") => decideRun(client, id, d),
-    onSuccess: (updated) => qc.setQueryData(["run", id], updated),
+    // The decision is a SLIM partial (no `result`/`currentCopy`) — MERGE it onto
+    // the cached RunDetail. Replacing outright dropped `result` and crashed the
+    // diff on re-render. currentCopy is preserved; status + the revealed
+    // pushCommands + any finalized proposedCopy are updated.
+    onSuccess: (decision) =>
+      qc.setQueryData<RunDetail>(["run", id], (prev) =>
+        prev
+          ? {
+              ...prev,
+              status: decision.status,
+              result: {
+                ...prev.result,
+                ...(decision.proposedCopy ? { proposedCopy: decision.proposedCopy } : {}),
+                pushCommands: decision.pushCommands,
+              },
+            }
+          : prev,
+      ),
   });
 
   if (runQ.isLoading) return <p className="muted">Loading run…</p>;
-  if (runQ.isError || !runQ.data) return <p className="muted">Couldn’t load this run.</p>;
+  if (runQ.isError || !runQ.data || !runQ.data.result)
+    return <p className="muted">Couldn’t load this run.</p>;
 
   const run = runQ.data;
   const approved = run.status === "approved" || run.status === "shipped";
