@@ -19,17 +19,27 @@ function runDetail(status: string, pushCommands: unknown[] = []) {
   };
 }
 
-/** Fake client: GET returns the current run; POST approve/reject flips status. */
+/**
+ * Fake client: GET returns the full run; POST approve/reject returns the SLIM
+ * decision shape the real server sends — {id,status,proposedCopy?,pushCommands}
+ * with NO `result`/`currentCopy`. (A prior fake returned a full RunDetail here,
+ * which hid the crash: replacing the cache with the real slim response dropped
+ * `result` and threw "undefined is not an object (evaluating 'r.currentCopy')".)
+ */
 function makeClient() {
-  let state = runDetail("awaiting_approval");
+  const state = runDetail("awaiting_approval");
   const get = vi.fn(async () => state);
   const post = vi.fn(async (path: string) => {
     if (path.endsWith("/approve")) {
-      state = runDetail("approved", [{ store: "appstore", tool: "asc", description: "push name", command: "fastlane deliver" }]);
-    } else if (path.endsWith("/reject")) {
-      state = runDetail("rejected");
+      return {
+        id: "run1",
+        status: "approved",
+        note: "Approved. Hand the metadata to your build pipeline.",
+        proposedCopy: { name: "New name", subtitle: "new sub" },
+        pushCommands: [{ store: "appstore", tool: "asc", description: "push name", command: "fastlane deliver" }],
+      };
     }
-    return state;
+    return { id: "run1", status: "rejected", pushCommands: [] };
   });
   return { client: { get, post, request: vi.fn() } as unknown as ApiClient, get, post };
 }
@@ -59,6 +69,9 @@ describe("<RunView /> — the money screen", () => {
     fireEvent.click(screen.getByTestId("approve"));
     await waitFor(() => expect(post).toHaveBeenCalledWith("/runs/run1/approve", { decision: "approve" }));
     await waitFor(() => expect(screen.getByTestId("handoff")).toBeInTheDocument());
+    // regression: the slim decision must MERGE, not replace — the diff (fed by
+    // currentCopy, absent from the decision) must survive approval, not crash.
+    expect(screen.getByTestId("diff-name")).toBeInTheDocument();
     const status = screen.getByTestId("run-status");
     expect(status).toHaveTextContent("Approved · ready to push");
     expect(status).not.toHaveTextContent(/^Shipped$/);

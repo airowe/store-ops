@@ -96,6 +96,21 @@ export type RunDetail = {
   result: RunResult;
 };
 
+/**
+ * The approve/reject response is a SLIM partial, NOT a full RunDetail: the server
+ * returns only the changed fields (status, the revealed pushCommands, and — on
+ * approve — the finalized proposedCopy reflecting any human edits). It carries no
+ * `result`/`currentCopy`, so callers must MERGE it onto the cached RunDetail
+ * rather than replace it.
+ */
+export type RunDecision = {
+  id: string;
+  status: string;
+  note?: string;
+  proposedCopy?: CopyFields;
+  pushCommands: PushCommand[];
+};
+
 // ── connect / resolve ───────────────────────────────────────────────────────
 export type Candidate = {
   bundle_id: string;

@@ -18,6 +18,7 @@ import type {
   ProofAggregate,
   RanksSeries,
   Run,
+  RunDecision,
   RunDetail,
   StoredCredential,
   WarRoomView,
@@ -57,9 +58,13 @@ export const runApp = (c: ApiClient, id: string) =>
 
 // ── run detail (the money screen) ───────────────────────────────────────────
 export const getRun = (c: ApiClient, id: string) => c.get<RunDetail>(`/runs/${enc(id)}`);
-/** The human gate. Returns the updated run; pushCommands are revealed on approve. */
+/**
+ * The human gate. Returns a SLIM RunDecision (status + revealed pushCommands +
+ * finalized proposedCopy), NOT a full RunDetail — merge it onto the cached run.
+ * pushCommands are revealed on approve.
+ */
 export const decideRun = (c: ApiClient, id: string, decision: "approve" | "reject") =>
-  c.post<RunDetail>(`/runs/${enc(id)}/${decision}`, { decision });
+  c.post<RunDecision>(`/runs/${enc(id)}/${decision}`, { decision });
 
 // ── auth + settings ─────────────────────────────────────────────────────────
 export const me = (c: ApiClient) => c.get<Me>("/auth/me");
