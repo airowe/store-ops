@@ -31,6 +31,7 @@ vi.mock("../d1.js", () => ({
   listAllApps: async () => [{ id: "app-1", user_id: "u1", bundle_id: "com.x.y", name: "X", country: "US" }],
   persistRun: (_db: unknown, a: unknown) => persistRun(a),
   getLatestCompetitorMap: async () => ({}),
+  latestRunTraceForApp: async () => null,
   hasOpenRun: async () => false,
   getUser: async () => ({ email: "o@e.com" }),
   getRankHistory: async () => [],
@@ -48,7 +49,7 @@ vi.mock("../credentialStore.js", () => ({
   credentialsEnabled: () => credentialsEnabled(),
   useCredential: (...a: unknown[]) => useCredential(...a),
 }));
-vi.mock("../api/runConfig.js", () => ({ buildAppInput: vi.fn(async () => ({})) }));
+vi.mock("../api/runConfig.js", () => ({ buildAppInput: vi.fn(async () => ({})), descriptionFromTrace: () => undefined }));
 vi.mock("../api/aiReasoner.js", () => ({ reasonerForEnv: () => null }));
 vi.mock("../fetchAdapter.js", () => ({ fetchForEnv: () => fetch }));
 vi.mock("../emailSender.js", () => ({ emailSenderForEnv: () => ({ send: async () => undefined }) }));

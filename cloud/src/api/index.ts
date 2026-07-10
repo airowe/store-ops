@@ -183,7 +183,7 @@ import {
   tierForPriceId,
   verifyStripeSignature,
 } from "../billing.js";
-import { buildAppInput, type RunOverrides } from "./runConfig.js";
+import { buildAppInput, descriptionFromTrace, type RunOverrides } from "./runConfig.js";
 import { reasonerForEnv } from "./aiReasoner.js";
 import { fetchForEnv } from "../fetchAdapter.js";
 import { buildFastlaneBundle } from "../engine/fastlane.js";
@@ -1353,6 +1353,14 @@ async function runApp(
   if (body.baseCopy) overrides.baseCopy = body.baseCopy;
   const runReasoner = reasonerForEnv(env.AI);
   if (runReasoner) overrides.reasoner = runReasoner;
+  // A bare "run now" has no baseCopy, so the keyword reasoner would have no
+  // description and would tokenize the name. Thread the prior run's stored
+  // live description in as a reasoning-only hint (same as the cron sweep).
+  if (!overrides.baseCopy?.description) {
+    const priorTrace = (await latestRunTraceForApp(env.DB, appId))?.trace;
+    const hint = descriptionFromTrace(priorTrace);
+    if (hint) overrides.descriptionHint = hint;
+  }
 
   const input = await buildAppInput(app, overrides, previous);
   const result = await runAgent(fetchForEnv(env), input);

@@ -32,7 +32,7 @@ vi.mock("../d1.js", () => ({
   deleteDeviceToken: vi.fn(),
 }));
 vi.mock("../engine/index.js", () => ({ runAgent: vi.fn() }));
-vi.mock("../api/runConfig.js", () => ({ buildAppInput: vi.fn(async () => ({})) }));
+vi.mock("../api/runConfig.js", () => ({ buildAppInput: vi.fn(async () => ({})), descriptionFromTrace: () => undefined }));
 vi.mock("../api/aiReasoner.js", () => ({ reasonerForEnv: () => null }));
 vi.mock("../fetchAdapter.js", () => ({ fetchForEnv: () => fetch }));
 vi.mock("../emailSender.js", () => ({ emailSenderForEnv: () => ({ send: (msg: unknown) => send(msg) }) }));

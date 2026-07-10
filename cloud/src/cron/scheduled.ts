@@ -36,6 +36,7 @@ import {
   getUser,
   hasOpenRun,
   isAgentPaused,
+  latestRunTraceForApp,
   listAllApps,
   persistRun,
   setLastSweepAt,
@@ -44,7 +45,7 @@ import { canRunCron } from "../billing.js";
 import { type DigestAppInput, planDigests } from "../digest.js";
 import { emailSenderForEnv } from "../emailSender.js";
 import { mintUnsubToken, resolveSessionSecret } from "../auth.js";
-import { buildAppInput } from "../api/runConfig.js";
+import { buildAppInput, descriptionFromTrace } from "../api/runConfig.js";
 import { keyedAscPass } from "../api/index.js";
 import { mintAscJwt } from "../engine/ascJwt.js";
 import { credentialsEnabled, useCredential } from "../credentialStore.js";
@@ -257,11 +258,19 @@ export async function runWeeklySweep(
       }
       const keyed = passed !== null;
       if (!passed) {
+        // The public pass builds its input BEFORE the agent reads the live
+        // listing, so the keyword reasoner would have no description and would
+        // tokenize the name ("Who Got Cooked" → "who"/"got"/"cooked"). Thread
+        // the PRIOR run's stored live description in as a reasoning-only hint;
+        // an app with no prior run keeps the name-seeded floor.
+        const priorTrace = (await latestRunTraceForApp(env.DB, app.id))?.trace;
+        const descriptionHint = descriptionFromTrace(priorTrace);
         const input = await buildAppInput(
           app,
           {
             ...(cronReasoner ? { reasoner: cronReasoner } : {}),
             ...(confirmed.length ? { competitors: confirmed } : {}),
+            ...(descriptionHint ? { descriptionHint } : {}),
           },
           previous,
         );

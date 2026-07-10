@@ -30,6 +30,7 @@ vi.mock("../d1.js", () => ({
   listAllApps: () => listAllApps(),
   persistRun: () => persistRun(),
   getLatestCompetitorMap: () => getLatestCompetitorMap(),
+  latestRunTraceForApp: async () => null,
   hasOpenRun: () => hasOpenRun(),
   getUser: () => getUser(),
   getRankHistory: () => getRankHistory(),
@@ -39,7 +40,7 @@ vi.mock("../d1.js", () => ({
   getLatestRanks: async () => [],
 }));
 vi.mock("../engine/index.js", () => ({ runAgent: (input: unknown) => runAgent(input) }));
-vi.mock("../api/runConfig.js", () => ({ buildAppInput: vi.fn(async () => ({})) }));
+vi.mock("../api/runConfig.js", () => ({ buildAppInput: vi.fn(async () => ({})), descriptionFromTrace: () => undefined }));
 vi.mock("../api/aiReasoner.js", () => ({ reasonerForEnv: () => null }));
 vi.mock("../fetchAdapter.js", () => ({ fetchForEnv: () => fetch }));
 vi.mock("../emailSender.js", () => ({ emailSenderForEnv: () => ({ send: (msg: unknown) => send(msg) }) }));
