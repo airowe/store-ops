@@ -15,6 +15,7 @@ function makeClient(over: { ranks?: unknown; deltas?: unknown; runs?: unknown[] 
   const get = vi.fn(async (path: string) => {
     if (path.endsWith("/ranks")) return over.ranks ?? { points: [], annotations: [] };
     if (path.endsWith("/deltas")) return over.deltas ?? { entries: [] };
+    if (path === "/account/credentials") return { enabled: true, credentials: [] };
     if (/\/apps\/[^/]+$/.test(path)) {
       return { app: { id: "a1", bundle_id: "com.acme", name: "Acme", country: "US" }, runs: over.runs ?? [] };
     }
@@ -60,5 +61,10 @@ describe("<AppDetailView />", () => {
     renderView(makeClient({ deltas }));
     await waitFor(() => expect(screen.getByTestId("rank-movement")).toBeInTheDocument());
     expect(screen.getByTestId("move-todo")).toBeInTheDocument();
+  });
+
+  it("offers the App Store Connect connect card (#179 keyed loop entry point)", async () => {
+    renderView(makeClient());
+    await waitFor(() => expect(screen.getByTestId("connect-asc")).toBeInTheDocument());
   });
 });

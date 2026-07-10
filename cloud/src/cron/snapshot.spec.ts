@@ -36,7 +36,7 @@ vi.mock("../d1.js", () => ({
 vi.mock("../engine/index.js", () => ({
   ranksFor: (...a: unknown[]) => ranksFor(...(a as [])),
 }));
-vi.mock("../api/runConfig.js", () => ({ buildAppInput: (...a: unknown[]) => buildAppInput(...(a as [])) }));
+vi.mock("../api/runConfig.js", () => ({ buildAppInput: (...a: unknown[]) => buildAppInput(...(a as [])), descriptionFromTrace: () => undefined }));
 vi.mock("../api/aiReasoner.js", () => ({ reasonerForEnv: () => null }));
 vi.mock("../fetchAdapter.js", () => ({ fetchForEnv: () => fetch }));
 

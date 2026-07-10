@@ -88,6 +88,11 @@ API_ORIGIN = "https://api.shipaso.com"
 # and API (api.shipaso.com) subdomains, with SameSite=None so it rides cross-site
 # fetches. Leave unset for single-origin / local dev (→ host-only, SameSite=Lax).
 COOKIE_DOMAIN = ".shipaso.com"
+# ASC_WRITE_ENABLED — opt-in direct App Store Connect writes (#11/#179): the
+# approve → push routes (metadata, create-version, per-locale). Off/unset →
+# those routes 403 and the credential-free Fastlane handoff is the only path.
+# The stored-credential flow additionally needs CRED_KEK_V1 (secret, below).
+ASC_WRITE_ENABLED = "true"
 
 # ── Secrets (DO NOT put values here — set via `wrangler secret put NAME`) ─────
 # Auth:
@@ -121,6 +126,13 @@ COOKIE_DOMAIN = ".shipaso.com"
 #   npx wrangler secret put TINYFISH_API_KEY
 #   npx wrangler secret put RESEND_API_KEY
 #   npx wrangler secret put RESEND_FROM   # (or add to [vars])
+# Credential vault (#67/#179):
+#   CRED_KEK_V1           — base64 of 32 random bytes; the AES-256-GCM key
+#     wrapping stored store credentials. Unset → credential storage (and the
+#     keyed sweep / one-click push) is disabled. Generate + set:
+#       openssl rand -base64 32 | npx wrangler secret put CRED_KEK_V1
+#     Keep a copy in your password manager — losing it orphans stored keys
+#     (users simply re-connect; nothing is recoverable from D1 alone).
 # (The STRIPE_PRICE_* are not really secret — you may instead put them in [vars].)
 
 # ── Pages (dashboard frontend) — NOT configured by this file ─────────────────

@@ -10,7 +10,7 @@
  */
 import type { AppInput, KeywordInput } from "../engine/index.js";
 import { type Reasoner, reasonKeywords } from "../engine/keywordReasoner.js";
-import type { AppRow } from "../d1.js";
+import type { AppRow, ReasoningTrace } from "../d1.js";
 
 export type RunOverrides = {
   keywords?: KeywordInput[];
@@ -28,6 +28,14 @@ export type RunOverrides = {
    * means no reasoner is passed and the run degrades gracefully.
    */
   reasoner?: Reasoner;
+  /**
+   * A description used ONLY for keyword reasoning when no baseCopy is present —
+   * the cron public pass threads the PRIOR run's stored live description here so
+   * the reasoner runs instead of tokenizing the name. Never placed on the
+   * AppInput's baseCopy: a stale description there would override the fresh
+   * listing read inside the agent.
+   */
+  descriptionHint?: string;
   /**
    * #77: audit-only pass (the initial connect run). Runs the real listing audit
    * (screenshots, findings, rank baseline) but does NOT seed keyword targets from
@@ -202,10 +210,23 @@ async function reasonedKeywords(
     { appName: name, description, candidateTokens: candidateTokensFromName(name) },
     reasoner,
   );
-  const targets = targetsToKeywordInputs(reasoning.target);
-  // Defensive: if reasoning somehow yields nothing targetable, don't ship an
-  // empty keyword set — fall back to the name seeder.
-  return targets.length > 0 ? targets : seedKeywordsFromName(name);
+  // Zero targets is a legitimate outcome (a no-separator name is all brand, and
+  // the description may match no intent seed). An honest empty target set — the
+  // #77 auditOnly precedent — beats falling back to the name seeder, which would
+  // reintroduce the exact brand tokens the reasoner excluded ("who got cooked" →
+  // "who"/"got"/"cooked").
+  return targetsToKeywordInputs(reasoning.target);
+}
+
+/**
+ * The prior run's stored description, for use as a `descriptionHint`: the
+ * audit's live listing read wins, the run's currentCopy is the fallback.
+ * Undefined when the trace is absent or carries no non-blank description.
+ */
+export function descriptionFromTrace(trace: ReasoningTrace | undefined): string | undefined {
+  return (
+    trace?.audit?.liveDescription?.trim() || trace?.currentCopy?.description?.trim() || undefined
+  );
 }
 
 /** Split a live ASC keyword field ("a,b,c") into trimmed, non-empty terms. */
@@ -238,7 +259,7 @@ export async function buildAppInput(
       ? clean
       : await reasonedKeywords(
           app,
-          overrides.baseCopy?.description,
+          overrides.baseCopy?.description ?? overrides.descriptionHint,
           overrides.reasoner,
           // #75: the real ASC keyword field (read with the key) is the user's own
           // curated target set — prefer it over name tokenization when present.
