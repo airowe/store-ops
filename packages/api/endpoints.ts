@@ -7,10 +7,10 @@ import type { ApiClient } from "./client.js";
 import type {
   AppDetail,
   AppListItem,
+  AscPushResult,
   Candidate,
   ConnectResult,
   DeltasResponse,
-  EmailDigest,
   Me,
   NotificationPrefs,
   RankCadence,
@@ -18,6 +18,7 @@ import type {
   ProofAggregate,
   RanksSeries,
   Run,
+  RunAscResult,
   RunDecision,
   RunDetail,
   StoredCredential,
@@ -65,6 +66,27 @@ export const getRun = (c: ApiClient, id: string) => c.get<RunDetail>(`/runs/${en
  */
 export const decideRun = (c: ApiClient, id: string, decision: "approve" | "reject") =>
   c.post<RunDecision>(`/runs/${enc(id)}/${decision}`, { decision });
+
+// ── App Store Connect (keyed) — #67 stored creds / #179 one-click push ──────
+/** In-request creds win; omit p8 (or set useStored) to use the saved key. */
+export type AscCredentialBody = {
+  p8?: string;
+  keyId?: string;
+  issuerId?: string;
+  useStored?: boolean;
+};
+/** Keyed (Mode-A) run. `store: true` opts in to saving the key (encrypted). */
+export const runAppWithAsc = (
+  c: ApiClient,
+  id: string,
+  body: AscCredentialBody & { store?: boolean; locale?: string } = {},
+) => c.post<RunAscResult>(`/apps/${enc(id)}/run-asc`, body);
+/** Push the APPROVED copy to ASC. Explicit click only — nothing is automatic. */
+export const ascPush = (
+  c: ApiClient,
+  runId: string,
+  body: AscCredentialBody & { locale?: string } = {},
+) => c.post<AscPushResult>(`/runs/${enc(runId)}/asc/push`, body);
 
 // ── auth + settings ─────────────────────────────────────────────────────────
 export const me = (c: ApiClient) => c.get<Me>("/auth/me");

@@ -13,6 +13,7 @@ import { timeAgo } from "@shipaso/honesty";
 import { runStatusLabel } from "../../lib/status.js";
 import { RankChart } from "../charts/RankChart.js";
 import { RankMovementRow } from "./RankMovementRow.js";
+import { ConnectAscCard } from "./ConnectAscCard.js";
 
 export function AppDetailView({
   client,
@@ -44,6 +45,8 @@ export function AppDetailView({
       <h1>{app.name}</h1>
       <p className="muted mono">{app.bundle_id} · {app.country}</p>
       <button className="btn ghost" data-testid="war-room" onClick={() => onWarRoom(app.id)}>War room</button>
+
+      <ConnectAscCard client={client} appId={app.id} onRunStarted={onOpenRun} />
 
       {points.length >= 2 ? (
         <div className="card" data-testid="rank-trend">

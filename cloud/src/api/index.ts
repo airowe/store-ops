@@ -184,6 +184,7 @@ import {
   verifyStripeSignature,
 } from "../billing.js";
 import { buildAppInput, descriptionFromTrace, type RunOverrides } from "./runConfig.js";
+import { type AscCred, type AscCredBody, AscCredentialError, resolveAscCredential } from "./ascCredentials.js";
 import { reasonerForEnv } from "./aiReasoner.js";
 import { fetchForEnv } from "../fetchAdapter.js";
 import { buildFastlaneBundle } from "../engine/fastlane.js";
@@ -1446,20 +1447,7 @@ async function runAppWithAsc(
   // encrypted) instead of in-request creds. `useStored` (or simply omitting the
   // creds when one exists) decrypts the saved key for this single use — the
   // plaintext is a transient here, never returned.
-  let cred: { p8: string; keyId: string; issuerId: string };
-  if ((body.useStored || !body.p8) && credentialsEnabled(env)) {
-    const stored = await useCredential(env, userId, appId, "asc");
-    if (!stored) {
-      if (body.useStored) throw new HttpError(404, "no saved App Store Connect key for this app");
-      throw new HttpError(400, "p8, keyId, and issuerId are required");
-    }
-    cred = { p8: stored.plaintext, keyId: stored.meta.keyId, issuerId: stored.meta.issuerId };
-  } else {
-    if (!body.p8 || !body.keyId || !body.issuerId) {
-      throw new HttpError(400, "p8, keyId, and issuerId are required");
-    }
-    cred = { p8: body.p8, keyId: body.keyId, issuerId: body.issuerId };
-  }
+  const cred = await ascCredForRequest(env, userId, appId, body);
 
   // Mint the ephemeral ASC token + read the current live copy.
   let token: string;
@@ -2835,17 +2823,19 @@ async function ascVerifyRoute(
   return { ok: true, appsVisible: total };
 }
 
-type AscPushBody = AscVerifyBody & { locale?: string };
+type AscPushBody = AscCredBody & { locale?: string };
 
 /**
  * POST /runs/:id/asc/push — opt-in direct App Store Connect metadata WRITE (#11).
  *
  * Gated behind ASC_WRITE_ENABLED (unset → 403; the credential-free Fastlane
- * handoff is the default). Only an APPROVED run may push. The user uploads their
- * `.p8` + key/issuer id; the Worker mints a short-lived ES256 JWT, resolves the
- * ASC app id from the bundle id, finds the editable version's localization, and
- * PATCHes the approved copy. The `.p8` is used in-request and NEVER persisted or
- * logged; only non-empty fields are pushed (a blank never wipes live metadata).
+ * handoff is the default). Only an APPROVED run may push. Credentials arrive
+ * in-request (`.p8` + key/issuer id) or, since #179, from the user's STORED
+ * credential (#67) — so the UI's approve → push needs no re-paste. The Worker
+ * mints a short-lived ES256 JWT, resolves the ASC app id from the bundle id,
+ * finds the editable version's localization, and PATCHes the approved copy. The
+ * `.p8` plaintext is a transient and NEVER persisted onto the run or logged;
+ * only non-empty fields are pushed (a blank never wipes live metadata).
  */
 async function ascPushRoute(
   req: Request,
@@ -2864,14 +2854,14 @@ async function ascPushRoute(
   }
 
   const body = await req.json<AscPushBody>().catch(() => ({}) as AscPushBody);
-  if (!body.p8 || !body.keyId || !body.issuerId) {
-    throw new HttpError(400, "p8, keyId, and issuerId are required");
-  }
+  // #179: the stored credential (#67) backs the UI's one-click push — no
+  // re-pasting the .p8 after approval. In-request creds still win when sent.
+  const cred = await ascCredForRequest(env, userId, run.app_id, body);
   const locale = body.locale?.trim() || "en-US";
 
   let token: string;
   try {
-    token = await mintAscJwt({ p8: body.p8, keyId: body.keyId, issuerId: body.issuerId });
+    token = await mintAscJwt({ p8: cred.p8, keyId: cred.keyId, issuerId: cred.issuerId });
   } catch (e) {
     throw new HttpError(400, e instanceof Error ? e.message : "invalid credentials");
   }
@@ -2918,10 +2908,8 @@ async function ascCreateVersionRoute(
 
   const body = (await req
     .json()
-    .catch(() => ({}))) as { p8?: string; keyId?: string; issuerId?: string; versionString?: string };
-  if (!body.p8 || !body.keyId || !body.issuerId) {
-    throw new HttpError(400, "p8, keyId, and issuerId are required");
-  }
+    .catch(() => ({}))) as AscCredBody & { versionString?: string };
+  const cred = await ascCredForRequest(env, userId, app.id, body);
   const versionString = (body.versionString ?? "").trim();
   if (!isValidVersionString(versionString)) {
     throw new HttpError(400, "versionString must look like 1, 1.2, or 1.2.3");
@@ -2929,7 +2917,7 @@ async function ascCreateVersionRoute(
 
   let token: string;
   try {
-    token = await mintAscJwt({ p8: body.p8, keyId: body.keyId, issuerId: body.issuerId });
+    token = await mintAscJwt({ p8: cred.p8, keyId: cred.keyId, issuerId: cred.issuerId });
   } catch (e) {
     throw new HttpError(400, e instanceof Error ? e.message : "invalid credentials");
   }
@@ -2945,8 +2933,9 @@ async function ascCreateVersionRoute(
 }
 
 /** Shared guard for the per-locale ASC writes (#78 Phase 3): flag + run +
- *  ownership + approval + in-request creds + the locale must be APPROVED on
- *  the run (pushing a never-approved draft is a 403, not a convenience). */
+ *  ownership + approval + creds (in-request or stored, #179) + the locale must
+ *  be APPROVED on the run (pushing a never-approved draft is a 403, not a
+ *  convenience). */
 async function requireLocalizedAscContext(
   req: Request,
   env: Env,
@@ -2964,10 +2953,8 @@ async function requireLocalizedAscContext(
   }
   const body = (await req
     .json()
-    .catch(() => ({}))) as { p8?: string; keyId?: string; issuerId?: string; locale?: string };
-  if (!body.p8 || !body.keyId || !body.issuerId) {
-    throw new HttpError(400, "p8, keyId, and issuerId are required");
-  }
+    .catch(() => ({}))) as AscCredBody & { locale?: string };
+  const cred = await ascCredForRequest(env, userId, run.app_id, body);
   const locale = (body.locale ?? "").trim();
   const trace = JSON.parse(run.reasoning_json) as ReasoningTrace;
   const copy = locale ? trace.localizedCopy?.[locale] : undefined;
@@ -2976,7 +2963,7 @@ async function requireLocalizedAscContext(
   }
   let token: string;
   try {
-    token = await mintAscJwt({ p8: body.p8, keyId: body.keyId, issuerId: body.issuerId });
+    token = await mintAscJwt({ p8: cred.p8, keyId: cred.keyId, issuerId: cred.issuerId });
   } catch (e) {
     throw new HttpError(400, e instanceof Error ? e.message : "invalid credentials");
   }
@@ -3037,6 +3024,29 @@ async function ascCreateLocalizationRoute(
 /** Truthy flag parse for opt-in env switches. */
 function isFlagOn(v: string | undefined): boolean {
   return v === "1" || v?.toLowerCase() === "true";
+}
+
+/**
+ * Resolve ASC creds for a route (#179): in-request creds win; the STORED
+ * credential (#67, envelope-encrypted) is the fallback, decrypted for this one
+ * use. Maps the resolver's typed error onto this file's HttpError.
+ */
+async function ascCredForRequest(
+  env: Env,
+  userId: string,
+  appId: string,
+  body: AscCredBody,
+): Promise<AscCred> {
+  try {
+    return await resolveAscCredential({
+      body,
+      enabled: credentialsEnabled(env),
+      loadStored: () => useCredential(env, userId, appId, "asc"),
+    });
+  } catch (e) {
+    if (e instanceof AscCredentialError) throw new HttpError(e.status, e.message);
+    throw e;
+  }
 }
 
 // ── billing ────────────────────────────────────────────────────────────────────

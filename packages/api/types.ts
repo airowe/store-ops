@@ -80,13 +80,54 @@ export type PushCommand = {
   command: string;
 };
 export type RunApproval = { decision: string; decided_at: string };
+
+// ── listing audit surfaces (served by every run; PRD 02 privacy boundary) ────
+export type FindingSeverity = "critical" | "warn" | "good" | "info";
+export type Finding = {
+  id: string;
+  surface: string;
+  severity: FindingSeverity;
+  impact: "ranking" | "conversion" | "trust" | "completeness";
+  title: string;
+  detail: string;
+  fix: string;
+  evidence?: string;
+  /** true = status/context fact (rendered apart), absent = actionable fix. */
+  context?: true;
+};
+/** A surface the run could NOT read — an honest 🔒 "unlock to see + improve". */
+export type SurfaceLock = { surface: string; label: string; unlockCopy: string };
+export type RunAudit = {
+  app?: string;
+  bundleId?: string;
+  liveName?: string;
+  /** null = couldn't read screenshots (unmeasured, never "zero"). */
+  screenshots?: {
+    grade: string;
+    score: number | null;
+    findings: string[];
+    iphoneCount: number;
+    ipadCount: number;
+  } | null;
+};
+
 export type RunResult = {
   currentCopy: CopyFields;
   proposedCopy: CopyFields;
   /** withheld ([]) until the human approves — the server privacy boundary. */
   pushCommands: PushCommand[];
   findingsSummary?: FindingsSummary;
+  audit?: RunAudit;
+  findings?: Finding[];
+  locks?: SurfaceLock[];
 };
+
+/** POST /runs/:id/asc/push — Apple's verdict, verbatim; never a silent failure. */
+export type AscPushResult =
+  | { ok: true; versionId: string; localizationId: string; fieldsPushed: string[] }
+  | { ok: false; reason: string };
+/** POST /apps/:id/run-asc — the keyed (Mode-A) run. */
+export type RunAscResult = { id: string; status: string; digest: string; ascRead: boolean };
 export type RunDetail = {
   id: string;
   app_id: string;
