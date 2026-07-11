@@ -16,6 +16,7 @@ function makeClient(over: { ranks?: unknown; deltas?: unknown; runs?: unknown[];
     if (path.endsWith("/ranks")) return over.ranks ?? { points: [], annotations: [] };
     if (path.endsWith("/deltas")) return over.deltas ?? { entries: [] };
     if (path.endsWith("/analytics/engagement")) return over.engagement ?? { state: "no_data", message: "none" };
+    if (path.endsWith("/competitors")) return { competitors: [] };
     if (path === "/account/credentials") return { enabled: true, credentials: [] };
     if (/\/apps\/[^/]+$/.test(path)) {
       return { app: { id: "a1", bundle_id: "com.acme", name: "Acme", country: "US" }, runs: over.runs ?? [] };

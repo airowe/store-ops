@@ -135,6 +135,11 @@ export type AscCreateVersionResult =
 /** POST /runs/approve-all — bulk-approve every pending run (Scale ergonomic). */
 export type ApproveAllResult = { approved: string[]; approvedCount: number; skipped: unknown[] };
 
+// ── competitors (#72 — discover, the human confirms) ─────────────────────────
+/** A watched/suggested competitor. status: "confirmed" feeds runs; "suggested" waits. */
+export type Competitor = { key: string; name: string; source: string; status: string };
+export type CompetitorsResponse = { competitors: Competitor[]; discovered?: number; note?: string };
+
 // ── Google Play audit (#Android loop) ────────────────────────────────────────
 /** POST /apps/:id/audit-play — read-only Play listing audit. Findings/locks are
  *  the SAME shapes the iOS run renders, so the UI reuses FindingsCard. */
