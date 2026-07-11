@@ -15,7 +15,7 @@
  */
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ApiError, ascCreateVersion, ascPush, decideRun, getCredentials, getRun } from "@shipaso/api";
+import { ApiError, ascCreateVersion, ascPush, decideRun, getCredentials, getGithubStatus, getRun, githubPr } from "@shipaso/api";
 import type { AscPushResult, RunDetail } from "@shipaso/api";
 import { CopyDiff } from "./CopyDiff.js";
 import { FindingsCard } from "./FindingsCard.js";
@@ -50,6 +50,10 @@ export function RunView({ client, id }: { client: import("@shipaso/api").ApiClie
   const createVersion = useMutation({
     mutationFn: () => ascCreateVersion(client, id, { versionString: versionString.trim() }),
   });
+  // The GitHub metadata-PR path (#8) — a credential-free alternative to the CLI
+  // handoff, offered only when a repo is connected. Best-effort status read.
+  const githubQ = useQuery({ queryKey: ["github", "status"], queryFn: () => getGithubStatus(client), retry: false });
+  const pr = useMutation({ mutationFn: () => githubPr(client, id) });
 
   if (runQ.isLoading) return <p className="muted">Loading run…</p>;
   if (runQ.isError || !runQ.data || !runQ.data.result)
@@ -163,6 +167,33 @@ export function RunView({ client, id }: { client: import("@shipaso/api").ApiClie
                 </p>
               ) : null}
             </div>
+          ) : null}
+        </div>
+      ) : null}
+
+      {approved && githubQ.data?.connected ? (
+        <div className="card" data-testid="github-pr-card">
+          <b>Open a metadata PR</b>
+          <p className="micro">
+            Credential-free: opens a pull request with the approved copy on your connected repo
+            ({githubQ.data.repo}). Review + merge it yourself — nothing ships from here.
+          </p>
+          <button
+            className="btn primary"
+            data-testid="github-pr"
+            disabled={pr.isPending}
+            onClick={() => pr.mutate()}
+          >
+            {pr.isPending ? "Opening…" : "Open pull request"}
+          </button>
+          {pr.data ? (
+            <p className="micro" data-testid="github-pr-result">
+              {pr.data.ok ? (
+                <a href={pr.data.url} target="_blank" rel="noreferrer">Opened PR #{pr.data.number} on {pr.data.branch} →</a>
+              ) : (
+                `GitHub refused: ${pr.data.reason}`
+              )}
+            </p>
           ) : null}
         </div>
       ) : null}

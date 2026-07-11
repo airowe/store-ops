@@ -10,6 +10,7 @@ import { useEffect, useState, type ReactNode } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import type { ApiClient, RankCadence } from "@shipaso/api";
 import { deleteCredential, getCredentials, logout, me, pauseAgent, resumeAgent, setNotifications, setRankCadence } from "@shipaso/api";
+import { GithubCard } from "./GithubCard.js";
 
 type Prefs = { push: boolean; digest: boolean; cadence: RankCadence; paused: boolean };
 
@@ -148,6 +149,8 @@ export function SettingsView({ client, onSignedOut }: { client: ApiClient; onSig
           <button className="btn ghost" data-testid="theme-dark" onClick={() => setTheme("dark")}>Dark</button>
         </span>
       </div>
+
+      <GithubCard client={client} />
 
       <div className="card">
         <b>Stored keys</b>
