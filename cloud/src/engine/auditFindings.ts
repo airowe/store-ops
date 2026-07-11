@@ -38,6 +38,8 @@ type LocaleRow = AscSnapshot["locales"] extends ReadonlyArray<infer T> | undefin
 // importer (index.ts, agent.ts, api, mcp, the spec) keeps importing them here.
 import { mk, sortFindings } from "./findings/core.js";
 import type { Finding, SurfaceLock } from "./findings/core.js";
+import type { CopyFields } from "./optimize.js";
+import { reviewRiskFindings } from "./reviewRisk.js";
 export {
   type Finding,
   type FindingImpact,
@@ -64,6 +66,12 @@ export type AuditFindingsInput = {
    * diagnostic, not a user lever. Flip on for an operator/debug view.
    */
   includeReadErrors?: boolean | undefined;
+  /**
+   * The run's PROPOSED copy (#178) — linted for review-rejection risk (price in
+   * title, unverifiable claims, placeholder text, brand-in-keywords). Undefined
+   * (e.g. a run with no proposal) emits no review-risk findings.
+   */
+  proposedCopy?: CopyFields | undefined;
   /**
    * PUBLIC-review sentiment (#95). Undefined when reviews weren't fetched (or
    * the fetch came back empty) — the `reviews` surface then emits NOTHING, like
@@ -1062,6 +1070,7 @@ export function auditFindings(input: AuditFindingsInput): Finding[] {
     ...releaseFindings(input),
     ...chartRankFindings(input),
     ...metaFindings(input),
+    ...reviewRiskFindings(input.proposedCopy),
   ];
 
   return sortFindings(findings);

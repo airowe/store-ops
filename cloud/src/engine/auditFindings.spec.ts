@@ -1200,3 +1200,16 @@ describe("chart_rank findings (public category chart)", () => {
     expect(auditFindings(input({ chartRank: cr }))).toEqual(auditFindings(input({ chartRank: cr })));
   });
 });
+
+describe("review-risk lint integration (#178)", () => {
+  it("surfaces a review_risk finding for risky proposed copy", () => {
+    const got = ids(input({ proposedCopy: { name: "Weatherly #1", subtitle: "Free deal", keywords: "weatherly,radar" } }));
+    expect(got).toContain("review_risk_superlative");
+    expect(got).toContain("review_risk_price_in_title");
+    expect(got).toContain("review_risk_brand_in_keywords");
+  });
+  it("emits no review-risk findings without proposed copy (or when clean)", () => {
+    expect(ids(input()).some((i) => i.startsWith("review_risk_"))).toBe(false);
+    expect(ids(input({ proposedCopy: { name: "Weatherly", subtitle: "Honest forecasts", keywords: "weather,radar" } })).some((i) => i.startsWith("review_risk_"))).toBe(false);
+  });
+});
