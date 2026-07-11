@@ -166,6 +166,19 @@ export type ConversionMovement = {
   samplesBefore: number;
   samplesAfter: number;
 };
+/** The honest Phase-1 analytics state (POST …/analytics/enable). No metric — a
+ *  disclosure: needs Admin, still generating, not set up, or a transient failure. */
+export type AnalyticsState =
+  | { state: "admin_required"; message: string }
+  | { state: "unavailable"; message: string }
+  | { state: "not_requested"; message: string }
+  | { state: "pending"; message: string; requestId: string; created: boolean };
+/** POST …/analytics/ingest — the enable-state passthrough, or a persisted count. */
+export type AnalyticsIngestResult =
+  | AnalyticsState
+  | { state: "pending"; message: string }
+  | { state: "ingested"; instances: number; rowsPersisted: number; days: number };
+
 /** GET /apps/:id/analytics/engagement — the measured conversion surface. `no_data`
  *  until something is ingested; `measured` carries the numbers (latest may be null
  *  = unmeasured, never a fabricated 0). */
