@@ -192,6 +192,7 @@ import { zipStore } from "../engine/zip.js";
 import { mintAscJwt } from "../engine/ascJwt.js";
 import { findAscAppId, applyAscMetadata, createAscLocalization, createAscVersion, getEditableVersionId, isValidVersionString, readAscLocalization, AscWriteError } from "../engine/ascWrite.js";
 import { readAscSnapshot, ascScreenshotsToListing, type AscSnapshot } from "../engine/ascRead.js";
+import { enableAnalyticsReports, getAnalyticsStatus } from "../engine/ascAnalytics.js";
 import { score as scoreScreenshots } from "../engine/screenshotScore.js";
 import { auditFindings, summarizeFindings, surfaceLocks } from "../engine/auditFindings.js";
 import {
@@ -3049,6 +3050,73 @@ async function ascCredForRequest(
   }
 }
 
+// ── ASC Analytics Reports — Phase 1 (analytics-reports PRD, 01-request-lifecycle) ─
+//
+// Two app-scoped endpoints, both carrying the ASC credential the same way every
+// keyed route does (in-request trio wins; else the saved key via resolveAscCredential):
+//   POST /apps/:id/analytics/status  — READ-ONLY. Detect the Admin-role gap and
+//     report whether an ongoing request already exists. Never writes, never gated
+//     (mirrors the read-only ascVerifyRoute) — safe to call on page load.
+//   POST /apps/:id/analytics/enable  — the CONSENT write. Ensures ONE ongoing
+//     request exists (idempotent). Gated behind ANALYTICS_ENABLED because creating
+//     the request is an outward write to the user's Apple account; it must be an
+//     explicit UI click, never automatic on a keyed run (PRD open question 1).
+//
+// Both mint a short-lived JWT and resolve the app's ASC numeric id from its bundle
+// id (Apple keys apps by Apple id). The `.p8` is request-scoped — never persisted
+// or logged — and the honest state (admin_required / not_requested / pending /
+// unavailable) comes straight from the engine; no metric is ever fabricated here.
+
+/** Shared prelude: own the app, resolve creds, mint the token, resolve the ASC app id. */
+async function analyticsToken(
+  req: Request,
+  env: Env,
+  userId: string,
+  appId: string,
+): Promise<{ token: string; ascAppId: string }> {
+  const app = await requireOwnedApp(env, appId, userId);
+  const body = (await req.json().catch(() => ({}))) as AscCredBody;
+  const cred = await ascCredForRequest(env, userId, appId, body);
+  let token: string;
+  try {
+    token = await mintAscJwt({ p8: cred.p8, keyId: cred.keyId, issuerId: cred.issuerId });
+  } catch (e) {
+    throw new HttpError(400, e instanceof Error ? e.message : "invalid credentials");
+  }
+  try {
+    const ascAppId = await findAscAppId(fetch, token, app.bundle_id);
+    return { token, ascAppId };
+  } catch (e) {
+    // A blind/invalid key (Apple 401/403 on the app lookup, or no such app) is a
+    // credential problem, not a 500 — surface Apple's token-free reason as a 400.
+    if (e instanceof AscWriteError) throw new HttpError(400, e.message);
+    throw e;
+  }
+}
+
+async function ascAnalyticsStatusRoute(
+  req: Request,
+  env: Env,
+  userId: string,
+  appId: string,
+): Promise<unknown> {
+  const { token, ascAppId } = await analyticsToken(req, env, userId, appId);
+  return getAnalyticsStatus(fetch, { token, appId: ascAppId });
+}
+
+async function ascAnalyticsEnableRoute(
+  req: Request,
+  env: Env,
+  userId: string,
+  appId: string,
+): Promise<unknown> {
+  if (!isFlagOn(env.ANALYTICS_ENABLED)) {
+    throw new HttpError(403, "analytics reporting is not enabled for this deployment");
+  }
+  const { token, ascAppId } = await analyticsToken(req, env, userId, appId);
+  return enableAnalyticsReports(fetch, { token, appId: ascAppId });
+}
+
 // ── billing ────────────────────────────────────────────────────────────────────
 
 /** The Stripe secret key — STRIPE_SECRET_KEY, with the legacy STRIPE_TEST_KEY as
@@ -3460,6 +3528,14 @@ export async function handleApi(req: Request, env: Env): Promise<Response> {
       }
       if (seg.length === 3 && seg[1] && seg[2] === "audit-play" && method === "POST") {
         return json(await auditPlayRoute(req, env, user.id, seg[1]), 200, origin);
+      }
+      // ASC Analytics Reports Phase 1: read-only status probe + the consent-gated
+      // enable (create the ongoing request). Both carry the ASC credential.
+      if (seg.length === 4 && seg[1] && seg[2] === "analytics" && seg[3] === "status" && method === "POST") {
+        return json(await ascAnalyticsStatusRoute(req, env, user.id, seg[1]), 200, origin);
+      }
+      if (seg.length === 4 && seg[1] && seg[2] === "analytics" && seg[3] === "enable" && method === "POST") {
+        return json(await ascAnalyticsEnableRoute(req, env, user.id, seg[1]), 200, origin);
       }
       if (seg.length === 3 && seg[1] && seg[2] === "ranks" && method === "GET") {
         return json(await appRanks(env, user.id, seg[1], url), 200, origin);
