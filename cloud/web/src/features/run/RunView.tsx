@@ -19,6 +19,7 @@ import { ApiError, ascCreateVersion, ascPush, decideRun, getCredentials, getGith
 import type { AscPushResult, RunDetail } from "@shipaso/api";
 import { CopyDiff } from "./CopyDiff.js";
 import { FindingsCard } from "./FindingsCard.js";
+import { LocalizationCard } from "./LocalizationCard.js";
 
 export function RunView({ client, id }: { client: import("@shipaso/api").ApiClient; id: string }) {
   const qc = useQueryClient();
@@ -169,6 +170,10 @@ export function RunView({ client, id }: { client: import("@shipaso/api").ApiClie
             </div>
           ) : null}
         </div>
+      ) : null}
+
+      {approved ? (
+        <LocalizationCard client={client} runId={id} initialLocales={Object.keys(r.localizedCopy ?? {}).sort()} />
       ) : null}
 
       {approved && githubQ.data?.connected ? (

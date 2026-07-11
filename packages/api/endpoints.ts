@@ -10,6 +10,9 @@ import type {
   AppDetail,
   AppListItem,
   AsaConnectResult,
+  CopyFields,
+  LocalizeResult,
+  LocalizedDraft,
   ApproveAllResult,
   AscCreateVersionResult,
   AscPushResult,
@@ -150,6 +153,14 @@ export const connectGithub = (c: ApiClient, body: { installation_id?: string; re
 /** Open a metadata PR for an APPROVED run — the credential-free push-to-repo path. */
 export const githubPr = (c: ApiClient, runId: string) =>
   c.post<GithubPrResult>(`/runs/${enc(runId)}/github/pr`);
+
+// ── per-locale localization (#78) — generate / approve / remove ──────────────
+export const localizeGenerate = (c: ApiClient, runId: string, locale: string) =>
+  c.post<LocalizedDraft>(`/runs/${enc(runId)}/localize`, { locale });
+export const localizeApprove = (c: ApiClient, runId: string, locale: string, copy: CopyFields) =>
+  c.post<LocalizeResult>(`/runs/${enc(runId)}/localize/approve`, { locale, copy });
+export const localizeRemove = (c: ApiClient, runId: string, locale: string) =>
+  c.request<LocalizeResult>(`/runs/${enc(runId)}/localize/${enc(locale)}`, { method: "DELETE" });
 
 // ── auth + settings ─────────────────────────────────────────────────────────
 export const me = (c: ApiClient) => c.get<Me>("/auth/me");

@@ -120,7 +120,20 @@ export type RunResult = {
   audit?: RunAudit;
   findings?: Finding[];
   locks?: SurfaceLock[];
+  /** locales the human approved a localized draft for (#78) — the copy is theirs. */
+  localizedCopy?: Record<string, CopyFields>;
 };
+
+/** POST /runs/:id/localize — a generated localized draft for one locale (#78). */
+export type LocalizedDraft = {
+  locale: string;
+  copy: CopyFields;
+  /** fields trimmed to fit their App Store limit — surfaced honestly. */
+  trimmed: string[];
+  validation?: { pass: boolean };
+};
+/** POST /runs/:id/localize/approve · DELETE …/:locale — the approved-locale set. */
+export type LocalizeResult = { approved: string[] };
 
 /** POST /runs/:id/asc/push — Apple's verdict, verbatim; never a silent failure. */
 export type AscPushResult =
