@@ -69,6 +69,11 @@ export type Env = {
   // endpoint returns 403 (the credential-free Fastlane handoff stays the default).
   // Set to "1"/"true" only after verifying against a test app.
   ASC_WRITE_ENABLED?: string;
+  // Opt-in gate for creating the ASC Analytics Reports request (Phase 1). Unset →
+  // the /apps/:id/analytics/enable write returns 403 (the read-only status probe
+  // stays available). Creating an ONGOING report request is an outward write to
+  // the user's Apple account, so it stays dark until deliberately enabled.
+  ANALYTICS_ENABLED?: string;
   // GitHub App (the metadata-PR path, #8). The App id + its private key (PKCS#8
   // PEM) are ShipASO's own credential. Unset → the /github/pr endpoint is inert.
   GITHUB_APP_ID?: string;
