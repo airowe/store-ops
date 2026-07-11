@@ -32,6 +32,7 @@ import {
   persistRankSnapshots,
 } from "../d1.js";
 import { canRunCron } from "../billing.js";
+import { runAnalyticsIngest } from "./analyticsIngest.js";
 import { buildAppInput } from "../api/runConfig.js";
 import { reasonerForEnv } from "../api/aiReasoner.js";
 import { fetchForEnv } from "../fetchAdapter.js";
@@ -155,11 +156,27 @@ export async function runDailySnapshot(env: Env): Promise<SnapshotReport> {
   return report;
 }
 
-/** The scheduled() entry for the daily cron — runs the snapshot pass + logs. */
+/** The scheduled() entry for the daily cron — runs the snapshot pass + logs, then
+ *  (analytics-reports Phase 2 open-Q2) the background Engagement ingest. The
+ *  ingest is inert unless ANALYTICS_ENABLED + a stored key exist, and its failures
+ *  are self-contained — it never affects the rank snapshot above. */
 export async function handleDailySnapshot(env: Env): Promise<void> {
   const report = await runDailySnapshot(env);
   console.log(
     `[store-ops cron] daily snapshot: ${report.snapshotsTaken}/${report.appsProcessed} apps ` +
       `(skipped tier ${report.skippedTier}, weekly ${report.skippedCadence}, paused ${report.skippedPaused})`,
   );
+
+  try {
+    const ingest = await runAnalyticsIngest(env);
+    if (ingest.enabled) {
+      console.log(
+        `[store-ops cron] analytics ingest: ${ingest.ingested}/${ingest.appsProcessed} apps ` +
+          `(no key ${ingest.skippedNoKey}, not ready ${ingest.skippedNotReady})`,
+      );
+    }
+  } catch (e) {
+    // The analytics ingest must never break the daily snapshot cron.
+    console.error(`[store-ops cron] analytics ingest failed: ${String(e)}`);
+  }
 }
