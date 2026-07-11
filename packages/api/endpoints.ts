@@ -5,6 +5,8 @@
  */
 import type { ApiClient } from "./client.js";
 import type {
+  AnalyticsIngestResult,
+  AnalyticsState,
   AppDetail,
   AppListItem,
   AscPushResult,
@@ -44,6 +46,13 @@ export const connectApp = (c: ApiClient, body: { bundle_id?: string; query?: str
 
 export const getApp = (c: ApiClient, id: string) => c.get<AppDetail>(`/apps/${enc(id)}`);
 
+// ── analytics reports (measured conversion) ──────────────────────────────────
+/** Ensure the ongoing Engagement request exists (needs an Admin key). Consent write. */
+export const enableAnalytics = (c: ApiClient, id: string, body: AscCredentialBody = {}) =>
+  c.post<AnalyticsState>(`/apps/${enc(id)}/analytics/enable`, body);
+/** Pull + persist the ready Engagement report (read + own-DB write; no outward write). */
+export const ingestAnalytics = (c: ApiClient, id: string, body: AscCredentialBody = {}) =>
+  c.post<AnalyticsIngestResult>(`/apps/${enc(id)}/analytics/ingest`, body);
 /** The measured conversion surface (analytics-reports Phase 3) — our own D1, no key. */
 export const getEngagement = (c: ApiClient, id: string) =>
   c.get<EngagementSurface>(`/apps/${enc(id)}/analytics/engagement`);

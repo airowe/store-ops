@@ -14,6 +14,7 @@ import { runStatusLabel } from "../../lib/status.js";
 import { RankChart } from "../charts/RankChart.js";
 import { RankMovementRow } from "./RankMovementRow.js";
 import { ConversionCard } from "./ConversionCard.js";
+import { AnalyticsCard } from "./AnalyticsCard.js";
 import { ConnectAscCard } from "./ConnectAscCard.js";
 
 export function AppDetailView({
@@ -53,6 +54,9 @@ export function AppDetailView({
       <ConnectAscCard client={client} appId={app.id} onRunStarted={onOpenRun} />
 
       <ConversionCard data={engagementQ.data} />
+      {/* Setup affordance — shown until a measured series exists, then it yields to
+          the number above. */}
+      {engagementQ.data?.state !== "measured" ? <AnalyticsCard client={client} appId={app.id} /> : null}
 
       {points.length >= 2 ? (
         <div className="card" data-testid="rank-trend">
