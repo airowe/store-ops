@@ -1,0 +1,108 @@
+/**
+ * Daily background ingest of Apple's Engagement analytics (analytics-reports
+ * Phase 2 open question 2 — the deferred cadence). Piggybacks the existing
+ * `0 8 * * *` daily cron (NO new Cloudflare trigger — the 5-trigger budget) via
+ * handleDailySnapshot, so the persisted conversion series stays fresh without a
+ * manual /analytics/ingest call.
+ *
+ * Gates (both required, both cheap):
+ *   • ANALYTICS_ENABLED — the same opt-in switch that guards creating the request;
+ *     unset → this pass is inert (the outward-write posture stays dark by default),
+ *   • a STORED ASC key (#67) — background ingest can't prompt for a `.p8`, so it
+ *     only covers apps whose owner opted into the encrypted saved key. Everyone
+ *     else ingests on demand (the route), where the key rides in the request.
+ *
+ * Safe-degrade, per app: a missing key, a non-Admin key, a not-yet-ready report,
+ * or any error is isolated — one bad app never aborts the run, and a failure
+ * leaves that app's prior persisted data intact (upsert only runs on ok rows).
+ * The `.p8` is decrypted for a single mint and never logged.
+ */
+import { listAllApps, upsertEngagementRows } from "../d1.js";
+import { credentialsEnabled, useCredential } from "../credentialStore.js";
+import { mintAscJwt } from "../engine/ascJwt.js";
+import { findAscAppId, type FetchLike } from "../engine/ascWrite.js";
+import { getAnalyticsStatus } from "../engine/ascAnalytics.js";
+import { gunzipText, ingestEngagement, type Gunzip } from "../engine/analyticsEngagement.js";
+import { fetchForEnv } from "../fetchAdapter.js";
+import type { Env } from "../index.js";
+
+const flagOn = (v: string | undefined): boolean => v === "1" || v?.toLowerCase() === "true";
+
+export type AnalyticsIngestReport = {
+  /** false when ANALYTICS_ENABLED is unset (the pass is inert). */
+  enabled: boolean;
+  /** false when this deployment has no KEK (stored keys can't be decrypted). */
+  storage: boolean;
+  appsProcessed: number;
+  /** apps that persisted fresh rows this run. */
+  ingested: number;
+  /** skipped — no stored ASC key (on-demand only). */
+  skippedNoKey: number;
+  /** skipped — key not Admin, no ongoing request, or Apple still generating. */
+  skippedNotReady: number;
+  perApp: Array<{ appId: string; bundleId: string; rows?: number; days?: number; skipped?: string; error?: string }>;
+};
+
+/**
+ * Walk every app once; for each with a stored ASC key and a ready Engagement
+ * report, ingest + persist. Deps (fetch/gunzip) are injectable for tests; they
+ * default to the env's transport and the real gunzip.
+ */
+export async function runAnalyticsIngest(
+  env: Env,
+  deps: { fetchFn?: FetchLike; gunzip?: Gunzip } = {},
+): Promise<AnalyticsIngestReport> {
+  const report: AnalyticsIngestReport = {
+    enabled: flagOn(env.ANALYTICS_ENABLED),
+    storage: credentialsEnabled(env),
+    appsProcessed: 0,
+    ingested: 0,
+    skippedNoKey: 0,
+    skippedNotReady: 0,
+    perApp: [],
+  };
+  // Inert unless enabled AND storage is configured (no KEK → no stored key to use).
+  if (!report.enabled || !report.storage) return report;
+
+  const fetchFn = deps.fetchFn ?? (fetchForEnv(env) as unknown as FetchLike);
+  const gunzip = deps.gunzip ?? gunzipText;
+  const apps = await listAllApps(env.DB);
+
+  for (const app of apps) {
+    report.appsProcessed++;
+    try {
+      const stored = await useCredential(env, app.user_id, app.id, "asc");
+      if (!stored) {
+        report.skippedNoKey++;
+        report.perApp.push({ appId: app.id, bundleId: app.bundle_id, skipped: "no_key" });
+        continue;
+      }
+
+      const token = await mintAscJwt({ p8: stored.plaintext, keyId: stored.meta.keyId, issuerId: stored.meta.issuerId });
+      const ascAppId = await findAscAppId(fetchFn, token, app.bundle_id);
+
+      const status = await getAnalyticsStatus(fetchFn, { token, appId: ascAppId });
+      if (status.state !== "pending") {
+        report.skippedNotReady++;
+        report.perApp.push({ appId: app.id, bundleId: app.bundle_id, skipped: status.state });
+        continue;
+      }
+
+      const result = await ingestEngagement(fetchFn, gunzip, { token, requestId: status.requestId });
+      if (!result.ok) {
+        report.skippedNotReady++;
+        report.perApp.push({ appId: app.id, bundleId: app.bundle_id, skipped: result.reason });
+        continue;
+      }
+
+      const rows = await upsertEngagementRows(env.DB, app.id, result.rows);
+      const days = new Set(result.rows.map((r) => r.date)).size;
+      report.ingested++;
+      report.perApp.push({ appId: app.id, bundleId: app.bundle_id, rows, days });
+    } catch (e) {
+      // Per-app isolation: one bad app never aborts the run; prior data is intact.
+      report.perApp.push({ appId: app.id, bundleId: app.bundle_id, error: String(e) });
+    }
+  }
+  return report;
+}

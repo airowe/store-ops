@@ -98,8 +98,13 @@ Rationale:
   the on-demand route first de-risks the pipeline before wiring the cron, and
   keeps ingest working for keys that are never stored.
 
-The daily cron wiring is intentionally deferred to a follow-up (it's a scheduling
-change with a stored-key dependency, cleanly separable from this pipeline).
+**Update — the daily cron shipped** (`cloud/src/cron/analyticsIngest.ts`):
+`runAnalyticsIngest` piggybacks the existing `0 8 * * *` daily snapshot
+(`handleDailySnapshot`), walking every app and — for those with a stored key
+(#67) and a ready report — ingesting + persisting. It's inert unless
+`ANALYTICS_ENABLED` and a KEK are both set, per-app safe-degrade (one bad app
+never aborts the run), and its failures can never break the rank snapshot it
+rides alongside. Apps without a stored key still ingest on demand via the route.
 
 ## Validate against a live Admin key (the one external unknown)
 
