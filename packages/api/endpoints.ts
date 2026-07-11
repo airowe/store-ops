@@ -21,6 +21,7 @@ import type {
   GithubPrResult,
   GithubStatus,
   Me,
+  PlayAudit,
   NotificationPrefs,
   RankCadence,
   PreviewResult,
@@ -51,6 +52,13 @@ export const connectApp = (c: ApiClient, body: { bundle_id?: string; query?: str
   c.post<ConnectResult>("/apps", body);
 
 export const getApp = (c: ApiClient, id: string) => c.get<AppDetail>(`/apps/${enc(id)}`);
+
+/** Read-only Google Play listing audit (in-request or saved service account). */
+export const auditPlay = (
+  c: ApiClient,
+  id: string,
+  body: { packageName: string; serviceAccount?: string; useStored?: boolean; store?: boolean },
+) => c.post<PlayAudit>(`/apps/${enc(id)}/audit-play`, body);
 
 // ── analytics reports (measured conversion) ──────────────────────────────────
 /** Ensure the ongoing Engagement request exists (needs an Admin key). Consent write. */

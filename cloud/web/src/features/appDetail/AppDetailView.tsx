@@ -16,6 +16,7 @@ import { RankMovementRow } from "./RankMovementRow.js";
 import { ConversionCard } from "./ConversionCard.js";
 import { AnalyticsCard } from "./AnalyticsCard.js";
 import { ConnectAscCard } from "./ConnectAscCard.js";
+import { PlayAuditCard } from "./PlayAuditCard.js";
 
 export function AppDetailView({
   client,
@@ -52,6 +53,7 @@ export function AppDetailView({
       <button className="btn ghost" data-testid="war-room" onClick={() => onWarRoom(app.id)}>War room</button>
 
       <ConnectAscCard client={client} appId={app.id} onRunStarted={onOpenRun} />
+      <PlayAuditCard client={client} appId={app.id} />
 
       <ConversionCard data={engagementQ.data} />
       {/* Setup affordance — shown until a measured series exists, then it yields to
