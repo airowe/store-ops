@@ -8,11 +8,12 @@
  */
 import { useQuery } from "@tanstack/react-query";
 import type { ApiClient } from "@shipaso/api";
-import { getApp, getDeltas, getRanks } from "@shipaso/api";
+import { getApp, getDeltas, getEngagement, getRanks } from "@shipaso/api";
 import { timeAgo } from "@shipaso/honesty";
 import { runStatusLabel } from "../../lib/status.js";
 import { RankChart } from "../charts/RankChart.js";
 import { RankMovementRow } from "./RankMovementRow.js";
+import { ConversionCard } from "./ConversionCard.js";
 import { ConnectAscCard } from "./ConnectAscCard.js";
 
 export function AppDetailView({
@@ -31,6 +32,9 @@ export function AppDetailView({
   const appQ = useQuery({ queryKey: ["app", id], queryFn: () => getApp(client, id) });
   const ranksQ = useQuery({ queryKey: ["ranks", id], queryFn: () => getRanks(client, id) });
   const deltasQ = useQuery({ queryKey: ["deltas", id], queryFn: () => getDeltas(client, id) });
+  // Measured conversion (analytics-reports Phase 3). Best-effort — a failure just
+  // hides the card (the card also renders nothing until data is ingested).
+  const engagementQ = useQuery({ queryKey: ["engagement", id], queryFn: () => getEngagement(client, id), retry: false });
 
   if (appQ.isLoading) return <p className="muted">Loading…</p>;
   if (appQ.isError || !appQ.data) return <p className="muted">Couldn’t load this app. Try again.</p>;
@@ -47,6 +51,8 @@ export function AppDetailView({
       <button className="btn ghost" data-testid="war-room" onClick={() => onWarRoom(app.id)}>War room</button>
 
       <ConnectAscCard client={client} appId={app.id} onRunStarted={onOpenRun} />
+
+      <ConversionCard data={engagementQ.data} />
 
       {points.length >= 2 ? (
         <div className="card" data-testid="rank-trend">

@@ -152,6 +152,32 @@ export type RunDecision = {
   pushCommands: PushCommand[];
 };
 
+// ── analytics: measured conversion + movement (analytics-reports Phase 3) ─────
+/** How conversion moved around one approved push. Correlational, measured. */
+export type ConversionMovement = {
+  at: string;
+  runId?: string;
+  /** "" = all sources (aggregate); otherwise a specific traffic source. */
+  source: string;
+  /** measured conversion fraction (0..1) before / from the push. */
+  before: number;
+  after: number;
+  delta: number;
+  samplesBefore: number;
+  samplesAfter: number;
+};
+/** GET /apps/:id/analytics/engagement — the measured conversion surface. `no_data`
+ *  until something is ingested; `measured` carries the numbers (latest may be null
+ *  = unmeasured, never a fabricated 0). */
+export type EngagementSurface =
+  | { state: "no_data"; message: string }
+  | {
+      state: "measured";
+      latestConversion: { date: string; rate: number } | null;
+      movements: ConversionMovement[];
+      days: number;
+    };
+
 // ── connect / resolve ───────────────────────────────────────────────────────
 export type Candidate = {
   bundle_id: string;
