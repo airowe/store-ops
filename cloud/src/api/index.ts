@@ -188,6 +188,8 @@ import {
 import { buildAppInput, descriptionFromTrace, type RunOverrides } from "./runConfig.js";
 import { type AscCred, type AscCredBody, AscCredentialError, resolveAscCredential } from "./ascCredentials.js";
 import { reasonerForEnv } from "./aiReasoner.js";
+import { captionAnalyzerForEnv } from "./aiCaptionVision.js";
+import { analyzeFirstShot, captionFindings } from "../engine/captionLens.js";
 import { fetchForEnv } from "../fetchAdapter.js";
 import { buildFastlaneBundle } from "../engine/fastlane.js";
 import { zipStore } from "../engine/zip.js";
@@ -401,6 +403,22 @@ async function attachReviews(env: Env, app: AppRow, result: AgentResult): Promis
   if (candidates.length > 0) {
     result.keywordGaps = withReviewCandidates(result.keywordGaps ?? [], candidates);
   }
+}
+
+/**
+ * Append the first-screenshot caption finding (#182 Phase 1). OCR of the primary
+ * screenshot's headline via the Workers AI vision model, gated behind
+ * CAPTION_OCR_ENABLED + an AI binding. When the flag is off, no binding exists,
+ * there's no screenshot, or the model can't read a headline, this is a SILENT
+ * no-op — result.findings is untouched. Best-effort and last, so a caption read
+ * never strands a run. Call AFTER auditFindings has populated result.findings.
+ */
+async function attachCaptionFindings(env: Env, result: AgentResult): Promise<void> {
+  const analyzer = captionAnalyzerForEnv(env, (url) => fetch(url));
+  if (!analyzer) return;
+  const analysis = await analyzeFirstShot(analyzer, result.audit.screenshots?.screenshotUrls);
+  const extra = captionFindings(analysis);
+  if (extra.length > 0) result.findings = [...(result.findings ?? []), ...extra];
 }
 
 /**
@@ -1388,6 +1406,8 @@ async function runApp(
     ...(result.audit.storefront !== undefined ? { storefront: result.audit.storefront } : {}),
     ...(result.chartRank !== undefined ? { chartRank: result.chartRank } : {}),
   });
+  // #182: measured first-screenshot caption lens (Workers AI vision, flag-gated).
+  await attachCaptionFindings(env, result);
   // #61: the per-surface "unlock to see + improve" locks. On a no-key run this is
   // the canonical blind-spot list (subtitle, keywords, screenshots, …); the UI
   // renders each as an honest inline 🔒. Static copy only — no ASC data crosses.
@@ -1561,6 +1581,8 @@ export async function keyedAscPass(
     ...(result.audit.storefront !== undefined ? { storefront: result.audit.storefront } : {}),
     ...(result.chartRank !== undefined ? { chartRank: result.chartRank } : {}),
   });
+  // #182: measured first-screenshot caption lens (Workers AI vision, flag-gated).
+  await attachCaptionFindings(env, result);
   result.locks = surfaceLocks({
     snapshot: ascSnapshot,
     audit: result.audit,
