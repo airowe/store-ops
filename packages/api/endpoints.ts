@@ -11,6 +11,7 @@ import type {
   Candidate,
   ConnectResult,
   DeltasResponse,
+  EngagementSurface,
   Me,
   NotificationPrefs,
   RankCadence,
@@ -42,6 +43,10 @@ export const connectApp = (c: ApiClient, body: { bundle_id?: string; query?: str
   c.post<ConnectResult>("/apps", body);
 
 export const getApp = (c: ApiClient, id: string) => c.get<AppDetail>(`/apps/${enc(id)}`);
+
+/** The measured conversion surface (analytics-reports Phase 3) — our own D1, no key. */
+export const getEngagement = (c: ApiClient, id: string) =>
+  c.get<EngagementSurface>(`/apps/${enc(id)}/analytics/engagement`);
 
 export const getRanks = (c: ApiClient, id: string, keyword?: string) =>
   c.get<RanksSeries>(`/apps/${enc(id)}/ranks${keyword ? `?keyword=${enc(keyword)}` : ""}`);
