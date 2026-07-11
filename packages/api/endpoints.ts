@@ -9,6 +9,7 @@ import type {
   AnalyticsState,
   AppDetail,
   AppListItem,
+  AsaConnectResult,
   ApproveAllResult,
   AscCreateVersionResult,
   AscPushResult,
@@ -141,7 +142,12 @@ export const setRankCadence = (c: ApiClient, cadence: RankCadence) =>
 
 export const getCredentials = (c: ApiClient) =>
   c.get<{ enabled: boolean; credentials: StoredCredential[] }>("/account/credentials");
-export const deleteCredential = (c: ApiClient, kind: "asc" | "play", appId?: string) =>
+/** Connect + verify an Apple Search Ads key (unlocks real keyword popularity). */
+export const connectAsa = (
+  c: ApiClient,
+  body: { privateKey: string; clientId: string; teamId: string; keyId: string; orgId: string },
+) => c.post<AsaConnectResult>("/account/asa-credential", body);
+export const deleteCredential = (c: ApiClient, kind: "asc" | "play" | "asa", appId?: string) =>
   c.request<{ deleted: boolean; note: string }>(
     `/account/credentials/${kind}${appId ? `?app=${enc(appId)}` : ""}`,
     { method: "DELETE" },

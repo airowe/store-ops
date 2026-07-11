@@ -248,11 +248,14 @@ export type Me = {
   paused?: boolean;
 };
 
+/** POST /account/asa-credential (#78-2) — verified + stored ASA key metadata. */
+export type AsaConnectResult = { credential: StoredCredential; popularityLive: boolean; note: string };
+
 /** Stored-credential METADATA only — never key material (honesty boundary). */
 export type StoredCredential = {
   id: string;
   appId: string | null;
-  kind: "asc" | "play";
+  kind: "asc" | "play" | "asa";
   keyId: string;
   issuerId: string;
   createdAt: string;
