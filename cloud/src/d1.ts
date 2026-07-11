@@ -30,6 +30,7 @@ import type {
   SurfaceLock,
 } from "./engine/index.js";
 import type { RunStatus } from "./engine/constants.js";
+import type { EngagementRow } from "./engine/analyticsEngagement.js";
 import { buildPreferenceRows } from "./engine/preferenceSignal.js";
 import { encryptField } from "./crypto/rlhfCrypto.js";
 
@@ -1475,4 +1476,92 @@ export async function deleteLocalizedCopy(
     .bind(JSON.stringify(trace), runId)
     .run();
   return true;
+}
+
+// ── Analytics Engagement series (analytics-reports Phase 2) ────────────────────
+
+/** One persisted row of the measured Engagement series (metrics NULL when the
+ *  report didn't carry them — never a fabricated 0). */
+export type EngagementSeriesRow = {
+  date: string;
+  source: string;
+  cpp: string;
+  pageType: string;
+  impressions: number | null;
+  productPageViews: number | null;
+  downloads: number | null;
+};
+
+/**
+ * Idempotently persist parsed Engagement rows. Keyed by the dimension tuple
+ * (app/date/source/cpp/page_type), so re-ingesting a day RESTATES it (Apple
+ * revises recent days) rather than duplicating. An absent metric binds NULL, an
+ * absent dimension binds '' — the honesty boundary: we never invent a 0 or a CPP.
+ * One atomic batch; a no-op on empty input (no write, returns 0).
+ */
+export async function upsertEngagementRows(
+  db: D1Database,
+  appId: string,
+  rows: EngagementRow[],
+): Promise<number> {
+  if (rows.length === 0) return 0;
+  const stmts = rows.map((r) =>
+    db
+      .prepare(
+        `INSERT INTO analytics_engagement
+           (app_id, date, source, cpp, page_type, impressions, product_page_views, downloads)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+         ON CONFLICT(app_id, date, source, cpp, page_type) DO UPDATE SET
+           impressions = excluded.impressions,
+           product_page_views = excluded.product_page_views,
+           downloads = excluded.downloads,
+           ingested_at = datetime('now')`,
+      )
+      .bind(
+        appId,
+        r.date,
+        r.source ?? "",
+        r.cpp ?? "",
+        r.pageType ?? "",
+        r.impressions ?? null,
+        r.productPageViews ?? null,
+        r.downloads ?? null,
+      ),
+  );
+  await db.batch(stmts);
+  return stmts.length;
+}
+
+/** Read an app's Engagement series (ascending by date, then source), scoped to
+ *  the app. Metrics are returned as-stored (NULL preserved as null). */
+export async function getEngagementSeries(
+  db: D1Database,
+  appId: string,
+): Promise<EngagementSeriesRow[]> {
+  const { results } = await db
+    .prepare(
+      `SELECT date, source, cpp, page_type, impressions, product_page_views, downloads
+         FROM analytics_engagement
+        WHERE app_id = ?
+        ORDER BY date ASC, source ASC`,
+    )
+    .bind(appId)
+    .all<{
+      date: string;
+      source: string;
+      cpp: string;
+      page_type: string;
+      impressions: number | null;
+      product_page_views: number | null;
+      downloads: number | null;
+    }>();
+  return (results ?? []).map((r) => ({
+    date: r.date,
+    source: r.source,
+    cpp: r.cpp,
+    pageType: r.page_type,
+    impressions: r.impressions,
+    productPageViews: r.product_page_views,
+    downloads: r.downloads,
+  }));
 }
