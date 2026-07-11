@@ -135,6 +135,17 @@ export type AscCreateVersionResult =
 /** POST /runs/approve-all — bulk-approve every pending run (Scale ergonomic). */
 export type ApproveAllResult = { approved: string[]; approvedCount: number; skipped: unknown[] };
 
+// ── Google Play audit (#Android loop) ────────────────────────────────────────
+/** POST /apps/:id/audit-play — read-only Play listing audit. Findings/locks are
+ *  the SAME shapes the iOS run renders, so the UI reuses FindingsCard. */
+export type PlayAudit = {
+  appId: string;
+  screenshots?: { grade?: string; score?: number | null } | null;
+  findings: Finding[];
+  summary?: FindingsSummary;
+  locks: SurfaceLock[];
+};
+
 // ── GitHub metadata-PR path (#8) ─────────────────────────────────────────────
 /** GET /github/status — is the App configured on this deploy + is a repo linked? */
 export type GithubStatus = { appConfigured: boolean; connected: boolean; repo: string | null };
