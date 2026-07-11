@@ -74,6 +74,13 @@ export type Env = {
   // stays available). Creating an ONGOING report request is an outward write to
   // the user's Apple account, so it stays dark until deliberately enabled.
   ANALYTICS_ENABLED?: string;
+  // Opt-in gate for the first-screenshot caption lens (#182). Unset → the run
+  // attaches NO caption finding (the vision OCR never fires). Set to "1"/"true"
+  // to enable: each keyed/keyless run then OCRs the primary screenshot's headline
+  // via the Workers AI vision model (env.AI) and flags a feature-led caption.
+  // Costs one vision inference per run and reads the user's screenshot, so it
+  // stays dark until deliberately switched on.
+  CAPTION_OCR_ENABLED?: string;
   // GitHub App (the metadata-PR path, #8). The App id + its private key (PKCS#8
   // PEM) are ShipASO's own credential. Unset → the /github/pr endpoint is inert.
   GITHUB_APP_ID?: string;
