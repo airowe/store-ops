@@ -9,9 +9,9 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import type { ApiClient, RankCadence } from "@shipaso/api";
-import { deleteCredential, getCredentials, logout, me, setNotifications, setRankCadence } from "@shipaso/api";
+import { deleteCredential, getCredentials, logout, me, pauseAgent, resumeAgent, setNotifications, setRankCadence } from "@shipaso/api";
 
-type Prefs = { push: boolean; digest: boolean; cadence: RankCadence };
+type Prefs = { push: boolean; digest: boolean; cadence: RankCadence; paused: boolean };
 
 function setTheme(next: "light" | "dark") {
   document.documentElement.setAttribute("data-theme", next);
@@ -33,6 +33,7 @@ export function SettingsView({ client, onSignedOut }: { client: ApiClient; onSig
         push: meQ.data.push_run_ready ?? true,
         digest: (meQ.data.email_digest ?? "weekly") === "weekly",
         cadence: meQ.data.rank_cadence ?? "weekly",
+        paused: meQ.data.paused ?? false,
       });
     }
   }, [meQ.data, prefs]);
@@ -52,6 +53,10 @@ export function SettingsView({ client, onSignedOut }: { client: ApiClient; onSig
   const delMut = useMutation({
     mutationFn: (kind: "asc" | "play") => deleteCredential(client, kind),
     onSuccess: () => void credsQ.refetch(),
+  });
+  const pauseMut = useMutation({
+    mutationFn: (next: boolean) => (next ? pauseAgent(client) : resumeAgent(client)),
+    onSuccess: (r) => setPrefs((p) => (p ? { ...p, paused: r.paused } : p)),
   });
   const signOutMut = useMutation({ mutationFn: () => logout(client), onSuccess: () => onSignedOut?.() });
 
@@ -108,6 +113,29 @@ export function SettingsView({ client, onSignedOut }: { client: ApiClient; onSig
                 Daily
               </button>
             </span>
+          }
+        />
+      </div>
+
+      <div className="card">
+        <b>Autonomy</b>
+        <p className="micro">Unlike the settings above, this changes what the agent does.</p>
+        <Row
+          title="Weekly autonomous sweep"
+          detail={
+            prefs.paused
+              ? "Paused — no new runs open. Everything you already approved is untouched."
+              : "Active — each week the agent audits, ranks, and drafts a run for your approval. It never pushes."
+          }
+          action={
+            <button
+              className={"btn" + (prefs.paused ? " bad" : " ghost")}
+              data-testid="pause-toggle"
+              disabled={pauseMut.isPending}
+              onClick={() => pauseMut.mutate(!prefs.paused)}
+            >
+              {pauseMut.isPending ? "…" : prefs.paused ? "Paused" : "Active"}
+            </button>
           }
         />
       </div>

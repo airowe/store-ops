@@ -5,22 +5,51 @@
  * page is served by legacy via a real navigation).
  */
 import { useState } from "react";
-import { useMutation, useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { ApiClient, Candidate } from "@shipaso/api";
-import { connectApp, getApps, resolveApps } from "@shipaso/api";
+import { approveAllRuns, connectApp, getApps, resolveApps } from "@shipaso/api";
 import { AppCard } from "./AppCard.js";
 
 export function DashboardView({ client, onOpen }: { client: ApiClient; onOpen: (id: string) => void }) {
+  const qc = useQueryClient();
   const appsQ = useQuery({ queryKey: ["apps"], queryFn: () => getApps(client) });
+  const approveAll = useMutation({
+    mutationFn: () => approveAllRuns(client),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: ["apps"] }),
+  });
 
   if (appsQ.isLoading) return <p className="muted">Loading your apps…</p>;
   if (appsQ.isError) return <p className="muted">Couldn’t load your apps. Try again.</p>;
   const apps = appsQ.data?.apps ?? [];
+  const pendingCount = apps.filter((a) => a.latest_run?.status === "awaiting_approval").length;
 
   return (
     <section>
       <h1>Your apps</h1>
       <ConnectCard client={client} onConnected={onOpen} />
+
+      {pendingCount > 1 ? (
+        <div className="card" data-testid="approve-all-card">
+          <b>{pendingCount} runs awaiting approval</b>
+          <p className="micro">
+            Approve every pending run at once. Approval only reveals each run’s push handoff —
+            it never ships anything.
+          </p>
+          <button
+            className="btn primary"
+            data-testid="approve-all"
+            disabled={approveAll.isPending}
+            onClick={() => approveAll.mutate()}
+          >
+            {approveAll.isPending ? "Approving…" : `Approve all ${pendingCount}`}
+          </button>
+          {approveAll.data ? (
+            <p className="micro" data-testid="approve-all-result">
+              Approved {approveAll.data.approvedCount} run{approveAll.data.approvedCount === 1 ? "" : "s"}.
+            </p>
+          ) : null}
+        </div>
+      ) : null}
       {apps.length === 0 ? (
         <div className="empty" data-testid="empty">
           <div className="big">🛰️</div>

@@ -41,6 +41,7 @@ const ASC_CRED = {
 function makeClient({
   credentials = [] as unknown[],
   pushResult = { ok: true, versionId: "v1", localizationId: "l1", fieldsPushed: ["name", "subtitle"] } as unknown,
+  createVersionResult = { ok: true, versionId: "v9", versionString: "1.2.0", state: "PREPARE_FOR_SUBMISSION" } as unknown,
   extra = {} as Record<string, unknown>,
 } = {}) {
   const state = runDetail("awaiting_approval", [], extra);
@@ -60,6 +61,7 @@ function makeClient({
       };
     }
     if (path === "/runs/run1/asc/push") return pushResult;
+    if (path === "/runs/run1/asc/create-version") return createVersionResult;
     return { id: "run1", status: "rejected", pushCommands: [] };
   });
   return { client: { get, post, request: vi.fn() } as unknown as ApiClient, get, post };
@@ -153,6 +155,33 @@ describe("<RunView /> — the money screen", () => {
     fireEvent.click(screen.getByTestId("asc-push"));
     const result = await screen.findByTestId("push-result");
     expect(result).toHaveTextContent("no editable version found");
+  });
+
+  it("a refused push offers Create-draft-version (no curl) and reports Apple's result", async () => {
+    const { client, post } = makeClient({
+      credentials: [ASC_CRED],
+      pushResult: { ok: false, reason: "no editable version found" },
+    });
+    renderView(client);
+    await waitFor(() => screen.getByTestId("approve"));
+    fireEvent.click(screen.getByTestId("approve"));
+    await waitFor(() => screen.getByTestId("asc-push"));
+    fireEvent.click(screen.getByTestId("asc-push"));
+    // the dead-end fix appears exactly when the push was refused
+    await waitFor(() => expect(screen.getByTestId("create-version")).toBeInTheDocument());
+    fireEvent.change(screen.getByTestId("cv-version"), { target: { value: "1.2.0" } });
+    fireEvent.click(screen.getByTestId("cv-create"));
+    await waitFor(() => expect(post).toHaveBeenCalledWith("/runs/run1/asc/create-version", { versionString: "1.2.0" }));
+    expect(await screen.findByTestId("cv-result")).toHaveTextContent("Created draft 1.2.0");
+  });
+
+  it("no Create-version affordance before a push is refused", async () => {
+    const { client } = makeClient({ credentials: [ASC_CRED] });
+    renderView(client);
+    await waitFor(() => screen.getByTestId("approve"));
+    fireEvent.click(screen.getByTestId("approve"));
+    await waitFor(() => screen.getByTestId("asc-push"));
+    expect(screen.queryByTestId("create-version")).toBeNull();
   });
 
   it("approved with NO stored key: no push button; the handoff stays the path", async () => {
