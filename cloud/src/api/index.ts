@@ -150,6 +150,7 @@ import {
   setTier,
   updateRunCopy,
   upsertCompetitor,
+  upsertEngagementRows,
   upsertUser,
 } from "../d1.js";
 import { isExpoPushToken } from "../push.js";
@@ -192,7 +193,8 @@ import { zipStore } from "../engine/zip.js";
 import { mintAscJwt } from "../engine/ascJwt.js";
 import { findAscAppId, applyAscMetadata, createAscLocalization, createAscVersion, getEditableVersionId, isValidVersionString, readAscLocalization, AscWriteError } from "../engine/ascWrite.js";
 import { readAscSnapshot, ascScreenshotsToListing, type AscSnapshot } from "../engine/ascRead.js";
-import { enableAnalyticsReports, getAnalyticsStatus } from "../engine/ascAnalytics.js";
+import { PENDING_MESSAGE, UNAVAILABLE_MESSAGE, enableAnalyticsReports, getAnalyticsStatus } from "../engine/ascAnalytics.js";
+import { gunzipText, ingestEngagement } from "../engine/analyticsEngagement.js";
 import { score as scoreScreenshots } from "../engine/screenshotScore.js";
 import { auditFindings, summarizeFindings, surfaceLocks } from "../engine/auditFindings.js";
 import {
@@ -3117,6 +3119,42 @@ async function ascAnalyticsEnableRoute(
   return enableAnalyticsReports(fetch, { token, appId: ascAppId });
 }
 
+/**
+ * POST /apps/:id/analytics/ingest (analytics-reports Phase 2) — pull the ready
+ * Engagement report and persist the measured series to D1. Read + our-own-DB
+ * write only (no outward write to Apple), so it's ungated like `status`; it just
+ * needs the ongoing request Phase 1's `enable` created.
+ *
+ * Honest passthrough: if the key isn't Admin / no request exists / Apple is still
+ * generating, we return that state verbatim (`admin_required` / `not_requested` /
+ * `pending`) — never a fabricated series. On success it reports COUNTS only
+ * (instances, rows persisted, distinct days) — the measured numbers themselves
+ * are a Phase 3 surface, never invented here. Safe-degrade: an ingest failure
+ * leaves any prior persisted data intact.
+ */
+async function ascAnalyticsIngestRoute(
+  req: Request,
+  env: Env,
+  userId: string,
+  appId: string,
+): Promise<unknown> {
+  const { token, ascAppId } = await analyticsToken(req, env, userId, appId);
+
+  const status = await getAnalyticsStatus(fetch, { token, appId: ascAppId });
+  if (status.state !== "pending") return status; // needs Admin / not requested / unavailable
+
+  const result = await ingestEngagement(fetch, gunzipText, { token, requestId: status.requestId });
+  if (!result.ok) {
+    return result.reason === "not_ready"
+      ? { state: "pending", message: PENDING_MESSAGE } // Apple still generating — check back
+      : { state: "unavailable", message: UNAVAILABLE_MESSAGE };
+  }
+
+  const rowsPersisted = await upsertEngagementRows(env.DB, appId, result.rows);
+  const days = new Set(result.rows.map((r) => r.date)).size;
+  return { state: "ingested", instances: result.instances, rowsPersisted, days };
+}
+
 // ── billing ────────────────────────────────────────────────────────────────────
 
 /** The Stripe secret key — STRIPE_SECRET_KEY, with the legacy STRIPE_TEST_KEY as
@@ -3536,6 +3574,9 @@ export async function handleApi(req: Request, env: Env): Promise<Response> {
       }
       if (seg.length === 4 && seg[1] && seg[2] === "analytics" && seg[3] === "enable" && method === "POST") {
         return json(await ascAnalyticsEnableRoute(req, env, user.id, seg[1]), 200, origin);
+      }
+      if (seg.length === 4 && seg[1] && seg[2] === "analytics" && seg[3] === "ingest" && method === "POST") {
+        return json(await ascAnalyticsIngestRoute(req, env, user.id, seg[1]), 200, origin);
       }
       if (seg.length === 3 && seg[1] && seg[2] === "ranks" && method === "GET") {
         return json(await appRanks(env, user.id, seg[1], url), 200, origin);

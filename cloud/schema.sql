@@ -300,3 +300,29 @@ CREATE TABLE IF NOT EXISTS device_tokens (
   created_at  TEXT NOT NULL DEFAULT (datetime('now'))
 );
 CREATE INDEX IF NOT EXISTS idx_device_tokens_user ON device_tokens(user_id);
+
+-- ── analytics_engagement ─────────────────────────────────────────────────────
+-- MEASURED App Store Engagement series ingested from Apple's Analytics Reports
+-- API (analytics-reports PRD Phase 2). The only place ShipASO stores first-party
+-- funnel data. One row per app × date × traffic source × custom product page ×
+-- page type. A metric the report didn't carry is NULL, NEVER 0 (the honesty
+-- boundary) — conversion is derived at read time from measured PPV + downloads,
+-- never stored as a modeled number. The PRIMARY KEY makes re-ingest a RESTATE
+-- (Apple revises recent days), not a duplicate. This is the user's OWN app data;
+-- the never-persist-credentials invariant is untouched (only report data lands).
+-- Migration for an EXISTING db (the CREATE below only fires on a fresh db):
+--   npx wrangler d1 execute store_ops --command "CREATE TABLE IF NOT EXISTS analytics_engagement (app_id TEXT NOT NULL REFERENCES apps(id) ON DELETE CASCADE, date TEXT NOT NULL, source TEXT NOT NULL DEFAULT '', cpp TEXT NOT NULL DEFAULT '', page_type TEXT NOT NULL DEFAULT '', impressions INTEGER, product_page_views INTEGER, downloads INTEGER, ingested_at TEXT NOT NULL DEFAULT (datetime('now')), PRIMARY KEY (app_id, date, source, cpp, page_type))"
+-- (add `--local` for the local D1; drop it for remote.)
+CREATE TABLE IF NOT EXISTS analytics_engagement (
+  app_id             TEXT NOT NULL REFERENCES apps(id) ON DELETE CASCADE,
+  date               TEXT NOT NULL,                   -- YYYY-MM-DD (Apple's report date)
+  source             TEXT NOT NULL DEFAULT '',        -- traffic source; '' = unsegmented
+  cpp                TEXT NOT NULL DEFAULT '',         -- custom product page id; '' = default page
+  page_type          TEXT NOT NULL DEFAULT '',
+  impressions        INTEGER,                          -- NULL = report didn't carry it (never a fake 0)
+  product_page_views INTEGER,
+  downloads          INTEGER,
+  ingested_at        TEXT NOT NULL DEFAULT (datetime('now')),
+  PRIMARY KEY (app_id, date, source, cpp, page_type)
+);
+CREATE INDEX IF NOT EXISTS idx_analytics_engagement_app ON analytics_engagement(app_id, date);
