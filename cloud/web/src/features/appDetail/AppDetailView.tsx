@@ -17,6 +17,7 @@ import { ConversionCard } from "./ConversionCard.js";
 import { AnalyticsCard } from "./AnalyticsCard.js";
 import { ConnectAscCard } from "./ConnectAscCard.js";
 import { PlayAuditCard } from "./PlayAuditCard.js";
+import { CompetitorsCard } from "./CompetitorsCard.js";
 
 export function AppDetailView({
   client,
@@ -51,6 +52,8 @@ export function AppDetailView({
       <h1>{app.name}</h1>
       <p className="muted mono">{app.bundle_id} · {app.country}</p>
       <button className="btn ghost" data-testid="war-room" onClick={() => onWarRoom(app.id)}>War room</button>
+
+      <CompetitorsCard client={client} appId={app.id} />
 
       <ConnectAscCard client={client} appId={app.id} onRunStarted={onOpenRun} />
       <PlayAuditCard client={client} appId={app.id} />

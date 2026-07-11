@@ -14,6 +14,7 @@ import type {
   AscCreateVersionResult,
   AscPushResult,
   Candidate,
+  CompetitorsResponse,
   ConnectResult,
   DeltasResponse,
   EngagementSurface,
@@ -76,6 +77,18 @@ export const getRanks = (c: ApiClient, id: string, keyword?: string) =>
 
 export const getDeltas = (c: ApiClient, id: string) =>
   c.get<DeltasResponse>(`/apps/${enc(id)}/deltas`);
+
+// ── competitors (#72) — discover / add / confirm / remove ────────────────────
+export const getCompetitors = (c: ApiClient, id: string) =>
+  c.get<CompetitorsResponse>(`/apps/${enc(id)}/competitors`);
+export const addCompetitor = (c: ApiClient, id: string, body: { name?: string; key?: string }) =>
+  c.post<CompetitorsResponse>(`/apps/${enc(id)}/competitors`, body);
+export const discoverCompetitors = (c: ApiClient, id: string) =>
+  c.post<CompetitorsResponse>(`/apps/${enc(id)}/competitors/discover`);
+export const confirmCompetitor = (c: ApiClient, id: string, key: string) =>
+  c.post<CompetitorsResponse>(`/apps/${enc(id)}/competitors/${enc(key)}/confirm`);
+export const removeCompetitor = (c: ApiClient, id: string, key: string) =>
+  c.request<CompetitorsResponse>(`/apps/${enc(id)}/competitors/${enc(key)}`, { method: "DELETE" });
 
 export const warRoom = (c: ApiClient, id: string, competitors?: string[]) =>
   c.get<WarRoomView>(
