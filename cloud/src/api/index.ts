@@ -151,6 +151,7 @@ import {
   updateRunCopy,
   upsertCompetitor,
   upsertEngagementRows,
+  getEngagementSeries,
   upsertUser,
 } from "../d1.js";
 import { isExpoPushToken } from "../push.js";
@@ -195,6 +196,7 @@ import { findAscAppId, applyAscMetadata, createAscLocalization, createAscVersion
 import { readAscSnapshot, ascScreenshotsToListing, type AscSnapshot } from "../engine/ascRead.js";
 import { PENDING_MESSAGE, UNAVAILABLE_MESSAGE, enableAnalyticsReports, getAnalyticsStatus } from "../engine/ascAnalytics.js";
 import { gunzipText, ingestEngagement } from "../engine/analyticsEngagement.js";
+import { conversionMovements, latestConversion } from "../engine/conversionMovement.js";
 import { score as scoreScreenshots } from "../engine/screenshotScore.js";
 import { auditFindings, summarizeFindings, surfaceLocks } from "../engine/auditFindings.js";
 import {
@@ -3155,6 +3157,32 @@ async function ascAnalyticsIngestRoute(
   return { state: "ingested", instances: result.instances, rowsPersisted, days };
 }
 
+/**
+ * GET /apps/:id/analytics/engagement (analytics-reports Phase 3) — the MEASURED
+ * conversion surface. Reads the persisted Engagement series (our own D1, no ASC
+ * call, no credential) and joins it to the app's APPROVED pushes to report the
+ * latest measured conversion and how it moved around each ship.
+ *
+ * Honesty: conversion is Apple's measured downloads/PPV — null when unmeasurable,
+ * never a fabricated 0. Movements are correlational and measured-or-absent (both
+ * windows must be measurable). `no_data` until Phase 2 has ingested something —
+ * never a zero series.
+ */
+async function analyticsEngagementRoute(env: Env, userId: string, appId: string): Promise<unknown> {
+  await requireOwnedApp(env, appId, userId);
+  const series = await getEngagementSeries(env.DB, appId);
+  if (series.length === 0) {
+    return { state: "no_data", message: "No analytics ingested yet — enable analytics and ingest first." };
+  }
+  const pushes = (await derivePushes(env, appId)).map((p) => ({ runId: p.runId, pushedAt: p.pushedAt }));
+  return {
+    state: "measured",
+    latestConversion: latestConversion(series),
+    movements: conversionMovements(series, pushes),
+    days: new Set(series.map((r) => r.date)).size,
+  };
+}
+
 // ── billing ────────────────────────────────────────────────────────────────────
 
 /** The Stripe secret key — STRIPE_SECRET_KEY, with the legacy STRIPE_TEST_KEY as
@@ -3577,6 +3605,9 @@ export async function handleApi(req: Request, env: Env): Promise<Response> {
       }
       if (seg.length === 4 && seg[1] && seg[2] === "analytics" && seg[3] === "ingest" && method === "POST") {
         return json(await ascAnalyticsIngestRoute(req, env, user.id, seg[1]), 200, origin);
+      }
+      if (seg.length === 4 && seg[1] && seg[2] === "analytics" && seg[3] === "engagement" && method === "GET") {
+        return json(await analyticsEngagementRoute(env, user.id, seg[1]), 200, origin);
       }
       if (seg.length === 3 && seg[1] && seg[2] === "ranks" && method === "GET") {
         return json(await appRanks(env, user.id, seg[1], url), 200, origin);
