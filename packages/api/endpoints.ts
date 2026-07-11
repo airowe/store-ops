@@ -16,6 +16,9 @@ import type {
   ConnectResult,
   DeltasResponse,
   EngagementSurface,
+  GithubConnectResult,
+  GithubPrResult,
+  GithubStatus,
   Me,
   NotificationPrefs,
   RankCadence,
@@ -116,6 +119,15 @@ export const pauseAgent = (c: ApiClient) => c.post<{ paused: boolean }>("/agent/
 export const resumeAgent = (c: ApiClient) => c.post<{ paused: boolean }>("/agent/resume");
 /** Approve every run currently at the gate across the user's apps. */
 export const approveAllRuns = (c: ApiClient) => c.post<ApproveAllResult>("/runs/approve-all");
+
+// ── GitHub metadata-PR path (#8) ─────────────────────────────────────────────
+export const getGithubStatus = (c: ApiClient) => c.get<GithubStatus>("/github/status");
+/** Link (installation_id + repo "owner/name") or unlink (omit both) the repo. */
+export const connectGithub = (c: ApiClient, body: { installation_id?: string; repo?: string } = {}) =>
+  c.post<GithubConnectResult>("/github/connect", body);
+/** Open a metadata PR for an APPROVED run — the credential-free push-to-repo path. */
+export const githubPr = (c: ApiClient, runId: string) =>
+  c.post<GithubPrResult>(`/runs/${enc(runId)}/github/pr`);
 
 // ── auth + settings ─────────────────────────────────────────────────────────
 export const me = (c: ApiClient) => c.get<Me>("/auth/me");

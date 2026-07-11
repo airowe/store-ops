@@ -134,6 +134,16 @@ export type AscCreateVersionResult =
   | { ok: false; reason: string };
 /** POST /runs/approve-all — bulk-approve every pending run (Scale ergonomic). */
 export type ApproveAllResult = { approved: string[]; approvedCount: number; skipped: unknown[] };
+
+// ── GitHub metadata-PR path (#8) ─────────────────────────────────────────────
+/** GET /github/status — is the App configured on this deploy + is a repo linked? */
+export type GithubStatus = { appConfigured: boolean; connected: boolean; repo: string | null };
+/** POST /github/connect — link/unlink the installation + repo. */
+export type GithubConnectResult = { connected: boolean; repo: string | null };
+/** POST /runs/:id/github/pr — the opened PR, or Apple/GitHub's refusal verbatim. */
+export type GithubPrResult =
+  | { ok: true; url: string; number: number; branch: string }
+  | { ok: false; reason: string };
 export type RunDetail = {
   id: string;
   app_id: string;

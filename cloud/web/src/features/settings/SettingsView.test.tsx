@@ -15,6 +15,7 @@ function makeClient() {
   const get = vi.fn(async (path: string) => {
     if (path === "/auth/me") return meData;
     if (path === "/account/credentials") return creds;
+    if (path === "/github/status") return { appConfigured: false, connected: false, repo: null };
     throw new Error("unexpected GET " + path);
   });
   const post = vi.fn(async (path: string, body: any) => {

@@ -42,12 +42,15 @@ function makeClient({
   credentials = [] as unknown[],
   pushResult = { ok: true, versionId: "v1", localizationId: "l1", fieldsPushed: ["name", "subtitle"] } as unknown,
   createVersionResult = { ok: true, versionId: "v9", versionString: "1.2.0", state: "PREPARE_FOR_SUBMISSION" } as unknown,
+  github = { appConfigured: true, connected: false, repo: null } as unknown,
+  prResult = { ok: true, url: "https://github.com/o/r/pull/7", number: 7, branch: "shipaso/run1" } as unknown,
   extra = {} as Record<string, unknown>,
 } = {}) {
   const state = runDetail("awaiting_approval", [], extra);
   const get = vi.fn(async (path: string) => {
     if (path === "/runs/run1") return state;
     if (path === "/account/credentials") return { enabled: true, credentials };
+    if (path === "/github/status") return github;
     throw new Error("unexpected GET " + path);
   });
   const post = vi.fn(async (path: string) => {
@@ -62,6 +65,7 @@ function makeClient({
     }
     if (path === "/runs/run1/asc/push") return pushResult;
     if (path === "/runs/run1/asc/create-version") return createVersionResult;
+    if (path === "/runs/run1/github/pr") return prResult;
     return { id: "run1", status: "rejected", pushCommands: [] };
   });
   return { client: { get, post, request: vi.fn() } as unknown as ApiClient, get, post };
@@ -182,6 +186,27 @@ describe("<RunView /> — the money screen", () => {
     fireEvent.click(screen.getByTestId("approve"));
     await waitFor(() => screen.getByTestId("asc-push"));
     expect(screen.queryByTestId("create-version")).toBeNull();
+  });
+
+  it("approved + GitHub connected: offers Open-PR and links the opened PR", async () => {
+    const { client, post } = makeClient({ github: { appConfigured: true, connected: true, repo: "o/r" } });
+    renderView(client);
+    await waitFor(() => screen.getByTestId("approve"));
+    fireEvent.click(screen.getByTestId("approve"));
+    await waitFor(() => expect(screen.getByTestId("github-pr-card")).toBeInTheDocument());
+    fireEvent.click(screen.getByTestId("github-pr"));
+    await waitFor(() => expect(post).toHaveBeenCalledWith("/runs/run1/github/pr"));
+    const link = await screen.findByTestId("github-pr-result");
+    expect(link).toHaveTextContent("Opened PR #7");
+  });
+
+  it("no Open-PR card when no repo is connected", async () => {
+    const { client } = makeClient({ github: { appConfigured: true, connected: false, repo: null } });
+    renderView(client);
+    await waitFor(() => screen.getByTestId("approve"));
+    fireEvent.click(screen.getByTestId("approve"));
+    await waitFor(() => screen.getByTestId("handoff"));
+    expect(screen.queryByTestId("github-pr-card")).toBeNull();
   });
 
   it("approved with NO stored key: no push button; the handoff stays the path", async () => {
