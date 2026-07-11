@@ -22,6 +22,8 @@ function makeClient() {
       return { push_run_ready: body.push_run_ready ?? meData.push_run_ready, email_digest: body.email_digest ?? meData.email_digest };
     }
     if (path === "/account/rank-cadence") return { rank_cadence: body.cadence };
+    if (path === "/agent/pause") return { paused: true };
+    if (path === "/agent/resume") return { paused: false };
     if (path === "/auth/logout") return { ok: true };
     throw new Error("unexpected POST " + path);
   });
@@ -75,6 +77,16 @@ describe("<SettingsView />", () => {
     await waitFor(() =>
       expect(request).toHaveBeenCalledWith("/account/credentials/asc", { method: "DELETE" }),
     );
+  });
+
+  it("pausing the autonomous sweep posts /agent/pause and flips to Paused", async () => {
+    const { client, post } = makeClient();
+    renderView(client);
+    await waitFor(() => expect(screen.getByTestId("pause-toggle")).toHaveTextContent("Active"));
+    expect(screen.getByText(/this changes what the agent does/i)).toBeInTheDocument();
+    fireEvent.click(screen.getByTestId("pause-toggle"));
+    await waitFor(() => expect(post).toHaveBeenCalledWith("/agent/pause"));
+    await waitFor(() => expect(screen.getByTestId("pause-toggle")).toHaveTextContent("Paused"));
   });
 
   it("sign out calls logout and notifies", async () => {

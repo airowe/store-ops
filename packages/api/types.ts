@@ -128,6 +128,12 @@ export type AscPushResult =
   | { ok: false; reason: string };
 /** POST /apps/:id/run-asc — the keyed (Mode-A) run. */
 export type RunAscResult = { id: string; status: string; digest: string; ascRead: boolean };
+/** POST /runs/:id/asc/create-version (#34) — Apple's verdict, verbatim. */
+export type AscCreateVersionResult =
+  | { ok: true; versionId: string; versionString: string; state: string }
+  | { ok: false; reason: string };
+/** POST /runs/approve-all — bulk-approve every pending run (Scale ergonomic). */
+export type ApproveAllResult = { approved: string[]; approvedCount: number; skipped: unknown[] };
 export type RunDetail = {
   id: string;
   app_id: string;
@@ -228,6 +234,8 @@ export type Me = {
   push_run_ready?: boolean;
   email_digest?: EmailDigest;
   rank_cadence?: RankCadence;
+  /** the per-user master switch for the weekly autonomous sweep (#51). */
+  paused?: boolean;
 };
 
 /** Stored-credential METADATA only — never key material (honesty boundary). */

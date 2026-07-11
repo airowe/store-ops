@@ -9,6 +9,8 @@ import type {
   AnalyticsState,
   AppDetail,
   AppListItem,
+  ApproveAllResult,
+  AscCreateVersionResult,
   AscPushResult,
   Candidate,
   ConnectResult,
@@ -101,6 +103,19 @@ export const ascPush = (
   runId: string,
   body: AscCredentialBody & { locale?: string } = {},
 ) => c.post<AscPushResult>(`/runs/${enc(runId)}/asc/push`, body);
+/** Create a DRAFT App Store version (#34) so an approved push has somewhere to land. */
+export const ascCreateVersion = (
+  c: ApiClient,
+  runId: string,
+  body: AscCredentialBody & { versionString: string },
+) => c.post<AscCreateVersionResult>(`/runs/${enc(runId)}/asc/create-version`, body);
+
+// ── autonomy + bulk actions ──────────────────────────────────────────────────
+/** Pause / resume the weekly autonomous sweep (#51) — per-user master switch. */
+export const pauseAgent = (c: ApiClient) => c.post<{ paused: boolean }>("/agent/pause");
+export const resumeAgent = (c: ApiClient) => c.post<{ paused: boolean }>("/agent/resume");
+/** Approve every run currently at the gate across the user's apps. */
+export const approveAllRuns = (c: ApiClient) => c.post<ApproveAllResult>("/runs/approve-all");
 
 // ── auth + settings ─────────────────────────────────────────────────────────
 export const me = (c: ApiClient) => c.get<Me>("/auth/me");

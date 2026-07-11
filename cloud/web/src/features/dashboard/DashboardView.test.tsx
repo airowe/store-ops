@@ -41,6 +41,28 @@ describe("<DashboardView />", () => {
     expect(screen.getByText(/No apps connected yet/i)).toBeInTheDocument();
   });
 
+  it("offers Approve-all when >1 run is pending, and reports the count", async () => {
+    const pending = (id: string) => ({ ...app, id, latest_run: { status: "awaiting_approval", created_at: "2026-07-01T00:00:00Z" } });
+    const post = vi.fn(async (path: string) => {
+      if (path === "/runs/approve-all") return { approved: ["r1", "r2"], approvedCount: 2, skipped: [] };
+      return { candidates: [] };
+    });
+    const { c } = client([pending("a1"), pending("a2")], { post });
+    renderView(c);
+    await waitFor(() => expect(screen.getByTestId("approve-all-card")).toBeInTheDocument());
+    expect(screen.getByText(/never ships anything/i)).toBeInTheDocument();
+    fireEvent.click(screen.getByTestId("approve-all"));
+    await waitFor(() => expect(post).toHaveBeenCalledWith("/runs/approve-all"));
+    expect(await screen.findByTestId("approve-all-result")).toHaveTextContent("Approved 2 runs.");
+  });
+
+  it("hides Approve-all when fewer than 2 runs are pending", async () => {
+    const { c } = client([{ ...app, latest_run: { status: "awaiting_approval", created_at: "2026-07-01T00:00:00Z" } }]);
+    renderView(c);
+    await waitFor(() => screen.getByTestId("app-card-a1"));
+    expect(screen.queryByTestId("approve-all-card")).toBeNull();
+  });
+
   it("connect search resolves candidates; clicking one connects and opens it", async () => {
     const post = vi.fn(async (path: string, body: any) => {
       if (path === "/resolve") return { candidates: [{ bundle_id: "com.x.y", name: "XY" }] };

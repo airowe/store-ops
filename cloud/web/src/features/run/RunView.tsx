@@ -13,8 +13,9 @@
  *     what the run measured — the PRD 07 slice ported from the legacy dashboard.
  * Client + id injected for testability.
  */
+import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ApiError, ascPush, decideRun, getCredentials, getRun } from "@shipaso/api";
+import { ApiError, ascCreateVersion, ascPush, decideRun, getCredentials, getRun } from "@shipaso/api";
 import type { AscPushResult, RunDetail } from "@shipaso/api";
 import { CopyDiff } from "./CopyDiff.js";
 import { FindingsCard } from "./FindingsCard.js";
@@ -45,6 +46,10 @@ export function RunView({ client, id }: { client: import("@shipaso/api").ApiClie
       ),
   });
   const push = useMutation({ mutationFn: () => ascPush(client, id, {}) });
+  const [versionString, setVersionString] = useState("");
+  const createVersion = useMutation({
+    mutationFn: () => ascCreateVersion(client, id, { versionString: versionString.trim() }),
+  });
 
   if (runQ.isLoading) return <p className="muted">Loading run…</p>;
   if (runQ.isError || !runQ.data || !runQ.data.result)
@@ -124,6 +129,40 @@ export function RunView({ client, id }: { client: import("@shipaso/api").ApiClie
             <p className="micro" data-testid="push-result">
               {push.error instanceof Error ? push.error.message : "Push failed."}
             </p>
+          ) : null}
+
+          {/* Dead-end fix (#34): a refused push is most often "no editable version".
+              Offer to create a draft version right here, then push again — no curl. */}
+          {pushResult && !pushResult.ok ? (
+            <div data-testid="create-version" style={{ marginTop: 10 }}>
+              <p className="micro">
+                No editable version to push to? Create a draft (state PREPARE_FOR_SUBMISSION)
+                with your saved key, then push again.
+              </p>
+              <div style={{ display: "flex", gap: 8 }}>
+                <input
+                  data-testid="cv-version"
+                  placeholder="e.g. 1.2.0"
+                  value={versionString}
+                  onChange={(e) => setVersionString(e.target.value)}
+                />
+                <button
+                  className="btn ghost"
+                  data-testid="cv-create"
+                  disabled={createVersion.isPending || !versionString.trim()}
+                  onClick={() => createVersion.mutate()}
+                >
+                  {createVersion.isPending ? "Creating…" : "Create draft version"}
+                </button>
+              </div>
+              {createVersion.data ? (
+                <p className="micro" data-testid="cv-result">
+                  {createVersion.data.ok
+                    ? `Created draft ${createVersion.data.versionString} (${createVersion.data.state}). Push again to stage your copy.`
+                    : `App Store Connect refused: ${createVersion.data.reason}`}
+                </p>
+              ) : null}
+            </div>
           ) : null}
         </div>
       ) : null}
