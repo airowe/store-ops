@@ -11,6 +11,7 @@ import { useMutation, useQuery } from "@tanstack/react-query";
 import type { ApiClient, RankCadence } from "@shipaso/api";
 import { deleteCredential, getCredentials, logout, me, pauseAgent, resumeAgent, setNotifications, setRankCadence } from "@shipaso/api";
 import { GithubCard } from "./GithubCard.js";
+import { AsaCard } from "./AsaCard.js";
 
 type Prefs = { push: boolean; digest: boolean; cadence: RankCadence; paused: boolean };
 
@@ -52,7 +53,7 @@ export function SettingsView({ client, onSignedOut }: { client: ApiClient; onSig
     onSuccess: (r) => setPrefs((p) => (p ? { ...p, cadence: r.rank_cadence } : p)),
   });
   const delMut = useMutation({
-    mutationFn: (kind: "asc" | "play") => deleteCredential(client, kind),
+    mutationFn: (kind: "asc" | "play" | "asa") => deleteCredential(client, kind),
     onSuccess: () => void credsQ.refetch(),
   });
   const pauseMut = useMutation({
@@ -151,6 +152,7 @@ export function SettingsView({ client, onSignedOut }: { client: ApiClient; onSig
       </div>
 
       <GithubCard client={client} />
+      <AsaCard client={client} hasAsaKey={creds.some((c) => c.kind === "asa")} />
 
       <div className="card">
         <b>Stored keys</b>
