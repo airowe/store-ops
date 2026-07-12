@@ -21,6 +21,9 @@
  * unit-testable with plain listing objects.
  */
 
+import { asResponse, buildUrl, fetchJson, type FetchFn } from "./itunes.js";
+import { ITUNES_MAX_LIMIT, ITUNES_SEARCH_URL } from "./constants.js";
+
 /** A locale-native keyword candidate, attributed to the market apps that use it. */
 export type LocaleKeywordCandidate = {
   /** the candidate term, lowercased. */
@@ -89,4 +92,60 @@ export function extractLocaleKeywords(
   }
   candidates.sort((a, b) => b.usedByCount - a.usedByCount || a.term.localeCompare(b.term));
   return candidates;
+}
+
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+/**
+ * Read locale-native keyword candidates for a TARGET market (#180 Phase 3): for
+ * each seed term, search that storefront's App Store and harvest the top apps'
+ * names — the terms real apps in that country actually use. The iTunes Search API
+ * returns `trackName` (the locale-native name); subtitle isn't exposed there, so
+ * we extract from names only (we surface what we measure, never invent).
+ *
+ * Best-effort + safe-degrade: a failed search for one seed is skipped (never
+ * throws), apps are de-duped by trackId so an app that ranks for several seeds is
+ * counted once, and the result runs through the pure `extractLocaleKeywords`. An
+ * empty/failed sweep returns [] — no candidates, never a fabricated one.
+ */
+export async function readLocaleKeywords(
+  fetchFn: FetchFn,
+  opts: {
+    market: string;
+    seeds: string[];
+    brandTokens?: string[] | undefined;
+    existingTerms?: string[] | undefined;
+    limit?: number | undefined;
+    pauseMs?: number | undefined;
+  },
+): Promise<LocaleKeywordCandidate[]> {
+  const market = opts.market.trim();
+  const limit = Math.max(1, Math.min(opts.limit ?? 25, ITUNES_MAX_LIMIT));
+  const pauseMs = opts.pauseMs ?? 300;
+  const seeds = [...new Set(opts.seeds.map((s) => s.trim()).filter((s) => s.length > 0))];
+
+  const byTrackId = new Map<number, MarketListing>();
+  const seen = new Set<string>(); // fallback key when trackId is absent
+  for (let i = 0; i < seeds.length; i++) {
+    try {
+      const url = buildUrl(ITUNES_SEARCH_URL, { term: seeds[i]!, country: market, entity: "software", limit });
+      const results = asResponse(await fetchJson(fetchFn, url)).results ?? [];
+      for (const r of results) {
+        const listing: MarketListing = { name: r.trackName ?? "" };
+        if (typeof r.trackId === "number") byTrackId.set(r.trackId, listing);
+        else if (listing.name && !seen.has(listing.name)) {
+          seen.add(listing.name);
+          byTrackId.set(-byTrackId.size - 1, listing); // synthetic key for id-less rows
+        }
+      }
+    } catch {
+      // a failed seed search is skipped — best-effort, never strands the sweep
+    }
+    if (i + 1 < seeds.length && pauseMs > 0) await sleep(pauseMs);
+  }
+
+  return extractLocaleKeywords(market, [...byTrackId.values()], {
+    ...(opts.brandTokens !== undefined ? { brandTokens: opts.brandTokens } : {}),
+    ...(opts.existingTerms !== undefined ? { existingTerms: opts.existingTerms } : {}),
+  });
 }
