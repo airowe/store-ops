@@ -7,8 +7,9 @@
  *
  * Honesty, load-bearing:
  *   • a hit is FLAGGED, never "Apple's verdict" — a heuristic, labelled as one,
- *   • each finding cites the specific App Review Guideline section (verbatim
- *     reference, never a paraphrase presented as authoritative),
+ *   • each finding cites the specific App Review Guideline section AND quotes it
+ *     VERBATIM (#178 Phase 2, from reviewGuidelines.ts) — never a paraphrase
+ *     presented as authoritative,
  *   • no LLM, no network — pure regex rules on the user's own proposed copy, so
  *     it's deterministic and testable. Clean copy emits NOTHING (no fake risk).
  *
@@ -18,20 +19,21 @@
 import type { Finding } from "./findings/core.js";
 import type { CopyFields } from "./optimize.js";
 import { deriveBrandTokens } from "./localizeCopy.js";
+import { citeEvidence, type GuidelineCiteKey } from "./reviewGuidelines.js";
 
 const SURFACE = "reviewRisk";
 
 /** Price / promotional words don't belong in the name or subtitle (Guideline 2.3.7). */
 const PRICE_RE = /\b(free|sale|\d{1,3}\s*%\s*off|discount|deal|bogo|half[-\s]?price|lowest price)\b/i;
-/** Unverifiable rank/superlative claims (Guideline 2.3.1 — accurate metadata). */
+/** Unverifiable rank/superlative claims (Guideline 2.3.7 — no unverifiable product claims). */
 const SUPERLATIVE_RE = /(#\s?1\b|\bno\.?\s?1\b|\bnumber\s?one\b|world'?s\s+(?:best|#\s?1|number\s?one)|\bbest[-\s]?in[-\s]?class\b)/i;
-/** Placeholder / boilerplate text left in metadata (Guideline 2.3.8). */
+/** Placeholder / boilerplate text left in metadata (Guideline 2.3 — accurate metadata). */
 const PLACEHOLDER_RE = /\b(lorem ipsum|placeholder|your app name(?: here)?|to ?do|tbd|xxxx?)\b/i;
 
 const CAVEAT = "Flagged as a review risk — a heuristic, not Apple's verdict; review before you submit.";
 
-function finding(id: string, title: string, detail: string, fix: string, guideline: string): Finding {
-  return { id, surface: SURFACE, severity: "warn", impact: "trust", title, detail: `${detail} ${CAVEAT}`, fix, evidence: `App Review Guideline ${guideline}` };
+function finding(id: string, title: string, detail: string, fix: string, cite: GuidelineCiteKey): Finding {
+  return { id, surface: SURFACE, severity: "warn", impact: "trust", title, detail: `${detail} ${CAVEAT}`, fix, evidence: citeEvidence(cite) };
 }
 
 /**
@@ -53,7 +55,7 @@ export function reviewRiskFindings(copy: Partial<CopyFields> | undefined): Findi
       "Pricing/promo words in your title or subtitle",
       "Words like “free”, “sale”, or “% off” in the name/subtitle are a common metadata rejection — promotions belong in the promotional text, not the title.",
       "Move any price or promotion wording out of the name and subtitle.",
-      "2.3.7",
+      "price_in_metadata",
     ));
   }
   if (titleText && SUPERLATIVE_RE.test(titleText)) {
@@ -62,7 +64,7 @@ export function reviewRiskFindings(copy: Partial<CopyFields> | undefined): Findi
       "Unverifiable “#1 / best” claim in your metadata",
       "Rank or superlative claims (“#1”, “number one”, “world’s best”) are rejected unless you can substantiate them.",
       "Drop the claim or replace it with a factual benefit.",
-      "2.3.1",
+      "unverifiable_claim",
     ));
   }
   const anyText = `${titleText} ${keywords}`.trim();
@@ -72,7 +74,7 @@ export function reviewRiskFindings(copy: Partial<CopyFields> | undefined): Findi
       "Placeholder text left in your metadata",
       "Placeholder or boilerplate text (“lorem ipsum”, “your app name”, “TODO”) in submitted metadata is an automatic rejection.",
       "Replace the placeholder with real copy.",
-      "2.3.8",
+      "accurate_metadata",
     ));
   }
   // The app's own brand is already indexed from the name — repeating it in the
@@ -86,7 +88,7 @@ export function reviewRiskFindings(copy: Partial<CopyFields> | undefined): Findi
         "Your app name is in the keyword field",
         `“${brand}” is already indexed from your app name, so repeating it in keywords wastes budget and can read as keyword-field misuse.`,
         "Remove your brand from the keyword field and use the space for a term you don’t already rank for.",
-        "2.3.7",
+        "keyword_packing",
       ));
     }
   }

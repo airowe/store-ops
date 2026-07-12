@@ -34,12 +34,23 @@ describe("reviewRiskFindings", () => {
     expect(ids({ name: "Weatherly", keywords: "radar,forecast" })).not.toContain("review_risk_brand_in_keywords");
   });
 
-  it("every finding cites a guideline and carries the 'not Apple's verdict' caveat", () => {
+  it("every finding cites a guideline (with a verbatim quote) and carries the 'not Apple's verdict' caveat", () => {
     const f = reviewRiskFindings({ name: "Best #1 App", subtitle: "Free deal" })[0]!;
     expect(f.surface).toBe("reviewRisk");
     expect(f.severity).toBe("warn");
     expect(f.impact).toBe("trust");
-    expect(f.evidence).toMatch(/App Review Guideline \d/);
+    // #178 Phase 2: the evidence now carries the section reference AND the verbatim quote.
+    expect(f.evidence).toMatch(/App Review Guideline 2\.3/);
+    expect(f.evidence).toMatch(/“.+”/); // a quoted guideline sentence
     expect(f.detail).toMatch(/not Apple's verdict/i);
+  });
+
+  it("quotes the guideline VERBATIM in each finding's evidence (#178 Phase 2)", () => {
+    const price = reviewRiskFindings({ name: "Weatherly 50% off" }).find((f) => f.id === "review_risk_price_in_title")!;
+    expect(price.evidence).toContain("should not include prices, terms, or descriptions");
+    const placeholder = reviewRiskFindings({ subtitle: "Your app name here" }).find((f) => f.id === "review_risk_placeholder")!;
+    // corrected citation: placeholder text is 2.3 (accurate metadata), not 2.3.8 (age rating)
+    expect(placeholder.evidence).toContain("App Review Guideline 2.3 ");
+    expect(placeholder.evidence).toContain("accurately reflect the app's core experience");
   });
 });
