@@ -7,8 +7,6 @@ import type { Page } from "@playwright/test";
  * zero live Worker/D1/network. Anything not explicitly matched returns 200 {}
  * so no request ever escapes to the real backend.
  */
-const API = "https://api.shipaso.com";
-
 const iso = "2026-07-01T12:00:00.000Z";
 
 const APPS = {
@@ -109,15 +107,34 @@ const ROUTES: Array<[RegExp, unknown]> = [
   [/\/runs\/run1$/, RUN_DETAIL],
 ];
 
-/** Install the mock backend on a page: intercept the API host, route by path. */
+/** A request whose path is one of our API routes — host-agnostic, so the mocks
+ *  work whether the build targets api.shipaso.com or a relative base. */
+function isApiPath(pathname: string): boolean {
+  return /^\/(apps|runs|auth|account|github|proof|resolve)\b/.test(pathname);
+}
+
+/**
+ * Install the mock backend on a page: intercept API requests BY PATH (regardless
+ * of origin) and answer with typed JSON; everything else (the app's own HTML/JS/
+ * CSS) loads normally. Host-agnostic so the same mocks work in CI (built with any
+ * VITE_API_BASE) and locally.
+ */
 export async function installMocks(page: Page): Promise<void> {
-  await page.route(`${API}/**`, async (route) => {
-    const path = new URL(route.request().url()).pathname + new URL(route.request().url()).search;
-    const hit = ROUTES.find(([re]) => re.test(path));
-    await route.fulfill({
-      status: 200,
-      contentType: "application/json",
-      body: JSON.stringify(hit ? hit[1] : {}),
-    });
-  });
+  await page.route(
+    (url) => isApiPath(url.pathname),
+    async (route) => {
+      // Only intercept the app's data calls (fetch/xhr). A top-level navigation to
+      // an owned route like /apps/:id is a DOCUMENT request whose path also looks
+      // like an API path — let it through so the server serves the SPA shell.
+      const type = route.request().resourceType();
+      if (type !== "fetch" && type !== "xhr") return route.continue();
+      const u = new URL(route.request().url());
+      const hit = ROUTES.find(([re]) => re.test(u.pathname + u.search));
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify(hit ? hit[1] : {}),
+      });
+    },
+  );
 }
