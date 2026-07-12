@@ -603,7 +603,7 @@ export type AscSnapshot = {
 
 export async function readAscSnapshot(
   fetchFn: FetchLike,
-  opts: { token: string; appId: string; locale?: string },
+  opts: { token: string; appId: string; locale?: string; readCppShotSigs?: boolean },
 ): Promise<AscSnapshot> {
   const errors: { surface: string; message: string }[] = [];
   // Run a reader, capturing any failure as a token-free error rather than throwing.
@@ -625,7 +625,11 @@ export async function readAscSnapshot(
       tryRead("pricing", () => readAscPricingAndIAP(fetchFn, { token: opts.token, appId: opts.appId })),
       tryRead("ageRating", () => readAscAgeRating(fetchFn, { token: opts.token, appId: opts.appId })),
       tryRead("customProductPages", () =>
-        readAscCustomProductPages(fetchFn, { token: opts.token, appId: opts.appId }),
+        readAscCustomProductPages(fetchFn, {
+          token: opts.token,
+          appId: opts.appId,
+          ...(opts.readCppShotSigs ? { readScreenshotSigs: true } : {}),
+        }),
       ),
       tryRead("locales", () => readAscAllLocales(fetchFn, { token: opts.token, appId: opts.appId })),
       tryRead("experiments", () => readAscExperiments(fetchFn, { token: opts.token, appId: opts.appId })),

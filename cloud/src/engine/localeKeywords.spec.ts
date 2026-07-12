@@ -42,6 +42,14 @@ describe("extractLocaleKeywords", () => {
     expect(out.map((c) => c.term)).toEqual(expect.arrayContaining(["meditation", "sleep"]));
   });
 
+  it("does NOT treat a two-word '<term> <stopword>' name as a brand (keeps the head term)", () => {
+    // "Weather App" is two words — "weather" is the market's head term, not a brand
+    const out = extractLocaleKeywords("us", [L("Weather App", "forecast radar"), L("Weather Live", "storm")]);
+    const weather = out.find((c) => c.term === "weather");
+    expect(weather).toBeDefined();
+    expect(weather!.usedByCount).toBe(2);
+  });
+
   it("drops stopwords and one-char noise", () => {
     const out = extractLocaleKeywords("us", [L("The Best App", "for you")]);
     expect(out).toEqual([]); // every token is a stopword

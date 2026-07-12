@@ -703,7 +703,7 @@ async function readCppScreenshotSignature(
  */
 export async function readAscCustomProductPages(
   fetchFn: FetchLike,
-  opts: { token: string; appId: string },
+  opts: { token: string; appId: string; readScreenshotSigs?: boolean },
 ): Promise<AscCustomProductPages> {
   const res = await fetchFn(
     `${ASC_BASE}/apps/${encodeURIComponent(opts.appId)}/appCustomProductPages?limit=50`,
@@ -715,17 +715,23 @@ export async function readAscCustomProductPages(
     data?: Array<{ id: string; attributes?: { name?: string; state?: string } }>;
   };
 
-  const auth = { authorization: `Bearer ${opts.token}` };
   const rows = body.data ?? [];
-  // #154: best-effort per-CPP screenshot signature for the "identical to default"
-  // wasted-surface check. Bounded to the first CPPs to cap request fan-out; each
-  // read safe-degrades to undefined (finding stays silent — never a false hit).
+  const basePages = rows.map((page) => ({ id: page.id, name: page.attributes?.name, state: page.attributes?.state }));
+
+  // #154: the per-CPP screenshot signature (for the "identical to default"
+  // wasted-surface check) is a 4-hop-per-CPP ASC walk, so it's OPT-IN
+  // (`readScreenshotSigs`) — off by default so it costs nothing on the common
+  // (no-CPP or feature-disabled) run, and the NEEDS-LIVE-VALIDATION comparison
+  // stays dark until deliberately enabled. Bounded to the first CPPs; each read
+  // safe-degrades to undefined (finding stays silent — never a false hit).
+  if (!opts.readScreenshotSigs) return { pages: basePages };
+
+  const auth = { authorization: `Bearer ${opts.token}` };
   const CPP_SHOT_READ_CAP = 15;
   const pages = await Promise.all(
-    rows.map(async (page, i) => {
-      const base = { id: page.id, name: page.attributes?.name, state: page.attributes?.state };
+    basePages.map(async (base, i) => {
       if (i >= CPP_SHOT_READ_CAP) return base;
-      const screenshotSig = await readCppScreenshotSignature(fetchFn, auth, page.id).catch(() => undefined);
+      const screenshotSig = await readCppScreenshotSignature(fetchFn, auth, base.id).catch(() => undefined);
       return screenshotSig !== undefined ? { ...base, screenshotSig } : base;
     }),
   );

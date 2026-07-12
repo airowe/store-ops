@@ -75,9 +75,13 @@ export function extractLocaleKeywords(
     const name = (l.name ?? "").trim();
     const subtitle = (l.subtitle ?? "").trim();
     if (!name && !subtitle) continue;
-    // A single-word app name is that app's OWN brand — never a transferable term.
+    // A single-WORD app name is that app's OWN brand — never a transferable term.
+    // Decide "single word" from the RAW name, not the stopword-filtered tokens:
+    // "Weather App" / "Sleep Pro" are two words, so "weather" / "sleep" are real
+    // market terms, not brands (filtering first would wrongly drop them).
     const nameTokens = tokenize(name);
-    const ownBrand = nameTokens.length === 1 ? new Set(nameTokens) : new Set<string>();
+    const oneWordName = name.split(/\s+/).filter(Boolean).length === 1;
+    const ownBrand = oneWordName ? new Set(nameTokens) : new Set<string>();
     const terms = new Set([...nameTokens, ...tokenize(subtitle)]);
     for (const term of terms) {
       if (excluded.has(term) || ownBrand.has(term)) continue;

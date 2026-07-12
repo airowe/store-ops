@@ -74,6 +74,12 @@ export type Env = {
   // stays available). Creating an ONGOING report request is an outward write to
   // the user's Apple account, so it stays dark until deliberately enabled.
   ANALYTICS_ENABLED?: string;
+  // Opt-in gate for the CPP "identical to the default page" wasted-surface check
+  // (#154). Unset → the per-CPP screenshot signature walk (a 4-hop-per-CPP ASC
+  // read) is skipped on every keyed run, so it costs nothing and the finding
+  // stays silent. Enable only after validating the CPP-screenshot endpoint paths
+  // against a live key (the reader is flagged NEEDS-LIVE-VALIDATION).
+  CPP_SHOT_DIFF_ENABLED?: string;
   // Opt-in gate for the first-screenshot caption lens (#182). Unset → the run
   // attaches NO caption finding (the vision OCR never fires). Set to "1"/"true"
   // to enable: each keyed/keyless run then OCRs the primary screenshot's headline

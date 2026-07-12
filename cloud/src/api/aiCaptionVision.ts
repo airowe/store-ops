@@ -22,6 +22,9 @@ import type { CaptionAnalysis, CaptionAnalyzer } from "../engine/captionLens.js"
 /** The vision model: reads the image + returns text. Small, multimodal, cheap. */
 const VISION_MODEL = "@cf/meta/llama-3.2-11b-vision-instruct";
 
+/** Max screenshot bytes we'll load + spread into a number[] for the model (~5MB). */
+const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
+
 /** Minimal structural type for the AI binding (avoids coupling to the model list). */
 type AiLike = { run(model: string, input: unknown): Promise<unknown> };
 
@@ -95,8 +98,12 @@ export function captionAnalyzerForEnv(
     try {
       const resp = await fetchFn(imageUrl);
       if (!resp.ok) return null;
-      const bytes = [...new Uint8Array(await resp.arrayBuffer())];
-      if (bytes.length === 0) return null;
+      const buf = await resp.arrayBuffer();
+      // Bound the read: App Store screenshots are large PNGs; spreading a multi-MB
+      // buffer into a JS number[] (below) is a heap/CPU spike in a 128MB Worker.
+      // Over the cap → degrade to null (measured-or-absent), never OOM a run.
+      if (buf.byteLength === 0 || buf.byteLength > MAX_IMAGE_BYTES) return null;
+      const bytes = [...new Uint8Array(buf)];
       const out = await ai.run(VISION_MODEL, { image: bytes, prompt: PROMPT, max_tokens: 256 });
       return parseCaptionReply(extractText(out));
     } catch {

@@ -1554,7 +1554,12 @@ export async function keyedAscPass(
   liveName = live.name;
   liveDescription = live.description;
   try {
-    ascSnapshot = await readAscSnapshot(fetch, { token, appId: ascAppId, locale });
+    ascSnapshot = await readAscSnapshot(fetch, {
+      token,
+      appId: ascAppId,
+      locale,
+      readCppShotSigs: isFlagOn(env.CPP_SHOT_DIFF_ENABLED),
+    });
   } catch {
     ascSnapshot = undefined;
   }
