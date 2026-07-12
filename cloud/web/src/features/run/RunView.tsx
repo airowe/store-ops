@@ -21,6 +21,8 @@ import { CopyDiff } from "./CopyDiff.js";
 import { FindingsCard } from "./FindingsCard.js";
 import { OpportunitiesCard } from "./OpportunitiesCard.js";
 import { LocalizationExpansionCard } from "./LocalizationExpansionCard.js";
+import { CoverageCard } from "./CoverageCard.js";
+import { PpoTreatmentCard } from "./PpoTreatmentCard.js";
 import { LocalizationCard } from "./LocalizationCard.js";
 
 export function RunView({ client, id }: { client: import("@shipaso/api").ApiClient; id: string }) {
@@ -89,10 +91,12 @@ export function RunView({ client, id }: { client: import("@shipaso/api").ApiClie
         />
       ) : null}
 
+      {r.coverage ? <CoverageCard coverage={r.coverage} /> : null}
       {r.opportunities?.length ? <OpportunitiesCard opportunities={r.opportunities} /> : null}
       {r.localizationExpansion?.length ? (
         <LocalizationExpansionCard recommendations={r.localizationExpansion} />
       ) : null}
+      {r.ppoTreatment ? <PpoTreatmentCard plan={r.ppoTreatment} /> : null}
 
       {pending ? (
         <div className="btn-row" style={{ display: "flex", gap: 10, marginTop: 14 }}>
