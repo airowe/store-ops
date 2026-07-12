@@ -97,6 +97,39 @@ export type Finding = {
 };
 /** A surface the run could NOT read — an honest 🔒 "unlock to see + improve". */
 export type SurfaceLock = { surface: string; label: string; unlockCopy: string };
+
+/** honest reachability bucket for an opportunity — labels longshots, never hides them. */
+export type Reachability = "now" | "soon" | "longshot";
+/**
+ * A winnability-ranked keyword opportunity (PRD 06) — "where to push next."
+ * Curated copy only (keyword + measured rank + score + correlational why); no
+ * raw ASC data. Mirrors the engine `Opportunity`, trimmed to display fields.
+ */
+export type Opportunity = {
+  keyword: string;
+  /** current (latest) measured rank, 1-based, or null when not in the top results. */
+  rank: number | null;
+  /** 0–100 winnability, weighted over the measured drivers. */
+  opportunityScore: number;
+  /** human, correlational explanation — never a promise. */
+  why: string;
+  reachability: Reachability;
+};
+
+/** storefront market-size tier for a locale recommendation. */
+export type StorefrontTier = "large" | "mid" | "long-tail";
+/**
+ * A localization-expansion recommendation (PRD 04) — an ROI-sorted locale to add,
+ * from a STATIC bundled heuristic (never live install numbers). Rationale is a
+ * market/language descriptor, never a fabricated metric.
+ */
+export type LocaleRecommendation = {
+  locale: string;
+  rationale: string;
+  storefrontTier: StorefrontTier;
+  /** "translate" = existing copy to translate; "new" = net-new metadata. */
+  effort: "translate" | "new";
+};
 export type RunAudit = {
   app?: string;
   bundleId?: string;
@@ -122,6 +155,10 @@ export type RunResult = {
   locks?: SurfaceLock[];
   /** locales the human approved a localized draft for (#78) — the copy is theirs. */
   localizedCopy?: Record<string, CopyFields>;
+  /** winnability-ranked keyword opportunities (PRD 06) — "where to push next." */
+  opportunities?: Opportunity[];
+  /** ROI-sorted locales to add (PRD 04) — static heuristic, PII-safe. */
+  localizationExpansion?: LocaleRecommendation[];
 };
 
 /** POST /runs/:id/localize — a generated localized draft for one locale (#78). */
