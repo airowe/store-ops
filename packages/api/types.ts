@@ -253,6 +253,19 @@ export type LocaleKeywordsResult = {
   note?: string;
 };
 
+// ── post-rejection assistant (#178 Phase 4) ──────────────────────────────────
+export type ResolutionPath = "fix_and_resubmit" | "appeal";
+/** POST /rejection-assistant — cited guideline + verbatim rule + recommendation + drafts. */
+export type RejectionAnalysis = {
+  guidelines: string[];
+  primaryGuideline: string | null;
+  /** verbatim rule text when the cited guideline is in our corpus, else null. */
+  quote: string | null;
+  recommended: ResolutionPath | "unclear";
+  rationale: string;
+  drafts: Record<ResolutionPath, string>;
+};
+
 // ── Google Play audit (#Android loop) ────────────────────────────────────────
 /** POST /apps/:id/audit-play — read-only Play listing audit. Findings/locks are
  *  the SAME shapes the iOS run renders, so the UI reuses FindingsCard. */

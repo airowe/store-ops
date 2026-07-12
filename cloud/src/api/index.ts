@@ -99,6 +99,7 @@ import { fetchChartRank } from "../engine/chartRank.js";
 import { buildRankAnnotations } from "../engine/rankAnnotations.js";
 import { deriveBrandTokens, localizeCopy, LocalizeError, validateLocalizedSubmission } from "../engine/localizeCopy.js";
 import { readLocaleKeywords } from "../engine/localeKeywords.js";
+import { analyzeRejection } from "../engine/rejectionAssistant.js";
 import { localizeScreenshots, type LayeredSource, type TextSlot } from "../engine/localizeScreenshots.js";
 import { localizerForEnv } from "./aiLocalizer.js";
 import { credentialsEnabled, deleteCredential, listCredentialMeta, saveCredential, useCredential } from "../credentialStore.js";
@@ -3638,6 +3639,14 @@ export async function handleApi(req: Request, env: Env): Promise<Response> {
     }
     if (seg[0] === "github" && seg[1] === "status" && seg.length === 2 && method === "GET") {
       return json(await githubStatusRoute(env, user.id), 200, origin);
+    }
+
+    // /rejection-assistant — paste an App Review rejection → cited guideline +
+    // verbatim rule + fix-vs-appeal recommendation + reply scaffolds (#178 Phase 4).
+    // Pure text analysis (no app/DB/credential); authed as a logged-in tool.
+    if (seg[0] === "rejection-assistant" && seg.length === 1 && method === "POST") {
+      const body = (await req.json().catch(() => ({}))) as { text?: string };
+      return json(analyzeRejection(String(body.text ?? "")), 200, origin);
     }
 
     // /agent/pause | /agent/resume — per-user master switch for the weekly sweep (#51).
