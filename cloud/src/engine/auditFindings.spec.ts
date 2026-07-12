@@ -1007,6 +1007,48 @@ describe("findings as suggestions (#71-B)", () => {
     expect(f!.fix).toMatch(/uncovered intent/i);
   });
 
+  it("flags a CPP whose screenshots are identical to the default page (#154 wasted surface)", () => {
+    const snap = healthySnapshot();
+    // default page has two real assets
+    snap.screenshots = {
+      iphoneScreenshots: [
+        {
+          device: "APP_IPHONE_67",
+          count: 2,
+          screenshots: [
+            { id: "a", imageTemplate: "https://asc/a.png", fileName: "hero.png" },
+            { id: "b", imageTemplate: "https://asc/b.png", fileName: "list.png" },
+          ],
+        },
+      ],
+      ipadScreenshots: [],
+      dataReliable: true,
+    };
+    // CPP "Holiday" reuses the SAME assets; "Fresh" has its own
+    snap.customProductPages = {
+      pages: [
+        { id: "c1", name: "Holiday", state: "VISIBLE", screenshotSig: "hero.png|list.png" },
+        { id: "c2", name: "Fresh", state: "VISIBLE", screenshotSig: "new1.png|new2.png" },
+      ],
+    };
+    const found = ids(input({ snapshot: snap, ranks: RANKS as never }));
+    expect(found).toContain("cpp_identical_to_default_c1");
+    expect(found).not.toContain("cpp_identical_to_default_c2");
+  });
+
+  it("stays silent on identical-CPP when a CPP's screenshots weren't read (no false positive)", () => {
+    const snap = healthySnapshot();
+    snap.screenshots = {
+      iphoneScreenshots: [
+        { device: "APP_IPHONE_67", count: 1, screenshots: [{ id: "a", imageTemplate: "https://asc/a.png", fileName: "hero.png" }] },
+      ],
+      ipadScreenshots: [],
+      dataReliable: true,
+    };
+    snap.customProductPages = { pages: [{ id: "c1", name: "Holiday", state: "VISIBLE" }] }; // no screenshotSig
+    expect(ids(input({ snapshot: snap, ranks: [] }))).not.toContain("cpp_identical_to_default_c1");
+  });
+
   it("primary category is phrased as CONFIRMED by the read, not a go-check chore", () => {
     const f = byId(auditFindings(input()), "primary_category_context");
     expect(f!.title).toContain("Category confirmed:");

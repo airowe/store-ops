@@ -781,9 +781,12 @@ describe("readAscAgeRating — appInfo → ageRatingDeclaration", () => {
 // ── readAscCustomProductPages: the PPO surface (app-level, no version/locale) ──
 describe("readAscCustomProductPages — list custom product pages (PPO)", () => {
   it("maps data[].attributes to {id,name,state} and queries the right endpoint", async () => {
-    let seenUrl = "";
+    const urls: string[] = [];
+    // The screenshot-signature reads (#154) return no assets here (no fileName /
+    // imageAsset), so every page's screenshotSig safe-degrades to undefined and
+    // the mapped shape is unchanged — id/name/state only.
     const fetchFn = async (url: string) => {
-      seenUrl = url;
+      urls.push(url);
       return json({
         data: [
           { id: "PPO1", type: "appCustomProductPages", attributes: { name: "Sleep Stories", state: "PREPARE_FOR_SUBMISSION" } },
@@ -792,11 +795,36 @@ describe("readAscCustomProductPages — list custom product pages (PPO)", () => 
       });
     };
     const r = await readAscCustomProductPages(fetchFn, { token: "JWT", appId: "APP1" });
-    expect(seenUrl).toContain("/apps/APP1/appCustomProductPages");
+    expect(urls[0]).toContain("/apps/APP1/appCustomProductPages");
     expect(r.pages).toEqual([
       { id: "PPO1", name: "Sleep Stories", state: "PREPARE_FOR_SUBMISSION" },
       { id: "PPO2", name: "Focus Music", state: "READY_FOR_SALE" },
     ]);
+  });
+
+  it("#154: builds a screenshotSig from the CPP asset graph when readable", async () => {
+    // Route each hop of the CPP screenshot graph to a canned response.
+    const fetchFn = async (url: string) => {
+      if (url.includes("/appCustomProductPages?")) return json({ data: [{ id: "PPO1", attributes: { name: "Holiday", state: "VISIBLE" } }] });
+      if (url.includes("/appCustomProductPageVersions?")) return json({ data: [{ id: "V1" }] });
+      if (url.includes("/appCustomProductPageLocalizations?")) return json({ data: [{ id: "L1" }] });
+      if (url.includes("/appScreenshotSets?")) return json({ data: [{ id: "S1" }] });
+      if (url.includes("/appScreenshots?")) return json({ data: [{ id: "a", attributes: { fileName: "Hero.png" } }, { id: "b", attributes: { fileName: "list.png" } }] });
+      return json({ data: [] });
+    };
+    const r = await readAscCustomProductPages(fetchFn, { token: "JWT", appId: "APP1" });
+    expect(r.pages[0]!.screenshotSig).toBe("hero.png|list.png");
+  });
+
+  it("#154: safe-degrades screenshotSig to undefined when a hop isn't readable (no false 'identical')", async () => {
+    const fetchFn = async (url: string) => {
+      if (url.includes("/appCustomProductPages?")) return json({ data: [{ id: "PPO1", attributes: { name: "Holiday" } }] });
+      if (url.includes("/appCustomProductPageVersions?")) return json({ errors: [{ detail: "nope" }] }, 403);
+      return json({ data: [] });
+    };
+    const r = await readAscCustomProductPages(fetchFn, { token: "JWT", appId: "APP1" });
+    expect(r.pages[0]!.screenshotSig).toBeUndefined();
+    expect(r.pages[0]).toMatchObject({ id: "PPO1", name: "Holiday" });
   });
 
   it("returns sparse pages when ASC omits name/state attributes", async () => {
