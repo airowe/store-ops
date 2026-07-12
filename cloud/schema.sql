@@ -106,17 +106,28 @@ CREATE INDEX IF NOT EXISTS idx_runs_app    ON runs(app_id);
 CREATE INDEX IF NOT EXISTS idx_runs_status ON runs(status);
 
 -- ── rank_snapshots ───────────────────────────────────────────────────────────
--- Time-series of organic rank per keyword (iTunes Search API).
+-- Time-series of organic rank per keyword PER STOREFRONT (iTunes Search API).
 -- rank = 1-based index in results[], or NULL when not in top `total` (top 200).
+-- country (#180 Phase 1) is the storefront the rank was checked in (lowercased
+-- ISO, e.g. 'us', 'jp'); '' = legacy rows recorded before the dimension existed.
+-- This is what lets a localized push PROVE movement in a specific market rather
+-- than blending storefronts into one global claim.
+-- Migration for an EXISTING db (the CREATE below only fires on a fresh db):
+--   npx wrangler d1 execute store_ops --command "ALTER TABLE rank_snapshots ADD COLUMN country TEXT NOT NULL DEFAULT ''"
+--   npx wrangler d1 execute store_ops --command "UPDATE rank_snapshots SET country = (SELECT lower(a.country) FROM apps a WHERE a.id = rank_snapshots.app_id) WHERE country = ''"
+--   npx wrangler d1 execute store_ops --command "CREATE INDEX IF NOT EXISTS idx_rank_app_country_kw ON rank_snapshots(app_id, country, keyword, checked_at)"
+-- (add `--local` for the local D1; drop it for remote.)
 CREATE TABLE IF NOT EXISTS rank_snapshots (
   id          TEXT PRIMARY KEY,                       -- uuid
   app_id      TEXT NOT NULL REFERENCES apps(id) ON DELETE CASCADE,
   keyword     TEXT NOT NULL,
   rank        INTEGER,                                -- NULL = not in top results
   total       INTEGER NOT NULL DEFAULT 0,             -- how many apps competed
+  country     TEXT NOT NULL DEFAULT '',               -- storefront (lowercased ISO); '' = legacy
   checked_at  TEXT NOT NULL DEFAULT (datetime('now'))
 );
 CREATE INDEX IF NOT EXISTS idx_rank_app_kw ON rank_snapshots(app_id, keyword, checked_at);
+CREATE INDEX IF NOT EXISTS idx_rank_app_country_kw ON rank_snapshots(app_id, country, keyword, checked_at);
 
 -- ── competitor_snapshots ─────────────────────────────────────────────────────
 -- Time-series of competitor visible listing fields (iTunes Lookup API).

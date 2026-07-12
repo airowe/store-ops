@@ -21,7 +21,7 @@ const APP = "app-1";
 
 /** One rank snapshot row (the engine only reads keyword/rank/checked_at). */
 function snap(keyword: string, rank: number | null, checkedAt: string): RankSnapshotRow {
-  return { id: `${keyword}-${checkedAt}`, app_id: APP, keyword, rank, total: 200, checked_at: checkedAt };
+  return { id: `${keyword}-${checkedAt}`, app_id: APP, keyword, rank, total: 200, country: "us", checked_at: checkedAt };
 }
 
 /** A push that proposed `keywords`/`subtitle` over a baseline, approved at `pushedAt`. */

@@ -1305,6 +1305,7 @@ async function connectApp(req: Request, env: Env, userId: string): Promise<unkno
   const result: AgentResult = await runAgent(fetchForEnv(env), input);
   const runId = await persistRun(env.DB, {
     appId: app.id,
+    country: app.country,
     status: "awaiting_approval",
     result,
     trigger: { source: "connect", reasons: ["app connected — initial audit"] },
@@ -1444,6 +1445,7 @@ async function runApp(
   }
   const runId = await persistRun(env.DB, {
     appId: app.id,
+    country: app.country,
     status: "awaiting_approval",
     result,
     trigger: { source: "manual", reasons: ["manual run requested"] },
@@ -1509,6 +1511,7 @@ async function runAppWithAsc(
 
   const runId = await persistRun(env.DB, {
     appId: app.id,
+    country: app.country,
     status: "awaiting_approval",
     result: resultWithSnapshot,
     trigger: { source: "manual", reasons: ["manual run requested (App Store Connect read)"] },

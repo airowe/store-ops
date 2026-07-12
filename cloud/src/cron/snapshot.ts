@@ -133,7 +133,7 @@ export async function runDailySnapshot(env: Env): Promise<SnapshotReport> {
           : [];
 
       // Persist the REAL ranks (honest null when unranked; errored fetches skipped).
-      await persistRankSnapshots(env.DB, { appId: app.id, ranks });
+      await persistRankSnapshots(env.DB, { appId: app.id, ranks, country: app.country });
 
       report.snapshotsTaken++;
       report.perApp.push({
