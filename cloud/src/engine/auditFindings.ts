@@ -41,6 +41,7 @@ import type { Finding, SurfaceLock } from "./findings/core.js";
 import type { CopyFields } from "./optimize.js";
 import { reviewRiskFindings } from "./reviewRisk.js";
 import { ppoFindings } from "./ppoFindings.js";
+import { clusterKeywordIntents } from "./cppIntents.js";
 export {
   type Finding,
   type FindingImpact,
@@ -604,6 +605,17 @@ function cppFindings(input: AuditFindingsInput): Finding[] {
   const out: Finding[] = [];
   const pages = cpp.pages ?? [];
 
+  // #154 Part 1: honest, MEASURED intent count from the run's OWN tracked
+  // keywords — CPPs now surface in ORGANIC search, so distinct intents are
+  // distinct candidate pages. No keywords → no intent claim (never a fake count).
+  const intents = clusterKeywordIntents(input.ranks.map((r) => r.keyword));
+  const intentClause = intents.length
+    ? ` Your tracked keywords span ${intents.length} distinct intent${intents.length === 1 ? "" : "s"} (${intents
+        .slice(0, 3)
+        .map((i) => `“${i.label}”`)
+        .join(", ")}${intents.length > 3 ? ", …" : ""}) — each is a candidate page.`
+    : "";
+
   if (pages.length === 0) {
     // #71-B6: suggest concrete CPP angles from the run's REAL tracked keywords
     // (one page per intent) instead of a bare "create one" link.
@@ -622,11 +634,19 @@ function cppFindings(input: AuditFindingsInput): Finding[] {
         impact: "conversion",
         title: "No Custom Product Pages",
         detail:
-          "Custom Product Pages let you tailor your store page per ad or audience — a growth lever once the basics are solid.",
+          "Custom Product Pages let you tailor your store page per audience — and Apple now surfaces them in organic search, not just paid placements, so they're unclaimed ranking surface." +
+          intentClause,
         fix: angles,
       }),
     );
   } else {
+    // Present: acknowledge the coverage, and honestly flag headroom when tracked
+    // intents outnumber the pages that exist (uncovered candidate audiences).
+    const uncovered = intents.length - pages.length;
+    const headroom =
+      uncovered > 0
+        ? ` Your tracked keywords span ${intents.length} distinct intents — ${uncovered} more than your ${pages.length} page${pages.length === 1 ? "" : "s"}, so there's room for audiences you're not tailoring to yet.`
+        : "";
     out.push(
       mk({
         id: "cpp_present",
@@ -634,8 +654,8 @@ function cppFindings(input: AuditFindingsInput): Finding[] {
         severity: "good",
         impact: "conversion",
         title: `${pages.length} Custom Product Page${pages.length === 1 ? "" : "s"}`,
-        detail: "You're tailoring your store page per audience.",
-        fix: "Nice — you're using CPPs.",
+        detail: "You're tailoring your store page per audience." + headroom,
+        fix: uncovered > 0 ? "Consider a page for each uncovered intent." : "Nice — you're using CPPs.",
         evidence: `${pages.length} pages`,
       }),
     );

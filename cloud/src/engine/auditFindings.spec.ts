@@ -982,6 +982,31 @@ describe("findings as suggestions (#71-B)", () => {
     expect(f!.fix).toContain("“pantry tracker”");
   });
 
+  it("cpp_none frames CPPs as organic surface + counts MEASURED intents (#154)", () => {
+    const snap = healthySnapshot();
+    snap.customProductPages = { pages: [] };
+    const f = byId(auditFindings(input({ snapshot: snap, ranks: RANKS as never })), "cpp_none");
+    expect(f!.detail).toMatch(/organic search/i);
+    // meal planner / grocery list / pantry tracker share no term → 3 intents
+    expect(f!.detail).toContain("3 distinct intents");
+  });
+
+  it("cpp_none makes NO intent claim when there are no tracked keywords (never a fake count)", () => {
+    const snap = healthySnapshot();
+    snap.customProductPages = { pages: [] };
+    const f = byId(auditFindings(input({ snapshot: snap, ranks: [] })), "cpp_none");
+    expect(f!.detail).not.toMatch(/distinct intent/i);
+  });
+
+  it("cpp_present flags headroom when tracked intents outnumber existing pages (#154)", () => {
+    const snap = healthySnapshot();
+    snap.customProductPages = { pages: [{ id: "1", name: "Default-ish", state: "VISIBLE" }] };
+    const f = byId(auditFindings(input({ snapshot: snap, ranks: RANKS as never })), "cpp_present");
+    // 3 intents vs 1 page → 2 uncovered
+    expect(f!.detail).toContain("2 more than your 1 page");
+    expect(f!.fix).toMatch(/uncovered intent/i);
+  });
+
   it("primary category is phrased as CONFIRMED by the read, not a go-check chore", () => {
     const f = byId(auditFindings(input()), "primary_category_context");
     expect(f!.title).toContain("Category confirmed:");
