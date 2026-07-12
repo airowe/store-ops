@@ -130,6 +130,48 @@ export type LocaleRecommendation = {
   /** "translate" = existing copy to translate; "new" = net-new metadata. */
   effort: "translate" | "new";
 };
+
+/** one field's fill against its App Store char budget (30/30/100). */
+export type FieldFill = {
+  field: "name" | "subtitle" | "keywords";
+  limit: number;
+  used: number;
+  fillPct: number;
+  /** false = the field was unseen (a 0 here is UNKNOWN, never "empty"). */
+  seen: boolean;
+};
+/** one itemized source of wasted metadata budget. */
+export type CoverageWaste = {
+  kind: "duplicate" | "brand_repeat" | "filler" | "unused";
+  detail: string;
+  chars: number;
+};
+/**
+ * Metadata coverage report (PRD 03) — how hard the 30/30/100 char budget is
+ * working, with itemized waste. Curated counts + copy only; no raw ASC data.
+ */
+export type CoverageReport = {
+  coverageScore: number;
+  fieldFill: FieldFill[];
+  distinctTerms: number;
+  waste: CoverageWaste[];
+  topMissingValue?: string;
+};
+
+/**
+ * A proposed Product Page Optimization treatment brief (#182 Phase 3) — a
+ * concrete, ready-to-run outcome-led screenshot experiment. Recommendation copy
+ * + a cited public result; no raw ASC data, no invented metrics.
+ */
+export type PpoTreatmentPlan = {
+  headline: string;
+  steps: string[];
+  evidence: string;
+  guidance: string;
+  /** deep link into App Store Connect to set the test up, when the id is known. */
+  ascUrl?: string;
+};
+
 export type RunAudit = {
   app?: string;
   bundleId?: string;
@@ -159,6 +201,10 @@ export type RunResult = {
   opportunities?: Opportunity[];
   /** ROI-sorted locales to add (PRD 04) — static heuristic, PII-safe. */
   localizationExpansion?: LocaleRecommendation[];
+  /** metadata budget-efficiency report (PRD 03) — score + itemized waste. */
+  coverage?: CoverageReport;
+  /** proposed outcome-led PPO treatment brief (#182 Phase 3) — read-only. */
+  ppoTreatment?: PpoTreatmentPlan;
 };
 
 /** POST /runs/:id/localize — a generated localized draft for one locale (#78). */
