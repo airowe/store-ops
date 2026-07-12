@@ -98,6 +98,7 @@ import { detectPortfolio } from "../engine/portfolio.js";
 import { fetchChartRank } from "../engine/chartRank.js";
 import { buildRankAnnotations } from "../engine/rankAnnotations.js";
 import { deriveBrandTokens, localizeCopy, LocalizeError, validateLocalizedSubmission } from "../engine/localizeCopy.js";
+import { readLocaleKeywords } from "../engine/localeKeywords.js";
 import { localizeScreenshots, type LayeredSource, type TextSlot } from "../engine/localizeScreenshots.js";
 import { localizerForEnv } from "./aiLocalizer.js";
 import { credentialsEnabled, deleteCredential, listCredentialMeta, saveCredential, useCredential } from "../credentialStore.js";
@@ -1902,6 +1903,40 @@ async function competitorsDiscover(env: Env, userId: string, appId: string): Pro
 }
 
 /**
+ * POST /apps/:id/locale-keywords (#180 Phase 3) — on-demand locale-native keyword
+ * ideas for a target market. Searches that storefront's App Store for the app's
+ * tracked keywords (or caller-supplied seeds) and harvests the terms real apps in
+ * that country use — MEASURED, never a translation of the en-US set. Public read
+ * only (iTunes Search); no credential touched. Honest empty-state: an app with no
+ * tracked keywords and no seeds gets a note, not invented seeds.
+ */
+async function localeKeywordsRoute(req: Request, env: Env, userId: string, appId: string): Promise<unknown> {
+  const app = await requireOwnedApp(env, appId, userId);
+  const body = (await req.json().catch(() => ({}))) as { market?: string; seeds?: string[] };
+  const market = (body.market ?? "").trim();
+  if (!market) throw new HttpError(400, "market is required — an App Store storefront code like 'jp' or 'de'");
+
+  let seeds = (body.seeds ?? []).map((s) => String(s).trim()).filter((s) => s.length > 0);
+  if (seeds.length === 0) seeds = await distinctTrackedKeywords(env.DB, appId, 5);
+  if (seeds.length === 0) {
+    return {
+      market,
+      candidates: [],
+      note: "No tracked keywords yet — run the agent once, or pass `seeds` to search that market.",
+    };
+  }
+
+  const candidates = await readLocaleKeywords(fetchForEnv(env), {
+    market,
+    seeds,
+    brandTokens: deriveBrandTokens(app.name),
+    existingTerms: seeds, // don't re-surface the terms you already searched with
+    limit: 25,
+  });
+  return { market, seeds, candidates: candidates.slice(0, 40) };
+}
+
+/**
  * POST /apps/:id/competitors — add a competitor by name (resolved via iTunes
  * search) or by App Store id. User-added ⇒ confirmed immediately.
  */
@@ -3673,6 +3708,10 @@ export async function handleApi(req: Request, env: Env): Promise<Response> {
       }
       if (seg.length === 4 && seg[1] && seg[2] === "competitors" && seg[3] === "discover" && method === "POST") {
         return json(await competitorsDiscover(env, user.id, seg[1]), 200, origin);
+      }
+      // locale-native keyword ideas for a target market (#180 Phase 3)
+      if (seg.length === 3 && seg[1] && seg[2] === "locale-keywords" && method === "POST") {
+        return json(await localeKeywordsRoute(req, env, user.id, seg[1]), 200, origin);
       }
       if (seg.length === 5 && seg[1] && seg[2] === "competitors" && seg[3] && seg[4] === "confirm" && method === "POST") {
         return json(await competitorsConfirm(env, user.id, seg[1], seg[3]), 200, origin);
