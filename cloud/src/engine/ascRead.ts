@@ -36,6 +36,7 @@ import {
   type AscCustomProductPages,
   type LiveListingCopy,
 } from "./ascWrite.js";
+import { readAscExperiments, type AscExperimentsResult } from "./ascExperiments.js";
 
 /** A single screenshot asset read from ASC. All fields optional — apps vary. */
 export type AscScreenshot = {
@@ -594,6 +595,8 @@ export type AscSnapshot = {
   ageRating?: AscAgeRatingResult | undefined;
   customProductPages?: AscCustomProductPages | undefined;
   locales?: LiveListingCopy[] | undefined;
+  /** Product Page Optimization experiments + state (#182 Phase 2). */
+  experiments?: AscExperimentsResult | undefined;
   /** per-surface read errors (token-free), empty when all reads succeeded. */
   errors: { surface: string; message: string }[];
 };
@@ -613,7 +616,7 @@ export async function readAscSnapshot(
     }
   }
 
-  const [screenshots, previews, appInfo, versionState, pricing, ageRating, customProductPages, locales] =
+  const [screenshots, previews, appInfo, versionState, pricing, ageRating, customProductPages, locales, experiments] =
     await Promise.all([
       tryRead("screenshots", () => readAscScreenshots(fetchFn, opts)),
       tryRead("previews", () => readAscPreviews(fetchFn, opts)),
@@ -625,9 +628,10 @@ export async function readAscSnapshot(
         readAscCustomProductPages(fetchFn, { token: opts.token, appId: opts.appId }),
       ),
       tryRead("locales", () => readAscAllLocales(fetchFn, { token: opts.token, appId: opts.appId })),
+      tryRead("experiments", () => readAscExperiments(fetchFn, { token: opts.token, appId: opts.appId })),
     ]);
 
-  return { screenshots, previews, appInfo, versionState, pricing, ageRating, customProductPages, locales, errors };
+  return { screenshots, previews, appInfo, versionState, pricing, ageRating, customProductPages, locales, experiments, errors };
 }
 
 /**

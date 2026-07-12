@@ -40,6 +40,7 @@ import { mk, sortFindings } from "./findings/core.js";
 import type { Finding, SurfaceLock } from "./findings/core.js";
 import type { CopyFields } from "./optimize.js";
 import { reviewRiskFindings } from "./reviewRisk.js";
+import { ppoFindings } from "./ppoFindings.js";
 export {
   type Finding,
   type FindingImpact,
@@ -1071,6 +1072,7 @@ export function auditFindings(input: AuditFindingsInput): Finding[] {
     ...chartRankFindings(input),
     ...metaFindings(input),
     ...reviewRiskFindings(input.proposedCopy),
+    ...ppoFindings(input.snapshot?.experiments),
   ];
 
   return sortFindings(findings);
