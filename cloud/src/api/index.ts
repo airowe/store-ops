@@ -190,6 +190,7 @@ import { type AscCred, type AscCredBody, AscCredentialError, resolveAscCredentia
 import { reasonerForEnv } from "./aiReasoner.js";
 import { captionAnalyzerForEnv } from "./aiCaptionVision.js";
 import { analyzeFirstShot, captionFindings } from "../engine/captionLens.js";
+import { buildPpoTreatmentPlan } from "../engine/ppoTreatment.js";
 import { fetchForEnv } from "../fetchAdapter.js";
 import { buildFastlaneBundle } from "../engine/fastlane.js";
 import { zipStore } from "../engine/zip.js";
@@ -360,6 +361,10 @@ export function serializeRunResult(trace: ReasoningTrace, approved: boolean) {
     ...(trace.localizationExpansion !== undefined
       ? { localizationExpansion: trace.localizationExpansion }
       : {}),
+    // #182 Phase 3: the proposed outcome-led PPO treatment brief. Curated
+    // recommendation copy + a cited public result — no raw ASC data. Present only
+    // when a keyed run had no test running; omitted otherwise.
+    ...(trace.ppoTreatment !== undefined ? { ppoTreatment: trace.ppoTreatment } : {}),
     // storefront-intel PRD 03: MEASURED language-level coverage for keyless runs
     // (source:"storefront"). Public data only — safe to serve. Keyed runs never
     // carry it (ASC's locale list is authoritative). Omitted when absent.
@@ -1603,6 +1608,15 @@ export async function keyedAscPass(
     const recs = recommendLocales({ liveLocales, ...(category !== undefined ? { category } : {}) });
     if (recs.length > 0) result.localizationExpansion = recs;
   }
+  // #182 Phase 3: propose a concrete outcome-led PPO treatment when the app has
+  // no test running (read-only brief; the write lane waits on the screenshot
+  // pipeline). Null (keyless/degraded read, or a test already live) → no card.
+  const ppoTreatment = buildPpoTreatmentPlan({
+    experiments: ascSnapshot?.experiments,
+    ratingAverage: result.audit.storefront?.ratings?.average,
+    trackId: result.audit.trackId,
+  });
+  if (ppoTreatment) result.ppoTreatment = ppoTreatment;
   const resultWithSnapshot = ascSnapshot ? { ...result, ascSnapshot } : result;
   return { result, resultWithSnapshot };
 }

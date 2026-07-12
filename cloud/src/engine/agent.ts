@@ -38,6 +38,7 @@ import type { AscContext } from "./ascContext.js";
 import type { Opportunity } from "./rankOpportunity.js";
 import type { CoverageReport } from "./metadataCoverage.js";
 import type { LocaleRecommendation } from "./localizationExpansion.js";
+import type { PpoTreatmentPlan } from "./ppoTreatment.js";
 import type { LanguageCoverage } from "./languageCoverage.js";
 import type { ChartRank } from "./chartRank.js";
 import type { ReviewSentiment } from "./reviewSentiment.js";
@@ -157,6 +158,14 @@ export type AgentResult = {
    * the client. Present on a Mode-A (ASC) run where we read all locales + category.
    */
   localizationExpansion?: LocaleRecommendation[] | undefined;
+  /**
+   * Product Page Optimization treatment brief (#182 Phase 3) — a concrete,
+   * ready-to-run outcome-led screenshot experiment the user sets up in ASC.
+   * Present only on a keyed run whose experiments read succeeded AND has no test
+   * currently running. Curated recommendation copy + a cited public result — no
+   * raw ASC data, no invented metrics. Safe to serialize.
+   */
+  ppoTreatment?: PpoTreatmentPlan | undefined;
   /**
    * PUBLIC category chart rank (analytics-reports PRD 04 map). A measured
    * position when ranked, `ranked:false` when read-but-absent, undefined when

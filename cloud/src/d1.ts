@@ -22,6 +22,7 @@ import type {
   LanguageCoverage,
   LocaleRecommendation,
   Opportunity,
+  PpoTreatmentPlan,
   ProposedCopy,
   PushCommand,
   Rank,
@@ -204,6 +205,8 @@ export type ReasoningTrace = {
    * to serve to the client. Present only on a Mode-A run that read the locale set.
    */
   localizationExpansion?: LocaleRecommendation[] | undefined;
+  /** #182 Phase 3 — a proposed outcome-led PPO treatment brief (read-only). */
+  ppoTreatment?: PpoTreatmentPlan | undefined;
   /** storefront-intel PRD 03 — measured language-level coverage for keyless runs. */
   languageCoverage?: LanguageCoverage | undefined;
   /** analytics-reports PRD 04 map — public category chart rank. */
@@ -829,6 +832,9 @@ export async function persistRun(
     ...(result.localizationExpansion !== undefined
       ? { localizationExpansion: result.localizationExpansion }
       : {}),
+    // #182 Phase 3: the proposed PPO treatment brief. Curated recommendation copy
+    // + a cited public result — no raw ASC data. Rides along when computed.
+    ...(result.ppoTreatment !== undefined ? { ppoTreatment: result.ppoTreatment } : {}),
     ...(result.languageCoverage !== undefined ? { languageCoverage: result.languageCoverage } : {}),
     ...(result.chartRank !== undefined ? { chartRank: result.chartRank } : {}),
     // PUBLIC review sentiment (#95): sample-size-honest sentiment + observed

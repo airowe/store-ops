@@ -223,6 +223,7 @@ export {
   recommendLocales,
   rankAll as rankAllLocales,
 } from "./localizationExpansion.js";
+export { type PpoTreatmentPlan, buildPpoTreatmentPlan } from "./ppoTreatment.js";
 export {
   type LanguageCoverage,
   coverageFromLanguages,
