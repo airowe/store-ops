@@ -116,8 +116,15 @@ export type RankSnapshotRow = {
   keyword: string;
   rank: number | null;
   total: number;
+  /** storefront the rank was checked in (lowercased ISO); '' = legacy row (#180 Phase 1). */
+  country: string;
   checked_at: string;
 };
+
+/** Normalize a storefront code for rank_snapshots.country (lowercased, trimmed). */
+function normCountry(country: string | undefined): string {
+  return (country ?? "").trim().toLowerCase();
+}
 
 export type CompetitorSnapshotRow = {
   id: string;
@@ -799,10 +806,13 @@ export async function persistRun(
     status: RunStatus;
     result: AgentResult;
     trigger: ReasoningTrace["trigger"];
+    /** storefront these ranks were checked in (#180 Phase 1); '' when unknown. */
+    country?: string;
   },
 ): Promise<string> {
   const runId = uuid();
   const createdAt = now();
+  const country = normCountry(args.country);
   const { result } = args;
 
   const trace: ReasoningTrace = {
@@ -873,14 +883,14 @@ export async function persistRun(
     );
   }
 
-  // rank snapshots — one per checked keyword
+  // rank snapshots — one per checked keyword, tagged with the storefront (#180)
   for (const r of result.ranks) {
     stmts.push(
       db
         .prepare(
-          "INSERT INTO rank_snapshots (id, app_id, keyword, rank, total, checked_at) VALUES (?, ?, ?, ?, ?, ?)",
+          "INSERT INTO rank_snapshots (id, app_id, keyword, rank, total, country, checked_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
         )
-        .bind(uuid(), args.appId, r.keyword, r.rank, r.total, createdAt),
+        .bind(uuid(), args.appId, r.keyword, r.rank, r.total, country, createdAt),
     );
   }
 
@@ -1091,18 +1101,19 @@ export async function setRunStatus(
  */
 export async function persistRankSnapshots(
   db: D1Database,
-  args: { appId: string; ranks: Rank[] },
+  args: { appId: string; ranks: Rank[]; country?: string },
 ): Promise<void> {
   const checkedAt = now();
+  const country = normCountry(args.country);
   const stmts: D1PreparedStatement[] = [];
   for (const r of args.ranks) {
     if (r.error) continue; // honesty: a failed fetch is NOT a measured rank — record nothing
     stmts.push(
       db
         .prepare(
-          "INSERT INTO rank_snapshots (id, app_id, keyword, rank, total, checked_at) VALUES (?, ?, ?, ?, ?, ?)",
+          "INSERT INTO rank_snapshots (id, app_id, keyword, rank, total, country, checked_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
         )
-        .bind(uuid(), args.appId, r.keyword, r.rank, r.total, checkedAt),
+        .bind(uuid(), args.appId, r.keyword, r.rank, r.total, country, checkedAt),
     );
   }
   if (stmts.length === 0) return;
@@ -1111,31 +1122,36 @@ export async function persistRankSnapshots(
 
 // ── snapshots: reads for trend charts + cron diffing ─────────────────────────
 
-/** Rank history for an app (oldest → newest), for the trend chart. */
+/**
+ * Rank history for an app (oldest → newest), for the trend chart. Optionally
+ * scoped to ONE storefront (#180 Phase 1) so a per-market chart proves movement
+ * in that market alone; omit `country` to read across all storefronts (legacy
+ * behavior). Every row carries its `country` so a caller can group by market.
+ */
 export async function getRankHistory(
   db: D1Database,
   appId: string,
-  opts: { keyword?: string; limit?: number } = {},
+  opts: { keyword?: string; limit?: number; country?: string } = {},
 ): Promise<RankSnapshotRow[]> {
   const limit = opts.limit ?? 500;
+  const country = opts.country !== undefined ? normCountry(opts.country) : undefined;
+  const conds = ["app_id = ?"];
+  const binds: unknown[] = [appId];
   if (opts.keyword) {
-    const { results } = await db
-      .prepare(
-        `SELECT id, app_id, keyword, rank, total, checked_at
-         FROM rank_snapshots WHERE app_id = ? AND keyword = ?
-         ORDER BY checked_at ASC, id ASC LIMIT ?`,
-      )
-      .bind(appId, opts.keyword, limit)
-      .all<RankSnapshotRow>();
-    return results ?? [];
+    conds.push("keyword = ?");
+    binds.push(opts.keyword);
+  }
+  if (country !== undefined) {
+    conds.push("country = ?");
+    binds.push(country);
   }
   const { results } = await db
     .prepare(
-      `SELECT id, app_id, keyword, rank, total, checked_at
-       FROM rank_snapshots WHERE app_id = ?
+      `SELECT id, app_id, keyword, rank, total, country, checked_at
+       FROM rank_snapshots WHERE ${conds.join(" AND ")}
        ORDER BY checked_at ASC, id ASC LIMIT ?`,
     )
-    .bind(appId, limit)
+    .bind(...binds, limit)
     .all<RankSnapshotRow>();
   return results ?? [];
 }
@@ -1170,22 +1186,30 @@ export async function getLatestCompetitorMap(
   return map;
 }
 
-/** The latest rank per keyword for an app (for cron threshold checks). */
+/**
+ * The latest rank per keyword for an app (for cron threshold checks). Optionally
+ * scoped to ONE storefront (#180 Phase 1); omit `country` for the legacy
+ * all-storefronts behavior (unchanged while an app checks a single market).
+ */
 export async function getLatestRanks(
   db: D1Database,
   appId: string,
+  country?: string,
 ): Promise<Array<{ keyword: string; rank: number | null }>> {
+  const filter = country !== undefined ? " AND country = ?" : "";
+  const c = country !== undefined ? normCountry(country) : undefined;
+  const binds = c !== undefined ? [appId, c, appId, c] : [appId, appId];
   const { results } = await db
     .prepare(
       `SELECT rs.keyword, rs.rank
        FROM rank_snapshots rs
        JOIN (
          SELECT keyword, MAX(checked_at) AS max_checked
-         FROM rank_snapshots WHERE app_id = ? GROUP BY keyword
+         FROM rank_snapshots WHERE app_id = ?${filter} GROUP BY keyword
        ) latest ON latest.keyword = rs.keyword AND latest.max_checked = rs.checked_at
-       WHERE rs.app_id = ?`,
+       WHERE rs.app_id = ?${filter}`,
     )
-    .bind(appId, appId)
+    .bind(...binds)
     .all<{ keyword: string; rank: number | null }>();
   return results ?? [];
 }

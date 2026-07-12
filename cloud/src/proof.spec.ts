@@ -30,6 +30,7 @@ function snap(
     keyword,
     rank,
     total,
+    country: "us",
     checked_at: checkedAt,
   };
 }

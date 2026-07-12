@@ -294,6 +294,7 @@ export async function runWeeklySweep(
         // proposals + generated push commands in one atomic write).
         const runId = await persistRun(env.DB, {
           appId: app.id,
+          country: app.country,
           status: "awaiting_approval",
           result: resultWithSnapshot,
           trigger: {
@@ -321,6 +322,7 @@ export async function runWeeklySweep(
         // time-series stays complete without nagging.
         const runId = await persistRun(env.DB, {
           appId: app.id,
+          country: app.country,
           status: "detected",
           result: resultWithSnapshot,
           trigger: {
