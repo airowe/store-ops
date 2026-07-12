@@ -19,6 +19,7 @@ import { ConnectAscCard } from "./ConnectAscCard.js";
 import { PlayAuditCard } from "./PlayAuditCard.js";
 import { CompetitorsCard } from "./CompetitorsCard.js";
 import { LocaleKeywordsCard } from "./LocaleKeywordsCard.js";
+import { RejectionAssistantCard } from "./RejectionAssistantCard.js";
 
 export function AppDetailView({
   client,
@@ -56,6 +57,7 @@ export function AppDetailView({
 
       <CompetitorsCard client={client} appId={app.id} />
       <LocaleKeywordsCard client={client} appId={app.id} />
+      <RejectionAssistantCard client={client} />
 
       <ConnectAscCard client={client} appId={app.id} onRunStarted={onOpenRun} />
       <PlayAuditCard client={client} appId={app.id} />

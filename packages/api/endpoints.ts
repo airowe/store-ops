@@ -19,6 +19,7 @@ import type {
   Candidate,
   CompetitorsResponse,
   LocaleKeywordsResult,
+  RejectionAnalysis,
   ConnectResult,
   DeltasResponse,
   EngagementSurface,
@@ -100,6 +101,10 @@ export const confirmCompetitor = (c: ApiClient, id: string, key: string) =>
   c.post<CompetitorsResponse>(`/apps/${enc(id)}/competitors/${enc(key)}/confirm`);
 export const removeCompetitor = (c: ApiClient, id: string, key: string) =>
   c.request<CompetitorsResponse>(`/apps/${enc(id)}/competitors/${enc(key)}`, { method: "DELETE" });
+
+/** Analyze a pasted App Review rejection (#178 Phase 4) — guideline + drafts. */
+export const analyzeRejection = (c: ApiClient, text: string) =>
+  c.post<RejectionAnalysis>("/rejection-assistant", { text });
 
 export const warRoom = (c: ApiClient, id: string, competitors?: string[]) =>
   c.get<WarRoomView>(

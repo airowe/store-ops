@@ -63,3 +63,18 @@ export function citeEvidence(key: GuidelineCiteKey): string {
   const { section, quote } = REVIEW_GUIDELINE_CITES[key];
   return `App Review Guideline ${section} — “${quote}”`;
 }
+
+/**
+ * The verbatim rule text for a guideline SECTION (e.g. "2.3.7"), or null when the
+ * section isn't in our curated corpus. Several rules can cite one section; we
+ * return the first cite's quote (each is a real, verbatim sentence of it). Used
+ * by the post-rejection assistant to quote the guideline a rejection cites —
+ * honestly null (never a paraphrase) when we don't hold that section's text.
+ */
+export function guidelineQuoteForSection(section: string): string | null {
+  const s = section.trim();
+  for (const cite of Object.values(REVIEW_GUIDELINE_CITES)) {
+    if (cite.section === s) return cite.quote;
+  }
+  return null;
+}
