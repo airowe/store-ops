@@ -190,6 +190,7 @@ import { type AscCred, type AscCredBody, AscCredentialError, resolveAscCredentia
 import { reasonerForEnv } from "./aiReasoner.js";
 import { captionAnalyzerForEnv } from "./aiCaptionVision.js";
 import { analyzeFirstShot, captionFindings } from "../engine/captionLens.js";
+import { screenshotClaimFindings } from "../engine/screenshotCompliance.js";
 import { buildPpoTreatmentPlan } from "../engine/ppoTreatment.js";
 import { fetchForEnv } from "../fetchAdapter.js";
 import { buildFastlaneBundle } from "../engine/fastlane.js";
@@ -422,7 +423,9 @@ async function attachCaptionFindings(env: Env, result: AgentResult): Promise<voi
   const analyzer = captionAnalyzerForEnv(env, (url) => fetch(url));
   if (!analyzer) return;
   const analysis = await analyzeFirstShot(analyzer, result.audit.screenshots?.screenshotUrls);
-  const extra = captionFindings(analysis);
+  // #182: feature-led caption lens + #178 Phase 3: claim-compliance on the SAME
+  // OCR'd caption (unverifiable / price claims baked into the screenshot art).
+  const extra = [...captionFindings(analysis), ...screenshotClaimFindings(analysis?.caption)];
   if (extra.length > 0) result.findings = [...(result.findings ?? []), ...extra];
 }
 
