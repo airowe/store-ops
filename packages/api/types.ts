@@ -236,6 +236,23 @@ export type ApproveAllResult = { approved: string[]; approvedCount: number; skip
 export type Competitor = { key: string; name: string; source: string; status: string };
 export type CompetitorsResponse = { competitors: Competitor[]; discovered?: number; note?: string };
 
+// ── locale-native keyword ideas (#180 Phase 3) ───────────────────────────────
+/** A keyword term measured from the top apps in a target storefront. */
+export type LocaleKeywordCandidate = {
+  term: string;
+  market: string;
+  usedByCount: number;
+  usedBy: string[];
+};
+/** POST /apps/:id/locale-keywords — measured, market-native keyword ideas. */
+export type LocaleKeywordsResult = {
+  market: string;
+  seeds?: string[];
+  candidates: LocaleKeywordCandidate[];
+  /** honest empty-state (no tracked keywords + no seeds). */
+  note?: string;
+};
+
 // ── Google Play audit (#Android loop) ────────────────────────────────────────
 /** POST /apps/:id/audit-play — read-only Play listing audit. Findings/locks are
  *  the SAME shapes the iOS run renders, so the UI reuses FindingsCard. */

@@ -18,6 +18,7 @@ import { AnalyticsCard } from "./AnalyticsCard.js";
 import { ConnectAscCard } from "./ConnectAscCard.js";
 import { PlayAuditCard } from "./PlayAuditCard.js";
 import { CompetitorsCard } from "./CompetitorsCard.js";
+import { LocaleKeywordsCard } from "./LocaleKeywordsCard.js";
 
 export function AppDetailView({
   client,
@@ -54,6 +55,7 @@ export function AppDetailView({
       <button className="btn ghost" data-testid="war-room" onClick={() => onWarRoom(app.id)}>War room</button>
 
       <CompetitorsCard client={client} appId={app.id} />
+      <LocaleKeywordsCard client={client} appId={app.id} />
 
       <ConnectAscCard client={client} appId={app.id} onRunStarted={onOpenRun} />
       <PlayAuditCard client={client} appId={app.id} />

@@ -18,6 +18,7 @@ import type {
   AscPushResult,
   Candidate,
   CompetitorsResponse,
+  LocaleKeywordsResult,
   ConnectResult,
   DeltasResponse,
   EngagementSurface,
@@ -88,6 +89,13 @@ export const addCompetitor = (c: ApiClient, id: string, body: { name?: string; k
   c.post<CompetitorsResponse>(`/apps/${enc(id)}/competitors`, body);
 export const discoverCompetitors = (c: ApiClient, id: string) =>
   c.post<CompetitorsResponse>(`/apps/${enc(id)}/competitors/discover`);
+
+/** Measured, market-native keyword ideas for a target storefront (#180 Phase 3). */
+export const getLocaleKeywords = (
+  c: ApiClient,
+  id: string,
+  body: { market: string; seeds?: string[] },
+) => c.post<LocaleKeywordsResult>(`/apps/${enc(id)}/locale-keywords`, body);
 export const confirmCompetitor = (c: ApiClient, id: string, key: string) =>
   c.post<CompetitorsResponse>(`/apps/${enc(id)}/competitors/${enc(key)}/confirm`);
 export const removeCompetitor = (c: ApiClient, id: string, key: string) =>
