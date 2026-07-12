@@ -42,6 +42,7 @@ import type { CopyFields } from "./optimize.js";
 import { reviewRiskFindings } from "./reviewRisk.js";
 import { ppoFindings } from "./ppoFindings.js";
 import { clusterKeywordIntents } from "./cppIntents.js";
+import { cppIdenticalFindings, screenshotSignature } from "./cppScreenshotDiff.js";
 export {
   type Finding,
   type FindingImpact,
@@ -659,6 +660,14 @@ function cppFindings(input: AuditFindingsInput): Finding[] {
         evidence: `${pages.length} pages`,
       }),
     );
+    // #154: flag any CPP whose screenshots are the SAME assets as the default
+    // page (wasted surface). Default signature comes from the run's already-read
+    // default screenshots; a CPP with no read signature stays silent.
+    const defaultShots = [
+      ...(input.snapshot?.screenshots?.iphoneScreenshots ?? []),
+      ...(input.snapshot?.screenshots?.ipadScreenshots ?? []),
+    ].flatMap((s) => s.screenshots);
+    out.push(...cppIdenticalFindings(screenshotSignature(defaultShots), pages));
   }
   return out;
 }

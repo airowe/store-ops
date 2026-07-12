@@ -624,8 +624,72 @@ export async function readAscAgeRating(
 
 /** A custom product page (PPO surface) read back from App Store Connect. */
 export type AscCustomProductPages = {
-  pages: Array<{ id: string; name?: string | undefined; state?: string | undefined }>;
+  pages: Array<{
+    id: string;
+    name?: string | undefined;
+    state?: string | undefined;
+    /**
+     * #154: a stable signature of THIS page's screenshot assets (sorted source
+     * fileNames / URLs), for the "identical to the default page" wasted-surface
+     * check. Undefined when we couldn't read the page's screenshots — the finding
+     * then stays silent (measured-or-absent), never a false "identical".
+     */
+    screenshotSig?: string | undefined;
+  }>;
 };
+
+/**
+ * NEEDS-LIVE-VALIDATION (#154): best-effort read of ONE custom product page's
+ * screenshot asset signature. Walks the CPP asset graph — versions → first
+ * localization → screenshot sets → screenshots — and joins the source
+ * fileNames/URLs into a stable, sorted signature. Every hop safe-degrades: any
+ * non-OK response (or an unexpected shape, or the endpoint path being wrong for
+ * this account) returns undefined, so the wasted-surface finding stays silent
+ * rather than emitting a false "identical". The exact CPP-screenshot endpoint
+ * paths are documented but UNVERIFIED against a live key here — the safe-degrade
+ * direction (silence on any miss) is deliberate so a wrong path never fabricates
+ * a finding. Bounded to the first localization to cap request fan-out.
+ */
+async function readCppScreenshotSignature(
+  fetchFn: FetchLike,
+  auth: { authorization: string },
+  cppId: string,
+): Promise<string | undefined> {
+  const get = async (url: string): Promise<{ data?: Array<{ id?: string; attributes?: Record<string, unknown> }> } | undefined> => {
+    const res = await fetchFn(url, { headers: auth });
+    if (!res.ok) return undefined;
+    return (await res.json().catch(() => undefined)) as
+      | { data?: Array<{ id?: string; attributes?: Record<string, unknown> }> }
+      | undefined;
+  };
+
+  const versions = await get(`${ASC_BASE}/appCustomProductPages/${encodeURIComponent(cppId)}/appCustomProductPageVersions?limit=1`);
+  const versionId = versions?.data?.[0]?.id;
+  if (!versionId) return undefined;
+
+  const locs = await get(`${ASC_BASE}/appCustomProductPageVersions/${versionId}/appCustomProductPageLocalizations?limit=1`);
+  const locId = locs?.data?.[0]?.id;
+  if (!locId) return undefined;
+
+  const sets = await get(`${ASC_BASE}/appCustomProductPageLocalizations/${locId}/appScreenshotSets?limit=50`);
+  const setRows = sets?.data ?? [];
+  if (setRows.length === 0) return undefined;
+
+  const keys: string[] = [];
+  for (const set of setRows) {
+    if (!set.id) continue;
+    const shots = await get(`${ASC_BASE}/appScreenshotSets/${set.id}/appScreenshots?limit=50`);
+    for (const shot of shots?.data ?? []) {
+      const a = shot.attributes ?? {};
+      const fileName = typeof a.fileName === "string" ? a.fileName.trim().toLowerCase() : "";
+      const tmpl = ((a.imageAsset as { templateUrl?: string } | undefined)?.templateUrl ?? "").trim();
+      const key = fileName || tmpl;
+      if (key) keys.push(key);
+    }
+  }
+  if (keys.length === 0) return undefined;
+  return [...new Set(keys)].sort().join("|");
+}
 
 /**
  * Read an app's custom product pages — the Product Page Optimization (PPO)
@@ -651,13 +715,21 @@ export async function readAscCustomProductPages(
     data?: Array<{ id: string; attributes?: { name?: string; state?: string } }>;
   };
 
-  return {
-    pages: (body.data ?? []).map((page) => ({
-      id: page.id,
-      name: page.attributes?.name,
-      state: page.attributes?.state,
-    })),
-  };
+  const auth = { authorization: `Bearer ${opts.token}` };
+  const rows = body.data ?? [];
+  // #154: best-effort per-CPP screenshot signature for the "identical to default"
+  // wasted-surface check. Bounded to the first CPPs to cap request fan-out; each
+  // read safe-degrades to undefined (finding stays silent — never a false hit).
+  const CPP_SHOT_READ_CAP = 15;
+  const pages = await Promise.all(
+    rows.map(async (page, i) => {
+      const base = { id: page.id, name: page.attributes?.name, state: page.attributes?.state };
+      if (i >= CPP_SHOT_READ_CAP) return base;
+      const screenshotSig = await readCppScreenshotSignature(fetchFn, auth, page.id).catch(() => undefined);
+      return screenshotSig !== undefined ? { ...base, screenshotSig } : base;
+    }),
+  );
+  return { pages };
 }
 
 
