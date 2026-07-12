@@ -32,6 +32,20 @@ const PLACEHOLDER_RE = /\b(lorem ipsum|placeholder|your app name(?: here)?|to ?d
 
 const CAVEAT = "Flagged as a review risk — a heuristic, not Apple's verdict; review before you submit.";
 
+/**
+ * Shared claim predicates (#178 Phase 3) — the SAME rules the copy lint uses,
+ * exported so the screenshot-compliance lens can apply them to OCR'd screenshot
+ * text without duplicating (and drifting from) the regexes.
+ */
+/** Price/promo wording that doesn't belong in a metadata field (Guideline 2.3.7). */
+export function hasPricePromo(text: string): boolean {
+  return PRICE_RE.test(text);
+}
+/** An unverifiable superlative / "#1 / best" claim (Guideline 2.3.7). */
+export function hasUnverifiableClaim(text: string): boolean {
+  return SUPERLATIVE_RE.test(text);
+}
+
 function finding(id: string, title: string, detail: string, fix: string, cite: GuidelineCiteKey): Finding {
   return { id, surface: SURFACE, severity: "warn", impact: "trust", title, detail: `${detail} ${CAVEAT}`, fix, evidence: citeEvidence(cite) };
 }
