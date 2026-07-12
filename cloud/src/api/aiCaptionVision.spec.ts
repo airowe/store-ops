@@ -80,6 +80,15 @@ describe("captionAnalyzerForEnv analyzer", () => {
     expect(ai.run).not.toHaveBeenCalled();
   });
 
+  it("degrades to null on an oversized image (never OOMs the run)", async () => {
+    const ai = { run: vi.fn() };
+    // 6 MB buffer — over the ~5 MB cap; must not be spread into a number[] / sent
+    const bigFetch = vi.fn(async () => ({ ok: true, arrayBuffer: async () => new ArrayBuffer(6 * 1024 * 1024) }));
+    const analyzer = captionAnalyzerForEnv({ AI: ai, CAPTION_OCR_ENABLED: "1" }, bigFetch)!;
+    expect(await analyzer("https://cdn/huge.png")).toBeNull();
+    expect(ai.run).not.toHaveBeenCalled();
+  });
+
   it("degrades to null when the model throws", async () => {
     const ai = {
       run: vi.fn(async () => {

@@ -812,8 +812,22 @@ describe("readAscCustomProductPages — list custom product pages (PPO)", () => 
       if (url.includes("/appScreenshots?")) return json({ data: [{ id: "a", attributes: { fileName: "Hero.png" } }, { id: "b", attributes: { fileName: "list.png" } }] });
       return json({ data: [] });
     };
-    const r = await readAscCustomProductPages(fetchFn, { token: "JWT", appId: "APP1" });
+    const r = await readAscCustomProductPages(fetchFn, { token: "JWT", appId: "APP1", readScreenshotSigs: true });
     expect(r.pages[0]!.screenshotSig).toBe("hero.png|list.png");
+  });
+
+  it("#154: skips the screenshot walk entirely when readScreenshotSigs is off (default)", async () => {
+    const urls: string[] = [];
+    const fetchFn = async (url: string) => {
+      urls.push(url);
+      if (url.includes("/appCustomProductPages?")) return json({ data: [{ id: "PPO1", attributes: { name: "Holiday" } }] });
+      return json({ data: [] });
+    };
+    const r = await readAscCustomProductPages(fetchFn, { token: "JWT", appId: "APP1" });
+    expect(r.pages[0]!.screenshotSig).toBeUndefined();
+    // only the list call — no per-CPP version/localization/screenshot fan-out
+    expect(urls.some((u) => u.includes("appCustomProductPageVersions"))).toBe(false);
+    expect(urls).toHaveLength(1);
   });
 
   it("#154: safe-degrades screenshotSig to undefined when a hop isn't readable (no false 'identical')", async () => {
@@ -822,7 +836,7 @@ describe("readAscCustomProductPages — list custom product pages (PPO)", () => 
       if (url.includes("/appCustomProductPageVersions?")) return json({ errors: [{ detail: "nope" }] }, 403);
       return json({ data: [] });
     };
-    const r = await readAscCustomProductPages(fetchFn, { token: "JWT", appId: "APP1" });
+    const r = await readAscCustomProductPages(fetchFn, { token: "JWT", appId: "APP1", readScreenshotSigs: true });
     expect(r.pages[0]!.screenshotSig).toBeUndefined();
     expect(r.pages[0]).toMatchObject({ id: "PPO1", name: "Holiday" });
   });

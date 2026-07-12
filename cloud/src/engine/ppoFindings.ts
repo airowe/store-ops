@@ -65,7 +65,10 @@ export function ppoFindings(result: AscExperimentsResult | undefined): Finding[]
     ];
   }
 
-  const everTested = result.experiments.length > 0;
+  // "Tested before" means an experiment actually WENT LIVE — a draft that was
+  // created but never started is not history (else we'd fabricate a past test and
+  // suppress the honest "never tested" nudge).
+  const everTested = result.experiments.some((e) => e.started === true);
   return [
     mk({
       id: everTested ? "ppo_no_active_experiment" : "ppo_never_tested",

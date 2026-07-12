@@ -71,6 +71,13 @@ describe("ppoFindings", () => {
     ).toEqual(["ppo_experiment_running"]);
   });
 
+  it("treats a never-started DRAFT as 'never tested', not fabricated history", () => {
+    // a created-but-never-live experiment is not a past test
+    const out = ppoFindings(read([{ id: "draft", started: false, state: "PREPARE_FOR_SUBMISSION" }]));
+    expect(out).toHaveLength(1);
+    expect(out[0]!.id).toBe("ppo_never_tested");
+  });
+
   it("acknowledges history when tests ran before but none is running now", () => {
     const out = ppoFindings(read([{ id: "old", started: true, state: "COMPLETED" }]));
     expect(out).toHaveLength(1);
