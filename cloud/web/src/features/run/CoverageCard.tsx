@@ -27,7 +27,7 @@ export function CoverageCard({ coverage }: { coverage: CoverageReport }) {
       <div data-testid="field-fill" style={{ marginTop: 8 }}>
         {fieldFill.map((f) => (
           <p key={f.field} className="micro" data-testid={`fill-${f.field}`} style={{ margin: "2px 0 0" }}>
-            {f.field}: {f.seen ? `${f.used}/${f.limit} (${f.fillPct}%)` : "not read"}
+            {f.field}: {f.seen ? `${f.used}/${f.limit} (${Math.round(f.fillPct)}%)` : "not read"}
           </p>
         ))}
       </div>

@@ -25,7 +25,15 @@ import { CoverageCard } from "./CoverageCard.js";
 import { PpoTreatmentCard } from "./PpoTreatmentCard.js";
 import { LocalizationCard } from "./LocalizationCard.js";
 
-export function RunView({ client, id }: { client: import("@shipaso/api").ApiClient; id: string }) {
+export function RunView({
+  client,
+  id,
+  onConnect,
+}: {
+  client: import("@shipaso/api").ApiClient;
+  id: string;
+  onConnect?: () => void;
+}) {
   const qc = useQueryClient();
   const runQ = useQuery({ queryKey: ["run", id], queryFn: () => getRun(client, id) });
   const credsQ = useQuery({ queryKey: ["credentials"], queryFn: () => getCredentials(client) });
@@ -88,6 +96,7 @@ export function RunView({ client, id }: { client: import("@shipaso/api").ApiClie
           findings={r.findings ?? []}
           {...(r.locks !== undefined ? { locks: r.locks } : {})}
           {...(r.findingsSummary !== undefined ? { summary: r.findingsSummary } : {})}
+          {...(onConnect ? { onConnect } : {})}
         />
       ) : null}
 

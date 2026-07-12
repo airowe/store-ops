@@ -111,6 +111,13 @@ export type Opportunity = {
   rank: number | null;
   /** 0–100 winnability, weighted over the measured drivers. */
   opportunityScore: number;
+  /**
+   * Is the score backed by a measured signal? `false` = unranked with no
+   * competitor data and no history, so the score is a no-data artifact and the
+   * UI shows "not enough data to score" instead of the number. Optional so
+   * legacy/persisted rows (no flag) still render their score.
+   */
+  scored?: boolean;
   /** human, correlational explanation — never a promise. */
   why: string;
   reachability: Reachability;

@@ -6,6 +6,9 @@
  * Honesty, load-bearing:
  *   • rank is MEASURED-or-absent — a null rank renders "not in top results",
  *     never a fabricated position,
+ *   • the score is shown ONLY when measured (`scored !== false`); an unranked
+ *     term with no competitor/history data has no real score, so we say "not
+ *     enough data to score" rather than print the no-data constant (#65),
  *   • the `why` is correlational and the reachability bucket LABELS longshots
  *     rather than hiding them — no opportunity is dressed up as a promise.
  * Pure presentational; data arrives from the run detail response.
@@ -44,7 +47,9 @@ export function OpportunitiesCard({ opportunities }: { opportunities: Opportunit
             >
               {REACH_LABEL[o.reachability]}
             </span>
-            <span className="micro muted" style={{ marginLeft: 8 }}>score {o.opportunityScore}</span>
+            <span className="micro muted" style={{ marginLeft: 8 }} data-testid={`opp-score-${o.keyword}`}>
+              {o.scored === false ? "not enough data to score" : `score ${Math.round(o.opportunityScore)}`}
+            </span>
           </p>
           <p className="micro" style={{ margin: "2px 0 0" }}>{o.why}</p>
         </div>

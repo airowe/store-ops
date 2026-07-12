@@ -1,5 +1,5 @@
-import { describe, it, expect } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { describe, it, expect, vi } from "vitest";
+import { render, screen, fireEvent } from "@testing-library/react";
 import type { Finding, SurfaceLock } from "@shipaso/api";
 import { FindingsCard } from "./FindingsCard.js";
 
@@ -62,21 +62,30 @@ describe("<FindingsCard />", () => {
     expect(screen.getByTestId("findings-list")).not.toHaveTextContent("Live version 2.1");
   });
 
-  it("renders the asc_unlock CTA exactly once, apart from the fixes list", () => {
+  it("renders the asc_unlock CTA as a single button, apart from the fixes list", () => {
     render(<FindingsCard findings={[actionable, unlockCta]} />);
-    expect(screen.getAllByText("Connect App Store Connect")).toHaveLength(1);
     expect(screen.getByTestId("asc-unlock")).toBeInTheDocument();
-    expect(screen.getByTestId("findings-list")).not.toHaveTextContent(
-      "Connect App Store Connect",
-    );
+    // one CTA, and it's a button/link labelled 'Unlock your full audit'
+    expect(screen.getAllByTestId("asc-unlock-cta")).toHaveLength(1);
+    expect(screen.getByTestId("asc-unlock-cta")).toHaveTextContent("Unlock your full audit");
+    // the finding's own copy stays out of the actionable fixes list
+    expect(screen.getByTestId("findings-list")).not.toHaveTextContent("Unlock subtitle");
   });
 
-  it("renders locked surfaces as honest capability gaps", () => {
-    render(<FindingsCard findings={[]} locks={[lock]} />);
-    expect(screen.getByTestId("locks")).toHaveTextContent(
-      "We can't see your keyword field without access",
-    );
-    expect(screen.getByTestId("locks")).toHaveTextContent("Unlock to read + improve it");
+  it("collapses locked surfaces into ONE connect CTA — no per-surface wall of text", () => {
+    render(<FindingsCard findings={[]} locks={[lock, lock]} />);
+    const cta = screen.getByTestId("asc-unlock");
+    expect(screen.getByTestId("asc-unlock-cta")).toHaveTextContent("Unlock your full audit");
+    // honest about how much is hidden, without repeating a sentence per surface
+    expect(cta).toHaveTextContent("2 surfaces");
+    expect(cta).not.toHaveTextContent("We can't see your keyword field without access");
+  });
+
+  it("fires onConnect when the unlock CTA is a button (client-side connect)", () => {
+    const onConnect = vi.fn();
+    render(<FindingsCard findings={[unlockCta]} onConnect={onConnect} />);
+    fireEvent.click(screen.getByTestId("asc-unlock-cta"));
+    expect(onConnect).toHaveBeenCalledOnce();
   });
 
   it("renders nothing at all when there are no findings and no locks", () => {

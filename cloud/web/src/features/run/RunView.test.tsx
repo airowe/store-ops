@@ -115,7 +115,7 @@ describe("<RunView /> — the money screen", () => {
     expect(screen.queryByTestId("handoff")).toBeNull();
   });
 
-  it("renders the listing audit findings + locks served on the run", async () => {
+  it("renders the listing audit findings + collapses locks into one connect CTA", async () => {
     const { client } = makeClient({
       extra: {
         findings: [
@@ -131,7 +131,9 @@ describe("<RunView /> — the money screen", () => {
     renderView(client);
     await waitFor(() => expect(screen.getByTestId("findings-card")).toBeInTheDocument());
     expect(screen.getByText("No subtitle")).toBeInTheDocument();
-    expect(screen.getByTestId("locks")).toHaveTextContent("We can't see your keyword field");
+    // one connect CTA, not a per-surface wall of "we can't see …" sentences
+    expect(screen.getByTestId("asc-unlock-cta")).toHaveTextContent("Unlock your full audit");
+    expect(screen.getByTestId("findings-card")).not.toHaveTextContent("We can't see your keyword field");
   });
 
   it("approved + stored ASC key: one-click push posts to asc/push and reports Apple's result", async () => {

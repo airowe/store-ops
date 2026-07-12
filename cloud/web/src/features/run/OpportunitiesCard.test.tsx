@@ -19,6 +19,15 @@ const longshot: Opportunity = {
   reachability: "longshot",
 };
 
+const unscored: Opportunity = {
+  keyword: "meditation",
+  rank: null,
+  opportunityScore: 42.5, // the no-data constant — must NOT be shown as a real score
+  scored: false,
+  why: "Reachable with a push: not yet ranked.",
+  reachability: "soon",
+};
+
 describe("<OpportunitiesCard />", () => {
   it("renders each opportunity with its measured rank, score, and why", () => {
     render(<OpportunitiesCard opportunities={[reachable]} />);
@@ -26,6 +35,14 @@ describe("<OpportunitiesCard />", () => {
     expect(screen.getByTestId("opp-habit tracker")).toHaveTextContent("#14");
     expect(screen.getByTestId("opp-habit tracker")).toHaveTextContent("score 82");
     expect(screen.getByText(/Close to the top 10/)).toBeInTheDocument();
+  });
+
+  it("says 'not enough data to score' instead of the no-data constant when unscored (#65)", () => {
+    render(<OpportunitiesCard opportunities={[unscored]} />);
+    const row = screen.getByTestId("opp-meditation");
+    expect(row).toHaveTextContent("not enough data to score");
+    expect(row).not.toHaveTextContent("42.5");
+    expect(row).not.toHaveTextContent("score 42");
   });
 
   it("renders a null rank as 'not in top results' — never a fabricated position", () => {

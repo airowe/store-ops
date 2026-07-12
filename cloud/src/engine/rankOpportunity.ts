@@ -59,6 +59,17 @@ export type Opportunity = {
   rank: number | null;
   /** 0–100, weighted over the three measured drivers (distance/competitor-weakness/momentum). */
   opportunityScore: number;
+  /**
+   * Is `opportunityScore` backed by a MEASURED differentiating signal? `false`
+   * when the keyword is unranked AND has no competitor data AND no rank history —
+   * then every driver is a default (distance 0, competitorWeakness's no-data 100,
+   * momentum's no-history 50) and the score collapses to the same constant (42.5)
+   * for every such term. That constant is an ARTIFACT of absent data, not a
+   * measurement (#65), so the UI must present it as "not enough data to score",
+   * never as a real number. Consumers treat `undefined` (legacy/persisted rows)
+   * as scored, so only an explicit `false` hides the number.
+   */
+  scored: boolean;
   /** human, correlational explanation — "close to top 10, weak competitors, gaining". */
   why: string;
   /** honest reachability bucketing — the hedge that labels (not hides) longshots. */
@@ -227,11 +238,20 @@ export function rankOpportunities(input: RankOpportunityInput): Opportunity[] {
         drivers.momentum * WEIGHTS.momentum,
     );
 
+    // The score is a real measurement only if SOME differentiating signal exists:
+    // a measured rank, competitor data for THIS term, or ≥2 snapshots of history.
+    // Absent all three, the drivers are pure defaults and the score is an artifact.
+    const hasCompetitorSignal = (input.competitorRanks ?? []).some((c) =>
+      c.ranks.some((r) => r.keyword === keyword),
+    );
+    const scored = rank !== null || hasCompetitorSignal || rows.length >= 2;
+
     const reachability = reachabilityFor(rank, drivers);
     out.push({
       keyword,
       rank,
       opportunityScore,
+      scored,
       reachability,
       why: explain(rank, drivers, reachability),
       drivers,
