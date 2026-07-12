@@ -19,6 +19,8 @@ import { ApiError, ascCreateVersion, ascPush, decideRun, getCredentials, getGith
 import type { AscPushResult, RunDetail } from "@shipaso/api";
 import { CopyDiff } from "./CopyDiff.js";
 import { FindingsCard } from "./FindingsCard.js";
+import { OpportunitiesCard } from "./OpportunitiesCard.js";
+import { LocalizationExpansionCard } from "./LocalizationExpansionCard.js";
 import { LocalizationCard } from "./LocalizationCard.js";
 
 export function RunView({ client, id }: { client: import("@shipaso/api").ApiClient; id: string }) {
@@ -85,6 +87,11 @@ export function RunView({ client, id }: { client: import("@shipaso/api").ApiClie
           {...(r.locks !== undefined ? { locks: r.locks } : {})}
           {...(r.findingsSummary !== undefined ? { summary: r.findingsSummary } : {})}
         />
+      ) : null}
+
+      {r.opportunities?.length ? <OpportunitiesCard opportunities={r.opportunities} /> : null}
+      {r.localizationExpansion?.length ? (
+        <LocalizationExpansionCard recommendations={r.localizationExpansion} />
       ) : null}
 
       {pending ? (
