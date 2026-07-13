@@ -139,6 +139,19 @@ export {
   playSuggestFinding,
   playSuggestSource,
 } from "./play/playSuggest.js";
+// Play "Data safety" — keyless declaration read + honest consistency findings.
+export {
+  type PlayDataSafety,
+  PLAY_DATA_SAFETY_TYPES,
+  extractAfBlobs,
+  parsePlayDataSafety,
+} from "./play/playDataSafetyParse.js";
+export {
+  PLAY_DATASAFETY_URL,
+  PLAY_DATA_SAFETY_SOURCE,
+  readPlayDataSafety,
+  playDataSafetyFindings,
+} from "./play/playDataSafety.js";
 // Android vitals — owner-keyed, Google-documented visibility lever (gated read).
 export {
   type PlayVitals,

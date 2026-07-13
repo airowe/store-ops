@@ -84,6 +84,7 @@ import {
   playApiTransportForServiceAccount,
   playChartRankFinding,
   playChartSource,
+  playDataSafetyFindings,
   playDeveloperApiAdapter,
   playQualityFindings,
   playSearchRankFinding,
@@ -93,6 +94,7 @@ import {
   fetchPlaySearchRank,
   rankOpportunities,
   ranksFor,
+  readPlayDataSafety,
   readPlayListing,
   readPlayQualityRates,
   readPlayVitals,
@@ -1926,7 +1928,7 @@ async function auditPlayRoute(
     //   • Category chart rank (keyless) — a MEASURED "#N in <category>" read off
     //     the public listing's category. Worker egress usually 429s the RPC, so
     //     it typically yields nothing in prod, but costs the audit nothing.
-    const [vitalsFindings, chartFindings, searchFindings] = await Promise.all([
+    const [vitalsFindings, chartFindings, searchFindings, dataSafetyFindings] = await Promise.all([
       isFlagOn(env.PLAY_VITALS_ENABLED)
         ? readPlayVitalsFindings(sa, packageName).catch(() => [])
         : Promise.resolve([]),
@@ -1934,8 +1936,13 @@ async function auditPlayRoute(
       isFlagOn(env.PLAY_SEARCH_RANK_ENABLED) && targets && targets.length > 0
         ? readPlaySearchRankFindings(env, appId, packageName, targets, body.country).catch(() => [])
         : Promise.resolve([]),
+      // Keyless data-safety consistency (§02-C) — a positively-observed gap flag +
+      // a transparency summary. Degrade-safe: a 429/parse failure yields nothing.
+      readPlayDataSafety(fetchForEnv(env), packageName, body.country ? { country: body.country } : {})
+        .then(playDataSafetyFindings)
+        .catch(() => []),
     ]);
-    const extra = [...vitalsFindings, ...chartFindings, ...searchFindings];
+    const extra = [...vitalsFindings, ...chartFindings, ...searchFindings, ...dataSafetyFindings];
     if (extra.length > 0) {
       const findings = sortFindings([...audit.findings, ...extra]);
       return { ...audit, findings, summary: summarizeFindings(findings) };

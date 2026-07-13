@@ -19,21 +19,24 @@ buildable surfaces on top — this doc scopes them so they don't sit as prose in
 | # | Surface | Trust tier | Extends | Effort | Status |
 |---|---------|-----------|---------|--------|--------|
 | **A** | **Vitals expansion** — 4 new metric sets → findings | 🔒 owner | #220 `playVitals.ts` | **XS** | ✅ **shipped** |
-| **B** | **Data-Safety write / close-the-loop** — propose + push the corrected declaration | 🔒 owner | #178 lint + the optimizer's propose→approve→push loop | **M** | ⏳ needs prereq |
-| **C** | **Data-Safety ↔ privacy-policy consistency lint** (keyless) | 🌐 public | `playFindings` + #178 corpus | **S** | ⏳ needs prereq |
+| **B** | **Data-Safety write / close-the-loop** — propose + push the corrected declaration | 🔒 owner | #178 lint + the optimizer's propose→approve→push loop | **M** | ⏳ unblocked (needs write route + UI) |
+| **C** | **Data-Safety ↔ privacy-policy consistency lint** (keyless) | 🌐 public | `playFindings` + #178 corpus | **S** | ✅ **shipped** |
 | **D** | **Play funnel ingest** — GCS/BigQuery acquisition + conversion series | 🔒 owner | the iOS Engagement ingest (analytics-reports `02`) | **L** | ⏳ infra |
 
-> **Shipped in this PR: A** (vitals expansion — the 4 new quality metric sets read
-> through the same seam, surfaced as measured `impact:"conversion"` context, gated).
-> **B / C / D each need a prerequisite build first**, so they're scoped here but not
-> yet landed:
-> - **C** needs a keyless **data-safety reader** — the current parser reads only the
->   ld+json/OG surface (`playListingParse.ts`); the data-safety collection facts +
->   privacy-policy URL live in the `ds:` blobs it deliberately doesn't touch. A
->   half-built consistency lint would flag on absent data, so it waits on that reader.
-> - **B** needs the data-safety **declaration model** (from C's reader) plus an
->   owner-write UI; it's the first Play *fix-and-push*, so it must be approval-gated
->   end-to-end before it ships.
+> **Shipped: A** (vitals expansion) **and C** (the keyless data-safety reader +
+> consistency lint). The reader — `playDataSafetyParse.ts` (content-based against
+> Google's fixed data-type taxonomy + the "No data" markers + the external policy
+> URL; every field a tri-state, `reliable:false`) and `playDataSafety.ts`
+> (`readPlayDataSafety` degrade-safe + `playDataSafetyFindings`) — is wired into the
+> owner audit and surfaces (1) a **positively-observed** gap flag ("declares
+> collection but no linked privacy policy"), never a compliance verdict, and (2) a
+> transparency summary. It is also the **declaration model B needs**.
+>
+> **Still pending — B and D:**
+> - **B** is now **unblocked** (C's reader gives the declaration model). Remaining:
+>   the `androidpublisher` data-safety **write verb** + an **approval-gated** propose
+>   route/UI. It's the first Play *fix-and-push* on a legal declaration, so it must be
+>   human-approved end-to-end before it ships — deliberately not landed half-built.
 > - **D** is real infra (a GCS/BigQuery connector + a new persisted series); it ports
 >   the iOS Engagement machinery and is the largest single item.
 
