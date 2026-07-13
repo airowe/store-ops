@@ -27,4 +27,13 @@ describe("<CopyDiff />", () => {
     render(<CopyDiff current={{ name: "Old" }} proposed={{}} />);
     expect(screen.queryByTestId("diff-name")).toBeNull();
   });
+
+  it("collapses to an honest empty state when nothing actually changed", () => {
+    // name identical on both sides; subtitle/keywords 'proposed' but empty (unread → nothing)
+    render(<CopyDiff current={{ name: "Same" }} proposed={{ name: "Same", subtitle: "", keywords: "" }} />);
+    expect(screen.getByTestId("diff-none")).toBeInTheDocument();
+    expect(screen.queryByTestId("diff-name")).toBeNull();
+    expect(screen.queryByTestId("diff-subtitle")).toBeNull();
+    expect(screen.queryByTestId("diff-keywords")).toBeNull();
+  });
 });

@@ -103,6 +103,7 @@ import { analyzeRejection } from "../engine/rejectionAssistant.js";
 import { localizeScreenshots, type LayeredSource, type TextSlot } from "../engine/localizeScreenshots.js";
 import { localizerForEnv } from "./aiLocalizer.js";
 import { credentialsEnabled, deleteCredential, listCredentialMeta, saveCredential, useCredential } from "../credentialStore.js";
+import { createApiKey, listApiKeys, looksLikeApiKey, resolveApiKey, revokeApiKey } from "../apiKeys.js";
 import { serializeAsaBundle, verifyAsaCredentials, type AsaKeyBundle } from "../engine/asaAuth.js";
 import localesData from "../engine/locales-data.json";
 import { validateThresholdPatch } from "../thresholds.js";
@@ -553,16 +554,24 @@ async function requireUser(req: Request, env: Env): Promise<{ id: string; email:
     }
   }
 
-  // (2) Authorization: Bearer <session-token> — the cookieless path for MCP/API
-  // clients. We verify the very same signed session token; nothing weaker.
+  // (2) Authorization: Bearer <token> — the cookieless path for MCP/API clients.
+  // Two accepted shapes, both fail-closed:
+  //   • a scoped `shipaso_…` API key (agent access, #93) — verified by HASH
+  //     lookup, resolves the owning user; a key can only reach read/draft tools.
+  //   • the signed session token itself (mobile/Bearer) — verified as-is.
   const authz = req.headers.get("Authorization");
   if (authz && /^Bearer\s+/i.test(authz)) {
     const bearer = authz.replace(/^Bearer\s+/i, "").trim();
     if (bearer) {
-      const res = await verifySessionToken(sessionSecret(env), bearer);
-      if (res.ok) {
-        const user = await upsertUser(env.DB, res.email);
-        return { id: user.id, email: user.email };
+      if (looksLikeApiKey(bearer)) {
+        const owner = await resolveApiKey(env.DB, bearer);
+        if (owner) return owner;
+      } else {
+        const res = await verifySessionToken(sessionSecret(env), bearer);
+        if (res.ok) {
+          const user = await upsertUser(env.DB, res.email);
+          return { id: user.id, email: user.email };
+        }
       }
     }
   }
@@ -3605,6 +3614,24 @@ export async function handleApi(req: Request, env: Env): Promise<Response> {
     ) {
       return json(await pushTokenDeleteRoute(req, env, user.id), 200, origin, env);
     }
+    // /account/api-keys — scoped agent/MCP API keys (#93). GET lists metadata,
+    // POST mints a key (raw value returned ONCE), DELETE /:id revokes.
+    if (seg[0] === "account" && seg[1] === "api-keys") {
+      if (seg.length === 2 && method === "GET") {
+        return json({ keys: await listApiKeys(env.DB, user.id) }, 200, origin, env);
+      }
+      if (seg.length === 2 && method === "POST") {
+        const body = (await req.json().catch(() => ({}))) as { label?: unknown };
+        const label = typeof body.label === "string" ? body.label.trim().slice(0, 80) : "";
+        return json(await createApiKey(env.DB, user.id, label), 201, origin, env);
+      }
+      if (seg.length === 3 && method === "DELETE") {
+        const ok = await revokeApiKey(env.DB, user.id, seg[2]!);
+        if (!ok) throw new HttpError(404, "no such API key");
+        return json({ revoked: true }, 200, origin, env);
+      }
+    }
+
     // /account/credentials — stored-credential management (#67; write-only)
     if (seg[0] === "account" && seg[1] === "credentials") {
       if (seg.length === 2 && method === "GET") {

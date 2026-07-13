@@ -7,6 +7,8 @@ import type { ApiClient } from "./client.js";
 import type {
   AnalyticsIngestResult,
   AnalyticsState,
+  ApiKeyCreated,
+  ApiKeyMeta,
   AppDetail,
   AppListItem,
   AsaConnectResult,
@@ -187,6 +189,16 @@ export const setRankCadence = (c: ApiClient, cadence: RankCadence) =>
 
 export const getCredentials = (c: ApiClient) =>
   c.get<{ enabled: boolean; credentials: StoredCredential[] }>("/account/credentials");
+
+// ── scoped agent/MCP API keys ────────────────────────────────────────────────
+/** This account's API keys — metadata only (never the raw key). */
+export const listApiKeys = (c: ApiClient) => c.get<{ keys: ApiKeyMeta[] }>("/account/api-keys");
+/** Mint a scoped key. The raw `key` is in the response ONCE — copy it then. */
+export const createApiKey = (c: ApiClient, label: string) =>
+  c.post<ApiKeyCreated>("/account/api-keys", { label });
+/** Revoke a key by id (kills agent access; does not touch the session). */
+export const revokeApiKey = (c: ApiClient, id: string) =>
+  c.request<{ revoked: boolean }>(`/account/api-keys/${enc(id)}`, { method: "DELETE" });
 /** Connect + verify an Apple Search Ads key (unlocks real keyword popularity). */
 export const connectAsa = (
   c: ApiClient,

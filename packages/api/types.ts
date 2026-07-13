@@ -111,6 +111,13 @@ export type Opportunity = {
   rank: number | null;
   /** 0–100 winnability, weighted over the measured drivers. */
   opportunityScore: number;
+  /**
+   * Is the score backed by a measured signal? `false` = unranked with no
+   * competitor data and no history, so the score is a no-data artifact and the
+   * UI shows "not enough data to score" instead of the number. Optional so
+   * legacy/persisted rows (no flag) still render their score.
+   */
+  scored?: boolean;
   /** human, correlational explanation — never a promise. */
   why: string;
   reachability: Reachability;
@@ -404,3 +411,16 @@ export type StoredCredential = {
   lastUsedAt: string | null;
   kekVersion: number;
 };
+
+/** A scoped agent/MCP API key — metadata only; the raw key is never in here. */
+export type ApiKeyMeta = {
+  id: string;
+  label: string;
+  /** non-secret display prefix, e.g. "shipaso_1a2b3c4d…". */
+  prefix: string;
+  createdAt: string;
+  lastUsedAt: string | null;
+};
+
+/** The create response — carries the raw `key` ONCE (copy it then; never shown again). */
+export type ApiKeyCreated = ApiKeyMeta & { key: string };

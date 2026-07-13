@@ -249,6 +249,7 @@ describe("serializeRunResult — rank opportunities (PRD 06)", () => {
         keyword: "weather",
         rank: 3,
         opportunityScore: 72,
+        scored: true,
         reachability: "now",
         why: "Most winnable next: already top 10.",
         drivers: { distance: 98, competitorWeakness: 100, momentum: 50 },

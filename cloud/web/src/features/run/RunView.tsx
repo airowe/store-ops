@@ -24,8 +24,21 @@ import { LocalizationExpansionCard } from "./LocalizationExpansionCard.js";
 import { CoverageCard } from "./CoverageCard.js";
 import { PpoTreatmentCard } from "./PpoTreatmentCard.js";
 import { LocalizationCard } from "./LocalizationCard.js";
+import { API_BASE } from "../../config.js";
 
-export function RunView({ client, id }: { client: import("@shipaso/api").ApiClient; id: string }) {
+/** The ShipASO MCP endpoint the agent connects to (absolute when an API base is
+ *  configured, else a relative path in the demo build). */
+const MCP_URL = `${API_BASE}/mcp`;
+
+export function RunView({
+  client,
+  id,
+  onConnect,
+}: {
+  client: import("@shipaso/api").ApiClient;
+  id: string;
+  onConnect?: () => void;
+}) {
   const qc = useQueryClient();
   const runQ = useQuery({ queryKey: ["run", id], queryFn: () => getRun(client, id) });
   const credsQ = useQuery({ queryKey: ["credentials"], queryFn: () => getCredentials(client) });
@@ -88,6 +101,7 @@ export function RunView({ client, id }: { client: import("@shipaso/api").ApiClie
           findings={r.findings ?? []}
           {...(r.locks !== undefined ? { locks: r.locks } : {})}
           {...(r.findingsSummary !== undefined ? { summary: r.findingsSummary } : {})}
+          {...(onConnect ? { onConnect } : {})}
         />
       ) : null}
 
@@ -229,6 +243,30 @@ export function RunView({ client, id }: { client: import("@shipaso/api").ApiClie
               <pre>{c.command}</pre>
             </div>
           ))}
+        </div>
+      ) : null}
+
+      {approved ? (
+        <div className="card" data-testid="mcp-handoff">
+          <b>Run it from your AI agent</b>
+          <p className="micro">
+            Connect the ShipASO MCP and your agent can drive the audit → propose loop over
+            this app. Draft-only: the agent can’t push — approving + shipping stay here.
+          </p>
+          <pre>{`claude mcp add shipaso --transport http ${MCP_URL} \\
+  --header "Authorization: Bearer <your shipaso_ key>"`}</pre>
+          <p className="micro muted" style={{ margin: "4px 0 0" }}>
+            Generate a key in Settings → Agent access.{" "}
+            {onConnect ? (
+              <button className="btn ghost" data-testid="mcp-settings" onClick={onConnect}>
+                Open Settings →
+              </button>
+            ) : (
+              <a className="btn ghost" data-testid="mcp-settings" href="/settings">
+                Open Settings →
+              </a>
+            )}
+          </p>
         </div>
       ) : null}
     </section>

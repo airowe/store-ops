@@ -15,6 +15,53 @@ import { localizeApprove, localizeGenerate, localizeRemove } from "@shipaso/api"
 
 const FIELDS: Array<keyof CopyFields> = ["name", "subtitle", "keywords"];
 
+/**
+ * App Store Connect localization codes (a curated common subset). A closed
+ * dropdown, not free text — an invalid/mistyped locale can't reach the server,
+ * and the labels make the market obvious.
+ */
+const LOCALES: ReadonlyArray<{ code: string; label: string }> = [
+  { code: "en-US", label: "English (U.S.)" },
+  { code: "en-GB", label: "English (U.K.)" },
+  { code: "en-AU", label: "English (Australia)" },
+  { code: "en-CA", label: "English (Canada)" },
+  { code: "fr-FR", label: "French" },
+  { code: "fr-CA", label: "French (Canada)" },
+  { code: "de-DE", label: "German" },
+  { code: "es-ES", label: "Spanish (Spain)" },
+  { code: "es-MX", label: "Spanish (Mexico)" },
+  { code: "it", label: "Italian" },
+  { code: "pt-BR", label: "Portuguese (Brazil)" },
+  { code: "pt-PT", label: "Portuguese (Portugal)" },
+  { code: "nl-NL", label: "Dutch" },
+  { code: "ja", label: "Japanese" },
+  { code: "ko", label: "Korean" },
+  { code: "zh-Hans", label: "Chinese (Simplified)" },
+  { code: "zh-Hant", label: "Chinese (Traditional)" },
+  { code: "ru", label: "Russian" },
+  { code: "ar-SA", label: "Arabic" },
+  { code: "hi", label: "Hindi" },
+  { code: "tr", label: "Turkish" },
+  { code: "sv", label: "Swedish" },
+  { code: "da", label: "Danish" },
+  { code: "fi", label: "Finnish" },
+  { code: "no", label: "Norwegian" },
+  { code: "pl", label: "Polish" },
+  { code: "th", label: "Thai" },
+  { code: "vi", label: "Vietnamese" },
+  { code: "id", label: "Indonesian" },
+  { code: "ms", label: "Malay" },
+  { code: "he", label: "Hebrew" },
+  { code: "el", label: "Greek" },
+  { code: "cs", label: "Czech" },
+  { code: "hu", label: "Hungarian" },
+  { code: "ro", label: "Romanian" },
+  { code: "uk", label: "Ukrainian" },
+  { code: "ca", label: "Catalan" },
+  { code: "hr", label: "Croatian" },
+  { code: "sk", label: "Slovak" },
+];
+
 export function LocalizationCard({ client, runId, initialLocales }: { client: ApiClient; runId: string; initialLocales: string[] }) {
   const [approved, setApproved] = useState<string[]>(initialLocales);
   const [locale, setLocale] = useState("");
@@ -34,7 +81,19 @@ export function LocalizationCard({ client, runId, initialLocales }: { client: Ap
       <p className="micro">Generate a localized draft per market. We localize what you approved — never the draft.</p>
 
       <div style={{ display: "flex", gap: 8, marginTop: 6 }}>
-        <input data-testid="loc-locale" placeholder="Locale (e.g. de-DE)" value={locale} onChange={(e) => setLocale(e.target.value)} />
+        <select
+          data-testid="loc-locale"
+          value={locale}
+          onChange={(e) => setLocale(e.target.value)}
+          style={{ flex: 1 }}
+        >
+          <option value="">Select a market…</option>
+          {LOCALES.filter((l) => !approved.includes(l.code)).map((l) => (
+            <option key={l.code} value={l.code}>
+              {l.label} ({l.code})
+            </option>
+          ))}
+        </select>
         <button className="btn" data-testid="loc-generate" disabled={busy || !locale.trim()} onClick={() => generate.mutate(locale.trim())}>
           {generate.isPending ? "Translating…" : "Generate"}
         </button>

@@ -9,6 +9,12 @@ screenshot scoring, keyword/intent grounding) runs for both stores without dupli
 
 The whole plan is gated on one decision, so it goes first.
 
+> **See also `01-data-map.md`** — the concrete research behind this plan: exact
+> endpoints, fields, auth, rate limits, ToS, Worker-fit, and the honesty/product-value
+> mapping for every Play data surface (keyless scrape, licensed vendors, and the
+> official owner APIs). It resolves the "which vendor / which endpoint" questions this
+> plan leaves abstract.
+
 ---
 
 ## 1. The gating decision: where does Android listing data come from?

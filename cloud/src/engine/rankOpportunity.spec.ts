@@ -173,4 +173,28 @@ describe("rankOpportunities — output contract", () => {
     const out = rankOpportunities({ ranks: [snap("a", 10), snap("b", 10)] });
     expect(out.map((o) => o.keyword).sort()).toEqual(["a", "b"]);
   });
+
+  it("flags an unranked, no-competitor, no-history keyword as NOT scored (the 42.5 artifact, #65)", () => {
+    // distance 0 + competitorWeakness's no-data 100 + momentum's no-history 50
+    // → the same constant for every such term; that's an artifact, not a measure.
+    const out = rankOpportunities({ ranks: [snap("mystery", null)] });
+    const o = out.find((x) => x.keyword === "mystery");
+    expect(o?.scored).toBe(false);
+    expect(o?.opportunityScore).toBe(42.5); // the constant is still computed…
+    // …but `scored:false` tells the UI to present it as "not enough data".
+  });
+
+  it("marks a keyword scored when ANY measured signal exists (rank, competitor, or history)", () => {
+    const ranked = rankOpportunities({ ranks: [snap("ranked", 12)] });
+    expect(ranked.find((o) => o.keyword === "ranked")?.scored).toBe(true);
+
+    const withCompetitor = rankOpportunities({
+      ranks: [snap("k", null)],
+      competitorRanks: [{ name: "Rival", ranks: [snap("k", 40)] }],
+    });
+    expect(withCompetitor.find((o) => o.keyword === "k")?.scored).toBe(true);
+
+    const withHistory = rankOpportunities({ ranks: history("h", null, null) });
+    expect(withHistory.find((o) => o.keyword === "h")?.scored).toBe(true);
+  });
 });
