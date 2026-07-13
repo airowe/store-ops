@@ -1,5 +1,10 @@
 -- store-ops D1 schema (SQLite)
--- Apply: npm run db:migrate:local   (local)   |   npm run db:migrate   (remote)
+-- This is the BASELINE for a fresh/local DB. Apply it ONCE when creating a
+-- database:  npm run db:migrate:local  (local)  |  npm run db:migrate  (remote).
+-- INCREMENTAL changes after that are numbered files in migrations/, applied
+-- automatically on deploy (`wrangler d1 migrations apply` — see migrations/README.md).
+-- Rule: a column a migration adds via bare `ALTER TABLE ADD COLUMN` must NOT also
+-- be declared in a CREATE here (else fresh DB + migration = duplicate-column).
 --
 -- State model for the autonomous ASO loop:
 --   user --< app --< run --< (proposals, approval)
@@ -149,9 +154,10 @@ CREATE INDEX IF NOT EXISTS idx_comp_app ON competitor_snapshots(app_id, comp_id,
 -- confirms) and user entry (source='user', confirmed immediately). Only
 -- status='confirmed' rows feed runs + the weekly sweep — a suggestion is never
 -- silently watched.
--- ⚠️ DEPLOY ORDER: create this table (db-migrate workflow) BEFORE deploying a
--- Worker that reads it. Reads are defensively guarded, but the feature is dead
--- until the table exists.
+-- DEPLOY ORDER is handled automatically: on deploy, migrations apply BEFORE the
+-- Worker deploys, so a migration-created table exists before the new code reads
+-- it. (This table predates migrations and is part of the baseline; reads are
+-- defensively guarded regardless.)
 CREATE TABLE IF NOT EXISTS app_competitors (
   app_id      TEXT NOT NULL REFERENCES apps(id) ON DELETE CASCADE,
   comp_key    TEXT NOT NULL,                          -- App Store trackId (or bundle id)
@@ -171,11 +177,10 @@ CREATE INDEX IF NOT EXISTS idx_app_competitors ON app_competitors(app_id, status
 -- src/schedule.ts — default weekly Monday 09:00 UTC); last_sweep_at stamps the
 -- last completed sweep (the hourly cron's due-check reads it). ALL reads are
 -- FAIL-OPEN: missing row / column / NULL / garbage → today's behavior.
--- ⚠️ DEPLOY ORDER: create/alter via the db-migrate workflow BEFORE deploying a
--- Worker that reads it (reads degrade gracefully, but writes 500 until then).
--- Migration for pre-#52 deployments:
---   ALTER TABLE app_settings ADD COLUMN schedule_json TEXT;
---   ALTER TABLE app_settings ADD COLUMN last_sweep_at TEXT;
+-- This table + its schedule_json/last_sweep_at columns predate migrations and are
+-- part of the baseline (applied in prod; reads degrade gracefully regardless). A
+-- future column here goes in a migrations/ file (ALTER, migration-only), never a
+-- bare ALTER in this CREATE — see migrations/README.md.
 CREATE TABLE IF NOT EXISTS app_settings (
   app_id          TEXT PRIMARY KEY REFERENCES apps(id) ON DELETE CASCADE,
   threshold_json  TEXT NOT NULL DEFAULT '{}',
@@ -189,7 +194,9 @@ CREATE TABLE IF NOT EXISTS app_settings (
 -- holds ONLY ciphertext — never key material: the KEK is a Worker secret
 -- (CRED_KEK_V*), never in D1/repo. Write-only custody: no route ever returns
 -- plaintext; identifiers (key_id/issuer_id) are non-secret metadata for the UI.
--- ⚠️ DEPLOY ORDER: create via db-migrate BEFORE deploying a Worker that reads it.
+-- Part of the baseline (applied in prod). The #78-2 widening of the kind CHECK to
+-- allow 'asa' was a one-time table rebuild, already applied; fresh DBs get the
+-- widened CHECK directly from this CREATE.
 CREATE TABLE IF NOT EXISTS stored_credentials (
   id            TEXT PRIMARY KEY,                     -- uuid
   user_id       TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,

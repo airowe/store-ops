@@ -103,18 +103,25 @@ Notes:
 
 ## 5. D1 (`store_ops`)
 
-### Run a migration / ad-hoc SQL (remote)
+### Schema changes go through migrations (auto-applied on deploy)
+
+Normal path: add a numbered file to `cloud/migrations/` and merge. The deploy runs
+`wrangler d1 migrations apply store_ops --remote` **before** the Worker deploy, so
+the change lands with the code. `schema.sql` is the fresh-DB baseline. See
+`cloud/migrations/README.md` for the one rule (migration-owned columns stay out of
+`schema.sql`'s CREATE). The old manual `db-migrate.yml` workflow is retired.
+
+### Ad-hoc SQL (emergency / inspection only — prefer a migration)
 
 ```bash
-# apply the full schema
-npx wrangler d1 execute store_ops --remote --file=./schema.sql
+# bootstrap a fresh DB from the baseline schema
+npx wrangler d1 execute store_ops --remote --file=./schema.sql   # = npm run db:migrate
 
-# run a single statement
-npx wrangler d1 execute store_ops --remote --command "ALTER TABLE apps ADD COLUMN foo TEXT"
+# read-only inspection
+npx wrangler d1 execute store_ops --remote --command "PRAGMA table_info(rank_snapshots)"
 ```
 
-Use `--local` instead of `--remote` against the local dev DB. `npm run db:migrate`
-is the remote schema apply; `npm run db:migrate:local` is the local one.
+Use `--local` instead of `--remote` against the local dev DB (`npm run db:migrate:local`).
 
 ### Snapshot retention
 

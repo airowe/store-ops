@@ -7,9 +7,10 @@
 #   1) npm install
 #   2) npx wrangler d1 create store_ops        # creates the DB, prints a database_id
 #   3) paste that id into `database_id` below   # <-- FILL ME IN
-#   4) npm run db:migrate:local                 # apply schema.sql to the local DB
+#   4) npm run db:migrate:local                 # apply the schema.sql BASELINE (local)
 #   5) npm run dev                              # wrangler dev (local Worker + D1)
-#   6) npm run db:migrate && npm run deploy     # remote DB + deploy
+#   6) npm run db:migrate && npm run deploy     # baseline on remote, then deploy
+#      (deploy auto-applies migrations/ on every push to main — see migrations/README.md)
 
 name = "store-ops"
 main = "src/index.ts"

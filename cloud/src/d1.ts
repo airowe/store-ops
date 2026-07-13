@@ -1230,8 +1230,9 @@ export async function hasOpenRun(db: D1Database, appId: string): Promise<boolean
 // (status='suggested' until the human confirms) and user entry (confirmed
 // immediately). Only CONFIRMED rows feed runs + the weekly sweep — a suggestion
 // is never silently watched. All reads are missing-table tolerant (deploy-order
-// safety: a Worker deployed before the db-migrate dispatch degrades to "no
-// competitors", never a crashed run).
+// safety: a Worker deployed before the table exists degrades to "no
+// competitors", never a crashed run — though the deploy now applies migrations
+// before the Worker, so ordering is guaranteed).
 
 export type CompetitorRow = {
   app_id: string;
