@@ -5,6 +5,14 @@
 > today, and what closes the gap?** It's a status + plan doc, grounded in the
 > current engine code (`engine/rankCheck.ts`, `chartRank.ts`, `play/playChartRank.ts`,
 > the `rank_snapshots` table, and the four analysis modules).
+>
+> **Update — parity steps 1–4 are now BUILT (this PR).** Chart rank is persisted
+> (`play_rank_snapshots`), Play keyword **search rank** exists and persists into the
+> shared `rank_snapshots` (so the analysis modules run for Play keyword rank), and
+> autocomplete **discovery** (`playSuggest`) is built. The scoreboard below is the
+> "before" state; the ✅/⏳ markers in "Path to parity" track what landed. Remaining:
+> a Play rank-delta **card** (web) and flipping the search-rank flag on after we
+> accept the scrape's reliability/ToS cost.
 
 ## Short answer
 
@@ -59,27 +67,29 @@ Two of the three gaps trace straight to the Play/iOS asymmetries in `../google-p
 Each step reuses existing machinery and stays inside the measured-or-null / degrade-safe
 discipline the Play engine already follows.
 
-1. **Persist Play chart rank as a time series.** *(S — highest leverage.)* We already
-   *measure* it (#221); we just throw it away. Store `playChartRank` into a rank-snapshot
-   store (extend `rank_snapshots` with a `store` + chart dimension, or a sibling
-   `play_rank_snapshots` table via a migration — **not** `schema.sql`, per the migration
-   discipline) from the audit path + a Play snapshot cron. This alone unlocks a Play
-   rank-delta card and lets **attribution/war-room** start running for Play with zero new
-   data source. **This is the single biggest parity win for the least work.**
-2. **Play keyword search rank (scrape), reliability-gated.** *(M.)* Mirror `rankCheck.ts`:
-   query Play search for a term, find the app's index → rank. Reuse the #180 per-market
-   plumbing (`country`). Because of asymmetries 1–2 above: run it **behind a flag**, prefer
-   **buckets** (top-3/10/50) over false-precision integers when personalization noise is
-   high, always stamp market + timestamp, and degrade to `null` (UNKNOWN) on a 429 — never a
-   fabricated position. Persist alongside step 1.
-3. **Point the analysis modules at Play history.** *(S each, after 1–2.)* `rankOpportunity`,
-   `rankAttribution`, `rankWarRoom`, `rankAnnotations` are **pure** and store-agnostic — once
-   Play rank history exists in the store they read, they light up for Play with mostly
-   plumbing. Attribution ("after you changed the long description, your 'weather' chart rank
-   moved +6") is the sticky proof feature, same as iOS.
-4. **Autocomplete keyword discovery (`IJ4APc`) as the honest volume replacement.** *(S.)*
-   `01 §6.3` — feeds real Play search terms (zero volume) into the store-neutral keyword
-   reasoner, giving keyword rank (step 2) something to track without ever faking a volume.
+1. ✅ **Persist Play chart rank as a time series.** *(S — highest leverage. DONE.)* We
+   already *measured* it (#221) and threw it away. Now a sibling **`play_rank_snapshots`**
+   table (schema.sql + migration 0003, both idempotent) stores each measured sample from
+   the owner audit path; `persistPlayChartRank` (no-op on UNKNOWN) + `getPlayChartRankHistory`.
+   Keyed by (collection, category, country) — a chart position is not a keyword position.
+2. ✅ **Play keyword search rank (scrape), reliability-gated.** *(M. DONE, flag-gated.)*
+   `playSearchRank.ts` + `playSearchSource.ts` mirror `rankCheck.ts`: scrape Play search,
+   find the app's index → rank, with a coarse **bucket** (top-3/10/20/50) that the finding
+   leads with (Play personalizes; the integer is evidence only). Degrades to `null` on a
+   429. Wired into the owner audit behind **`PLAY_SEARCH_RANK_ENABLED`**, and persisted into
+   the shared `rank_snapshots` (keyword-keyed, per market).
+3. ✅ **Point the analysis modules at Play history.** *(DONE by construction.)* Because Play
+   search rank persists into the **same `rank_snapshots`** the iOS modules read, and
+   `rankOpportunity` / `rankAttribution` / `rankWarRoom` key on `app_id` (store-agnostic),
+   they run for Play keyword rank the moment step 2 writes rows — no per-module change.
+4. ✅ **Autocomplete keyword discovery (`IJ4APc`) as the honest volume replacement.** *(DONE,
+   engine.)* `playSuggest.ts` — the keyless suggest source + a zero-volume discovery finding
+   (`playSuggestFinding`), ready to feed the store-neutral keyword reasoner and give the
+   search-rank tracker real terms to track. (Wiring it into a discovery route is the follow-up.)
+
+**Remaining to full parity:** a Play **rank-delta card** in the web app (read
+`getPlayChartRankHistory` / the Play rows of `rank_snapshots`), and flipping
+`PLAY_SEARCH_RANK_ENABLED` on once we accept the scrape's reliability/ToS cost.
 
 ## Honesty guardrails specific to Play rank
 

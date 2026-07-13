@@ -131,6 +131,14 @@ export {
   parsePlaySearchResults,
   playSearchSource,
 } from "./play/playSearchSource.js";
+// Play autocomplete — keyless keyword DISCOVERY (zero volume, the honest feed).
+export {
+  type PlaySuggestSource,
+  buildSuggestRequest,
+  parseSuggestResponse,
+  playSuggestFinding,
+  playSuggestSource,
+} from "./play/playSuggest.js";
 // Android vitals — owner-keyed, Google-documented visibility lever (gated read).
 export {
   type PlayVitals,

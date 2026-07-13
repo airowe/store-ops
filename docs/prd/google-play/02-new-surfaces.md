@@ -16,12 +16,26 @@
 the category chart rank (#221). Those are **done**. The 2026-07 refresh adds four *new*
 buildable surfaces on top — this doc scopes them so they don't sit as prose in the data map:
 
-| # | Surface | Trust tier | Extends | Effort |
-|---|---------|-----------|---------|--------|
-| **A** | **Vitals expansion** — 4 new metric sets → findings | 🔒 owner | #220 `playVitals.ts` | **XS** |
-| **B** | **Data-Safety write / close-the-loop** — propose + push the corrected declaration | 🔒 owner | #178 lint + the optimizer's propose→approve→push loop | **M** |
-| **C** | **Data-Safety ↔ privacy-policy consistency lint** (keyless) | 🌐 public | `playFindings` + #178 corpus | **S** |
-| **D** | **Play funnel ingest** — GCS/BigQuery acquisition + conversion series | 🔒 owner | the iOS Engagement ingest (analytics-reports `02`) | **L** |
+| # | Surface | Trust tier | Extends | Effort | Status |
+|---|---------|-----------|---------|--------|--------|
+| **A** | **Vitals expansion** — 4 new metric sets → findings | 🔒 owner | #220 `playVitals.ts` | **XS** | ✅ **shipped** |
+| **B** | **Data-Safety write / close-the-loop** — propose + push the corrected declaration | 🔒 owner | #178 lint + the optimizer's propose→approve→push loop | **M** | ⏳ needs prereq |
+| **C** | **Data-Safety ↔ privacy-policy consistency lint** (keyless) | 🌐 public | `playFindings` + #178 corpus | **S** | ⏳ needs prereq |
+| **D** | **Play funnel ingest** — GCS/BigQuery acquisition + conversion series | 🔒 owner | the iOS Engagement ingest (analytics-reports `02`) | **L** | ⏳ infra |
+
+> **Shipped in this PR: A** (vitals expansion — the 4 new quality metric sets read
+> through the same seam, surfaced as measured `impact:"conversion"` context, gated).
+> **B / C / D each need a prerequisite build first**, so they're scoped here but not
+> yet landed:
+> - **C** needs a keyless **data-safety reader** — the current parser reads only the
+>   ld+json/OG surface (`playListingParse.ts`); the data-safety collection facts +
+>   privacy-policy URL live in the `ds:` blobs it deliberately doesn't touch. A
+>   half-built consistency lint would flag on absent data, so it waits on that reader.
+> - **B** needs the data-safety **declaration model** (from C's reader) plus an
+>   owner-write UI; it's the first Play *fix-and-push*, so it must be approval-gated
+>   end-to-end before it ships.
+> - **D** is real infra (a GCS/BigQuery connector + a new persisted series); it ports
+>   the iOS Engagement machinery and is the largest single item.
 
 Explicitly **still NOT built** (no honest source — `01 §4`): experiment/PPO results, CPP
 conversion, a conversion *query* API, keyword volume. Nothing below fabricates them.
