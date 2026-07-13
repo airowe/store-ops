@@ -102,6 +102,20 @@ export {
   playFindings,
   playSurfaceLocks,
 } from "./play/playFindings.js";
+// Play metadata compliance lint (title policy) + its cited-policy corpus.
+export {
+  playComplianceFindings,
+  hasEmojiOrRepeatedSpecials,
+  hasPerformanceClaim,
+  hasPlayPricePromo,
+  impliesPlayProgram,
+} from "./play/playComplianceLint.js";
+export {
+  type PlayPolicyCite,
+  type PlayPolicyCiteKey,
+  PLAY_POLICY_CITES,
+  citePlayPolicy,
+} from "./play/playPolicy.js";
 // Store-agnostic findings primitives (shared by iOS + Play rule sets).
 export { findingsLabel, sortFindings, mk as mkFinding } from "./findings/core.js";
 export {
