@@ -213,6 +213,10 @@ CREATE INDEX IF NOT EXISTS idx_stored_cred_user ON stored_credentials(user_id);
 -- endpoint (/mcp) without the session cookie (see cloud/src/apiKeys.ts). We
 -- store ONLY the SHA-256 hash of each key — the raw key is shown once at
 -- creation and never persisted. Independently revocable, scoped to one user.
+--
+-- Apply to an EXISTING prod D1 (idempotent; --remote targets production):
+--   npx wrangler d1 execute store_ops --remote --command "CREATE TABLE IF NOT EXISTS api_keys (id TEXT PRIMARY KEY, user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE, label TEXT NOT NULL DEFAULT '', prefix TEXT NOT NULL, key_hash TEXT NOT NULL UNIQUE, created_at TEXT NOT NULL DEFAULT (datetime('now')), last_used_at TEXT)"
+--   npx wrangler d1 execute store_ops --remote --command "CREATE INDEX IF NOT EXISTS idx_api_keys_user ON api_keys(user_id)"
 CREATE TABLE IF NOT EXISTS api_keys (
   id           TEXT PRIMARY KEY,                        -- uuid
   user_id      TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
