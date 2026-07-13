@@ -113,10 +113,9 @@ CREATE INDEX IF NOT EXISTS idx_runs_status ON runs(status);
 -- This is what lets a localized push PROVE movement in a specific market rather
 -- than blending storefronts into one global claim.
 -- Migration for an EXISTING db (the CREATE below only fires on a fresh db):
---   npx wrangler d1 execute store_ops --command "ALTER TABLE rank_snapshots ADD COLUMN country TEXT NOT NULL DEFAULT ''"
---   npx wrangler d1 execute store_ops --command "UPDATE rank_snapshots SET country = COALESCE((SELECT lower(a.country) FROM apps a WHERE a.id = rank_snapshots.app_id), '') WHERE country = ''"
---   npx wrangler d1 execute store_ops --command "CREATE INDEX IF NOT EXISTS idx_rank_app_country_kw ON rank_snapshots(app_id, country, keyword, checked_at)"
--- (add `--local` for the local D1; drop it for remote.)
+-- now handled by migrations/0002_rank_snapshots_country.sql, applied on deploy.
+-- (0002 runs only the idempotent backfill + index — NOT a bare ADD COLUMN, which
+-- would error on a prod that already has the column; see that file's header.)
 CREATE TABLE IF NOT EXISTS rank_snapshots (
   id          TEXT PRIMARY KEY,                       -- uuid
   app_id      TEXT NOT NULL REFERENCES apps(id) ON DELETE CASCADE,
