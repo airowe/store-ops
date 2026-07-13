@@ -74,6 +74,7 @@ import {
   type PushCommand,
   type PushInput,
   type WarRoomRankSnapshot,
+  ANDROIDPUBLISHER_SCOPE,
   auditPlayListing,
   buildPushCommands,
   buildWarRoom,
@@ -98,6 +99,8 @@ import {
   readPlayListing,
   readPlayQualityRates,
   readPlayVitals,
+  validateSafetyLabelsCsv,
+  writeDataSafetyLabels,
   resolveAppQuery,
   resolveNameToBundle,
   runAgent,
@@ -1952,6 +1955,74 @@ async function auditPlayRoute(
     // PlayApiError messages are key-free (HTTP status only) — safe to surface as a
     // clean upstream error rather than a generic 500.
     throw new HttpError(502, e instanceof Error ? e.message : "Play audit failed");
+  }
+}
+
+type PlayDataSafetyWriteBody = {
+  packageName?: string;
+  /** The owner's Play data-safety CSV — pushed VERBATIM; we never author it. */
+  safetyLabels?: string;
+  serviceAccount?: unknown;
+  useStored?: boolean;
+};
+
+/**
+ * POST /apps/:id/play-data-safety — push the owner's Data-safety declaration
+ * (PRD 02-B). The FIRST Play fix-and-push, and it targets a LEGAL declaration, so
+ * it is deliberately fenced:
+ *   • GATED behind PLAY_DATA_SAFETY_WRITE_ENABLED (dark until enabled);
+ *   • OWNER-scoped (requireOwnedApp + the caller's own service account);
+ *   • the `safetyLabels` CSV is the HUMAN's — we validate shape and push it
+ *     verbatim, never generate or rewrite the declaration.
+ * The UI carries the explicit "push declaration" confirm; hitting this route IS
+ * the approved action.
+ */
+async function playDataSafetyWriteRoute(
+  req: Request,
+  env: Env,
+  userId: string,
+  appId: string,
+): Promise<unknown> {
+  await requireOwnedApp(env, appId, userId);
+  if (!isFlagOn(env.PLAY_DATA_SAFETY_WRITE_ENABLED)) {
+    throw new HttpError(403, "Play data-safety write is not enabled.");
+  }
+  const body = (await req.json<PlayDataSafetyWriteBody>().catch(() => ({}))) as PlayDataSafetyWriteBody;
+  const packageName = (body.packageName ?? "").trim();
+  if (!packageName) throw new HttpError(400, "packageName is required (your Play package id).");
+  const csv = body.safetyLabels ?? "";
+  const check = validateSafetyLabelsCsv(csv);
+  if (!check.ok) throw new HttpError(400, check.error);
+
+  // Owner service account: in-request or the app's saved one (same as audit-play).
+  let saRaw: unknown = body.serviceAccount;
+  if ((body.useStored || body.serviceAccount == null) && credentialsEnabled(env)) {
+    const stored = await useCredential(env, userId, appId, "play");
+    if (!stored) throw new HttpError(404, "no saved Google Play service account for this app");
+    saRaw = stored.plaintext;
+  }
+  const sa = parseServiceAccount(saRaw);
+
+  // Mint an androidpublisher-scoped token and build a body-carrying write
+  // transport (the read transport is intentionally body-less). Owner-only.
+  let accessToken: string;
+  try {
+    ({ accessToken } = await mintGoogleAccessToken(workerFetchLike, sa, { scope: ANDROIDPUBLISHER_SCOPE }));
+  } catch (e) {
+    throw new HttpError(400, e instanceof Error ? e.message : "invalid service account");
+  }
+  const transport: import("../engine/index.js").PlayWriteTransport = async ({ url, body: reqBody }) => {
+    const resp = await workerFetchLike(url, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" },
+      body: reqBody,
+    });
+    return { status: resp.status, body: await resp.text() };
+  };
+  try {
+    return await writeDataSafetyLabels(transport, packageName, csv);
+  } catch (e) {
+    throw new HttpError(502, e instanceof Error ? e.message : "Play data-safety write failed");
   }
 }
 
@@ -3893,6 +3964,9 @@ export async function handleApi(req: Request, env: Env): Promise<Response> {
       }
       if (seg.length === 3 && seg[1] && seg[2] === "audit-play" && method === "POST") {
         return json(await auditPlayRoute(req, env, user.id, seg[1]), 200, origin);
+      }
+      if (seg.length === 3 && seg[1] && seg[2] === "play-data-safety" && method === "POST") {
+        return json(await playDataSafetyWriteRoute(req, env, user.id, seg[1]), 200, origin);
       }
       // ASC Analytics Reports Phase 1: read-only status probe + the consent-gated
       // enable (create the ongoing request). Both carry the ASC credential.

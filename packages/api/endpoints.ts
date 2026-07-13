@@ -68,6 +68,16 @@ export const auditPlay = (
   body: { packageName: string; serviceAccount?: string; useStored?: boolean; store?: boolean },
 ) => c.post<PlayAudit>(`/apps/${enc(id)}/audit-play`, body);
 
+/**
+ * Push the owner's Play data-safety declaration (PRD 02-B). Gated + owner-scoped;
+ * `safetyLabels` is the human's own CSV — pushed verbatim, never generated.
+ */
+export const pushPlayDataSafety = (
+  c: ApiClient,
+  id: string,
+  body: { packageName: string; safetyLabels: string; serviceAccount?: string; useStored?: boolean },
+) => c.post<{ packageName: string; pushed: true }>(`/apps/${enc(id)}/play-data-safety`, body);
+
 // ── analytics reports (measured conversion) ──────────────────────────────────
 /** Ensure the ongoing Engagement request exists (needs an Admin key). Consent write. */
 export const enableAnalytics = (c: ApiClient, id: string, body: AscCredentialBody = {}) =>
