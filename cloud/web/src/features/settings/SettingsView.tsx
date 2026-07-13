@@ -12,6 +12,7 @@ import type { ApiClient, RankCadence } from "@shipaso/api";
 import { deleteCredential, getCredentials, logout, me, pauseAgent, resumeAgent, setNotifications, setRankCadence } from "@shipaso/api";
 import { GithubCard } from "./GithubCard.js";
 import { AsaCard } from "./AsaCard.js";
+import { ApiKeysCard } from "./ApiKeysCard.js";
 
 type Prefs = { push: boolean; digest: boolean; cadence: RankCadence; paused: boolean };
 
@@ -153,6 +154,7 @@ export function SettingsView({ client, onSignedOut }: { client: ApiClient; onSig
 
       <GithubCard client={client} />
       <AsaCard client={client} hasAsaKey={creds.some((c) => c.kind === "asa")} />
+      <ApiKeysCard client={client} />
 
       <div className="card">
         <b>Stored keys</b>

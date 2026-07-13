@@ -208,6 +208,22 @@ CREATE TABLE IF NOT EXISTS stored_credentials (
 );
 CREATE INDEX IF NOT EXISTS idx_stored_cred_user ON stored_credentials(user_id);
 
+-- ── api keys ─────────────────────────────────────────────────────────────────
+-- Scoped "shipaso_…" keys that let an external AI agent authenticate to the MCP
+-- endpoint (/mcp) without the session cookie (see cloud/src/apiKeys.ts). We
+-- store ONLY the SHA-256 hash of each key — the raw key is shown once at
+-- creation and never persisted. Independently revocable, scoped to one user.
+CREATE TABLE IF NOT EXISTS api_keys (
+  id           TEXT PRIMARY KEY,                        -- uuid
+  user_id      TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  label        TEXT NOT NULL DEFAULT '',
+  prefix       TEXT NOT NULL,                           -- non-secret display prefix
+  key_hash     TEXT NOT NULL UNIQUE,                    -- SHA-256 hex of the raw key
+  created_at   TEXT NOT NULL DEFAULT (datetime('now')),
+  last_used_at TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_api_keys_user ON api_keys(user_id);
+
 -- ── approvals ────────────────────────────────────────────────────────────────
 -- The human approval gate. One decision row per run. 'approved' is the only
 -- state that unlocks the irreversible push (command handoff).

@@ -411,3 +411,16 @@ export type StoredCredential = {
   lastUsedAt: string | null;
   kekVersion: number;
 };
+
+/** A scoped agent/MCP API key — metadata only; the raw key is never in here. */
+export type ApiKeyMeta = {
+  id: string;
+  label: string;
+  /** non-secret display prefix, e.g. "shipaso_1a2b3c4d…". */
+  prefix: string;
+  createdAt: string;
+  lastUsedAt: string | null;
+};
+
+/** The create response — carries the raw `key` ONCE (copy it then; never shown again). */
+export type ApiKeyCreated = ApiKeyMeta & { key: string };
