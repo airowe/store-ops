@@ -78,13 +78,18 @@ import {
   buildPushCommands,
   buildWarRoom,
   lookup,
+  mintGoogleAccessToken,
+  PLAYDEVELOPERREPORTING_SCOPE,
   playApiTransportForServiceAccount,
   playDeveloperApiAdapter,
+  playVitalsFindings,
   rankOpportunities,
   ranksFor,
+  readPlayVitals,
   resolveAppQuery,
   resolveNameToBundle,
   runAgent,
+  sortFindings,
   verifyPlayServiceAccount,
 } from "../engine/index.js";
 import type { ReasoningTrace, AppRow, FindingsSummary } from "../d1.js";
@@ -1716,6 +1721,39 @@ async function playVerifyRoute(req: Request, env: Env, userId: string): Promise<
  * in the body (it may differ from the iOS bundle id). Read-only — the Developer
  * API path opens and discards an edit and NEVER commits, so it can't publish.
  */
+/**
+ * Read Android vitals for a package and turn them into findings. Owner-keyed via
+ * the Play Developer Reporting API (a reporting-scoped token minted from the same
+ * service account). Degrade-safe: the reader nulls each rate on any failure, so a
+ * missing scope / drifted request shape yields no findings rather than an error.
+ * ⚠️ The `:query` body shape is best-effort pending live verification — this path
+ * is gated behind PLAY_VITALS_ENABLED for exactly that reason.
+ */
+async function readPlayVitalsFindings(
+  sa: GoogleServiceAccount,
+  packageName: string,
+): Promise<import("../engine/index.js").Finding[]> {
+  const { accessToken } = await mintGoogleAccessToken(workerFetchLike, sa, {
+    scope: PLAYDEVELOPERREPORTING_SCOPE,
+  });
+  const query = async (metricSet: "crashRateMetricSet" | "anrRateMetricSet") => {
+    const metric =
+      metricSet === "crashRateMetricSet" ? "userPerceivedCrashRate" : "userPerceivedAnrRate";
+    const url = `https://playdeveloperreporting.googleapis.com/v1beta1/apps/${encodeURIComponent(
+      packageName,
+    )}/${metricSet}:query`;
+    const resp = await workerFetchLike(url, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ timelineSpec: { aggregationPeriod: "DAILY" }, metrics: [metric] }),
+    });
+    const text = await resp.text();
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+    return JSON.parse(text);
+  };
+  return playVitalsFindings(await readPlayVitals(query));
+}
+
 async function auditPlayRoute(
   req: Request,
   env: Env,
@@ -1764,11 +1802,23 @@ async function auditPlayRoute(
     ? body.targets.filter((t): t is string => typeof t === "string")
     : undefined;
   try {
-    return await auditPlayListing(adapter, packageName, {
+    const audit = await auditPlayListing(adapter, packageName, {
       ...(body.language ? { lang: body.language } : {}),
       ...(targets ? { targets } : {}),
       ...(typeof body.brand === "string" ? { brand: body.brand } : {}),
     });
+    // Android vitals (gated + degrade-safe) — the owner-keyed, Google-documented
+    // visibility lever. Off by default; when on, read via the Reporting API and
+    // MERGE the findings. Any failure (missing scope / drifted shape) degrades to
+    // no vitals findings — it never breaks the metadata audit.
+    if (isFlagOn(env.PLAY_VITALS_ENABLED)) {
+      const vitalsFindings = await readPlayVitalsFindings(sa, packageName).catch(() => []);
+      if (vitalsFindings.length > 0) {
+        const findings = sortFindings([...audit.findings, ...vitalsFindings]);
+        return { ...audit, findings, summary: summarizeFindings(findings) };
+      }
+    }
+    return audit;
   } catch (e) {
     // PlayApiError messages are key-free (HTTP status only) — safe to surface as a
     // clean upstream error rather than a generic 500.

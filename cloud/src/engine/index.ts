@@ -102,6 +102,17 @@ export {
   playFindings,
   playSurfaceLocks,
 } from "./play/playFindings.js";
+// Android vitals — owner-keyed, Google-documented visibility lever (gated read).
+export {
+  type PlayVitals,
+  type PlayVitalsQuery,
+  PLAY_CRASH_THRESHOLD_PCT,
+  PLAY_ANR_THRESHOLD_PCT,
+  PLAY_VITALS_SOURCE,
+  extractLatestRatePct,
+  readPlayVitals,
+  playVitalsFindings,
+} from "./play/playVitals.js";
 // Play metadata compliance lint (title policy) + its cited-policy corpus.
 export {
   playComplianceFindings,
@@ -278,6 +289,7 @@ export {
   type GoogleAccessToken,
   GoogleAuthError,
   ANDROIDPUBLISHER_SCOPE,
+  PLAYDEVELOPERREPORTING_SCOPE,
   buildServiceAccountAssertion,
   mintGoogleAccessToken,
   playApiTransport,
