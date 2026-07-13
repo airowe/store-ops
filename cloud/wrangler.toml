@@ -32,6 +32,9 @@ database_name = "store_ops"
 # database_id: FILL ME IN — run `npx wrangler d1 create store_ops` and paste the
 # printed id here. Until then `wrangler dev` works against the LOCAL D1 only.
 database_id = "30f6f8cf-90a5-4646-936f-8899ec4f62f6"
+# Incremental forward migrations (see migrations/README.md). Applied on deploy via
+# `wrangler d1 migrations apply store_ops --remote`; wrangler runs only new ones.
+migrations_dir = "migrations"
 
 # ── Cron Triggers — two schedules, dispatched in scheduled() on event.cron ───
 # "0 * * * *" = HOURLY → the autonomous-sweep SCHEDULER (#52): each app is swept
