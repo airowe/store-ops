@@ -149,6 +149,7 @@ import {
   listCompetitors,
   listCompetitorSnapshots,
   listRunsForApp,
+  persistPlayChartRank,
   persistRun,
   recordApproval,
   recordSubscriber,
@@ -1789,6 +1790,7 @@ async function readPlayVitalsFindings(
  */
 async function readPlayChartRankFindings(
   env: Env,
+  appId: string,
   packageName: string,
   country: string | undefined,
 ): Promise<import("../engine/index.js").Finding[]> {
@@ -1805,6 +1807,9 @@ async function readPlayChartRankFindings(
     ...(listing.category?.name ? { categoryName: listing.category.name } : {}),
     ...(country ? { country } : {}),
   });
+  // Parity step 1: persist the MEASURED sample as a time series (no-op on an
+  // UNKNOWN null read). Best-effort — a persistence hiccup must not fail the audit.
+  await persistPlayChartRank(env.DB, { appId, packageName, rank }).catch(() => undefined);
   return playChartRankFinding(rank);
 }
 
@@ -1872,7 +1877,7 @@ async function auditPlayRoute(
       isFlagOn(env.PLAY_VITALS_ENABLED)
         ? readPlayVitalsFindings(sa, packageName).catch(() => [])
         : Promise.resolve([]),
-      readPlayChartRankFindings(env, packageName, body.country).catch(() => []),
+      readPlayChartRankFindings(env, appId, packageName, body.country).catch(() => []),
     ]);
     const extra = [...vitalsFindings, ...chartFindings];
     if (extra.length > 0) {
