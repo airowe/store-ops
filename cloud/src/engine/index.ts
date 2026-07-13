@@ -102,6 +102,20 @@ export {
   playFindings,
   playSurfaceLocks,
 } from "./play/playFindings.js";
+// Play category chart rank — keyless, MEASURED "#N in category" (data-map top gap).
+export {
+  type PlayChartCollection,
+  type PlayChartRank,
+  type PlayChartSource,
+  playChartRankFromEntries,
+  fetchPlayChartRank,
+  playChartRankFinding,
+} from "./play/playChartRank.js";
+export {
+  buildChartRequest,
+  parsePlayChartResponse,
+  playChartSource,
+} from "./play/playChartSource.js";
 // Android vitals — owner-keyed, Google-documented visibility lever (gated read).
 export {
   type PlayVitals,

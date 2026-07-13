@@ -18,15 +18,20 @@ import {
   type FetchLike,
   type GoogleServiceAccount,
   type PlayAudit,
+  type PlayChartSource,
   auditPlayListing,
   classifyQuery,
+  fetchPlayChartRank,
   lookup,
   playAdapter,
   playApiTransportForServiceAccount,
+  playChartRankFinding,
   playDeveloperApiAdapter,
   playWebSource,
   resolveAppQuery,
   runAgent,
+  sortFindings,
+  summarizeFindings,
 } from "../engine/index.js";
 import type { AppRow } from "../d1.js";
 import { buildAppInput, type RunOverrides } from "../api/runConfig.js";
@@ -127,6 +132,9 @@ export async function runReadOnlyPlayAudit(
     country?: string | undefined;
     targets?: string[] | undefined;
     brand?: string | undefined;
+    /** Optional keyless chart source — when given, a measured category-chart rank
+     *  is merged into the findings (degrade-safe). Off (no chart rank) when absent. */
+    chartSource?: PlayChartSource | undefined;
   },
 ): Promise<PlayAuditOutcome> {
   const adapter = playAdapter(playWebSource(fetchFn));
@@ -145,6 +153,24 @@ export async function runReadOnlyPlayAudit(
     ...(input.targets ? { targets: input.targets } : {}),
     ...(input.brand ? { brand: input.brand } : {}),
   });
+
+  // Keyless category chart rank (data-map top gap) — a measured "#N in category".
+  // Uses the scraped listing's category; degrade-safe (the source returns [] →
+  // fetchPlayChartRank returns null → no finding). Never breaks the audit.
+  const categoryId = audit.listing.category?.id;
+  if (input.chartSource && categoryId) {
+    const rank = await fetchPlayChartRank(input.chartSource, {
+      packageName: pkg,
+      category: categoryId,
+      ...(audit.listing.category?.name ? { categoryName: audit.listing.category.name } : {}),
+      ...(input.country ? { country: input.country } : {}),
+    });
+    const chartFindings = playChartRankFinding(rank);
+    if (chartFindings.length > 0) {
+      const findings = sortFindings([...audit.findings, ...chartFindings]);
+      return { kind: "resolved", audit: { ...audit, findings, summary: summarizeFindings(findings) } };
+    }
+  }
   return { kind: "resolved", audit };
 }
 
