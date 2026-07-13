@@ -152,6 +152,15 @@ export {
   readPlayDataSafety,
   playDataSafetyFindings,
 } from "./play/playDataSafety.js";
+// Play "Data safety" WRITE — owner pushes their OWN declaration CSV (approval-bound).
+export {
+  type PlayWriteTransport,
+  type CsvValidation,
+  type PlayDataSafetyWriteResult,
+  validateSafetyLabelsCsv,
+  buildSafetyLabelsRequest,
+  writeDataSafetyLabels,
+} from "./play/playDataSafetyWrite.js";
 // Android vitals — owner-keyed, Google-documented visibility lever (gated read).
 export {
   type PlayVitals,

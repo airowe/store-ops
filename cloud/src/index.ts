@@ -123,6 +123,10 @@ export type Env = {
   // search page 429s from Worker egress and Play personalizes results, so the
   // read is dark until we accept the reliability/ToS cost. Degrade-safe when off.
   PLAY_SEARCH_RANK_ENABLED?: string;
+  // Play data-safety WRITE (PRD 02-B) — the first Play fix-and-push, on a LEGAL
+  // declaration. Off by default: the route 403s unless enabled, and even then the
+  // pushed CSV is the human's own (validated, never generated). Dark until enabled.
+  PLAY_DATA_SAFETY_WRITE_ENABLED?: string;
 };
 
 export default {

@@ -19,7 +19,7 @@ buildable surfaces on top — this doc scopes them so they don't sit as prose in
 | # | Surface | Trust tier | Extends | Effort | Status |
 |---|---------|-----------|---------|--------|--------|
 | **A** | **Vitals expansion** — 4 new metric sets → findings | 🔒 owner | #220 `playVitals.ts` | **XS** | ✅ **shipped** |
-| **B** | **Data-Safety write / close-the-loop** — propose + push the corrected declaration | 🔒 owner | #178 lint + the optimizer's propose→approve→push loop | **M** | ⏳ unblocked (needs write route + UI) |
+| **B** | **Data-Safety write / close-the-loop** — push the owner's declaration | 🔒 owner | C's reader + the approval-gated write pattern | **M** | ✅ **shipped** |
 | **C** | **Data-Safety ↔ privacy-policy consistency lint** (keyless) | 🌐 public | `playFindings` + #178 corpus | **S** | ✅ **shipped** |
 | **D** | **Play funnel ingest** — GCS/BigQuery acquisition + conversion series | 🔒 owner | the iOS Engagement ingest (analytics-reports `02`) | **L** | ⏳ infra |
 
@@ -32,13 +32,17 @@ buildable surfaces on top — this doc scopes them so they don't sit as prose in
 > collection but no linked privacy policy"), never a compliance verdict, and (2) a
 > transparency summary. It is also the **declaration model B needs**.
 >
-> **Still pending — B and D:**
-> - **B** is now **unblocked** (C's reader gives the declaration model). Remaining:
->   the `androidpublisher` data-safety **write verb** + an **approval-gated** propose
->   route/UI. It's the first Play *fix-and-push* on a legal declaration, so it must be
->   human-approved end-to-end before it ships — deliberately not landed half-built.
-> - **D** is real infra (a GCS/BigQuery connector + a new persisted series); it ports
->   the iOS Engagement machinery and is the largest single item.
+> **Also shipped: B** (the data-safety WRITE / fix-and-push). `playDataSafetyWrite.ts`
+> validates the CSV **shape only** (`validateSafetyLabelsCsv` — we never judge or
+> author the declaration's content) and pushes the owner's own CSV verbatim via a
+> body-carrying `PlayWriteTransport` (structurally separate from the read-only
+> transport). The route `POST /apps/:id/play-data-safety` is **gated**
+> (`PLAY_DATA_SAFETY_WRITE_ENABLED`), owner-scoped, and the `PlayDataSafetyCard`
+> fences the push behind an explicit "I confirm this is my declaration" checkbox —
+> the first Play *fix-and-push*, human-approved end-to-end.
+>
+> **Still pending — D only:** real infra (a GCS/BigQuery connector + a new persisted
+> series); it ports the iOS Engagement machinery and is the largest single item.
 
 Explicitly **still NOT built** (no honest source — `01 §4`): experiment/PPO results, CPP
 conversion, a conversion *query* API, keyword volume. Nothing below fabricates them.
