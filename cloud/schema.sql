@@ -108,25 +108,26 @@ CREATE INDEX IF NOT EXISTS idx_runs_status ON runs(status);
 -- ── rank_snapshots ───────────────────────────────────────────────────────────
 -- Time-series of organic rank per keyword PER STOREFRONT (iTunes Search API).
 -- rank = 1-based index in results[], or NULL when not in top `total` (top 200).
--- country (#180 Phase 1) is the storefront the rank was checked in (lowercased
--- ISO, e.g. 'us', 'jp'); '' = legacy rows recorded before the dimension existed.
--- This is what lets a localized push PROVE movement in a specific market rather
--- than blending storefronts into one global claim.
--- Migration for an EXISTING db (the CREATE below only fires on a fresh db):
--- now handled by migrations/0002_rank_snapshots_country.sql, applied on deploy.
--- (0002 runs only the idempotent backfill + index — NOT a bare ADD COLUMN, which
--- would error on a prod that already has the column; see that file's header.)
+-- The `country` column (#180 Phase 1) — the storefront the rank was checked in
+-- (lowercased ISO, e.g. 'us', 'jp'); '' = legacy rows — is NOT declared here. It
+-- is added by migrations/0002_rank_snapshots_country.sql (with its per-market
+-- index + a backfill), which is applied on deploy. Keeping it out of this CREATE
+-- means a fresh DB (bootstrapped from schema.sql) and the migrations compose
+-- cleanly: schema.sql is the pre-0002 BASELINE, and 0002's ADD COLUMN then runs
+-- exactly once against it — without the duplicate-column error a bare ADD COLUMN
+-- would hit if the column were also declared here. (country is what lets a
+-- localized push PROVE movement in a specific market, not a blended global claim.)
 CREATE TABLE IF NOT EXISTS rank_snapshots (
   id          TEXT PRIMARY KEY,                       -- uuid
   app_id      TEXT NOT NULL REFERENCES apps(id) ON DELETE CASCADE,
   keyword     TEXT NOT NULL,
   rank        INTEGER,                                -- NULL = not in top results
   total       INTEGER NOT NULL DEFAULT 0,             -- how many apps competed
-  country     TEXT NOT NULL DEFAULT '',               -- storefront (lowercased ISO); '' = legacy
   checked_at  TEXT NOT NULL DEFAULT (datetime('now'))
+  -- country: added by migration 0002 (see the note above).
 );
 CREATE INDEX IF NOT EXISTS idx_rank_app_kw ON rank_snapshots(app_id, keyword, checked_at);
-CREATE INDEX IF NOT EXISTS idx_rank_app_country_kw ON rank_snapshots(app_id, country, keyword, checked_at);
+-- idx_rank_app_country_kw is created by migration 0002 (alongside the column).
 
 -- ── competitor_snapshots ─────────────────────────────────────────────────────
 -- Time-series of competitor visible listing fields (iTunes Lookup API).

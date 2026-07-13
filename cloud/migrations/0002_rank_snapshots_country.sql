@@ -1,18 +1,20 @@
--- 0002_rank_snapshots_country — finish the per-market rank tracking migration (#180).
+-- 0002_rank_snapshots_country — add the per-market rank dimension (#180 Phase 1).
 --
--- IMPORTANT: this intentionally does NOT run `ALTER TABLE rank_snapshots ADD COLUMN
--- country`. The column is already present in production — the deployed rank-insert
--- path writes it (`INSERT INTO rank_snapshots (… country …)` in d1.ts), so a prod
--- without the column would already be failing every rank write. SQLite has no
--- `ADD COLUMN IF NOT EXISTS`, so re-adding an existing column ERRORS and would fail
--- the whole apply (blocking the deploy). We therefore run ONLY the two idempotent
--- remainders, both of which are no-ops if they were already applied by hand:
+-- The column is ABSENT in production — confirmed the hard way: the first version of
+-- this migration skipped the ADD COLUMN (assuming the deployed INSERTs proved it
+-- existed) and failed with `no such column: country`. So the deployed rank-insert
+-- path has in fact been failing on that column; this migration is what makes it
+-- work. This file never applied successfully, so replacing its contents is safe —
+-- wrangler only records a migration once it succeeds.
 --
---   1. backfill legacy rows whose country was written as '' (before per-market
---      tracking) with the app's storefront, lowercased.
---   2. ensure the per-market lookup index exists.
+--   1. add the column (NOT NULL DEFAULT '' backfills existing rows as legacy),
+--   2. backfill those legacy rows with the app's storefront (lowercased),
+--   3. add the per-market lookup index.
 --
--- (For a brand-new/local DB the column itself comes from schema.sql's CREATE TABLE.)
+-- (On a fresh/local DB the column comes from schema.sql's CREATE TABLE instead;
+-- this ALTER only runs against the existing prod table via the deploy pipeline.)
+ALTER TABLE rank_snapshots ADD COLUMN country TEXT NOT NULL DEFAULT '';
+
 UPDATE rank_snapshots
    SET country = COALESCE((SELECT lower(a.country) FROM apps a WHERE a.id = rank_snapshots.app_id), '')
  WHERE country = '';
