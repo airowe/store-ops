@@ -77,14 +77,19 @@ import {
   auditPlayListing,
   buildPushCommands,
   buildWarRoom,
+  fetchPlayChartRank,
   lookup,
   mintGoogleAccessToken,
   PLAYDEVELOPERREPORTING_SCOPE,
   playApiTransportForServiceAccount,
+  playChartRankFinding,
+  playChartSource,
   playDeveloperApiAdapter,
   playVitalsFindings,
+  playWebSource,
   rankOpportunities,
   ranksFor,
+  readPlayListing,
   readPlayVitals,
   resolveAppQuery,
   resolveNameToBundle,
@@ -200,7 +205,7 @@ import { captionAnalyzerForEnv } from "./aiCaptionVision.js";
 import { analyzeFirstShot, captionFindings } from "../engine/captionLens.js";
 import { screenshotClaimFindings } from "../engine/screenshotCompliance.js";
 import { buildPpoTreatmentPlan } from "../engine/ppoTreatment.js";
-import { fetchForEnv } from "../fetchAdapter.js";
+import { fetchForEnv, fetchLikeForEnv } from "../fetchAdapter.js";
 import { buildFastlaneBundle } from "../engine/fastlane.js";
 import { zipStore } from "../engine/zip.js";
 import { mintAscJwt } from "../engine/ascJwt.js";
@@ -1662,6 +1667,8 @@ type PlayAuditBody = {
   language?: string;
   targets?: string[];
   brand?: string;
+  /** Storefront for the keyless category chart-rank supplement (defaults to us). */
+  country?: string;
 };
 
 /**
@@ -1754,6 +1761,35 @@ async function readPlayVitalsFindings(
   return playVitalsFindings(await readPlayVitals(query));
 }
 
+/**
+ * Keyless category chart-rank findings for the OWNER audit-play route. The
+ * Developer API listing carries no store category, so we read it keyless off the
+ * public listing (the package id is known), then measure the app's position in
+ * that category chart via the keyless `batchexecute` source. Fully degrade-safe:
+ * any failure (no category, Worker egress 429, drift) → no findings, never an
+ * error — the metadata audit is unaffected. Mirrors the keyless MCP path.
+ */
+async function readPlayChartRankFindings(
+  env: Env,
+  packageName: string,
+  country: string | undefined,
+): Promise<import("../engine/index.js").Finding[]> {
+  const listing = await readPlayListing(
+    playWebSource(fetchForEnv(env)),
+    packageName,
+    country ? { country } : {},
+  );
+  const categoryId = listing.category?.id;
+  if (!categoryId) return [];
+  const rank = await fetchPlayChartRank(playChartSource(fetchLikeForEnv(env)), {
+    packageName,
+    category: categoryId,
+    ...(listing.category?.name ? { categoryName: listing.category.name } : {}),
+    ...(country ? { country } : {}),
+  });
+  return playChartRankFinding(rank);
+}
+
 async function auditPlayRoute(
   req: Request,
   env: Env,
@@ -1807,16 +1843,23 @@ async function auditPlayRoute(
       ...(targets ? { targets } : {}),
       ...(typeof body.brand === "string" ? { brand: body.brand } : {}),
     });
-    // Android vitals (gated + degrade-safe) — the owner-keyed, Google-documented
-    // visibility lever. Off by default; when on, read via the Reporting API and
-    // MERGE the findings. Any failure (missing scope / drifted shape) degrades to
-    // no vitals findings — it never breaks the metadata audit.
-    if (isFlagOn(env.PLAY_VITALS_ENABLED)) {
-      const vitalsFindings = await readPlayVitalsFindings(sa, packageName).catch(() => []);
-      if (vitalsFindings.length > 0) {
-        const findings = sortFindings([...audit.findings, ...vitalsFindings]);
-        return { ...audit, findings, summary: summarizeFindings(findings) };
-      }
+    // Degrade-safe supplements MERGED into the owner audit — each nulls to [] on
+    // any failure so it never breaks the metadata audit:
+    //   • Android vitals (gated) — the owner-keyed, Google-documented visibility
+    //     lever, read via the Reporting API. Off by default (best-effort shape).
+    //   • Category chart rank (keyless) — a MEASURED "#N in <category>" read off
+    //     the public listing's category. Worker egress usually 429s the RPC, so
+    //     it typically yields nothing in prod, but costs the audit nothing.
+    const [vitalsFindings, chartFindings] = await Promise.all([
+      isFlagOn(env.PLAY_VITALS_ENABLED)
+        ? readPlayVitalsFindings(sa, packageName).catch(() => [])
+        : Promise.resolve([]),
+      readPlayChartRankFindings(env, packageName, body.country).catch(() => []),
+    ]);
+    const extra = [...vitalsFindings, ...chartFindings];
+    if (extra.length > 0) {
+      const findings = sortFindings([...audit.findings, ...extra]);
+      return { ...audit, findings, summary: summarizeFindings(findings) };
     }
     return audit;
   } catch (e) {
