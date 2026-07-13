@@ -38,6 +38,9 @@ export type GoogleServiceAccount = {
 };
 
 export const ANDROIDPUBLISHER_SCOPE = "https://www.googleapis.com/auth/androidpublisher";
+/** Read scope for the Play Developer Reporting API (Android vitals, #vitals). */
+export const PLAYDEVELOPERREPORTING_SCOPE =
+  "https://www.googleapis.com/auth/playdeveloperreporting";
 const DEFAULT_TOKEN_URI = "https://oauth2.googleapis.com/token";
 const JWT_BEARER_GRANT = "urn:ietf:params:oauth:grant-type:jwt-bearer";
 const TOKEN_TTL_SECONDS = 3600; // Google caps the assertion exp at 1 hour.

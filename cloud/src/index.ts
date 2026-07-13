@@ -114,6 +114,11 @@ export type Env = {
   // "1"/"true" — flip it only after verifying the v5 popularity read against a
   // live ASA account (owner action, per docs/prd/localization/asa-data-spike.md).
   ASA_POPULARITY_ENABLED?: string;
+  // Gate for the Android vitals read on the owner Play audit. Off by default;
+  // flip it only after confirming the Play Developer Reporting query shape
+  // against a live account (owner action). The vitals FINDING logic is exact +
+  // tested; the live read is dark until verified. Degrade-safe when off/failing.
+  PLAY_VITALS_ENABLED?: string;
 };
 
 export default {
