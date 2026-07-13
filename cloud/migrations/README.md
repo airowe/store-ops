@@ -30,11 +30,12 @@ The deploy token needs **Account · D1 · Edit** (in addition to Workers Scripts
 Pages Edit). Without it, the `migrations apply` step fails loudly — which is the
 point: a schema that can't apply must not be masked.
 
-## Not auto-applied yet
+## The `ALTER TABLE` gotcha (see `0002`)
 
-The standing `rank_snapshots.country` change (documented in `../schema.sql`) is
-**not** in this directory, because we can't confirm from CI whether the column was
-already added to prod by hand — and a bare `ALTER TABLE ADD COLUMN` on a column
-that already exists would fail the whole apply and block deploys. Confirm the prod
-state, then add it as `0002_rank_snapshots_country.sql` (or run it once manually
-per the commands in `../schema.sql`).
+SQLite has no `ADD COLUMN IF NOT EXISTS`, so a bare `ALTER TABLE … ADD COLUMN` on a
+column that already exists errors and fails the whole apply. `0002_rank_snapshots_country.sql`
+handles this by NOT re-adding the column (which the deployed code proves is already
+present in prod) and running only the idempotent remainders (backfill + index). When
+a future migration must add a column, either confirm it's absent in prod first, or
+write only the idempotent follow-on work — never a bare `ADD COLUMN` that a healthy
+prod would reject.
