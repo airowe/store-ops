@@ -23,6 +23,7 @@ import type { FamilyShotScore } from "../screenshotScore.js";
 import type { NormalizedListing } from "../store/types.js";
 import type { PlayCoverageReport } from "./playCoverage.js";
 import type { PlayKeywordReport } from "./playKeywordModel.js";
+import { playComplianceFindings } from "./playComplianceLint.js";
 
 /** A long description shorter than this under-uses the 4000-char indexed surface. */
 const THIN_DESCRIPTION = 500;
@@ -242,6 +243,7 @@ function categoryFindings(listing: NormalizedListing): Finding[] {
 export function playFindings(input: PlayFindingsInput): Finding[] {
   const findings: Finding[] = [
     ...titleFindings(input.listing),
+    ...playComplianceFindings(input.listing),
     ...shortDescriptionFindings(input.listing),
     ...descriptionFindings(input.listing),
     ...screenshotFindings(input),

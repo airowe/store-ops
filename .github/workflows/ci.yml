@@ -51,9 +51,14 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # Node 22, not 20: the real-schema regression specs (d1.*Schema.spec.ts) use
+      # node:sqlite, which only exists on Node ≥ 22.5 and SKIPS below it. On Node 20
+      # they were silently skipped in CI — which is how a schema.sql/code mismatch
+      # (rank_snapshots.country moved to a migration) slipped through green. Node 22
+      # runs those guards so the gate actually catches this class of drift.
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
           cache: npm
           cache-dependency-path: cloud/package-lock.json
 
