@@ -8,11 +8,25 @@
 > shipped. It fills the gaps `00` left as "TBD" and is the Play sibling of the
 > App Store map in `../analytics-reports/04-public-data-map.md`.
 >
-> **Status: research / decision-support. No Play data is read in prod today**
-> (`engine/store/{types,profiles}.ts` are the only Play code — pure profile
-> literals, no reader). So unlike the iOS map, nothing here is "✅ used yet";
-> everything is *available and unbuilt*. The legend instead marks the **trust
-> tier** each surface lands in, because that is what the honesty model keys off.
+> **See also:** [`02-new-surfaces.md`](./02-new-surfaces.md) scopes the buildable
+> surfaces from the 2026-07 refresh (vitals expansion, data-safety write, funnel
+> ingest) into landable increments; [`../ranking-features/08-play-vs-appstore-parity.md`](../ranking-features/08-play-vs-appstore-parity.md)
+> tracks how much of the ranking engine runs for Play vs iOS.
+>
+> **Status: research / decision-support.** Some of this is now built (the keyless
+> web reader, the Android vitals finding, and the keyless category **chart rank** all
+> shipped — see the engine's `play/` modules); the rest is *available and unbuilt*.
+> The legend marks the **trust tier** each surface lands in, because that is what the
+> honesty model keys off.
+>
+> **2026-07 refresh (verified against the live Discovery docs — `androidpublisher`
+> rev 20260706, `playdeveloperreporting` rev 20260709).** §3 gained a **Data Safety
+> *write* API** and **four new vitals metric sets**; the funnel gained a **BigQuery
+> Data Transfer** path (§3.3). Two **undocumented** API surfaces beyond the scrape
+> tier were evaluated and **rejected** — the device-facing `fdfe/` protobuf API and
+> the internal Play Console backend (new **§7**). The three big ⛔ gaps (experiments,
+> custom listings, a conversion *query* metric set, keyword volume) were re-checked
+> and **still have no API**.
 
 ## Legend — trust tier (maps to `NormalizedListing.reliable`)
 
@@ -193,17 +207,29 @@ own in-flight edit.
 | `edits.images.list` | screenshots + feature graphic + icon per **type × language** (`AppImageType`: `phoneScreenshots`, `sevenInchScreenshots`, `tenInchScreenshots`, `icon`, `featureGraphic`, …) — returns URL + content hash, **no captions** (Play has none → screenshot text must be OCR'd from bytes, exactly like our #182 caption lens) |
 | `edits.tracks.list` | release tracks, `releaseNotes` per language, `userFraction` |
 | `reviews.list` / `.get` / `.reply` | owner reviews — **⚠️ only the last ~7 days**, 100/page; history needs continuous polling+persist or the GCS export (§3.3) |
-| `inappproducts` / `monetization.subscriptions` | IAP / subscription catalog |
+| `inappproducts` / `monetization.subscriptions` / **`monetization.onetimeproducts`** (NEW) | IAP / subscription / one-time-product catalog |
+| **`applications.dataSafety`** (NEW, **WRITE**) | `POST …/applications/{pkg}/dataSafety` with a `SafetyLabelsUpdateRequest` (`safetyLabels` CSV string) — "Writes the Safety Labels declaration of an app." The first official way to **push** the data-safety form (we could previously only *read* it, scraped). Closes the loop on the data-safety-consistency lint (§6.5). |
 
 **Quotas:** 200k req/day; 3k/min per bucket; 429 on overage. **This is what gates the
 `fastlane supply` handoff in `00` §4** — the owner-grounded read.
+
+> **Other new-since-2023 `androidpublisher` resources (VERIFIED, non-ASO — noted for
+> completeness):** `externaltransactions` (alternative-billing reporting),
+> `apprecovery`, `generatedapks` / `systemapks` (download Google-built split APKs),
+> `edits.countryavailability`, `orders` (get/batchget/refund), and v2 purchase-state
+> models (`purchases.subscriptionsv2` / `productsv2`). None touch store-listing metadata
+> beyond `edits.listings/details/images`, so they don't change the audit surface.
 
 ### 3.2 Play Developer Reporting API (`playdeveloperreporting` v1beta1) — vitals ONLY
 Scope `…/auth/playdeveloperreporting`. **Synchronous `:query` POST** (unlike Apple's
 async report jobs); read `FreshnessInfo` per metric-set for the latest available datapoint
 rather than assuming a fixed lag; **10 QPS**. Metric-set inventory is **entirely Android
-vitals/errors**: `vitals.crashrate`, `vitals.anrrate`, `vitals.errors.{counts,reports,issues}`,
-`vitals.slowstartrate`, `anomalies.list`, etc.
+vitals/errors** — now **8 vitals sets** (four added since our first pass, VERIFIED in the
+rev-20260709 Discovery doc): `vitals.crashrate`, `vitals.anrrate`,
+`vitals.errors.{counts,reports,issues}`, `vitals.slowstartrate`, **`vitals.excessivewakeuprate`**,
+**`vitals.stuckbackgroundwakelockrate`**, **`vitals.slowrenderingrate`**, **`vitals.lmkrate`**
+(low-memory-kill); plus `anomalies.list` and `apps.search`. That is the **complete** v1beta1
+tree — nothing else exists.
 
 > **VERIFIED ABSENCE (load-bearing):** there is **no** installs / acquisitions /
 > conversion / retained-installer / ratings metric set. **The Play conversion funnel
@@ -217,6 +243,16 @@ Every developer account has a private bucket `gs://pubsite_prod_rev_<accountId>/
 lag, monthly rollups, owner-only.** It is a **file-ingestion problem, not an API query** —
 the closest official twin of Apple's Engagement/acquisition series, but coarser and
 staler. This is where any honest Play "conversion moved" story has to come from.
+
+> **Two supported ways to ingest it (both service-account OAuth, no scraping):**
+> **(1)** read the CSVs straight from the GCS bucket; **(2)** the **BigQuery Data
+> Transfer Service "Google Play" connector** (`cloud.google.com/bigquery/docs/play-transfer`),
+> which lands the *same* user-acquisition (store-analysis + **conversion-analysis
+> funnel**), reviews, and financial reports into BigQuery on a schedule. Since the
+> March-2021 export refresh these reports **do include the store-listing
+> acquisition/conversion funnel** — so the funnel *is* officially reachable, just
+> monthly + lagged. This is the cleanest Play answer to `00`'s Open-Question #3 and the
+> direct sibling of the iOS Engagement ingest (analytics-reports `02`).
 
 ---
 
@@ -298,6 +334,52 @@ Ranked by value ÷ effort. Each reuses machinery we already have.
 **Deliberately NOT built:** any Play keyword *volume* number; any PPO/CPP *result* read
 (no API); any live conversion-funnel query (only monthly GCS). Those are §4 ⛔ — surfaced
 as honest capability gaps, not faked.
+
+---
+
+## 7. Undocumented APIs beyond the scrape tier — evaluated & rejected (2026-07)
+
+§1 covers the `play.google.com` **storefront** scrape (`AF_initDataCallback` + `batchexecute`),
+which we already accept and use. Two *other* undocumented surfaces exist and are richer —
+both were investigated and **rejected as a product dependency**. Recorded here so they're on
+the ledger as *considered*, not overlooked.
+
+### 7.1 ⛔ The device-facing `fdfe/` protobuf API (the Play Store *app's* own API)
+`https://android.clients.google.com/fdfe/{details,bulkDetails,search,searchSuggest,list,rev,rec}` —
+protobuf `DocV2` envelopes, the API the Android Play Store client uses. Reference impl:
+`AuroraOSS/gplayapi` (maintained). **Uniquely richer than the HTML scrape:** exact rating
+**histograms** (`oneStarRatings`…`fiveStarRatings`) + exact `ratingsCount`/`commentCount`
+(the web listing rounds/hides these), **structured search + category-chart ranking**
+(`fdfe/search`, `fdfe/list` bucket paging), `relatedSearch`, `fdfe/rec` "similar apps", and
+structured sale-vs-full pricing.
+
+**Why rejected:** auth needs a Google **account token** (an AAS master token) *plus* a
+registered **GSF device id** — there is **no keyless mode**. Google aggressively bans the
+dummy accounts (Aurora took its anonymous token-dispenser *down* "to safeguard accounts").
+It is bound to residential/mobile-device egress; a **Cloudflare Worker's shared datacenter IP
+is exactly what Google throttles/blocks**. And the protobufs are reverse-engineered and drift.
+So it's the technically-richest source but needs an account farm + device profiles +
+residential proxies — a **research probe from a real device at most**, never the backbone of a
+keyless Worker product. (If we ever want exact competitor histograms, this is the only source —
+but pay a **licensed vendor (§2)** for them instead of running an account farm.)
+
+### 7.2 ⛔ The internal Play **Console** backend (the dashboard's private RPCs)
+The developer Console (`play.google.com/console`) is a jspb SPA calling private
+`batchexecute` / `*.clients6.google.com` RPCs — *technically* the only path to the three
+Console-locked datasets (**experiment/PPO results, CPP conversion, the live funnel**).
+
+**Why rejected:** there is **zero** published reverse-engineering of the *Console* rpcids
+(all community work targets the storefront), so we'd be first and alone maintaining it; it
+authenticates with the developer's **own Google-account cookies + a per-request `SAPISIDHASH`**
+(not a service account) — so detection risks the **account that owns their apps and revenue**;
+and it violates ToS with no prior art. The funnel is better taken from the **supported
+GCS/BigQuery export** (§3.3); **experiments + CPP conversion** have **no** legitimate
+programmatic source and stay ⛔ (§4) — surface them via user-supplied CSV/screenshot upload,
+never an automated Console session.
+
+> **Net:** neither undocumented surface changes the data-plane recommendation. The scrape
+> tier (§1) + licensed vendors (§2) + the owner APIs & export (§3) remain the honest set;
+> `fdfe/` and the Console backend are documented dead-ends.
 
 ---
 
