@@ -38,11 +38,11 @@ export type PlayVitals = {
   anrRatePct: number | null;
 };
 
-/** The injected reporting query — resolves the raw response for one metric set,
- *  or throws/rejects (caught here → the rate reads UNMEASURED). */
-export type PlayVitalsQuery = (
-  metricSet: "crashRateMetricSet" | "anrRateMetricSet",
-) => Promise<unknown>;
+/** The injected reporting query — resolves the raw response for one metric set
+ *  (by its Reporting API `:query` resource name, e.g. `crashRateMetricSet`), or
+ *  throws/rejects (caught here → the rate reads UNMEASURED). Widened to `string`
+ *  so the same seam serves the crash/ANR sets AND the newer quality sets below. */
+export type PlayVitalsQuery = (metricSet: string) => Promise<unknown>;
 
 /** Candidate metric field names, preferring the user-perceived variant. */
 const CRASH_METRICS = ["userPerceivedCrashRate", "crashRate"];
@@ -165,6 +165,116 @@ export function playVitalsFindings(vitals: PlayVitals): Finding[] {
         detail: `Crash ${pct(crashRatePct)} (< ${pct(PLAY_CRASH_THRESHOLD_PCT)}) and ANR ${pct(anrRatePct)} (< ${pct(PLAY_ANR_THRESHOLD_PCT)}) — no visibility penalty from technical quality.`,
         fix: "",
         evidence: `Android vitals (${PLAY_VITALS_SOURCE})`,
+      }),
+    );
+  }
+  return out;
+}
+
+// ---------------------------------------------------------------------------
+// Quality metric sets (new-since-2023 vitals — data-map §3.2 refresh).
+//
+// The Reporting API now exposes four MORE Google-measured "bad behaviour"
+// quality sets. Crucially, unlike crash/ANR, Google does NOT document that
+// these gate store VISIBILITY — so we surface them as measured technical-quality
+// CONTEXT (impact:"conversion"), never as a ranking claim. Honest split.
+//
+// Every set is read through the SAME injected `PlayVitalsQuery` seam. Live shape
+// is best-effort (metric field names vary), so each set carries CANDIDATE metric
+// names and the whole path stays gated + degrade-safe (unread rate → null).
+// ---------------------------------------------------------------------------
+
+/** A newer quality metric set: its `:query` resource name + candidate metrics. */
+export type PlayQualityMetricSet = {
+  /** stable finding id suffix, e.g. "excessive_wakeup" */
+  id: string;
+  /** Reporting API `:query` resource, e.g. "excessiveWakeupRateMetricSet" */
+  metricSet: string;
+  /** human label for the finding title */
+  label: string;
+  /** candidate metric field names (first measured one wins) */
+  metrics: string[];
+};
+
+/** VERIFIED present in the rev-20260709 Discovery doc (resource names); the exact
+ *  metric field names are best-effort candidates, hence the gated path. */
+export const PLAY_QUALITY_METRIC_SETS: PlayQualityMetricSet[] = [
+  {
+    id: "excessive_wakeup",
+    metricSet: "excessiveWakeupRateMetricSet",
+    label: "Excessive wake-up rate",
+    metrics: ["userPerceivedExcessiveWakeupRate", "excessiveWakeupRate"],
+  },
+  {
+    id: "stuck_bg_wakelock",
+    metricSet: "stuckBackgroundWakelockRateMetricSet",
+    label: "Stuck background-wakelock rate",
+    metrics: ["userPerceivedStuckBackgroundWakelockRate", "stuckBgWakelockRate", "stuckBackgroundWakelockRate"],
+  },
+  {
+    id: "slow_rendering",
+    metricSet: "slowRenderingRateMetricSet",
+    label: "Slow-rendering rate",
+    metrics: ["slowRenderingRate20Fps", "slowRenderingRate30Fps", "slowRenderingRate"],
+  },
+  {
+    id: "lmk",
+    metricSet: "lmkRateMetricSet",
+    label: "Low-memory-kill rate",
+    metrics: ["userPerceivedLmkRate", "lmkRate"],
+  },
+];
+
+/** Measured quality rates keyed by set id (PERCENT), or null when unread. */
+export type PlayQualityRates = Record<string, number | null>;
+
+/**
+ * Read the four newer quality rates via the injected query. Degrade-safe: each
+ * set independently degrades to `null` on any failure (missing scope / drifted
+ * shape / empty account) — never a throw, never a fabricated 0.
+ */
+export async function readPlayQualityRates(
+  query: PlayVitalsQuery,
+  sets: PlayQualityMetricSet[] = PLAY_QUALITY_METRIC_SETS,
+): Promise<PlayQualityRates> {
+  const entries = await Promise.all(
+    sets.map(async (s) => {
+      try {
+        return [s.id, extractLatestRatePct(await query(s.metricSet), s.metrics)] as const;
+      } catch {
+        return [s.id, null] as const;
+      }
+    }),
+  );
+  return Object.fromEntries(entries);
+}
+
+/**
+ * Findings from the newer quality rates. Each MEASURED rate becomes one honest
+ * CONTEXT fact (impact:"conversion", not "ranking") — Google measures and flags
+ * these as poor app behaviour, but does NOT document them as store-visibility
+ * gates the way crash/ANR are (§3.2). Unmeasured rates contribute nothing. Pure.
+ */
+export function playQualityFindings(
+  rates: PlayQualityRates,
+  sets: PlayQualityMetricSet[] = PLAY_QUALITY_METRIC_SETS,
+): Finding[] {
+  const out: Finding[] = [];
+  for (const s of sets) {
+    const rate = rates[s.id];
+    if (rate === null || rate === undefined) continue;
+    out.push(
+      mk({
+        id: `play_vitals_${s.id}`,
+        surface: SURFACE,
+        severity: "info",
+        impact: "conversion",
+        title: `${s.label}: ${pct(rate)}`,
+        detail:
+          `A Google-measured Android-vitals quality metric. Google flags it as poor app behaviour; unlike crash/ANR it is not a documented store-visibility gate, so treat it as a technical-quality signal, not a ranking penalty.`,
+        fix: `Reduce the ${s.label.toLowerCase()} in your next release (Android vitals, 28-day user-perceived).`,
+        evidence: `Android vitals — ${s.metricSet} (${PLAY_VITALS_SOURCE})`,
+        context: true,
       }),
     );
   }

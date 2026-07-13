@@ -120,12 +120,17 @@ export {
 export {
   type PlayVitals,
   type PlayVitalsQuery,
+  type PlayQualityMetricSet,
+  type PlayQualityRates,
   PLAY_CRASH_THRESHOLD_PCT,
   PLAY_ANR_THRESHOLD_PCT,
   PLAY_VITALS_SOURCE,
+  PLAY_QUALITY_METRIC_SETS,
   extractLatestRatePct,
   readPlayVitals,
   playVitalsFindings,
+  readPlayQualityRates,
+  playQualityFindings,
 } from "./play/playVitals.js";
 // Play metadata compliance lint (title policy) + its cited-policy corpus.
 export {

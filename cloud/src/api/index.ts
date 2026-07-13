@@ -85,11 +85,13 @@ import {
   playChartRankFinding,
   playChartSource,
   playDeveloperApiAdapter,
+  playQualityFindings,
   playVitalsFindings,
   playWebSource,
   rankOpportunities,
   ranksFor,
   readPlayListing,
+  readPlayQualityRates,
   readPlayVitals,
   resolveAppQuery,
   resolveNameToBundle,
@@ -1743,22 +1745,38 @@ async function readPlayVitalsFindings(
   const { accessToken } = await mintGoogleAccessToken(workerFetchLike, sa, {
     scope: PLAYDEVELOPERREPORTING_SCOPE,
   });
-  const query = async (metricSet: "crashRateMetricSet" | "anrRateMetricSet") => {
-    const metric =
-      metricSet === "crashRateMetricSet" ? "userPerceivedCrashRate" : "userPerceivedAnrRate";
+  // Metric field(s) to request per set. Crash/ANR use their user-perceived
+  // variant; the newer quality sets are read WITHOUT an explicit metrics list
+  // (the reader tolerantly picks the measured field from candidates), so the
+  // best-effort field names don't have to be exact here.
+  const METRICS_BY_SET: Record<string, string[]> = {
+    crashRateMetricSet: ["userPerceivedCrashRate"],
+    anrRateMetricSet: ["userPerceivedAnrRate"],
+  };
+  const query = async (metricSet: string) => {
+    const metrics = METRICS_BY_SET[metricSet];
     const url = `https://playdeveloperreporting.googleapis.com/v1beta1/apps/${encodeURIComponent(
       packageName,
     )}/${metricSet}:query`;
     const resp = await workerFetchLike(url, {
       method: "POST",
       headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" },
-      body: JSON.stringify({ timelineSpec: { aggregationPeriod: "DAILY" }, metrics: [metric] }),
+      body: JSON.stringify({
+        timelineSpec: { aggregationPeriod: "DAILY" },
+        ...(metrics ? { metrics } : {}),
+      }),
     });
     const text = await resp.text();
     if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
     return JSON.parse(text);
   };
-  return playVitalsFindings(await readPlayVitals(query));
+  // Crash/ANR (documented visibility levers) + the newer quality sets (measured
+  // technical-quality context). Each read degrades to nothing on its own.
+  const [vitals, quality] = await Promise.all([
+    readPlayVitals(query),
+    readPlayQualityRates(query).catch(() => ({})),
+  ]);
+  return [...playVitalsFindings(vitals), ...playQualityFindings(quality)];
 }
 
 /**
