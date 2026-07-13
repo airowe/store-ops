@@ -116,6 +116,21 @@ export {
   parsePlayChartResponse,
   playChartSource,
 } from "./play/playChartSource.js";
+// Play keyword SEARCH rank — keyless, MEASURED organic position for a term
+// (ranking-parity vs the iOS iTunes-search rank); noise-bucketed for honesty.
+export {
+  type PlaySearchSource,
+  type PlaySearchBucket,
+  type PlaySearchRank,
+  searchBucket,
+  playSearchRankFromEntries,
+  fetchPlaySearchRank,
+  playSearchRankFinding,
+} from "./play/playSearchRank.js";
+export {
+  parsePlaySearchResults,
+  playSearchSource,
+} from "./play/playSearchSource.js";
 // Android vitals — owner-keyed, Google-documented visibility lever (gated read).
 export {
   type PlayVitals,

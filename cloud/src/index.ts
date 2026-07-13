@@ -119,6 +119,10 @@ export type Env = {
   // against a live account (owner action). The vitals FINDING logic is exact +
   // tested; the live read is dark until verified. Degrade-safe when off/failing.
   PLAY_VITALS_ENABLED?: string;
+  // Play keyword SEARCH-rank scrape (ranking-parity step 2). Off by default: the
+  // search page 429s from Worker egress and Play personalizes results, so the
+  // read is dark until we accept the reliability/ToS cost. Degrade-safe when off.
+  PLAY_SEARCH_RANK_ENABLED?: string;
 };
 
 export default {
