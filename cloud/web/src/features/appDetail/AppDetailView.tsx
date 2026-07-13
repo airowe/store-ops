@@ -18,6 +18,7 @@ import { AnalyticsCard } from "./AnalyticsCard.js";
 import { ConnectAscCard } from "./ConnectAscCard.js";
 import { PlayAuditCard } from "./PlayAuditCard.js";
 import { PlayDataSafetyCard } from "./PlayDataSafetyCard.js";
+import { PlayFunnelCard } from "./PlayFunnelCard.js";
 import { CompetitorsCard } from "./CompetitorsCard.js";
 import { LocaleKeywordsCard } from "./LocaleKeywordsCard.js";
 import { RejectionAssistantCard } from "./RejectionAssistantCard.js";
@@ -63,6 +64,7 @@ export function AppDetailView({
       <ConnectAscCard client={client} appId={app.id} onRunStarted={onOpenRun} />
       <PlayAuditCard client={client} appId={app.id} />
       <PlayDataSafetyCard client={client} appId={app.id} />
+      <PlayFunnelCard client={client} appId={app.id} />
 
       <ConversionCard data={engagementQ.data} />
       {/* Setup affordance — shown until a measured series exists, then it yields to

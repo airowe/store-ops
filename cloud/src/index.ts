@@ -127,6 +127,10 @@ export type Env = {
   // declaration. Off by default: the route 403s unless enabled, and even then the
   // pushed CSV is the human's own (validated, never generated). Dark until enabled.
   PLAY_DATA_SAFETY_WRITE_ENABLED?: string;
+  // Play conversion-funnel ingest (PRD 02-D) — the monthly GCS export. Off by
+  // default: the export object naming is best-effort, so the ingest route 403s
+  // until enabled. The READ route is always available (serves persisted data).
+  PLAY_FUNNEL_ENABLED?: string;
 };
 
 export default {

@@ -21,7 +21,7 @@ buildable surfaces on top — this doc scopes them so they don't sit as prose in
 | **A** | **Vitals expansion** — 4 new metric sets → findings | 🔒 owner | #220 `playVitals.ts` | **XS** | ✅ **shipped** |
 | **B** | **Data-Safety write / close-the-loop** — push the owner's declaration | 🔒 owner | C's reader + the approval-gated write pattern | **M** | ✅ **shipped** |
 | **C** | **Data-Safety ↔ privacy-policy consistency lint** (keyless) | 🌐 public | `playFindings` + #178 corpus | **S** | ✅ **shipped** |
-| **D** | **Play funnel ingest** — GCS/BigQuery acquisition + conversion series | 🔒 owner | the iOS Engagement ingest (analytics-reports `02`) | **L** | ⏳ infra |
+| **D** | **Play funnel ingest** — GCS/BigQuery acquisition + conversion series | 🔒 owner | the iOS Engagement ingest (analytics-reports `02`) | **L** | ✅ **shipped** |
 
 > **Shipped: A** (vitals expansion) **and C** (the keyless data-safety reader +
 > consistency lint). The reader — `playDataSafetyParse.ts` (content-based against
@@ -41,8 +41,17 @@ buildable surfaces on top — this doc scopes them so they don't sit as prose in
 > fences the push behind an explicit "I confirm this is my declaration" checkbox —
 > the first Play *fix-and-push*, human-approved end-to-end.
 >
-> **Still pending — D only:** real infra (a GCS/BigQuery connector + a new persisted
-> series); it ports the iOS Engagement machinery and is the largest single item.
+> **Also shipped: D** (the Play conversion funnel). `playFunnelParse.ts` parses the
+> monthly store-performance CSV (visitors → acquisitions, per period+country; a metric
+> absent is omitted, conversion rate is DERIVED, never a fabricated 0);
+> `playFunnelSource.ts` fetches it from the `pubsite_prod_rev_<id>` GCS export
+> (degrade-safe → null); `play_funnel_snapshots` (schema + migration 0004) persists it
+> idempotently (restates a re-ingested month); routes `POST …/play-funnel/ingest`
+> (gated `PLAY_FUNNEL_ENABLED`, owner-keyed) + `GET …/play-funnel` (read); and
+> `PlayFunnelCard` renders the monthly series stamped "monthly · through <period>",
+> never implied live. Ports the iOS Engagement machinery.
+>
+> **All of PRD 02 (A–D) is now shipped.**
 
 Explicitly **still NOT built** (no honest source — `01 §4`): experiment/PPO results, CPP
 conversion, a conversion *query* API, keyword volume. Nothing below fabricates them.

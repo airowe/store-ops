@@ -356,6 +356,22 @@ export type EngagementSurface =
       days: number;
     };
 
+/** One measured month of the Play conversion funnel (PRD 02-D). Monthly + lagged;
+ *  conversionRate is DERIVED (null when it can't be honestly computed). */
+export type PlayFunnelMonth = {
+  period: string;
+  country: string;
+  visitors: number | null;
+  acquisitions: number | null;
+  conversionRate: number | null;
+};
+export type PlayFunnelSurface = {
+  state: "measured" | "empty";
+  cadence: "monthly";
+  throughPeriod: string | null;
+  months: PlayFunnelMonth[];
+};
+
 // ── connect / resolve ───────────────────────────────────────────────────────
 export type Candidate = {
   bundle_id: string;
