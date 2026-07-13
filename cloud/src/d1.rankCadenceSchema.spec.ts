@@ -9,7 +9,7 @@
  *
  * Skips cleanly on Node < 22.5 (no node:sqlite), mirroring d1.agentPausedSchema.
  */
-import { readFileSync } from "node:fs";
+import { readFileSync, readdirSync } from "node:fs";
 import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
 import { beforeEach, describe, expect, it } from "vitest";
@@ -30,10 +30,23 @@ try {
 const sqliteAvailable = DatabaseSync !== null;
 
 const SCHEMA_PATH = fileURLToPath(new URL("../schema.sql", import.meta.url).href);
+const MIGRATIONS_DIR = fileURLToPath(new URL("../migrations", import.meta.url).href);
+
+/** A real DB = the schema.sql BASELINE + the migrations/ increments, in order —
+ *  the same compose the deploy applies (schema.sql is the pre-migration baseline;
+ *  migration-owned columns like rank_snapshots.country come from a migration, not
+ *  the CREATE). Applying only schema.sql would miss those columns. */
+function applyRealSchema(sqlite: import("node:sqlite").DatabaseSync): void {
+  sqlite.exec(readFileSync(SCHEMA_PATH, "utf8"));
+  const files = readdirSync(MIGRATIONS_DIR)
+    .filter((f) => f.endsWith(".sql"))
+    .sort();
+  for (const f of files) sqlite.exec(readFileSync(`${MIGRATIONS_DIR}/${f}`, "utf8"));
+}
 
 function d1FromSchema(): D1Database {
   const sqlite = new DatabaseSync!(":memory:");
-  sqlite.exec(readFileSync(SCHEMA_PATH, "utf8"));
+  applyRealSchema(sqlite);
   function makeStmt(sql: string) {
     let bound: unknown[] = [];
     const stmt = {
