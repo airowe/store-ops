@@ -116,16 +116,57 @@ export {
   parsePlayChartResponse,
   playChartSource,
 } from "./play/playChartSource.js";
+// Play keyword SEARCH rank — keyless, MEASURED organic position for a term
+// (ranking-parity vs the iOS iTunes-search rank); noise-bucketed for honesty.
+export {
+  type PlaySearchSource,
+  type PlaySearchBucket,
+  type PlaySearchRank,
+  searchBucket,
+  playSearchRankFromEntries,
+  fetchPlaySearchRank,
+  playSearchRankFinding,
+} from "./play/playSearchRank.js";
+export {
+  parsePlaySearchResults,
+  playSearchSource,
+} from "./play/playSearchSource.js";
+// Play autocomplete — keyless keyword DISCOVERY (zero volume, the honest feed).
+export {
+  type PlaySuggestSource,
+  buildSuggestRequest,
+  parseSuggestResponse,
+  playSuggestFinding,
+  playSuggestSource,
+} from "./play/playSuggest.js";
+// Play "Data safety" — keyless declaration read + honest consistency findings.
+export {
+  type PlayDataSafety,
+  PLAY_DATA_SAFETY_TYPES,
+  extractAfBlobs,
+  parsePlayDataSafety,
+} from "./play/playDataSafetyParse.js";
+export {
+  PLAY_DATASAFETY_URL,
+  PLAY_DATA_SAFETY_SOURCE,
+  readPlayDataSafety,
+  playDataSafetyFindings,
+} from "./play/playDataSafety.js";
 // Android vitals — owner-keyed, Google-documented visibility lever (gated read).
 export {
   type PlayVitals,
   type PlayVitalsQuery,
+  type PlayQualityMetricSet,
+  type PlayQualityRates,
   PLAY_CRASH_THRESHOLD_PCT,
   PLAY_ANR_THRESHOLD_PCT,
   PLAY_VITALS_SOURCE,
+  PLAY_QUALITY_METRIC_SETS,
   extractLatestRatePct,
   readPlayVitals,
   playVitalsFindings,
+  readPlayQualityRates,
+  playQualityFindings,
 } from "./play/playVitals.js";
 // Play metadata compliance lint (title policy) + its cited-policy corpus.
 export {

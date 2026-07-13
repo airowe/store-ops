@@ -84,12 +84,19 @@ import {
   playApiTransportForServiceAccount,
   playChartRankFinding,
   playChartSource,
+  playDataSafetyFindings,
   playDeveloperApiAdapter,
+  playQualityFindings,
+  playSearchRankFinding,
+  playSearchSource,
   playVitalsFindings,
   playWebSource,
+  fetchPlaySearchRank,
   rankOpportunities,
   ranksFor,
+  readPlayDataSafety,
   readPlayListing,
+  readPlayQualityRates,
   readPlayVitals,
   resolveAppQuery,
   resolveNameToBundle,
@@ -147,6 +154,8 @@ import {
   listCompetitors,
   listCompetitorSnapshots,
   listRunsForApp,
+  persistPlayChartRank,
+  persistRankSnapshots,
   persistRun,
   recordApproval,
   recordSubscriber,
@@ -1743,22 +1752,38 @@ async function readPlayVitalsFindings(
   const { accessToken } = await mintGoogleAccessToken(workerFetchLike, sa, {
     scope: PLAYDEVELOPERREPORTING_SCOPE,
   });
-  const query = async (metricSet: "crashRateMetricSet" | "anrRateMetricSet") => {
-    const metric =
-      metricSet === "crashRateMetricSet" ? "userPerceivedCrashRate" : "userPerceivedAnrRate";
+  // Metric field(s) to request per set. Crash/ANR use their user-perceived
+  // variant; the newer quality sets are read WITHOUT an explicit metrics list
+  // (the reader tolerantly picks the measured field from candidates), so the
+  // best-effort field names don't have to be exact here.
+  const METRICS_BY_SET: Record<string, string[]> = {
+    crashRateMetricSet: ["userPerceivedCrashRate"],
+    anrRateMetricSet: ["userPerceivedAnrRate"],
+  };
+  const query = async (metricSet: string) => {
+    const metrics = METRICS_BY_SET[metricSet];
     const url = `https://playdeveloperreporting.googleapis.com/v1beta1/apps/${encodeURIComponent(
       packageName,
     )}/${metricSet}:query`;
     const resp = await workerFetchLike(url, {
       method: "POST",
       headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" },
-      body: JSON.stringify({ timelineSpec: { aggregationPeriod: "DAILY" }, metrics: [metric] }),
+      body: JSON.stringify({
+        timelineSpec: { aggregationPeriod: "DAILY" },
+        ...(metrics ? { metrics } : {}),
+      }),
     });
     const text = await resp.text();
     if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
     return JSON.parse(text);
   };
-  return playVitalsFindings(await readPlayVitals(query));
+  // Crash/ANR (documented visibility levers) + the newer quality sets (measured
+  // technical-quality context). Each read degrades to nothing on its own.
+  const [vitals, quality] = await Promise.all([
+    readPlayVitals(query),
+    readPlayQualityRates(query).catch(() => ({})),
+  ]);
+  return [...playVitalsFindings(vitals), ...playQualityFindings(quality)];
 }
 
 /**
@@ -1771,6 +1796,7 @@ async function readPlayVitalsFindings(
  */
 async function readPlayChartRankFindings(
   env: Env,
+  appId: string,
   packageName: string,
   country: string | undefined,
 ): Promise<import("../engine/index.js").Finding[]> {
@@ -1787,7 +1813,59 @@ async function readPlayChartRankFindings(
     ...(listing.category?.name ? { categoryName: listing.category.name } : {}),
     ...(country ? { country } : {}),
   });
+  // Parity step 1: persist the MEASURED sample as a time series (no-op on an
+  // UNKNOWN null read). Best-effort — a persistence hiccup must not fail the audit.
+  await persistPlayChartRank(env.DB, { appId, packageName, rank }).catch(() => undefined);
   return playChartRankFinding(rank);
+}
+
+/**
+ * Keyless Play SEARCH-rank findings for the owner audit (parity step 2). For each
+ * target term, scrape Play search and measure the app's organic position, then
+ * MERGE the findings AND persist each measured position to rank_snapshots (the
+ * same keyword-rank store the iOS analysis modules read, so opportunity /
+ * attribution / war-room light up for Play). Gated (PLAY_SEARCH_RANK_ENABLED) +
+ * degrade-safe: Worker egress 429s the search page, so an unread term → UNKNOWN
+ * (persisted as nothing, never a fabricated rank). Capped to a few terms.
+ */
+async function readPlaySearchRankFindings(
+  env: Env,
+  appId: string,
+  packageName: string,
+  terms: string[],
+  country: string | undefined,
+): Promise<import("../engine/index.js").Finding[]> {
+  const source = playSearchSource(playWebSource(fetchForEnv(env)));
+  const capped = terms.map((t) => t.trim()).filter(Boolean).slice(0, 5);
+  const findings: import("../engine/index.js").Finding[] = [];
+  const rows: import("../engine/index.js").Rank[] = [];
+  for (const term of capped) {
+    const rank = await fetchPlaySearchRank(source, {
+      packageName,
+      term,
+      ...(country ? { country } : {}),
+    }).catch(() => null);
+    findings.push(...playSearchRankFinding(rank));
+    // Persist as keyword rank: an UNKNOWN read is marked error (skipped by the
+    // writer) so we never store a non-measurement; a measured position (or an
+    // honest "not ranking" → null rank) is recorded.
+    rows.push({
+      keyword: term,
+      rank: rank === null ? null : rank.ranked ? rank.position : null,
+      foundName: "",
+      total: rank?.outOf ?? 0,
+      limit: 50,
+      error: rank === null ? "unknown" : "",
+    });
+  }
+  if (rows.length > 0) {
+    await persistRankSnapshots(env.DB, {
+      appId,
+      ranks: rows,
+      ...(country ? { country } : {}),
+    }).catch(() => undefined);
+  }
+  return findings;
 }
 
 async function auditPlayRoute(
@@ -1850,13 +1928,21 @@ async function auditPlayRoute(
     //   • Category chart rank (keyless) — a MEASURED "#N in <category>" read off
     //     the public listing's category. Worker egress usually 429s the RPC, so
     //     it typically yields nothing in prod, but costs the audit nothing.
-    const [vitalsFindings, chartFindings] = await Promise.all([
+    const [vitalsFindings, chartFindings, searchFindings, dataSafetyFindings] = await Promise.all([
       isFlagOn(env.PLAY_VITALS_ENABLED)
         ? readPlayVitalsFindings(sa, packageName).catch(() => [])
         : Promise.resolve([]),
-      readPlayChartRankFindings(env, packageName, body.country).catch(() => []),
+      readPlayChartRankFindings(env, appId, packageName, body.country).catch(() => []),
+      isFlagOn(env.PLAY_SEARCH_RANK_ENABLED) && targets && targets.length > 0
+        ? readPlaySearchRankFindings(env, appId, packageName, targets, body.country).catch(() => [])
+        : Promise.resolve([]),
+      // Keyless data-safety consistency (§02-C) — a positively-observed gap flag +
+      // a transparency summary. Degrade-safe: a 429/parse failure yields nothing.
+      readPlayDataSafety(fetchForEnv(env), packageName, body.country ? { country: body.country } : {})
+        .then(playDataSafetyFindings)
+        .catch(() => []),
     ]);
-    const extra = [...vitalsFindings, ...chartFindings];
+    const extra = [...vitalsFindings, ...chartFindings, ...searchFindings, ...dataSafetyFindings];
     if (extra.length > 0) {
       const findings = sortFindings([...audit.findings, ...extra]);
       return { ...audit, findings, summary: summarizeFindings(findings) };

@@ -22,6 +22,7 @@ import type {
   LanguageCoverage,
   LocaleRecommendation,
   Opportunity,
+  PlayChartRank,
   PpoTreatmentPlan,
   ProposedCopy,
   PushCommand,
@@ -125,6 +126,20 @@ export type RankSnapshotRow = {
 function normCountry(country: string | undefined): string {
   return (country ?? "").trim().toLowerCase();
 }
+
+/** One persisted Play category-chart rank sample (ranking-parity step 1). */
+export type PlayRankSnapshotRow = {
+  id: string;
+  app_id: string;
+  package_name: string;
+  collection: string;
+  category: string;
+  country: string;
+  /** NULL = read the chart, app not in top out_of (honest "not charting"). */
+  position: number | null;
+  out_of: number;
+  checked_at: string;
+};
 
 export type CompetitorSnapshotRow = {
   id: string;
@@ -1153,6 +1168,75 @@ export async function getRankHistory(
     )
     .bind(...binds, limit)
     .all<RankSnapshotRow>();
+  return results ?? [];
+}
+
+/**
+ * Persist ONE measured Play category-chart rank sample (ranking-parity step 1).
+ * Honesty mirror of persistRankSnapshots: an UNKNOWN read (`rank === null`) is
+ * NOT a measured fact → we record nothing. A measured chart — whether the app
+ * ranked (position N) or was read-but-absent (`ranked:false` → position NULL) —
+ * IS persisted. No-op on null so callers can pass the degrade-safe result directly.
+ */
+export async function persistPlayChartRank(
+  db: D1Database,
+  args: { appId: string; packageName: string; rank: PlayChartRank | null },
+): Promise<void> {
+  const r = args.rank;
+  if (r === null) return; // UNKNOWN is not a measured sample — never persist
+  await db
+    .prepare(
+      `INSERT INTO play_rank_snapshots
+         (id, app_id, package_name, collection, category, country, position, out_of, checked_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    )
+    .bind(
+      uuid(),
+      args.appId,
+      args.packageName,
+      r.collection,
+      r.category,
+      normCountry(r.country),
+      r.ranked ? r.position : null,
+      r.outOf,
+      now(),
+    )
+    .run();
+}
+
+/**
+ * Play chart-rank history for an app (oldest → newest), for a Play rank-delta
+ * chart and the analysis modules. Optionally scoped to one (category, collection,
+ * country) so a series proves movement in one chart, not a blended claim.
+ */
+export async function getPlayChartRankHistory(
+  db: D1Database,
+  appId: string,
+  opts: { category?: string; collection?: string; country?: string; limit?: number } = {},
+): Promise<PlayRankSnapshotRow[]> {
+  const limit = opts.limit ?? 500;
+  const conds = ["app_id = ?"];
+  const binds: unknown[] = [appId];
+  if (opts.category) {
+    conds.push("category = ?");
+    binds.push(opts.category);
+  }
+  if (opts.collection) {
+    conds.push("collection = ?");
+    binds.push(opts.collection);
+  }
+  if (opts.country !== undefined) {
+    conds.push("country = ?");
+    binds.push(normCountry(opts.country));
+  }
+  const { results } = await db
+    .prepare(
+      `SELECT id, app_id, package_name, collection, category, country, position, out_of, checked_at
+       FROM play_rank_snapshots WHERE ${conds.join(" AND ")}
+       ORDER BY checked_at ASC, id ASC LIMIT ?`,
+    )
+    .bind(...binds, limit)
+    .all<PlayRankSnapshotRow>();
   return results ?? [];
 }
 

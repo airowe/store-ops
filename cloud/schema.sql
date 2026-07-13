@@ -134,6 +134,28 @@ CREATE TABLE IF NOT EXISTS rank_snapshots (
 CREATE INDEX IF NOT EXISTS idx_rank_app_kw ON rank_snapshots(app_id, keyword, checked_at);
 -- idx_rank_app_country_kw is created by migration 0002 (alongside the column).
 
+-- ── play_rank_snapshots ──────────────────────────────────────────────────────
+-- Time-series of Google Play CATEGORY CHART rank ("#N in <category>"), the Play
+-- sibling of rank_snapshots. Separate table because Play chart rank is keyed by
+-- (collection, category, country), not (keyword) — a category-chart position is
+-- NOT a search-keyword position and must not be conflated. position NULL = we
+-- read the chart and the app was NOT in the top out_of (honest "not charting");
+-- an UNKNOWN read (unreadable chart) is never persisted at all. (Also created by
+-- migration 0003 for the deploy pipeline — both idempotent.)
+CREATE TABLE IF NOT EXISTS play_rank_snapshots (
+  id            TEXT PRIMARY KEY,                       -- uuid
+  app_id        TEXT NOT NULL REFERENCES apps(id) ON DELETE CASCADE,
+  package_name  TEXT NOT NULL,
+  collection    TEXT NOT NULL,                          -- TOP_FREE | TOP_PAID | GROSSING
+  category      TEXT NOT NULL,                          -- Play category id, e.g. WEATHER
+  country       TEXT NOT NULL DEFAULT '',               -- lowercased storefront
+  position      INTEGER,                                -- NULL = read chart, not in top out_of
+  out_of        INTEGER NOT NULL DEFAULT 0,             -- chart depth we actually read
+  checked_at    TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_play_rank_app
+  ON play_rank_snapshots(app_id, category, collection, country, checked_at);
+
 -- ── competitor_snapshots ─────────────────────────────────────────────────────
 -- Time-series of competitor visible listing fields (iTunes Lookup API).
 CREATE TABLE IF NOT EXISTS competitor_snapshots (

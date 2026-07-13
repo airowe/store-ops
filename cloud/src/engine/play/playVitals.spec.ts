@@ -9,8 +9,11 @@ import { describe, expect, it } from "vitest";
 import {
   PLAY_ANR_THRESHOLD_PCT,
   PLAY_CRASH_THRESHOLD_PCT,
+  PLAY_QUALITY_METRIC_SETS,
   extractLatestRatePct,
+  playQualityFindings,
   playVitalsFindings,
+  readPlayQualityRates,
   readPlayVitals,
   type PlayVitals,
 } from "./playVitals.js";
@@ -95,5 +98,37 @@ describe("playVitalsFindings", () => {
 
   it("exactly at the threshold is NOT over (strict >)", () => {
     expect(ids(V(PLAY_CRASH_THRESHOLD_PCT, PLAY_ANR_THRESHOLD_PCT))).toEqual(["play_vitals_healthy"]);
+  });
+});
+
+describe("quality metric sets (new-since-2023 vitals) — measured, non-ranking", () => {
+  function resp(metric: string, ...fractions: number[]) {
+    return { rows: fractions.map((f) => ({ metrics: [{ metric, value: { decimalValue: { value: String(f) } } }] })) };
+  }
+
+  it("reads each quality set via its resource name, degrade-safe per set", async () => {
+    const rates = await readPlayQualityRates(async (set) => {
+      if (set === "excessiveWakeupRateMetricSet") return resp("excessiveWakeupRate", 0.03);
+      if (set === "lmkRateMetricSet") throw new Error("missing scope");
+      return resp("nope", 0.01); // slow-rendering/stuck: no matching metric → null
+    });
+    expect(rates.excessive_wakeup).toBeCloseTo(3, 5);
+    expect(rates.lmk).toBeNull();
+    expect(rates.slow_rendering).toBeNull();
+  });
+
+  it("a measured quality rate → an info/conversion CONTEXT finding, not a ranking claim", () => {
+    const f = playQualityFindings({ excessive_wakeup: 3, stuck_bg_wakelock: null, slow_rendering: null, lmk: null });
+    expect(f).toHaveLength(1);
+    expect(f[0]!.id).toBe("play_vitals_excessive_wakeup");
+    expect(f[0]!.severity).toBe("info");
+    expect(f[0]!.impact).toBe("conversion");
+    expect(f[0]!.context).toBe(true);
+    expect(f[0]!.detail).toMatch(/not a documented store-visibility gate|not a ranking penalty/);
+  });
+
+  it("unmeasured quality rates contribute nothing (no fabricated 0)", () => {
+    const empty = Object.fromEntries(PLAY_QUALITY_METRIC_SETS.map((s) => [s.id, null]));
+    expect(playQualityFindings(empty)).toEqual([]);
   });
 });

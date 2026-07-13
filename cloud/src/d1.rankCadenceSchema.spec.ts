@@ -14,12 +14,15 @@ import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
 import { beforeEach, describe, expect, it } from "vitest";
 import {
+  getPlayChartRankHistory,
   getRankCadence,
   getRankHistory,
+  persistPlayChartRank,
   persistRankSnapshots,
   setRankCadence,
   upsertUser,
 } from "./d1.js";
+import type { PlayChartRank } from "./engine/index.js";
 
 let DatabaseSync: typeof import("node:sqlite").DatabaseSync | null = null;
 try {
@@ -150,5 +153,54 @@ describe.skipIf(!sqliteAvailable)("persistRankSnapshots — writes dated rank ro
     });
     const history = await getRankHistory(db, "app-1");
     expect(history.map((r) => r.keyword)).toEqual(["ok"]);
+  });
+});
+
+describe.skipIf(!sqliteAvailable)("persistPlayChartRank — Play chart rank time series (parity step 1)", () => {
+  async function seedApp() {
+    const u = await upsertUser(db, "owner@b.co");
+    await db
+      .prepare("INSERT INTO apps (id, user_id, bundle_id, name) VALUES (?, ?, ?, ?)")
+      .bind("app-1", u.id, "com.x.y", "X")
+      .run();
+  }
+  const ranked: PlayChartRank = {
+    collection: "TOP_FREE",
+    category: "WEATHER",
+    country: "us",
+    outOf: 100,
+    ranked: true,
+    position: 7,
+  };
+  const notCharting: PlayChartRank = {
+    collection: "TOP_FREE",
+    category: "WEATHER",
+    country: "us",
+    outOf: 100,
+    ranked: false,
+  };
+
+  it("persists a measured ranked position, readable as a series", async () => {
+    await seedApp();
+    await persistPlayChartRank(db, { appId: "app-1", packageName: "com.x.y", rank: ranked });
+    const hist = await getPlayChartRankHistory(db, "app-1", { category: "WEATHER" });
+    expect(hist).toHaveLength(1);
+    expect(hist[0]!.position).toBe(7);
+    expect(hist[0]!.out_of).toBe(100);
+    expect(hist[0]!.country).toBe("us");
+  });
+
+  it("persists 'not charting' as a real NULL position (honest, not a fake number)", async () => {
+    await seedApp();
+    await persistPlayChartRank(db, { appId: "app-1", packageName: "com.x.y", rank: notCharting });
+    const hist = await getPlayChartRankHistory(db, "app-1");
+    expect(hist).toHaveLength(1);
+    expect(hist[0]!.position).toBeNull();
+  });
+
+  it("an UNKNOWN (null) read persists NOTHING", async () => {
+    await seedApp();
+    await persistPlayChartRank(db, { appId: "app-1", packageName: "com.x.y", rank: null });
+    expect(await getPlayChartRankHistory(db, "app-1")).toEqual([]);
   });
 });
