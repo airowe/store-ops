@@ -7,6 +7,7 @@
  * instead of sprinkling `as never` casts across the API and cron layers.
  */
 import type { FetchFn } from "./engine/index.js";
+import type { FetchLike } from "./engine/play/googleAuth.js";
 import { makeTinyfishFetch } from "./tinyfishFetch.js";
 import { makeFallbackFetch } from "./resilientFetch.js";
 import type { Env } from "./index.js";
@@ -35,4 +36,16 @@ export function fetchForEnv(env: Env): FetchFn {
   if (!env.TINYFISH_API_KEY) return workerFetch;
   const tinyfish = makeTinyfishFetch(workerFetch, env.TINYFISH_API_KEY);
   return makeFallbackFetch(tinyfish, workerFetch);
+}
+
+/**
+ * The same env transport, typed as a POST-capable `FetchLike` (method/body).
+ * `FetchFn`'s type only exposes `headers`, but the underlying wrapper passes the
+ * whole init through to global fetch (see `workerFetch`), so a POST rides along
+ * fine — this just widens the type for callers that need it (the Play chart
+ * batchexecute). Egress routing (TinyFish/fallback) is preserved.
+ */
+export function fetchLikeForEnv(env: Env): FetchLike {
+  const f = fetchForEnv(env);
+  return (url, init) => f(url, init as { headers?: Record<string, string> });
 }

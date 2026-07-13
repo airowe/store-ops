@@ -13,6 +13,7 @@
 import { z } from "zod";
 import {
   buildWarRoom,
+  playChartSource,
   ranksFor,
   rankOpportunities,
   resolveNameToBundle,
@@ -21,7 +22,7 @@ import {
 } from "../engine/index.js";
 import { auditFindings, summarizeFindings } from "../engine/auditFindings.js";
 import { buildPreview } from "../engine/preview.js";
-import { fetchForEnv } from "../fetchAdapter.js";
+import { fetchForEnv, fetchLikeForEnv } from "../fetchAdapter.js";
 import { reasonerForEnv } from "../api/aiReasoner.js";
 import { getApp, getRankHistory, getRun, listAllApps, listRunsForApp } from "../d1.js";
 import type { ReasoningTrace } from "../d1.js";
@@ -196,6 +197,9 @@ export const TOOLS: McpToolDef[] = [
         country: country(ctx.env, args),
         ...(targets ? { targets } : {}),
         brand: typeof args.brand === "string" ? args.brand : undefined,
+        // Keyless category chart rank rides along (degrade-safe): the POST-capable
+        // env transport backs the Play `batchexecute` chart read.
+        chartSource: playChartSource(fetchLikeForEnv(ctx.env)),
       });
       if (out.kind === "not-found") {
         throw new Error(
