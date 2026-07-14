@@ -71,8 +71,15 @@ h1 { font-family: var(--display); font-weight: 600; font-size: 30px; letter-spac
 .txt:focus { outline: none; border-color: var(--signal-dim); box-shadow: 0 0 0 3px var(--signal-glow); }
 
 .grid { display: grid; gap: 14px; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); margin-top: 14px; }
-.appcard { cursor: pointer; transition: border-color .18s, transform .18s; }
-.appcard:hover { border-color: var(--signal-dim); transform: translateY(-2px); }
+.appcard {
+  cursor: pointer;
+  transition: border-color var(--duration-hover) var(--ease-out),
+              transform var(--duration-hover) var(--ease-out);
+}
+/* Touch devices fire a sticky :hover on tap — gate the motion to real pointers. */
+@media (hover: hover) and (pointer: fine) {
+  .appcard:hover { border-color: var(--signal-dim); transform: translateY(-2px); }
+}
 .appcard .row1 { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 .appcard .name { font-weight: 600; font-size: 16px; color: var(--ink); }
 .appcard .bundle { color: var(--faint); font-size: 12px; font-family: var(--mono); margin-top: 2px; }
@@ -126,7 +133,21 @@ h2 { font-family: var(--display); font-weight: 600; font-size: 22px; letter-spac
 .diffside .strike { text-decoration: line-through; color: var(--faint); }
 .darrow { display: flex; align-items: center; color: var(--dim); }
 .diff-issues { color: var(--bad); font-size: 12px; margin-top: 6px; }
-.run-status { font-weight: 700; margin-top: 14px; }
+/* The decision landing — the product's money moment. Enters from 0.96, never
+   from nothing. @starting-style animates the mount with no JS. */
+.run-status {
+  font-weight: 700; margin-top: 14px;
+  opacity: 1;
+  transform: scale(1);
+  transition: opacity var(--duration-popover) var(--ease-out),
+              transform var(--duration-popover) var(--ease-out);
+}
+@starting-style {
+  .run-status {
+    opacity: 0;
+    transform: scale(0.96);
+  }
+}
 .run-status.good { color: var(--signal); }
 .handoff { margin-top: 16px; }
 .cmd-block { margin-top: 10px; }
@@ -158,3 +179,16 @@ h2 { font-family: var(--display); font-weight: 600; font-size: 22px; letter-spac
 /* uPlot chrome tuned to the design tokens (light/dark aware). */
 .rank-chart .u-axis { color: var(--faint); }
 .rank-chart .u-legend { display: none; }
+
+/* Reduced motion: gentler, NOT zero. Position changes are what cause vestibular
+   discomfort, so we drop every transform and keep the colour/opacity feedback —
+   those aid comprehension and cost nothing. */
+@media (prefers-reduced-motion: reduce) {
+  .appcard { transition: border-color var(--duration-hover) var(--ease-out); }
+  .appcard:hover { transform: none; }
+
+  .run-status { transition: opacity var(--duration-popover) var(--ease-out); }
+  @starting-style {
+    .run-status { transform: none; }
+  }
+}
