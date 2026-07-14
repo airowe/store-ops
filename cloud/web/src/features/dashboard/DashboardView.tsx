@@ -12,13 +12,25 @@ import { AppCard } from "./AppCard.js";
 
 export function DashboardView({ client, onOpen }: { client: ApiClient; onOpen: (id: string) => void }) {
   const qc = useQueryClient();
-  const appsQ = useQuery({ queryKey: ["apps"], queryFn: () => getApps(client) });
+  const appsQ = useQuery({
+    queryKey: ["apps"],
+    queryFn: () => getApps(client),
+    // Never retry an auth failure — a 401 will 401 again, and each pointless
+    // retry only delays the signed-out state below. Other failures keep the
+    // library default of 3 attempts.
+    retry: (count, err) => !(err instanceof ApiError && err.status === 401) && count < 3,
+  });
   const approveAll = useMutation({
     mutationFn: () => approveAllRuns(client),
     onSuccess: () => void qc.invalidateQueries({ queryKey: ["apps"] }),
   });
 
-  if (appsQ.isLoading) return <p className="muted">Loading your apps…</p>;
+  // isPending, NOT isLoading. In TanStack v5 `isLoading === isPending && isFetching`,
+  // so it goes FALSE during a retry backoff — leaving a window where the query has
+  // no data and no error yet, and the component falls straight through to the
+  // success render. That's how a logged-out visitor was shown "No apps connected
+  // yet" (a lie) instead of the signed-out state below.
+  if (appsQ.isPending) return <p className="muted">Loading your apps…</p>;
 
   // A logged-out visitor gets 401 from /apps. Telling them "couldn't load your
   // apps, try again" is both untrue and useless — retrying fails identically
