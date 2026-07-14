@@ -109,20 +109,16 @@ export function AppDetailView({
         <p className="muted">No runs yet.</p>
       ) : (
         runs.map((r) => (
-          <div
+          <button
             key={r.id}
+            type="button"
             className="card run-row"
             data-testid={`run-${r.id}`}
-            role="button"
-            tabIndex={0}
             onClick={() => onOpenRun(r.id)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" || e.key === " ") onOpenRun(r.id);
-            }}
           >
             <span>{runStatusLabel(r.status)}</span>
             <span className="micro">{timeAgo(r.created_at, now)}</span>
-          </div>
+          </button>
         ))
       )}
     </section>

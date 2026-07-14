@@ -53,18 +53,17 @@ export function PreviewView({ client, onSignIn }: { client: ApiClient; onSignIn:
       {note ? <p className="faint" style={{ marginTop: 8 }}>{note}</p> : null}
 
       {candidates?.map((c) => (
-        <div
+        <button
           key={c.bundle_id}
+          type="button"
           className="card appcard"
           data-testid={`pcand-${c.bundle_id}`}
           style={{ padding: "10px 12px", marginTop: 6 }}
-          role="button"
-          tabIndex={0}
           onClick={() => pick.mutate(c.bundle_id)}
         >
           <div className="name">{c.name}</div>
           <div className="bundle">{c.bundle_id}</div>
-        </div>
+        </button>
       ))}
 
       {result ? (

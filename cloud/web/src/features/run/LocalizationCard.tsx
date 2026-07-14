@@ -83,6 +83,7 @@ export function LocalizationCard({ client, runId, initialLocales }: { client: Ap
       <div style={{ display: "flex", gap: 8, marginTop: 6 }}>
         <select
           data-testid="loc-locale"
+          aria-label="Market to localize into"
           value={locale}
           onChange={(e) => setLocale(e.target.value)}
           style={{ flex: 1 }}

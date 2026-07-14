@@ -107,18 +107,17 @@ function ConnectCard({ client, onConnected }: { client: ApiClient; onConnected: 
       </div>
       {candidates?.length === 0 ? <p className="micro">No matches.</p> : null}
       {candidates?.map((c) => (
-        <div
+        <button
           key={c.bundle_id}
+          type="button"
           className="card appcard"
           data-testid={`cand-${c.bundle_id}`}
           style={{ padding: "10px 12px", marginTop: 6 }}
-          role="button"
-          tabIndex={0}
           onClick={() => connectMut.mutate(c)}
         >
           <div className="name">{c.name}</div>
           <div className="bundle">{c.bundle_id}</div>
-        </div>
+        </button>
       ))}
     </div>
   );

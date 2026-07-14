@@ -62,6 +62,15 @@ h1 { font-family: var(--display); font-weight: 600; font-size: 30px; letter-spac
   border-radius: var(--radius); padding: 16px 18px; margin: 14px 0;
 }
 .card > b { color: var(--ink); font-size: 15px; }
+/* Clickable cards are real <button>s (native Enter/Space + semantics, no
+   hand-rolled onKeyDown). Strip the browser chrome a button brings so it still
+   reads as a card: full width, left-aligned, inherited font. */
+button.card {
+  display: block; width: 100%;
+  text-align: left; font: inherit; color: inherit;
+  appearance: none; cursor: pointer;
+}
+button.card.run-row { display: flex; }
 .setting-row { display: flex; align-items: center; gap: 12px; margin-top: 12px; }
 .setting-row > div:first-child > div:first-child { color: var(--ink); }
 .btn.bad { background: transparent; border-color: rgba(248,113,113,.5); color: var(--bad); }
