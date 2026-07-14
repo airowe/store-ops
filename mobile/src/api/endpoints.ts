@@ -18,6 +18,7 @@ import type {
   PlayAudit,
   PlayVerifyResult,
   PortfolioSummary,
+  PreviewResult,
   ProofAggregate,
   PushCommand,
   RankCadence,
@@ -70,8 +71,13 @@ export const fastlaneZipUrl = (base: string, id: string) =>
   `${base.replace(/\/+$/, "")}/runs/${enc(id)}/fastlane.zip`;
 
 // ── logged-out preview (try-before-signup) ─────────────────────────────────────
-export const preview = (c: ApiClient, query: string) =>
-  c.post<unknown>("/preview", { query });
+/**
+ * PUBLIC — no auth. An ambiguous `query` comes back as a pick-list
+ * (`needsChoice`); re-post the chosen `bundle_id` to resolve it. Mirrors the
+ * web's `preview()` in `packages/api` and the Worker's POST /preview.
+ */
+export const preview = (c: ApiClient, body: { query?: string; bundle_id?: string }) =>
+  c.post<PreviewResult>("/preview", body);
 
 // ── credentials (Phase 3) ──────────────────────────────────────────────────────
 
