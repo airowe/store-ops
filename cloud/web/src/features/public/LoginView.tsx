@@ -37,7 +37,7 @@ export function LoginView({ client }: { client: ApiClient }) {
           placeholder="you@example.com"
           onChange={(e) => setEmail(e.target.value)}
         />
-        <button className="btn primary" data-testid="send" disabled={!valid || req.isPending} onClick={() => req.mutate(email.trim())}>
+        <button type="button" className="btn primary" data-testid="send" disabled={!valid || req.isPending} onClick={() => req.mutate(email.trim())}>
           {req.isPending ? "Sending…" : "Send link"}
         </button>
       </div>

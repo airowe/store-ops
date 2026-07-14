@@ -35,7 +35,7 @@ export function DashboardView({ client, onOpen }: { client: ApiClient; onOpen: (
             Approve every pending run at once. Approval only reveals each run’s push handoff —
             it never ships anything.
           </p>
-          <button
+          <button type="button"
             className="btn primary"
             data-testid="approve-all"
             disabled={approveAll.isPending}
@@ -96,7 +96,7 @@ function ConnectCard({ client, onConnected }: { client: ApiClient; onConnected: 
           placeholder="App name or bundle id"
           onChange={(e) => setQuery(e.target.value)}
         />
-        <button
+        <button type="button"
           className="btn"
           data-testid="connect-search"
           disabled={!query.trim() || resolveMut.isPending}
@@ -107,18 +107,17 @@ function ConnectCard({ client, onConnected }: { client: ApiClient; onConnected: 
       </div>
       {candidates?.length === 0 ? <p className="micro">No matches.</p> : null}
       {candidates?.map((c) => (
-        <div
+        <button
           key={c.bundle_id}
+          type="button"
           className="card appcard"
           data-testid={`cand-${c.bundle_id}`}
           style={{ padding: "10px 12px", marginTop: 6 }}
-          role="button"
-          tabIndex={0}
           onClick={() => connectMut.mutate(c)}
         >
           <div className="name">{c.name}</div>
           <div className="bundle">{c.bundle_id}</div>
-        </div>
+        </button>
       ))}
     </div>
   );

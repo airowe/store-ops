@@ -49,7 +49,7 @@ export function AsaCard({ client, hasAsaKey }: { client: ApiClient; hasAsaKey: b
         <input data-testid="asa-key-id" placeholder="Key ID" value={f.keyId} onChange={set("keyId")} />
         <input data-testid="asa-org-id" placeholder="Org ID" value={f.orgId} onChange={set("orgId")} />
         <textarea data-testid="asa-private-key" placeholder="Contents of your Search Ads .p8 private key" rows={4} value={f.privateKey} onChange={set("privateKey")} />
-        <button
+        <button type="button"
           className="btn primary"
           data-testid="asa-connect"
           disabled={connect.isPending || !canConnect}

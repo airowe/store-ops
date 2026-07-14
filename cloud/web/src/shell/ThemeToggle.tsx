@@ -9,7 +9,9 @@ function current(): "light" | "dark" {
 }
 
 export function ThemeToggle() {
-  const [theme, setThemeState] = useState<"light" | "dark">(current());
+  // Lazy initializer — `current()` reads the DOM, and passing the call would run
+  // it on every render only for React to discard the result after the first.
+  const [theme, setThemeState] = useState<"light" | "dark">(current);
   const toggle = useCallback(() => {
     const next = current() === "light" ? "dark" : "light";
     document.documentElement.setAttribute("data-theme", next);

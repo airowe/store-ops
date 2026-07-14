@@ -41,6 +41,11 @@ export function SettingsView({ client, onSignedOut }: { client: ApiClient; onSig
     }
   }, [meQ.data, prefs]);
 
+  // These reconcile from the server's RESPONSE rather than invalidating a query
+  // — the write returns the authoritative row, so there is nothing stale to
+  // refetch. react-doctor's query-mutation-missing-invalidation flags this shape
+  // (it only looks for invalidateQueries/setQueryData in the options), but
+  // adding an invalidation here would just refetch data we already hold.
   const pushMut = useMutation({
     mutationFn: (next: boolean) => setNotifications(client, { push_run_ready: next }),
     onSuccess: (r) => setPrefs((p) => (p ? { ...p, push: r.push_run_ready } : p)),
@@ -82,7 +87,7 @@ export function SettingsView({ client, onSignedOut }: { client: ApiClient; onSig
               : "ShipASO stops sending; runs still open."
           }
           action={
-            <button className="btn ghost" data-testid="push-toggle" onClick={() => pushMut.mutate(!prefs.push)}>
+            <button type="button" className="btn ghost" data-testid="push-toggle" onClick={() => pushMut.mutate(!prefs.push)}>
               {prefs.push ? "On" : "Off"}
             </button>
           }
@@ -91,7 +96,7 @@ export function SettingsView({ client, onSignedOut }: { client: ApiClient; onSig
           title="Weekly digest email"
           detail="The agent keeps working and runs keep opening regardless."
           action={
-            <button className="btn ghost" data-testid="digest-toggle" onClick={() => digestMut.mutate(!prefs.digest)}>
+            <button type="button" className="btn ghost" data-testid="digest-toggle" onClick={() => digestMut.mutate(!prefs.digest)}>
               {prefs.digest ? "On" : "Off"}
             </button>
           }
@@ -101,14 +106,14 @@ export function SettingsView({ client, onSignedOut }: { client: ApiClient; onSig
           detail="How often we snapshot your ranks. Data collection — not email frequency."
           action={
             <span style={{ display: "flex", gap: 6 }}>
-              <button
+              <button type="button"
                 className={"btn" + (prefs.cadence === "weekly" ? "" : " ghost")}
                 data-testid="cadence-weekly"
                 onClick={() => cadenceMut.mutate("weekly")}
               >
                 Weekly
               </button>
-              <button
+              <button type="button"
                 className={"btn" + (prefs.cadence === "daily" ? "" : " ghost")}
                 data-testid="cadence-daily"
                 onClick={() => cadenceMut.mutate("daily")}
@@ -131,7 +136,7 @@ export function SettingsView({ client, onSignedOut }: { client: ApiClient; onSig
               : "Active — each week the agent audits, ranks, and drafts a run for your approval. It never pushes."
           }
           action={
-            <button
+            <button type="button"
               className={"btn" + (prefs.paused ? " bad" : " ghost")}
               data-testid="pause-toggle"
               disabled={pauseMut.isPending}
@@ -147,8 +152,8 @@ export function SettingsView({ client, onSignedOut }: { client: ApiClient; onSig
         <b>Appearance</b>
         <p className="micro">Theme for this browser. Light is opt-in; dark is the default.</p>
         <span style={{ display: "flex", gap: 6 }}>
-          <button className="btn ghost" data-testid="theme-light" onClick={() => setTheme("light")}>Light</button>
-          <button className="btn ghost" data-testid="theme-dark" onClick={() => setTheme("dark")}>Dark</button>
+          <button type="button" className="btn ghost" data-testid="theme-light" onClick={() => setTheme("light")}>Light</button>
+          <button type="button" className="btn ghost" data-testid="theme-dark" onClick={() => setTheme("dark")}>Dark</button>
         </span>
       </div>
 
@@ -168,7 +173,7 @@ export function SettingsView({ client, onSignedOut }: { client: ApiClient; onSig
               title={`${k.kind.toUpperCase()} · ${k.keyId || "key"}`}
               detail={`added ${k.createdAt.slice(0, 10)}${k.lastUsedAt ? ` · last used ${k.lastUsedAt.slice(0, 10)}` : ""}`}
               action={
-                <button className="btn bad" data-testid={`delete-${k.kind}`} onClick={() => delMut.mutate(k.kind)}>
+                <button type="button" className="btn bad" data-testid={`delete-${k.kind}`} onClick={() => delMut.mutate(k.kind)}>
                   Delete
                 </button>
               }
@@ -180,7 +185,7 @@ export function SettingsView({ client, onSignedOut }: { client: ApiClient; onSig
       <div className="card">
         <b>Account</b>
         {meQ.data?.email ? <p className="micro">{meQ.data.email}</p> : null}
-        <button className="btn ghost" data-testid="sign-out" onClick={() => signOutMut.mutate()}>
+        <button type="button" className="btn ghost" data-testid="sign-out" onClick={() => signOutMut.mutate()}>
           Sign out
         </button>
       </div>

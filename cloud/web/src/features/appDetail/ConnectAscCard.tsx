@@ -57,7 +57,7 @@ export function ConnectAscCard({
             Connected · key {storedKey.keyId}. Keyed audits read your real subtitle,
             keyword field, and screenshots — and unlock one-click push after approval.
           </p>
-          <button
+          <button type="button"
             className="btn primary"
             data-testid="asc-run-stored"
             disabled={run.isPending}
@@ -104,7 +104,7 @@ export function ConnectAscCard({
                 Save this key (encrypted) so future runs and pushes are one click
               </label>
             ) : null}
-            <button
+            <button type="button"
               className="btn primary"
               data-testid="asc-connect"
               disabled={run.isPending || !keyId.trim() || !issuerId.trim() || !p8.trim()}

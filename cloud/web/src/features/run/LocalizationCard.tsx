@@ -83,6 +83,7 @@ export function LocalizationCard({ client, runId, initialLocales }: { client: Ap
       <div style={{ display: "flex", gap: 8, marginTop: 6 }}>
         <select
           data-testid="loc-locale"
+          aria-label="Market to localize into"
           value={locale}
           onChange={(e) => setLocale(e.target.value)}
           style={{ flex: 1 }}
@@ -94,7 +95,7 @@ export function LocalizationCard({ client, runId, initialLocales }: { client: Ap
             </option>
           ))}
         </select>
-        <button className="btn" data-testid="loc-generate" disabled={busy || !locale.trim()} onClick={() => generate.mutate(locale.trim())}>
+        <button type="button" className="btn" data-testid="loc-generate" disabled={busy || !locale.trim()} onClick={() => generate.mutate(locale.trim())}>
           {generate.isPending ? "Translating…" : "Generate"}
         </button>
       </div>
@@ -111,7 +112,7 @@ export function LocalizationCard({ client, runId, initialLocales }: { client: Ap
           {draft.trimmed.length > 0 ? (
             <p className="micro" data-testid="loc-trimmed">Trimmed to fit: {draft.trimmed.join(", ")}.</p>
           ) : null}
-          <button className="btn primary" data-testid="loc-approve" disabled={busy} onClick={() => approve.mutate(draft)}>
+          <button type="button" className="btn primary" data-testid="loc-approve" disabled={busy} onClick={() => approve.mutate(draft)}>
             {approve.isPending ? "Approving…" : `Approve ${draft.locale}`}
           </button>
         </div>
@@ -123,7 +124,7 @@ export function LocalizationCard({ client, runId, initialLocales }: { client: Ap
           {approved.map((l) => (
             <div key={l} className="setting-row" data-testid={`loc-${l}`}>
               <span style={{ flex: 1 }} className="mono">{l}</span>
-              <button className="btn ghost" data-testid={`loc-remove-${l}`} disabled={busy} onClick={() => remove.mutate(l)}>Remove</button>
+              <button type="button" className="btn ghost" data-testid={`loc-remove-${l}`} disabled={busy} onClick={() => remove.mutate(l)}>Remove</button>
             </div>
           ))}
         </div>

@@ -59,7 +59,7 @@ export function AnalyticsCard({ client, appId }: { client: ApiClient; appId: str
       )}
 
       <div className="btn-row" style={{ display: "flex", gap: 10, marginTop: 10 }}>
-        <button
+        <button type="button"
           className="btn primary"
           data-testid="an-enable"
           disabled={enable.isPending || !canAct}
@@ -68,7 +68,7 @@ export function AnalyticsCard({ client, appId }: { client: ApiClient; appId: str
           {enable.isPending ? "Requesting…" : "Enable analytics"}
         </button>
         {pending ? (
-          <button
+          <button type="button"
             className="btn ghost"
             data-testid="an-ingest"
             disabled={ingest.isPending}

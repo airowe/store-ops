@@ -45,7 +45,7 @@ export function PreviewView({ client, onSignIn }: { client: ApiClient; onSignIn:
           placeholder="App name or bundle id"
           onChange={(e) => setQuery(e.target.value)}
         />
-        <button className="btn" data-testid="preview-search" disabled={!query.trim() || search.isPending} onClick={() => search.mutate(query.trim())}>
+        <button type="button" className="btn" data-testid="preview-search" disabled={!query.trim() || search.isPending} onClick={() => search.mutate(query.trim())}>
           {search.isPending ? "Auditing…" : "Audit"}
         </button>
       </div>
@@ -53,18 +53,17 @@ export function PreviewView({ client, onSignIn }: { client: ApiClient; onSignIn:
       {note ? <p className="faint" style={{ marginTop: 8 }}>{note}</p> : null}
 
       {candidates?.map((c) => (
-        <div
+        <button
           key={c.bundle_id}
+          type="button"
           className="card appcard"
           data-testid={`pcand-${c.bundle_id}`}
           style={{ padding: "10px 12px", marginTop: 6 }}
-          role="button"
-          tabIndex={0}
           onClick={() => pick.mutate(c.bundle_id)}
         >
           <div className="name">{c.name}</div>
           <div className="bundle">{c.bundle_id}</div>
-        </div>
+        </button>
       ))}
 
       {result ? (
@@ -99,7 +98,7 @@ export function PreviewView({ client, onSignIn }: { client: ApiClient; onSignIn:
           <div className="asc-unlock" style={{ marginTop: 12 }}>
             <b>Connect &amp; run</b>
             <p className="micro">Sign in to run the fix and prepare the push — your credentials, your machine.</p>
-            <button className="btn primary" data-testid="preview-signin" onClick={onSignIn} style={{ marginTop: 8 }}>
+            <button type="button" className="btn primary" data-testid="preview-signin" onClick={onSignIn} style={{ marginTop: 8 }}>
               Sign in to run
             </button>
           </div>

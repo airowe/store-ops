@@ -92,7 +92,7 @@ export function FindingsCard({
               } we can't see publicly — and improve them.`}
           </p>
           {onConnect ? (
-            <button className="btn primary" data-testid="asc-unlock-cta" onClick={onConnect}>
+            <button type="button" className="btn primary" data-testid="asc-unlock-cta" onClick={onConnect}>
               Unlock your full audit
             </button>
           ) : (

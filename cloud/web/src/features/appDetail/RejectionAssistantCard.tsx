@@ -41,7 +41,7 @@ export function RejectionAssistantCard({ client }: { client: ApiClient }) {
         onChange={(e) => setText(e.target.value)}
         style={{ width: "100%", marginTop: 6 }}
       />
-      <button className="btn" data-testid="ra-run" disabled={run.isPending || !text.trim()} onClick={() => run.mutate(text)}>
+      <button type="button" className="btn" data-testid="ra-run" disabled={run.isPending || !text.trim()} onClick={() => run.mutate(text)}>
         {run.isPending ? "Analyzing…" : "Analyze"}
       </button>
 
