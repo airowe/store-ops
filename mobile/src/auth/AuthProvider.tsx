@@ -41,6 +41,16 @@ export function useAuth(): AuthContextValue {
   return ctx;
 }
 
+/**
+ * The auth context if there is one, else null — for PUBLIC screens that render
+ * standalone (a logged-out preview, and unit tests that mount one card with no
+ * app shell). Same no-provider-fallback discipline as `useThemeMode`. Screens
+ * behind the auth guard should keep using `useAuth`, which fails loudly.
+ */
+export function useOptionalAuth(): AuthContextValue | null {
+  return useContext(AuthContext);
+}
+
 export function AuthProvider({
   children,
   /** test seam: inject a client/base; defaults to the real wired client. */

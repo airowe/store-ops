@@ -68,6 +68,34 @@ export type AppCandidate = {
   iconUrl: string | null;
 };
 
+// ── logged-out preview (try-before-signup) ───────────────────────────────────
+//
+// NOTE the casing: /preview returns snake_case `bundle_id`, NOT the camelCase
+// `bundleId` that /resolve returns on AppCandidate above. Different routes,
+// different wire shapes — reusing AppCandidate here would silently read
+// undefined. These mirror `packages/api`'s Candidate + PreviewResult exactly.
+
+/** One pick-list entry when a preview query is ambiguous. */
+export type PreviewCandidate = {
+  bundle_id: string;
+  name: string;
+  publisher?: string;
+  genres?: string[];
+};
+
+/**
+ * The teaser the Worker hands back to a logged-out visitor: the REAL grade and
+ * findings, never an inflated one. The payoff (optimized copy + push commands)
+ * is withheld until they sign up and connect the app.
+ */
+export type PreviewResult = {
+  needsChoice?: boolean;
+  candidates?: PreviewCandidate[];
+  bundleId?: string;
+  error?: string;
+  preview?: { grade?: string | null; summary?: string; findings?: string[] };
+};
+
 /** `POST /resolve {query}` — classify a query into a connectable result. */
 export type ResolveResult = {
   /**
