@@ -35,7 +35,7 @@ export function DashboardView({ client, onOpen }: { client: ApiClient; onOpen: (
             Approve every pending run at once. Approval only reveals each run’s push handoff —
             it never ships anything.
           </p>
-          <button
+          <button type="button"
             className="btn primary"
             data-testid="approve-all"
             disabled={approveAll.isPending}
@@ -96,7 +96,7 @@ function ConnectCard({ client, onConnected }: { client: ApiClient; onConnected: 
           placeholder="App name or bundle id"
           onChange={(e) => setQuery(e.target.value)}
         />
-        <button
+        <button type="button"
           className="btn"
           data-testid="connect-search"
           disabled={!query.trim() || resolveMut.isPending}

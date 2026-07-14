@@ -80,7 +80,7 @@ export function PlayDataSafetyCard({ client, appId }: { client: ApiClient; appId
           />
           <span>I confirm this is my own declaration and it is accurate. It will replace my live Play data-safety form.</span>
         </label>
-        <button
+        <button type="button"
           className="btn primary"
           data-testid="pds-push"
           disabled={push.isPending || !canPush}

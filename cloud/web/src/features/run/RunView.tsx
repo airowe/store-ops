@@ -63,6 +63,11 @@ export function RunView({
           : prev,
       ),
   });
+  // No invalidation on purpose: ascPush writes to App Store Connect, not to our
+  // runs table (see the handler in cloud/src/api — it reads the run, mints a JWT,
+  // and pushes; it never UPDATEs it). So the run record is unchanged and there is
+  // nothing stale to refetch. Same for createVersion below. react-doctor flags
+  // both; both are false positives.
   const push = useMutation({ mutationFn: () => ascPush(client, id, {}) });
   const [versionString, setVersionString] = useState("");
   const createVersion = useMutation({
@@ -114,10 +119,10 @@ export function RunView({
 
       {pending ? (
         <div className="btn-row" style={{ display: "flex", gap: 10, marginTop: 14 }}>
-          <button className="btn primary" data-testid="approve" disabled={decide.isPending} onClick={() => decide.mutate("approve")}>
+          <button type="button" className="btn primary" data-testid="approve" disabled={decide.isPending} onClick={() => decide.mutate("approve")}>
             {decide.isPending ? "Approving…" : "Approve"}
           </button>
-          <button className="btn ghost" data-testid="reject" disabled={decide.isPending} onClick={() => decide.mutate("reject")}>
+          <button type="button" className="btn ghost" data-testid="reject" disabled={decide.isPending} onClick={() => decide.mutate("reject")}>
             Reject
           </button>
         </div>
@@ -140,7 +145,7 @@ export function RunView({
             Uses your saved key ({storedAscKey.keyId}) to stage the approved copy on your
             editable version. Explicit click — nothing is automatic.
           </p>
-          <button
+          <button type="button"
             className="btn primary"
             data-testid="asc-push"
             disabled={push.isPending}
@@ -176,7 +181,7 @@ export function RunView({
                   value={versionString}
                   onChange={(e) => setVersionString(e.target.value)}
                 />
-                <button
+                <button type="button"
                   className="btn ghost"
                   data-testid="cv-create"
                   disabled={createVersion.isPending || !versionString.trim()}
@@ -208,7 +213,7 @@ export function RunView({
             Credential-free: opens a pull request with the approved copy on your connected repo
             ({githubQ.data.repo}). Review + merge it yourself — nothing ships from here.
           </p>
-          <button
+          <button type="button"
             className="btn primary"
             data-testid="github-pr"
             disabled={pr.isPending}
@@ -258,7 +263,7 @@ export function RunView({
           <p className="micro muted" style={{ margin: "4px 0 0" }}>
             Generate a key in Settings → Agent access.{" "}
             {onConnect ? (
-              <button className="btn ghost" data-testid="mcp-settings" onClick={onConnect}>
+              <button type="button" className="btn ghost" data-testid="mcp-settings" onClick={onConnect}>
                 Open Settings →
               </button>
             ) : (

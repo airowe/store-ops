@@ -33,7 +33,7 @@ export function LocaleKeywordsCard({ client, appId }: { client: ApiClient; appId
           value={market}
           onChange={(e) => setMarket(e.target.value)}
         />
-        <button
+        <button type="button"
           className="btn"
           data-testid="lk-run"
           disabled={run.isPending || !market.trim()}

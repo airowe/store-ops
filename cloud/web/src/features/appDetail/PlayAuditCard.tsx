@@ -44,7 +44,7 @@ export function PlayAuditCard({ client, appId }: { client: ApiClient; appId: str
         {!storedPlayKey ? (
           <textarea data-testid="play-sa" placeholder="Service account JSON" rows={4} value={serviceAccount} onChange={(e) => setServiceAccount(e.target.value)} />
         ) : null}
-        <button className="btn primary" data-testid="play-run" disabled={audit.isPending || !canRun} onClick={() => audit.mutate()}>
+        <button type="button" className="btn primary" data-testid="play-run" disabled={audit.isPending || !canRun} onClick={() => audit.mutate()}>
           {audit.isPending ? "Auditing…" : "Run Play audit"}
         </button>
       </div>

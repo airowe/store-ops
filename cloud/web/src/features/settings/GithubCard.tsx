@@ -46,7 +46,7 @@ export function GithubCard({ client }: { client: ApiClient }) {
           <p className="micro" data-testid="gh-connected">
             Connected to <span className="mono">{linkedRepo}</span>. Approved runs can open a metadata PR.
           </p>
-          <button
+          <button type="button"
             className="btn bad"
             data-testid="gh-disconnect"
             disabled={connect.isPending}
@@ -64,7 +64,7 @@ export function GithubCard({ client }: { client: ApiClient }) {
           <div style={{ display: "grid", gap: 8 }}>
             <input data-testid="gh-installation" placeholder="Installation ID" value={installationId} onChange={(e) => setInstallationId(e.target.value)} />
             <input data-testid="gh-repo" placeholder="Repo (owner/name)" value={repo} onChange={(e) => setRepo(e.target.value)} />
-            <button
+            <button type="button"
               className="btn primary"
               data-testid="gh-connect"
               disabled={connect.isPending || !installationId.trim() || !/^[^/\s]+\/[^/\s]+$/.test(repo.trim())}

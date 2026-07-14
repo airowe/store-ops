@@ -56,7 +56,7 @@ export function AppDetailView({
     <section>
       <h1>{app.name}</h1>
       <p className="muted mono">{app.bundle_id} · {app.country}</p>
-      <button className="btn ghost" data-testid="war-room" onClick={() => onWarRoom(app.id)}>War room</button>
+      <button type="button" className="btn ghost" data-testid="war-room" onClick={() => onWarRoom(app.id)}>War room</button>
 
       <CompetitorsCard client={client} appId={app.id} />
       <LocaleKeywordsCard client={client} appId={app.id} />

@@ -53,7 +53,7 @@ export function ApiKeysCard({ client }: { client: ApiClient }) {
           value={label}
           onChange={(e) => setLabel(e.target.value)}
         />
-        <button className="btn" data-testid="ak-create" disabled={busy} onClick={() => create.mutate()}>
+        <button type="button" className="btn" data-testid="ak-create" disabled={busy} onClick={() => create.mutate()}>
           {create.isPending ? "Generating…" : "Generate key"}
         </button>
       </div>
@@ -77,7 +77,7 @@ export function ApiKeysCard({ client }: { client: ApiClient }) {
                 {k.prefix}
                 {k.label ? ` · ${k.label}` : ""}
               </span>
-              <button
+              <button type="button"
                 className="btn ghost"
                 data-testid={`ak-revoke-${k.id}`}
                 disabled={busy}
