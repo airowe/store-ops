@@ -9,7 +9,11 @@
  *     headroom) — we never over-sell a finished or unknown listing.
  */
 import React from "react";
-import { Image, ScrollView, StyleSheet, View } from "react-native";
+import { ScrollView, StyleSheet, View } from "react-native";
+// expo-image, not react-native's: RN's Image has no cache, so the same App Store
+// screenshots re-download on every visit to a run. Drop-in apart from
+// contentFit (was resizeMode).
+import { Image } from "expo-image";
 import { palette, radius, spacing } from "../theme/index.js";
 import type { Lever, ShotScore } from "../types/api.js";
 import { AppText, Card } from "./primitives.js";
@@ -37,7 +41,19 @@ export function ScreenshotGallery({ shots }: { shots: ShotScore | null | undefin
       {urls.length > 0 ? (
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.strip}>
           {urls.map((u, i) => (
-            <Image key={`${u}-${i}`} testID="shot" source={{ uri: u }} style={styles.shot} resizeMode="cover" />
+            <Image
+              key={`${u}-${i}`}
+              testID="shot"
+              source={{ uri: u }}
+              style={styles.shot}
+              contentFit="cover"
+              // Crossfade in rather than popping — a cached shot is instant, so
+              // this only ever softens a real network fetch. 180ms matches the
+              // --duration-popover token; mobile's theme still hand-maintains its
+              // tokens (the generated ones aren't wired in yet), so it's a
+              // literal here rather than an import.
+              transition={180}
+            />
           ))}
         </ScrollView>
       ) : (
