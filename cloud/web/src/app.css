@@ -105,7 +105,24 @@ h2 { font-family: var(--display); font-weight: 600; font-size: 22px; letter-spac
 .move-row:last-child { border-bottom: 0; }
 .move-row .kw { color: var(--ink); font-weight: 600; }
 .move-row .cur { color: var(--ink); }
-.anno-row { display: flex; gap: 8px; align-items: baseline; margin-top: 8px; }
+/* Timeline rows are events that happened in sequence — a 40ms cascade lets them
+   read that way instead of arriving as one instant block. `--row` is set inline
+   per row (each element consumes only its own value; we never drive child
+   transforms from a shared parent variable). */
+.anno-row {
+  display: flex; gap: 8px; align-items: baseline; margin-top: 8px;
+  opacity: 1;
+  transform: translateY(0);
+  transition: opacity var(--duration-popover) var(--ease-out),
+              transform var(--duration-popover) var(--ease-out);
+  transition-delay: calc(var(--row, 0) * 40ms);
+}
+@starting-style {
+  .anno-row {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+}
 .run-row { display: flex; align-items: center; justify-content: space-between; cursor: pointer; }
 .run-row:hover { border-color: var(--signal-dim); }
 
@@ -190,5 +207,15 @@ h2 { font-family: var(--display); font-weight: 600; font-size: 22px; letter-spac
   .run-status { transition: opacity var(--duration-popover) var(--ease-out); }
   @starting-style {
     .run-status { transform: none; }
+  }
+
+  /* Rows fade in together. A staggered DELAY is motion-adjacent — it reads as
+     lag — so it goes too, not just the movement. */
+  .anno-row {
+    transition: opacity var(--duration-popover) var(--ease-out);
+    transition-delay: 0ms;
+  }
+  @starting-style {
+    .anno-row { transform: none; }
   }
 }

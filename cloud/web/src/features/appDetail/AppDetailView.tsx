@@ -10,7 +10,9 @@ import { useQuery } from "@tanstack/react-query";
 import type { ApiClient } from "@shipaso/api";
 import { getApp, getDeltas, getEngagement, getRanks } from "@shipaso/api";
 import { timeAgo } from "@shipaso/honesty";
+import type { CSSProperties } from "react";
 import { runStatusLabel } from "../../lib/status.js";
+import { annotationKey } from "../../lib/annotationKey.js";
 import { RankChart } from "../charts/RankChart.js";
 import { RankMovementRow } from "./RankMovementRow.js";
 import { ConversionCard } from "./ConversionCard.js";
@@ -90,7 +92,7 @@ export function AppDetailView({
         <div className="card" data-testid="what-changed">
           <b>What changed</b>
           {annotations.slice(-8).map((a, i) => (
-            <div key={`${a.at}-${i}`} className="anno-row">
+            <div key={annotationKey(a)} className="anno-row" style={{ "--row": i } as CSSProperties}>
               <span style={{ color: a.kind === "push" ? "var(--signal)" : "var(--warn)" }}>
                 {a.kind === "push" ? "▲" : "◆"}
               </span>
