@@ -65,11 +65,12 @@ export function ApprovalGate({
   );
 }
 
+const COPY_FIELDS: Array<keyof CopyFields> = ["name", "subtitle", "keywords", "promo"];
+
 function CopyDiff({ current, proposed }: { current: CopyFields; proposed: CopyFields }) {
-  const fields: Array<keyof CopyFields> = ["name", "subtitle", "keywords", "promo"];
   return (
     <View style={{ gap: spacing.sm, marginVertical: spacing.sm }}>
-      {fields.map((f) => {
+      {COPY_FIELDS.map((f) => {
         const before = current[f];
         const after = proposed[f];
         if (after === undefined) return null; // nothing proposed for this field

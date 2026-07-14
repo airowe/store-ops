@@ -10,6 +10,7 @@
  */
 import * as SecureStore from "expo-secure-store";
 import type { ApiClient } from "../api/client.js";
+import { authExchange, me as fetchMe } from "../api/endpoints.js";
 import type { AuthExchangeResult, Me } from "../types/api.js";
 
 /** Keychain key for the session token. (Credentials are never given a key.) */
@@ -51,7 +52,7 @@ export function extractMagicToken(url: string | null | undefined): string | null
 export async function boot(client: ApiClient): Promise<Me> {
   const token = await getToken();
   if (!token) return { authed: false };
-  return client.get<Me>("/auth/me");
+  return fetchMe(client);
 }
 
 /**
@@ -59,7 +60,7 @@ export async function boot(client: ApiClient): Promise<Me> {
  * token is returned so the caller can immediately re-boot / route into the app.
  */
 export async function exchangeMagicLink(client: ApiClient, magicToken: string): Promise<AuthExchangeResult> {
-  const res = await client.post<AuthExchangeResult>("/auth/exchange", { token: magicToken });
+  const res = await authExchange(client, magicToken);
   await setToken(res.token);
   return res;
 }

@@ -13,6 +13,7 @@
 import React, { createContext, useContext, useEffect, useMemo, useRef, useState } from "react";
 import * as Linking from "expo-linking";
 import { createApiClient, type ApiClient } from "../api/client.js";
+import { authRequest } from "../api/endpoints.js";
 import { apiBase } from "../lib/config.js";
 import type { Me } from "../types/api.js";
 import * as session from "./session.js";
@@ -89,7 +90,7 @@ export function AuthProvider({
       me,
       client,
       requestLink: async (email: string) => {
-        await client.post("/auth/request", { email });
+        await authRequest(client, email);
       },
       completeMagicLink: async (magicToken: string) => {
         setStatus("loading");

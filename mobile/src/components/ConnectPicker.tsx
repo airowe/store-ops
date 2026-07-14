@@ -5,13 +5,21 @@
  * more") and an honest not-found nudge. The actual connect + navigation is the
  * caller's job (passed via `onConnect`); this component owns the search UX.
  */
-import React, { useState } from "react";
+import React, { useCallback, useState } from "react";
 import { ActivityIndicator, FlatList, Pressable, StyleSheet, TextInput, View } from "react-native";
 import { fontSize, palette, radius, spacing } from "../theme/index.js";
 import type { ApiClient } from "../api/client.js";
 import { resolve as resolveEndpoint } from "../api/endpoints.js";
 import type { AppCandidate, ResolveResult } from "../types/api.js";
 import { AppText, Button, Card } from "./primitives.js";
+
+/**
+ * bundleId is the stable identity. The index is NOT: "Show more" appends a page,
+ * and a candidate can arrive in a different position, so an index-keyed row would
+ * reconcile against the wrong app.
+ */
+const keyExtractor = (c: AppCandidate) => c.bundleId;
+const Separator = () => <View style={styles.sep} />;
 
 export function ConnectPicker({
   client,
@@ -51,6 +59,13 @@ export function ConnectPicker({
 
   const notFound = result?.kind === "not-found";
 
+  // Stable across renders so FlatList's bail-out holds and the memo()'d rows
+  // don't redraw on every keystroke in the search box.
+  const renderItem = useCallback(
+    ({ item }: { item: AppCandidate }) => <CandidateRow candidate={item} onConnect={onConnect} />,
+    [onConnect],
+  );
+
   return (
     <Card>
       <AppText kind="lead">Connect an app</AppText>
@@ -80,9 +95,9 @@ export function ConnectPicker({
           testID="candidate-list"
           scrollEnabled={false}
           data={candidates}
-          keyExtractor={(c, i) => `${c.bundleId}-${i}`}
-          ItemSeparatorComponent={() => <View style={styles.sep} />}
-          renderItem={({ item }) => <CandidateRow candidate={item} onPress={() => onConnect(item)} />}
+          keyExtractor={keyExtractor}
+          ItemSeparatorComponent={Separator}
+          renderItem={renderItem}
           ListFooterComponent={
             result?.hasMore ? (
               <Pressable
@@ -102,7 +117,20 @@ export function ConnectPicker({
   );
 }
 
-function CandidateRow({ candidate, onPress }: { candidate: AppCandidate; onPress: () => void }) {
+/**
+ * Memoised so a keystroke in the search box doesn't redraw every visible row.
+ * The row takes the STABLE `onConnect` and its own candidate, then builds the
+ * call itself — passing a fresh `() => onConnect(item)` per row would defeat the
+ * shallow compare and make the memo() a no-op.
+ */
+const CandidateRow = React.memo(function CandidateRow({
+  candidate,
+  onConnect,
+}: {
+  candidate: AppCandidate;
+  onConnect: (candidate: AppCandidate) => void;
+}) {
+  const onPress = useCallback(() => onConnect(candidate), [onConnect, candidate]);
   return (
     <Pressable accessibilityRole="button" testID={`candidate-${candidate.bundleId}`} onPress={onPress} style={styles.row}>
       <View style={{ flex: 1 }}>
@@ -114,7 +142,7 @@ function CandidateRow({ candidate, onPress }: { candidate: AppCandidate; onPress
       <AppText kind="dim" style={{ color: palette.signal }}>Connect</AppText>
     </Pressable>
   );
-}
+});
 
 const styles = StyleSheet.create({
   searchRow: { marginTop: spacing.xs },

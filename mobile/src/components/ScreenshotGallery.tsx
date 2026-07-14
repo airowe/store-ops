@@ -50,7 +50,7 @@ export function ScreenshotGallery({ shots }: { shots: ShotScore | null | undefin
 }
 
 /** Levers — hidden for an A grade (no headroom) and when empty. */
-export function LeverList({ levers, grade }: { levers: Lever[] | undefined; grade: string }) {
+function LeverList({ levers, grade }: { levers: Lever[] | undefined; grade: string }) {
   if (grade === "A" || grade === "?" || !levers || levers.length === 0) return null;
   return (
     <View style={{ gap: spacing.xs, marginTop: spacing.sm }}>
