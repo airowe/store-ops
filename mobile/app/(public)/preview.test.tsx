@@ -105,14 +105,24 @@ describe("Preview screen — try-before-signup", () => {
     expect(pushed).toContain("/(public)/login");
   });
 
-  it("surfaces an honest note when nothing matches", async () => {
-    const { client } = fakeClient([{ needsChoice: true, candidates: [] }]);
+  it("a no-match surfaces the server's message instead of failing silently", async () => {
+    // The Worker answers an unknown query with HTTP 404 + { error }, so the API
+    // client THROWS and onSuccess never runs. Without an onError the failure path
+    // was silent — a typo produced no feedback at all.
+    const client = {
+      get: async () => ({}),
+      post: async () => {
+        throw new Error('no app found for "zzzz"');
+      },
+      request: async () => ({}),
+    } as unknown as ApiClient;
     renderPreview(client);
 
     fireEvent.changeText(screen.getByTestId("preview-query"), "zzzz");
     fireEvent.press(screen.getByTestId("preview-search"));
 
     await waitFor(() => expect(screen.getByTestId("preview-note")).toBeTruthy());
+    expect(screen.getByTestId("preview-note")).toHaveTextContent(/no app found/);
     expect(screen.queryByTestId("preview-grade")).toBeNull();
   });
 });

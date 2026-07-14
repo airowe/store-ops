@@ -89,4 +89,23 @@ describe("<PreviewView />", () => {
     fireEvent.click(screen.getByTestId("preview-signin"));
     expect(onSignIn).toHaveBeenCalled();
   });
+
+  it("a no-match surfaces the server's message instead of failing silently", async () => {
+    // The Worker answers an unknown query with HTTP 404 + { error }, so the API
+    // client THROWS. Without an onError the whole failure path was silent: the
+    // visitor typed a typo, hit Audit, and the page did nothing at all.
+    const post = vi.fn(async () => {
+      throw new Error('no app found for "zzzzqqqq"');
+    });
+    const client = { get: vi.fn(), post, request: vi.fn() } as unknown as ApiClient;
+    wrap(<PreviewView client={client} onSignIn={vi.fn()} />);
+
+    fireEvent.change(screen.getByTestId("preview-query"), { target: { value: "zzzzqqqq" } });
+    fireEvent.click(screen.getByTestId("preview-search"));
+
+    await waitFor(() => expect(screen.getByTestId("preview-note")).toBeInTheDocument());
+    expect(screen.getByTestId("preview-note")).toHaveTextContent("no app found");
+    // …and no fake result is shown alongside the error.
+    expect(screen.queryByTestId("preview-result")).not.toBeInTheDocument();
+  });
 });

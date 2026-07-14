@@ -47,16 +47,35 @@ export default function Preview({ client: injected }: { client?: ApiClient } = {
     }
   }
 
+  /**
+   * A no-match is an HTTP 404 with `{ error: "no app found for …" }`, so the
+   * client THROWS and onSuccess never runs. Without this the failure path is
+   * silent — a typo produces no feedback at all. Surface the server's message.
+   */
+  function fail(e: unknown) {
+    setCandidates(null);
+    setResult(null);
+    setNote(e instanceof Error ? e.message : "Couldn’t preview that app.");
+  }
+
+  /** Clear the previous note when a new request starts — otherwise the error from
+   *  the LAST query sits on screen while the new one is still auditing. */
+  const startFresh = () => setNote(null);
+
   // The public route group has no auth guard, so there is always a client in the
   // app; the null case only arises in a standalone unit mount.
   const search = useMutation({
     mutationFn: (q: string) => preview(client!, { query: q }),
+    onMutate: startFresh,
     onSuccess: apply,
+    onError: fail,
   });
   // An ambiguous query hands back a pick-list; re-post the chosen bundle_id.
   const pick = useMutation({
     mutationFn: (bundle_id: string) => preview(client!, { bundle_id }),
+    onMutate: startFresh,
     onSuccess: apply,
+    onError: fail,
   });
 
   const busy = search.isPending || pick.isPending;
