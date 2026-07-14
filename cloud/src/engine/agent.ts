@@ -274,20 +274,36 @@ async function audit(fetchFn: FetchFn, input: AppInput): Promise<Audit> {
   };
 }
 
-/** Build the (non-executed) push command handoff from proposed copy. */
+/**
+ * Build the (non-executed) push command handoff from proposed copy.
+ *
+ * DESTRUCTIVE-COMMAND GUARD: only emit a flag for a field we actually PROPOSED.
+ * An unread or unchanged field is UNKNOWN — and `asc metadata set --keywords ''`
+ * does not mean "leave it alone", it means "blank it". Emitting every flag
+ * unconditionally turned an uncredentialed run (which can't read subtitle or
+ * keywords) into a command that WIPES the user's live subtitle and keyword field
+ * the moment they paste it — the exact opposite of what the run proposed, and it
+ * happens on the surface that tells them to run it themselves.
+ */
 export function buildPushCommands(bundleId: string, copy: ProposedCopy): PushCommand[] {
   const esc = (s: string) => `'${s.replace(/'/g, "'\\''")}'`;
-  const cmds: PushCommand[] = [
-    {
+  const flag = (name: string, v: string | undefined) =>
+    v === undefined || v === "" ? "" : ` --${name} ${esc(v)}`;
+
+  const listing =
+    flag("name", copy.name) + flag("subtitle", copy.subtitle) + flag("keywords", copy.keywords);
+
+  const cmds: PushCommand[] = [];
+  // Nothing proposed for the listing fields → no listing command at all. A command
+  // that sets nothing is worse than no command: it invites a destructive paste.
+  if (listing) {
+    cmds.push({
       store: "appstore",
       tool: "asc",
       description: "Stage App Store name + subtitle + keyword field (review-gated).",
-      command:
-        `asc metadata set --bundle ${bundleId} ` +
-        `--name ${esc(copy.name)} --subtitle ${esc(copy.subtitle)} ` +
-        `--keywords ${esc(copy.keywords)}`,
-    },
-  ];
+      command: `asc metadata set --bundle ${bundleId}${listing}`,
+    });
+  }
   if (copy.promo !== undefined) {
     cmds.push({
       store: "appstore",
