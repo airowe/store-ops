@@ -29,8 +29,35 @@ export function PreviewView({ client, onSignIn }: { client: ApiClient; onSignIn:
     }
   }
 
-  const search = useMutation({ mutationFn: (q: string) => preview(client, { query: q }), onSuccess: apply });
-  const pick = useMutation({ mutationFn: (bundle_id: string) => preview(client, { bundle_id }), onSuccess: apply });
+  /**
+   * A no-match is an HTTP 404 with `{ error: "no app found for …" }`, so the
+   * client THROWS and onSuccess never runs. Without this the whole failure path
+   * was silent: a visitor typed a typo, hit Audit, and the page did nothing at
+   * all — on the acquisition surface. Surface the server's own message; it is
+   * already human-readable.
+   */
+  function fail(e: unknown) {
+    setCandidates(null);
+    setResult(null);
+    setNote(e instanceof Error ? e.message : "Couldn’t preview that app.");
+  }
+
+  /** Clear the previous note when a new request starts — otherwise the error from
+   *  the LAST query sits under the box while the new one is still auditing. */
+  const startFresh = () => setNote(null);
+
+  const search = useMutation({
+    mutationFn: (q: string) => preview(client, { query: q }),
+    onMutate: startFresh,
+    onSuccess: apply,
+    onError: fail,
+  });
+  const pick = useMutation({
+    mutationFn: (bundle_id: string) => preview(client, { bundle_id }),
+    onMutate: startFresh,
+    onSuccess: apply,
+    onError: fail,
+  });
 
   return (
     <section>
@@ -50,7 +77,7 @@ export function PreviewView({ client, onSignIn }: { client: ApiClient; onSignIn:
         </button>
       </div>
 
-      {note ? <p className="faint" style={{ marginTop: 8 }}>{note}</p> : null}
+      {note ? <p className="faint" data-testid="preview-note" style={{ marginTop: 8 }}>{note}</p> : null}
 
       {candidates?.map((c) => (
         <button

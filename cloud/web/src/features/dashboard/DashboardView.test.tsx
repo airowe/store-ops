@@ -2,6 +2,7 @@ import { describe, it, expect, vi } from "vitest";
 import { render, screen, waitFor, fireEvent } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import type { ApiClient } from "@shipaso/api";
+import { ApiError } from "@shipaso/api";
 import { DashboardView } from "./DashboardView.js";
 
 function client(apps: unknown[], over: Partial<Record<"post", any>> = {}) {
@@ -28,6 +29,32 @@ const app = {
 };
 
 describe("<DashboardView />", () => {
+  it("a logged-out visitor is asked to sign in, not told to 'try again'", async () => {
+    // /apps 401s when there's no session. The old code lumped that in with every
+    // other failure and said "Couldn't load your apps. Try again." — untrue, and
+    // useless advice: retrying fails identically forever.
+    const get = vi.fn(async () => {
+      throw new ApiError(401, "unauthorized");
+    });
+    const c = { get, post: vi.fn(), request: vi.fn() } as unknown as ApiClient;
+    renderView(c);
+
+    await waitFor(() => expect(screen.getByTestId("signed-out")).toBeInTheDocument());
+    expect(screen.getByTestId("signed-out-signin")).toHaveAttribute("href", "/login");
+    expect(screen.queryByText(/try again/i)).not.toBeInTheDocument();
+  });
+
+  it("a real failure (not a 401) still says try again", async () => {
+    const get = vi.fn(async () => {
+      throw new ApiError(500, "boom");
+    });
+    const c = { get, post: vi.fn(), request: vi.fn() } as unknown as ApiClient;
+    renderView(c);
+
+    await waitFor(() => expect(screen.getByText(/try again/i)).toBeInTheDocument());
+    expect(screen.queryByTestId("signed-out")).not.toBeInTheDocument();
+  });
+
   it("renders the app grid from /apps", async () => {
     const { c } = client([app]);
     renderView(c);

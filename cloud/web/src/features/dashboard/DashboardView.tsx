@@ -7,7 +7,7 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { ApiClient, Candidate } from "@shipaso/api";
-import { approveAllRuns, connectApp, getApps, resolveApps } from "@shipaso/api";
+import { ApiError, approveAllRuns, connectApp, getApps, resolveApps } from "@shipaso/api";
 import { AppCard } from "./AppCard.js";
 
 export function DashboardView({ client, onOpen }: { client: ApiClient; onOpen: (id: string) => void }) {
@@ -19,6 +19,24 @@ export function DashboardView({ client, onOpen }: { client: ApiClient; onOpen: (
   });
 
   if (appsQ.isLoading) return <p className="muted">Loading your apps…</p>;
+
+  // A logged-out visitor gets 401 from /apps. Telling them "couldn't load your
+  // apps, try again" is both untrue and useless — retrying fails identically
+  // forever. Say what's actually wrong and offer the action that fixes it.
+  if (appsQ.error instanceof ApiError && appsQ.error.status === 401) {
+    return (
+      <section data-testid="signed-out">
+        <h1>Sign in to see your apps</h1>
+        <p className="muted">
+          Or <a href="/preview">audit any listing first</a> — no signup needed.
+        </p>
+        <a className="btn primary" href="/login" data-testid="signed-out-signin">
+          Sign in
+        </a>
+      </section>
+    );
+  }
+
   if (appsQ.isError) return <p className="muted">Couldn’t load your apps. Try again.</p>;
   const apps = appsQ.data?.apps ?? [];
   const pendingCount = apps.filter((a) => a.latest_run?.status === "awaiting_approval").length;
