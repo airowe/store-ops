@@ -31,6 +31,10 @@ function cssBlock(selector, theme) {
   lines.push(`  --sans: ${tokens.fonts.sans};`);
   lines.push(`  --display: ${tokens.fonts.display};`);
   lines.push(`  --radius: ${tokens.radius.base};`);
+  // Motion is theme-independent (a curve doesn't change between light and dark),
+  // so it emits into every theme block like --radius, not from the theme arg.
+  for (const [k, v] of Object.entries(tokens.easing)) lines.push(`  --ease-${k}: ${v};`);
+  for (const [k, v] of Object.entries(tokens.duration)) lines.push(`  --duration-${k}: ${v};`);
   for (const [k, v] of Object.entries(theme)) lines.push(`  --${k}: ${v};`);
   return `${selector} {\n${lines.join("\n")}\n}`;
 }
@@ -61,6 +65,16 @@ export const fonts = ${JSON.stringify(tokens.fonts, null, 2)} as const;
 export const fontSize = ${JSON.stringify(tokens.fontSize, null, 2)} as const;
 export const spacing = ${JSON.stringify(tokens.spacing, null, 2)} as const;
 export const radius = { base: ${parseInt(tokens.radius.base, 10)} } as const;
+export const duration = ${JSON.stringify(
+  Object.fromEntries(Object.entries(tokens.duration).map(([k, v]) => [k, parseInt(v, 10)])),
+  null,
+  2,
+)} as const;
+export const easing = ${JSON.stringify(
+  Object.fromEntries(Object.entries(tokens.easing).map(([k, v]) => [kebabToCamel(k), v])),
+  null,
+  2,
+)} as const;
 `;
 writeFileSync(join(outDir, "tokens.ts"), ts);
 

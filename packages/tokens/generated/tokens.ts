@@ -61,3 +61,15 @@ export const spacing = {
   "xxl": 44
 } as const;
 export const radius = { base: 14 } as const;
+export const duration = {
+  "press": 140,
+  "hover": 180,
+  "popover": 180,
+  "dropdown": 220,
+  "modal": 260
+} as const;
+export const easing = {
+  "out": "cubic-bezier(0.23, 1, 0.32, 1)",
+  "inOut": "cubic-bezier(0.77, 0, 0.175, 1)",
+  "drawer": "cubic-bezier(0.32, 0.72, 0, 1)"
+} as const;
