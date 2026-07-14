@@ -44,16 +44,33 @@ describe("<DashboardView />", () => {
     expect(screen.queryByText(/try again/i)).not.toBeInTheDocument();
   });
 
+  it("never renders 'no apps' while the query is still pending", async () => {
+    // The bug this pins: TanStack v5's isLoading === isPending && isFetching, so
+    // it goes FALSE during a retry backoff. Guarding on isLoading left a window
+    // with no data and no error, and the component fell through to the success
+    // render — showing a logged-out visitor "No apps connected yet", a lie.
+    // A never-settling query keeps us in exactly that state.
+    const get = vi.fn(() => new Promise(() => {})); // never resolves
+    const c = { get, post: vi.fn(), request: vi.fn() } as unknown as ApiClient;
+    renderView(c);
+
+    expect(await screen.findByText(/loading your apps/i)).toBeInTheDocument();
+    expect(screen.queryByText(/no apps connected yet/i)).not.toBeInTheDocument();
+  });
+
   it("a real failure (not a 401) still says try again", async () => {
+    // A 500 keeps the default retry policy (unlike a 401, which never retries),
+    // so this mock fails every time — as a genuinely broken server would.
     const get = vi.fn(async () => {
       throw new ApiError(500, "boom");
     });
     const c = { get, post: vi.fn(), request: vi.fn() } as unknown as ApiClient;
     renderView(c);
 
-    await waitFor(() => expect(screen.getByText(/try again/i)).toBeInTheDocument());
+    // 3 retries with exponential backoff before it settles into the error state.
+    await waitFor(() => expect(screen.getByText(/try again/i)).toBeInTheDocument(), { timeout: 15000 });
     expect(screen.queryByTestId("signed-out")).not.toBeInTheDocument();
-  });
+  }, 20000);
 
   it("renders the app grid from /apps", async () => {
     const { c } = client([app]);
