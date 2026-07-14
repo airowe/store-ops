@@ -375,13 +375,33 @@ export type ProofAggregate = {
   bestImprovement: number;
   medianImprovement: number;
 };
+/**
+ * The teaser the Worker hands a logged-out visitor. Mirrors `AppPreview` in
+ * cloud/src/engine/preview.ts EXACTLY — these field names are the wire contract.
+ * (This type previously claimed `{ grade, summary, findings }`, which the server
+ * has never sent; every field read `undefined` and the preview card rendered
+ * empty. Every field here is required for that reason: an optional field that
+ * doesn't exist type-checks fine and fails silently at runtime.)
+ */
+export type AppPreview = {
+  appName: string;
+  auditGrade: string | null;
+  leadKeyword: string | null;
+  leadRank: number | null;
+  keywordsChecked: number;
+  inTop10: number;
+  /** a short ranked sample (keyword + position), enough to feel real */
+  sample: { keyword: string; rank: number | null }[];
+};
+
 /** POST /preview → candidate picker, a preview audit, or an error. */
 export type PreviewResult = {
   needsChoice?: boolean;
   candidates?: Candidate[];
   bundleId?: string;
+  country?: string;
   error?: string;
-  preview?: { grade?: string | null; summary?: string; findings?: string[] };
+  preview?: AppPreview;
 };
 
 // ── settings (comms-prefs) ──────────────────────────────────────────────────

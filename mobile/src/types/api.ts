@@ -93,7 +93,25 @@ export type PreviewResult = {
   candidates?: PreviewCandidate[];
   bundleId?: string;
   error?: string;
-  preview?: { grade?: string | null; summary?: string; findings?: string[] };
+  country?: string;
+  preview?: AppPreview;
+};
+
+/**
+ * The teaser itself. Mirrors `AppPreview` in cloud/src/engine/preview.ts EXACTLY
+ * — these names are the wire contract. Fields are REQUIRED on purpose: the old
+ * shape claimed optional `{ grade, summary, findings }`, which the server has
+ * never sent, so every read was `undefined` and the card rendered empty while
+ * still type-checking.
+ */
+export type AppPreview = {
+  appName: string;
+  auditGrade: string | null;
+  leadKeyword: string | null;
+  leadRank: number | null;
+  keywordsChecked: number;
+  inTop10: number;
+  sample: { keyword: string; rank: number | null }[];
 };
 
 /** `POST /resolve {query}` — classify a query into a connectable result. */
