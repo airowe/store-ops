@@ -37,7 +37,8 @@ beforeEach(() => {
 describe("Preview screen — try-before-signup", () => {
   it("audits a query and shows the REAL grade (never an inflated one)", async () => {
     const { client, calls } = fakeClient([
-      { preview: { grade: "C", summary: "Weak subtitle.", findings: ["Add a keyword", "Fix shot 1"] } },
+      { preview: { appName: "Paprika", auditGrade: "C", leadKeyword: "recipes", leadRank: 7,
+        keywordsChecked: 12, inTop10: 2, sample: [{ keyword: "recipes", rank: 7 }, { keyword: "pantry", rank: null }] } },
     ]);
     renderPreview(client);
 
@@ -47,7 +48,18 @@ describe("Preview screen — try-before-signup", () => {
     await waitFor(() => expect(screen.getByTestId("preview-grade")).toBeTruthy());
     // The honest grade the Worker returned — not a marketing-friendly one.
     expect(screen.getByTestId("preview-grade")).toHaveTextContent("C");
-    expect(screen.getByText("Weak subtitle.")).toBeTruthy();
+
+    // The teaser must actually SHOW the value, not just the signup CTA. These
+    // field names are the wire contract (AppPreview); reading a field the server
+    // never sends renders an empty card that still type-checks — which is exactly
+    // the bug this pins.
+    // Regex, not a bare string — RN's toHaveTextContent matches the flattened
+    // text exactly, so a substring assertion needs an explicit pattern.
+    expect(screen.getByTestId("preview-summary")).toHaveTextContent(/#7/);
+    expect(screen.getByTestId("preview-summary")).toHaveTextContent(/recipes/);
+    expect(screen.getByTestId("preview-sample")).toBeTruthy();
+    // An unmeasured rank is an em-dash, never a fabricated number.
+    expect(screen.getByText("—")).toBeTruthy();
     expect(calls[0]).toEqual({ path: "/preview", body: { query: "Paprika" } });
   });
 
@@ -60,7 +72,8 @@ describe("Preview screen — try-before-signup", () => {
           { bundle_id: "com.b.two", name: "App Two" },
         ],
       },
-      { preview: { grade: "B", summary: "Solid." } },
+      { preview: { appName: "App Two", auditGrade: "B", leadKeyword: "two", leadRank: 3,
+        keywordsChecked: 5, inTop10: 1, sample: [] } },
     ]);
     renderPreview(client);
 
@@ -77,7 +90,8 @@ describe("Preview screen — try-before-signup", () => {
   });
 
   it("gates signup at VALUE — the sign-in CTA appears only after a result", async () => {
-    const { client } = fakeClient([{ preview: { grade: "A", summary: "Strong." } }]);
+    const { client } = fakeClient([{ preview: { appName: "Paprika", auditGrade: "A", leadKeyword: "recipes", leadRank: 1,
+      keywordsChecked: 9, inTop10: 4, sample: [] } }]);
     renderPreview(client);
 
     // Cold open: no login wall. The visitor can audit before being asked to sign up.

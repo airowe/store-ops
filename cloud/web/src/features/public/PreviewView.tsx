@@ -69,15 +69,32 @@ export function PreviewView({ client, onSignIn }: { client: ApiClient; onSignIn:
 
       {result ? (
         <div className="card" data-testid="preview-result">
-          <b>Audit preview</b>
-          {result.grade ? <span className="grade" data-testid="preview-grade">{result.grade}</span> : null}
-          {result.summary ? <p className="muted">{result.summary}</p> : null}
-          {result.findings?.length ? (
-            <ul>
-              {result.findings.slice(0, 5).map((f, i) => (
-                <li key={i}>{f}</li>
+          <b>{result.appName || "Audit preview"}</b>
+          {result.auditGrade ? (
+            <span className="grade" data-testid="preview-grade">{result.auditGrade}</span>
+          ) : null}
+
+          <p className="muted" data-testid="preview-summary">
+            {result.leadKeyword && result.leadRank != null ? (
+              <>
+                Ranks <b>#{result.leadRank}</b> for “{result.leadKeyword}” · {result.inTop10} of{" "}
+                {result.keywordsChecked} tracked keywords in the top 10.
+              </>
+            ) : (
+              <>Checked {result.keywordsChecked} keywords — none ranking yet.</>
+            )}
+          </p>
+
+          {result.sample.length ? (
+            <div className="difflist" data-testid="preview-sample">
+              {result.sample.map((s) => (
+                <div key={s.keyword} className="move-row">
+                  <span className="kw">{s.keyword}</span>
+                  {/* An unmeasured rank is "—", never a fabricated number. */}
+                  <span className="mono">{s.rank == null ? "—" : `#${s.rank}`}</span>
+                </div>
               ))}
-            </ul>
+            </div>
           ) : null}
           <div className="asc-unlock" style={{ marginTop: 12 }}>
             <b>Connect &amp; run</b>

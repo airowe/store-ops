@@ -107,18 +107,28 @@ export default function Preview({ client: injected }: { client?: ApiClient } = {
         <View testID="preview-result">
         <Card>
           <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
-            <AppText kind="lead">Audit preview</AppText>
-            {result.grade ? (
+            <AppText kind="lead">{result.appName || "Audit preview"}</AppText>
+            {result.auditGrade ? (
               <AppText kind="mono" testID="preview-grade" style={{ color: palette.signal }}>
-                {result.grade}
+                {result.auditGrade}
               </AppText>
             ) : null}
           </View>
-          {result.summary ? <AppText kind="body">{result.summary}</AppText> : null}
-          {result.findings?.length ? (
-            <View style={{ gap: spacing.xs, marginTop: spacing.sm }}>
-              {result.findings.slice(0, 5).map((f) => (
-                <AppText key={f} kind="micro">• {f}</AppText>
+
+          <AppText kind="body" testID="preview-summary">
+            {result.leadKeyword && result.leadRank != null
+              ? `Ranks #${result.leadRank} for “${result.leadKeyword}” · ${result.inTop10} of ${result.keywordsChecked} tracked keywords in the top 10.`
+              : `Checked ${result.keywordsChecked} keywords — none ranking yet.`}
+          </AppText>
+
+          {result.sample.length ? (
+            <View style={{ gap: spacing.xs, marginTop: spacing.sm }} testID="preview-sample">
+              {result.sample.map((s) => (
+                <View key={s.keyword} style={{ flexDirection: "row", justifyContent: "space-between" }}>
+                  <AppText kind="micro">{s.keyword}</AppText>
+                  {/* An unmeasured rank is "—", never a fabricated number. */}
+                  <AppText kind="mono">{s.rank == null ? "—" : `#${s.rank}`}</AppText>
+                </View>
               ))}
             </View>
           ) : null}

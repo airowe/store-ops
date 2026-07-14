@@ -45,7 +45,25 @@ describe("<PreviewView />", () => {
   it("audits an app and gates signup at value (sign-in only to run)", async () => {
     const post = vi.fn(async (path: string, body: any) => {
       if (body.query) return { needsChoice: true, candidates: [{ bundle_id: "com.x.y", name: "XY" }] };
-      if (body.bundle_id) return { bundleId: body.bundle_id, preview: { grade: "C", summary: "Two quick wins.", findings: ["Add a subtitle"] } };
+      // The REAL wire shape (AppPreview in cloud/src/engine/preview.ts). The old
+      // mock used { grade, summary, findings } — fields the server never sends —
+      // so this test passed while the card rendered completely empty.
+      if (body.bundle_id)
+        return {
+          bundleId: body.bundle_id,
+          preview: {
+            appName: "XY",
+            auditGrade: "C",
+            leadKeyword: "xy",
+            leadRank: 4,
+            keywordsChecked: 10,
+            inTop10: 2,
+            sample: [
+              { keyword: "xy", rank: 4 },
+              { keyword: "unranked", rank: null },
+            ],
+          },
+        };
       throw new Error("unexpected");
     });
     const client = { get: vi.fn(), post, request: vi.fn() } as unknown as ApiClient;
@@ -57,6 +75,17 @@ describe("<PreviewView />", () => {
     fireEvent.click(screen.getByTestId("pcand-com.x.y"));
     await waitFor(() => expect(screen.getByTestId("preview-result")).toBeInTheDocument());
     expect(screen.getByTestId("preview-grade")).toHaveTextContent("C");
+
+    // The teaser must SHOW the value, not just dangle a signup CTA — the whole
+    // funnel is "value first, signup second". Asserting only on the grade let the
+    // card render empty for months: every other field read a name the server
+    // never sends, so it silently collapsed to null and still type-checked.
+    expect(screen.getByTestId("preview-summary")).toHaveTextContent("#4");
+    expect(screen.getByTestId("preview-summary")).toHaveTextContent("xy");
+    expect(screen.getByTestId("preview-sample")).toBeInTheDocument();
+    // An unmeasured rank is an em-dash, never a fabricated number.
+    expect(screen.getByText("—")).toBeInTheDocument();
+
     fireEvent.click(screen.getByTestId("preview-signin"));
     expect(onSignIn).toHaveBeenCalled();
   });
