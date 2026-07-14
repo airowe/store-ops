@@ -28,7 +28,7 @@ export function PortfolioRow({ card, onPress }: { card: PortfolioCard; onPress: 
   );
 }
 
-export function TierBadge({ label, highlight }: { label: string; highlight?: boolean }) {
+function TierBadge({ label, highlight }: { label: string; highlight?: boolean }) {
   return (
     <View style={[styles.badge, highlight ? styles.badgeHi : undefined]}>
       <AppText kind="mono" style={{ color: highlight ? palette.bg : palette.ink }}>{label}</AppText>

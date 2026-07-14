@@ -32,6 +32,20 @@ export function toRankSeries(points: readonly RankSeriesPoint[]): RankSeries {
   return { t, rank, loRank: Math.max(1, minR - 3), hiRank: maxR + 3, empty: false };
 }
 
+/**
+ * Stable React key for a "What changed" timeline annotation.
+ *
+ * The timeline renders `annotations.slice(-8)` — a moving window — so the array
+ * index is NOT an identity: a 9th annotation shifts every row's index and React
+ * reconciles rows against the wrong data (a competitor diff wearing your push's
+ * marker). `runId` is the true id when the annotation came from one of our runs;
+ * a competitor diff has none, so fall back to its content, which is stable across
+ * the re-window. `at` alone won't do — same-day annotations collide.
+ */
+export function annotationKey(an: { at: string; kind: string; label: string; runId?: string }): string {
+  return an.runId ?? `${an.at}:${an.kind}:${an.label}`;
+}
+
 /** react-native-graph point: value on y (we invert rank), date on x. */
 export type GraphPoint = { value: number; date: Date };
 export type GraphSeries = { points: GraphPoint[]; gaps: number; empty: boolean };

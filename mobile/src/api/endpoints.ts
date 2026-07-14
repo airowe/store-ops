@@ -123,9 +123,9 @@ export const billingCheckout = (c: ApiClient, tier: string) =>
   c.post<CheckoutResult>("/billing/checkout", { tier });
 
 // ── settings (comms-prefs Phase 4) ─────────────────────────────────────────────
-export const getNotifications = (c: ApiClient) =>
-  c.get<NotificationPrefs>("/account/notifications");
-
+// No GET helper: settings reads the current prefs off the `me` payload and
+// reconciles from each write's response, so a separate read would be a second
+// source of truth for the same values.
 export const setNotifications = (c: ApiClient, patch: Partial<NotificationPrefs>) =>
   c.post<NotificationPrefs>("/account/notifications", patch);
 

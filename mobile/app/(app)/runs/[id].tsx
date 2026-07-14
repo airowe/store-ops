@@ -55,6 +55,10 @@ export default function RunDetail() {
   const r = run.data.result;
   const screenshots = r.audit?.screenshots ?? null;
   const approved = run.data.status === "approved" || run.data.status === "shipped";
+  // #71-C: status is what IS, fixes are what to DO. Partition once — the guard and
+  // the rendered list then read the same array and can't drift apart.
+  const fixes = r.findings.filter((f) => !f.context);
+  const status = r.findings.filter((f) => f.context);
 
   return (
     <Screen>
@@ -92,19 +96,18 @@ export default function RunDetail() {
       <KeywordGapList gaps={r.keywordGaps} />
       <OpportunityList opportunities={r.opportunities} />
 
-      {r.findings.filter((f) => !f.context).length > 0 ? (
+      {fixes.length > 0 ? (
         <View style={{ gap: spacing.md }}>
           <AppText kind="title">Findings</AppText>
-          {r.findings.filter((f) => !f.context).map((f) => <FindingCard key={f.id} finding={f} />)}
+          {fixes.map((f) => <FindingCard key={f.id} finding={f} />)}
         </View>
       ) : null}
 
-      {/* #71-C parity: STATUS/CONTEXT findings render in their own compact strip
-          — status is what IS, fixes are what to DO. */}
-      {r.findings.some((f) => f.context) ? (
+      {/* #71-C parity: STATUS/CONTEXT findings render in their own compact strip. */}
+      {status.length > 0 ? (
         <View testID="listing-status" style={{ gap: spacing.xs }}>
           <AppText kind="title">Listing status</AppText>
-          {r.findings.filter((f) => f.context).map((f) => (
+          {status.map((f) => (
             <View key={f.id} style={{ marginTop: spacing.xs }}>
               <AppText kind="body">{f.title}</AppText>
               {f.detail ? <AppText kind="micro">{f.detail}</AppText> : null}

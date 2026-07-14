@@ -21,6 +21,10 @@ const CADENCES: Array<{ value: SweepSchedule["cadence"]; label: string }> = [
   { value: "biweekly", label: "2 weeks" },
 ];
 
+const toggle = (testID: string, value: boolean, onPress: () => void) => (
+  <Button testID={testID} label={value ? "On" : "Off"} variant="ghost" onPress={onPress} />
+);
+
 export function AgentTriggersCard({ client, appId }: { client: ApiClient; appId: string }) {
   const [unranked, setUnranked] = useState(true);
   const [compChanges, setCompChanges] = useState(true);
@@ -96,10 +100,6 @@ export function AgentTriggersCard({ client, appId }: { client: ApiClient; appId:
       setBusy(null);
     }
   }
-
-  const toggle = (testID: string, value: boolean, onPress: () => void) => (
-    <Button testID={testID} label={value ? "On" : "Off"} variant="ghost" onPress={onPress} />
-  );
 
   return (
     <Card>

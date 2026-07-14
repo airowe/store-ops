@@ -6,7 +6,7 @@
 import React, { useState } from "react";
 import { ActivityIndicator, Pressable, View } from "react-native";
 import { Stack, useLocalSearchParams, useRouter } from "expo-router";
-import { useMutation, useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "../../../src/auth/AuthProvider.js";
 import { auditPlay, getApp, getDeltas, getRanks, runAsc, verifyPlay } from "../../../src/api/endpoints.js";
 import { RankMovementRow } from "../../../src/components/RankMovementRow.js";
@@ -20,12 +20,14 @@ import { Screen, AppText, Button, Card, Centered } from "../../../src/components
 import { humanizeStatus, timeAgo } from "../../../src/lib/format.js";
 import { shareWin } from "../../../src/lib/shareCard.js";
 import { palette, spacing } from "../../../src/theme/index.js";
+import { annotationKey } from "../../../src/lib/rankSeries.js";
 import type { PlayAudit } from "../../../src/types/api.js";
 
 export default function AppDetail() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const { client } = useAuth();
   const router = useRouter();
+  const queryClient = useQueryClient();
   const now = Date.now();
 
   const app = useQuery({ queryKey: ["app", id], queryFn: () => getApp(client, id!), enabled: !!id });
@@ -51,7 +53,11 @@ export default function AppDetail() {
       if (!v.ok) throw new Error(v.reason ?? "service account could not access this app");
       return auditPlay(client, id!, { serviceAccount: s.serviceAccount, packageName: pkg });
     },
-    onSuccess: (audit) => setPlayAudit(audit),
+    onSuccess: (audit) => {
+      setPlayAudit(audit);
+      // The audit opens a run server-side — refetch so it shows in Runs immediately.
+      void queryClient.invalidateQueries({ queryKey: ["app", id] });
+    },
   });
 
   if (app.isLoading) {
@@ -94,8 +100,8 @@ export default function AppDetail() {
         <View testID="rank-annotations">
         <Card>
           <AppText kind="lead">What changed</AppText>
-          {ranks.data.annotations.slice(-8).map((an, i) => (
-            <View key={`${an.at}-${i}`} style={{ flexDirection: "row", gap: spacing.sm, marginTop: spacing.xs }}>
+          {ranks.data.annotations.slice(-8).map((an) => (
+            <View key={annotationKey(an)} style={{ flexDirection: "row", gap: spacing.sm, marginTop: spacing.xs }}>
               <AppText kind="body" style={{ color: an.kind === "push" ? palette.signal : palette.warn }}>
                 {an.kind === "push" ? "▲" : "◆"}
               </AppText>
