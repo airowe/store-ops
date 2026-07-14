@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { runAgent } from "./agent.js";
+import { buildPushCommands, runAgent } from "./agent.js";
 import type { AppInput } from "./agent.js";
+import type { ProposedCopy } from "./optimize.js";
 
 // A fetch stub that returns a live iTunes listing for the lookup, and an empty
 // result set for the rank-check searches. Lets us assert that runAgent pulls the
@@ -319,5 +320,40 @@ describe("audit — storefront intel rides the audit (audit.storefront)", () => 
     const r = await runAgent(fetchWith(subtitleOnly) as never, baseInput());
     expect("storefront" in r.audit).toBe(false);
     expect(r.audit.liveSubtitle).toBe("just a subtitle");
+  });
+});
+
+describe("buildPushCommands — never emits a destructive flag for an unread field", () => {
+  const base = { validation: { ok: true, issues: [] } } as unknown as ProposedCopy;
+
+  it("omits a field entirely rather than setting it to '' (the wipe bug)", () => {
+    // An uncredentialed run can't read subtitle or keywords, so they're undefined.
+    // Emitting `--subtitle '' --keywords ''` doesn't mean "leave them alone" — it
+    // means "blank them". A user pasting the handoff would WIPE their live listing.
+    const cmds = buildPushCommands("com.acme.app", { ...base, name: "Acme" });
+
+    expect(cmds).toHaveLength(1);
+    expect(cmds[0]!.command).toContain("--name 'Acme'");
+    expect(cmds[0]!.command).not.toContain("--subtitle");
+    expect(cmds[0]!.command).not.toContain("--keywords");
+    expect(cmds[0]!.command).not.toContain("''");
+  });
+
+  it("emits no listing command at all when nothing was proposed", () => {
+    // A command that sets nothing is worse than no command: it invites a
+    // destructive paste on a run whose whole point was "no changes proposed".
+    expect(buildPushCommands("com.acme.app", { ...base })).toHaveLength(0);
+  });
+
+  it("still emits every field that WAS proposed", () => {
+    const cmds = buildPushCommands("com.acme.app", {
+      ...base,
+      name: "Acme",
+      subtitle: "Track it",
+      keywords: "budget,money",
+    });
+    expect(cmds[0]!.command).toBe(
+      "asc metadata set --bundle com.acme.app --name 'Acme' --subtitle 'Track it' --keywords 'budget,money'",
+    );
   });
 });
