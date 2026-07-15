@@ -36,7 +36,9 @@ export function AnalyticsCard({ client, appId }: { client: ApiClient; appId: str
   // Once a request exists (enable → pending), ingest becomes available.
   const pending = enable.data?.state === "pending";
 
-  if (credsQ.isLoading) return null;
+  // isPending, not isLoading — isLoading goes false during a retry backoff, and the
+  // `?? []` below would then read as "no stored key" for someone who has one.
+  if (credsQ.isPending) return null;
 
   return (
     <div className="card" data-testid="analytics-connect">

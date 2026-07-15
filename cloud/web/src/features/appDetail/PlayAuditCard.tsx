@@ -30,7 +30,9 @@ export function PlayAuditCard({ client, appId }: { client: ApiClient; appId: str
       }),
   });
 
-  if (credsQ.isLoading) return null;
+  // isPending, not isLoading — isLoading goes false during a retry backoff, and the
+  // `?? []` below would then read as "no stored key" for someone who has one.
+  if (credsQ.isPending) return null;
   const canRun = !!packageName.trim() && (!!storedPlayKey || !!serviceAccount.trim());
 
   return (

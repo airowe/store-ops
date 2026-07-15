@@ -46,7 +46,11 @@ export function ConnectAscCard({
     (c) => c.kind === "asc" && (c.appId === appId || c.appId === null),
   );
 
-  if (credsQ.isLoading) return null;
+  // isPending, NOT isLoading. In TanStack v5 `isLoading === isPending && isFetching`,
+  // so it goes FALSE during a retry backoff — and `credsQ.data?.credentials ?? []`
+  // then reads [] as if you had no stored key, showing the "paste your .p8" flow to
+  // someone who already connected one.
+  if (credsQ.isPending) return null;
 
   return (
     <div className="card" data-testid="connect-asc">

@@ -89,8 +89,16 @@ button.card.run-row { display: flex; }
 @media (hover: hover) and (pointer: fine) {
   .appcard:hover { border-color: var(--signal-dim); transform: translateY(-2px); }
 }
-.appcard .row1 { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+/* The badge is nowrap and the card is narrow, so a long app name and the badge
+   cannot share one line: the name collapsed to one word per row ("NYT / Cooking:
+   / Quick"). Wrap them instead — the name gets the full width and the badge sits
+   under it — so both stay readable at any card width. */
+.appcard .row1 {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 8px; flex-wrap: wrap;
+}
 .appcard .name { font-weight: 600; font-size: 16px; color: var(--ink); }
+.appcard .row1 .badge { flex: none; }
 .appcard .bundle { color: var(--faint); font-size: 12px; font-family: var(--mono); margin-top: 2px; }
 .appcard .meta { margin-top: 12px; font-family: var(--mono); font-size: 14px; color: var(--dim); }
 .appcard .meta b.good { color: var(--signal); }
