@@ -11,11 +11,12 @@ import { SettingsRoute } from "./routes/settings.js";
 import { AppDetailRoute } from "./routes/appDetail.js";
 import { WarRoomRoute } from "./routes/warRoom.js";
 import { RunRoute } from "./routes/run.js";
-import { LoginRoute, PreviewRoute, ProofRoute } from "./routes/public.js";
+import { LandingRoute, LoginRoute, PreviewRoute, ProofRoute } from "./routes/public.js";
 
 const rootRoute = createRootRoute({ component: ShellLayout });
 
-const indexRoute = createRoute({ getParentRoute: () => rootRoute, path: "/", component: DashboardRoute });
+const indexRoute = createRoute({ getParentRoute: () => rootRoute, path: "/", component: LandingRoute });
+const dashboardRoute = createRoute({ getParentRoute: () => rootRoute, path: "/dashboard", component: DashboardRoute });
 const healthRoute = createRoute({ getParentRoute: () => rootRoute, path: "/_shell/health", component: Health });
 const settingsRoute = createRoute({ getParentRoute: () => rootRoute, path: "/settings", component: SettingsRoute });
 const appDetailRoute = createRoute({ getParentRoute: () => rootRoute, path: "/apps/$id", component: AppDetailRoute });
@@ -27,6 +28,7 @@ const proofRoute = createRoute({ getParentRoute: () => rootRoute, path: "/proof"
 
 const routeTree = rootRoute.addChildren([
   indexRoute,
+  dashboardRoute,
   healthRoute,
   settingsRoute,
   appDetailRoute,
