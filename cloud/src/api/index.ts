@@ -3172,7 +3172,7 @@ async function ascVerifyRoute(
   return { ok: true, appsVisible: total };
 }
 
-type AscPushBody = AscCredBody & { locale?: string };
+type AscPushBody = AscCredBody & { locale?: string; dryRun?: boolean };
 
 /**
  * POST /runs/:id/asc/push — opt-in direct App Store Connect metadata WRITE (#11).
@@ -3223,8 +3223,11 @@ async function ascPushRoute(
       appId: ascAppId,
       copy: trace.proposedCopy,
       locale,
+      // Opt-in preview: runs every lookup, returns the exact PATCH body, writes
+      // nothing. Lets a push be inspected before it touches a live listing.
+      dryRun: body.dryRun === true,
     });
-    return result; // { ok: true, versionId, localizationId, fieldsPushed }
+    return result; // { ok, versionId, localizationId, fieldsPushed, dryRun?, patchBody? }
   } catch (e) {
     if (e instanceof AscWriteError) return { ok: false, reason: e.message };
     throw e;

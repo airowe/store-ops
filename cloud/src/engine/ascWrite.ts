@@ -179,6 +179,10 @@ export type ApplyAscResult = {
   localizationId: string;
   /** which attributes were actually patched */
   fieldsPushed: string[];
+  /** true when opts.dryRun stopped us before the PATCH; no write occurred */
+  dryRun?: true;
+  /** the exact request body we sent (or would have sent, under dryRun) */
+  patchBody?: unknown;
 };
 
 /**
@@ -216,7 +220,7 @@ export async function findAscAppId(
 
 export async function applyAscMetadata(
   fetchFn: FetchLike,
-  opts: { token: string; appId: string; copy: CopyFields; locale: string },
+  opts: { token: string; appId: string; copy: CopyFields; locale: string; dryRun?: boolean },
 ): Promise<ApplyAscResult> {
   const auth = { authorization: `Bearer ${opts.token}` };
 
@@ -243,6 +247,21 @@ export async function applyAscMetadata(
   if (Object.keys(patch.data.attributes).length === 0) {
     throw new AscWriteError("Nothing to push — the proposed copy has no non-empty fields.");
   }
+
+  // Dry run: every lookup above has run (versions, editable-version pick,
+  // localizations, patch build) — the risky logic — but we stop before the write
+  // and hand back the EXACT body we would have sent. Nothing on ASC is touched.
+  if (opts.dryRun) {
+    return {
+      ok: true,
+      versionId: version.id,
+      localizationId: localization.id,
+      fieldsPushed: Object.keys(patch.data.attributes),
+      dryRun: true,
+      patchBody: patch,
+    };
+  }
+
   const patchRes = await fetchFn(`${ASC_BASE}/appStoreVersionLocalizations/${localization.id}`, {
     method: "PATCH",
     headers: { ...auth, "content-type": "application/json" },

@@ -337,6 +337,36 @@ describe("applyAscMetadata — version → localization → PATCH", () => {
     expect(patch?.body).toContain('"name":"Calm"');
   });
 
+  it("dryRun runs every lookup but sends NO PATCH, and returns the exact body", async () => {
+    const { fetchFn, calls } = makeFetch({
+      versions: [
+        { id: "V_LIVE", attributes: { appStoreState: "READY_FOR_SALE" } },
+        { id: "V_EDIT", attributes: { appStoreState: "PREPARE_FOR_SUBMISSION" } },
+      ],
+      locales: [{ id: "L_US", attributes: { locale: "en-US" } }],
+    });
+    const r = await applyAscMetadata(fetchFn, {
+      token: "JWT",
+      appId: "APP1",
+      copy,
+      locale: "en-US",
+      dryRun: true,
+    });
+
+    // The risky lookups ran and resolved correctly...
+    expect(r.dryRun).toBe(true);
+    expect(r.versionId).toBe("V_EDIT");
+    expect(r.localizationId).toBe("L_US");
+    expect(r.fieldsPushed).toContain("keywords");
+    // ...and the exact body we WOULD send is handed back for inspection.
+    expect((r.patchBody as { data: { attributes: Record<string, string> } }).data.attributes).toMatchObject({
+      name: "Calm",
+      keywords: "meditation,sleep",
+    });
+    // The one guarantee that matters: NOTHING was PATCHed.
+    expect(calls.find((c) => c.method === "PATCH")).toBeUndefined();
+  });
+
   it("throws (no token leak) when no editable version exists", async () => {
     const { fetchFn } = makeFetch({
       versions: [{ id: "V", attributes: { appStoreState: "IN_REVIEW" } }],
