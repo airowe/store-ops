@@ -45,4 +45,8 @@ describe("resolveSurface (strangler edge map)", () => {
     expect(resolveSurface("/settingsX", ["/settings"])).toBe("legacy");
     expect(resolveSurface("/settings", ["/settings"])).toBe("web");
   });
+
+  it("owns /dashboard (the authed dashboard's new home)", () => {
+    expect(resolveSurface("/dashboard", OWNED_PATHS)).toBe("web");
+  });
 });

@@ -11,13 +11,14 @@ import { ThemeToggle } from "./ThemeToggle.js";
 export function Topbar({ apiBase, session }: { apiBase: string | null; session: Session }) {
   const pill = envPill(apiBase);
   const hs = headerState({ hasApiBase: !!apiBase, session });
+  const homeHref = hs.mode === "signedIn" ? "/dashboard" : "/";
   return (
     <header className="topbar">
       <div className="topbar-in">
-        <div className="logo">
+        <a className="logo" href={homeHref} data-testid="logo-link" style={{ textDecoration: "none" }}>
           <span className="tick" aria-hidden="true">✓</span>
           <span>ShipASO <small>autonomous ASO</small></span>
-        </div>
+        </a>
         <div className="spacer" />
         <ThemeToggle />
         <div className="who">

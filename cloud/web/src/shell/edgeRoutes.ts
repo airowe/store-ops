@@ -18,6 +18,7 @@ export type OwnedPattern = string | RegExp;
 export const OWNED_PATHS: readonly OwnedPattern[] = [
   "/_shell/health",
   "/settings",
+  "/dashboard",
   "/login",
   "/preview",
   "/proof",
