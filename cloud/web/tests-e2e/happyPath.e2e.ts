@@ -13,7 +13,7 @@ test.beforeEach(async ({ page }) => {
 });
 
 test("dashboard lists connected apps", async ({ page }) => {
-  await page.goto("/");
+  await page.goto("/dashboard");
   await expect(page.getByRole("heading", { name: "Your apps" })).toBeVisible();
   await expect(page.getByTestId("app-card-app1")).toContainText("Weatherly");
   await expect(page.getByTestId("app-card-app1").getByTestId("rank")).toContainText("12");
@@ -59,11 +59,29 @@ test("approving a run reveals the handoff without shipping", async ({ page }) =>
 });
 
 test("clicking an app is CLIENT-SIDE navigation (no full page reload)", async ({ page }) => {
-  await page.goto("/");
+  await page.goto("/dashboard");
   // stamp the live document; a full reload clears this, client-side nav preserves it
   await page.evaluate(() => ((window as unknown as { __spa?: boolean }).__spa = true));
   await page.getByTestId("app-card-app1").click();
   await expect(page.getByRole("heading", { name: "Weatherly" })).toBeVisible();
   const survived = await page.evaluate(() => (window as unknown as { __spa?: boolean }).__spa === true);
   expect(survived, "navigating to the app detail should be an in-SPA route change, not a full reload").toBe(true);
+});
+
+test("the landing page at / renders the hero and audits inline", async ({ page }) => {
+  await page.goto("/");
+  await expect(page.getByTestId("landing-hero")).toBeVisible();
+  await expect(page.getByTestId("how-it-works")).toContainText("Approve");
+  // real measured proof from the mock aggregate
+  await expect(page.getByTestId("stat-total wins")).toContainText("9");
+  // inline audit returns a real grade without leaving the page
+  await page.getByTestId("preview-query").fill("weatherly");
+  await page.getByTestId("preview-search").click();
+  await expect(page.getByTestId("preview-grade")).toContainText("B");
+  await expect(page.getByTestId("preview-summary")).toContainText("#12");
+});
+
+test("the dashboard is reachable at /dashboard", async ({ page }) => {
+  await page.goto("/dashboard");
+  await expect(page.getByRole("heading", { name: "Your apps" })).toBeVisible();
 });

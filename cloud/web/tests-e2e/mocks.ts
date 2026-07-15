@@ -95,7 +95,18 @@ const RUN_DETAIL = {
 /** Per-path JSON, matched by URL suffix (most-specific first). */
 const ROUTES: Array<[RegExp, unknown]> = [
   [/\/auth\/me$/, { authed: true, email: "demo@shipaso.com" }],
-  [/\/proof$/, { apps: 0, pushes: 0, wins: 0 }],
+  [/\/proof$/, { appsWithWins: 2, totalWins: 9, bestImprovement: 31, medianImprovement: 8 }],
+  [/\/preview$/, {
+    preview: {
+      appName: "Weatherly",
+      auditGrade: "B",
+      leadKeyword: "weather",
+      leadRank: 12,
+      keywordsChecked: 20,
+      inTop10: 4,
+      sample: [{ keyword: "weather", rank: 12 }, { keyword: "radar", rank: null }],
+    },
+  }],
   [/\/account\/credentials$/, { enabled: false, credentials: [] }],
   [/\/github\/status$/, { appConfigured: false, connected: false, repo: null }],
   [/\/apps\/app1\/ranks(\?|$)/, RANKS],
@@ -110,7 +121,7 @@ const ROUTES: Array<[RegExp, unknown]> = [
 /** A request whose path is one of our API routes — host-agnostic, so the mocks
  *  work whether the build targets api.shipaso.com or a relative base. */
 function isApiPath(pathname: string): boolean {
-  return /^\/(apps|runs|auth|account|github|proof|resolve)\b/.test(pathname);
+  return /^\/(apps|runs|auth|account|github|proof|preview|resolve)\b/.test(pathname);
 }
 
 /**
