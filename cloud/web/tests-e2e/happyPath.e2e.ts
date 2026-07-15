@@ -41,13 +41,16 @@ test("run detail renders the proposal diff, findings, and measured cards", async
 });
 
 test("approving a run reveals the handoff without shipping", async ({ page }) => {
-  // approve returns the slim decision; the app merges it and shows 'ready to push'
-  await page.route("https://api.shipaso.com/runs/run1/approve", (route) =>
-    route.fulfill({
-      status: 200,
-      contentType: "application/json",
-      body: JSON.stringify({ id: "run1", status: "approved", pushCommands: [] }),
-    }),
+  // approve returns the slim decision; the app merges it and shows 'ready to push'.
+  // Path-matched (host-agnostic) + registered after the general mock so it wins.
+  await page.route(
+    (url) => url.pathname === "/runs/run1/approve",
+    (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ id: "run1", status: "approved", pushCommands: [] }),
+      }),
   );
   await page.goto("/runs/run1");
   await page.getByTestId("approve").click();

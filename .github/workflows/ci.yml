@@ -134,3 +134,12 @@ jobs:
 
       - name: Build
         run: npm run build
+
+      - name: Install Playwright browser
+        run: npx playwright install --with-deps chromium
+
+      - name: E2E (redesign happy path vs mock backend)
+        # Serves the built dist (SPA fallback) + a Playwright-routed mock backend
+        # — no live Worker/D1/network. Serial + 1 retry mirrors the dashboard e2e
+        # in the `check` job (a shared static-server port, absorbs residual flake).
+        run: npm run test:e2e -- --workers=1 --retries=1
