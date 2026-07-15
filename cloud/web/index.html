@@ -4,7 +4,11 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="color-scheme" content="dark light" />
-    <title>ShipASO · dashboard</title>
+    <!-- Neutral first-paint / no-JS title; ShellLayout sets a per-route title on
+         navigation (see shell/pageTitle.ts). The old static "· dashboard" showed
+         on the public landing page too, which acquisition traffic hits first. -->
+    <title>ShipASO</title>
+    <meta name="description" content="Audit your App Store listing on real keyword data, then fix it — your credentials never leave your machine." />
     <script>
       // Apply the saved theme before paint (shared key with the legacy app).
       try {
