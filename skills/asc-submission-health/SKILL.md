@@ -80,7 +80,7 @@ Each locale needs screenshots for the target platform.
 ### 7. App Info Localizations (Privacy Policy)
 ```bash
 # List app info IDs (if multiple exist)
-asc app-infos list --app "APP_ID"
+asc apps info list --app "APP_ID"
 
 # Check privacy policy URL
 asc localizations list --app "APP_ID" --type app-info --app-info "APP_INFO_ID"
@@ -147,7 +147,7 @@ The build has `usesNonExemptEncryption: true`. Either:
 ### "Multiple app infos found"
 Use `--app-info` flag with the correct app info ID:
 ```bash
-asc app-infos list --app "APP_ID"
+asc apps info list --app "APP_ID"
 ```
 
 ## Notes

@@ -47,14 +47,14 @@ emits over-limit copy (the #1 cause of rejected/wasted metadata).
 
 1. **`marketing/aso/<app>/aso-copy.md`** — final copy, char-annotated.
 2. **The exact push commands** (printed, NOT run):
-   - iOS: `asc app-info set ...` / `asc localizations upload ...`
+   - iOS: `asc apps info edit ...` / `asc localizations upload ...`
      (reuse the `asc-metadata-sync` / `asc-localize-metadata` skills)
    - Android: `gplay-metadata-sync` upload commands
 3. A one-line approval prompt: review `aso-copy.md`, then run the commands to ship.
 
 ## Guardrail — nothing auto-ships
 
-This skill **never** calls `asc app-info set` / `gplay` upload itself. It writes
+This skill **never** calls `asc apps info edit` / `gplay` upload itself. It writes
 the copy and prints the commands; pushing the listing is a deliberate,
 user-approved step. (This is the safe half of "reason → execute.")
 
