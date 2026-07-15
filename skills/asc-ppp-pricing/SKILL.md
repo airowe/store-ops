@@ -64,12 +64,12 @@ asc iap list --app "APP_ID"
 
 ### 2. Get price points for base territory
 ```bash
-asc iap price-points list --id "IAP_ID" --territory "USA"
+asc iap pricing price-points list --id "IAP_ID" --territory "USA"
 ```
 
 ### 3. Get equalizations
 ```bash
-asc iap price-points equalizations --id "PRICE_POINT_ID" --paginate
+asc iap pricing price-points equalizations --id "PRICE_POINT_ID" --paginate
 ```
 
 ### 4. Create price schedule with base territory
