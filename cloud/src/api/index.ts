@@ -698,7 +698,11 @@ async function authCallback(req: Request, env: Env, origin: string | null): Prom
   }
   return new Response(null, {
     status: 302,
-    headers: { ...corsHeaders(origin, env), "set-cookie": cookie, location: authBaseUrl(req, env) },
+    headers: {
+      ...corsHeaders(origin, env),
+      "set-cookie": cookie,
+      location: `${authBaseUrl(req, env)}/dashboard`,
+    },
   });
 }
 
