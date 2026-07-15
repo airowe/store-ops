@@ -27,12 +27,14 @@ Use this skill to map names to IDs needed by other commands.
 
 ## TestFlight IDs
 - Groups:
-  - `asc beta-groups list --app "APP_ID" --paginate`
+  - `asc testflight groups list --app "APP_ID" --paginate`
 - Testers:
-  - `asc beta-testers list --app "APP_ID" --paginate`
+  - `asc testflight testers list --app "APP_ID" --paginate`
 
 ## Pre-release version IDs
 - `asc pre-release-versions list --app "APP_ID" --platform IOS --paginate`
+  - Note: `pre-release-versions` still works but is **deprecated**; TestFlight
+    build IDs are usually more reliably found via `asc builds list`.
 
 ## Review submission IDs
 - `asc review submissions-list --app "APP_ID" --paginate`
