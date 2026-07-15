@@ -1,5 +1,5 @@
 /**
- * "/" — the dashboard (PRD 04). Opening an app navigates to /apps/:id, which
+ * "/dashboard" — the dashboard (PRD 04). Opening an app navigates to /apps/:id, which
  * this app now owns (edgeRoutes OWNED_PATHS), so it's a client-side router
  * navigation — instant, no full reload. (It was a hard navigation while the app
  * page still lived in the legacy dashboard.)
