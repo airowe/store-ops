@@ -22,4 +22,14 @@ describe("<Topbar />", () => {
     expect(screen.getByTestId("env-pill")).toHaveTextContent("demo backend");
     expect(screen.getByText(/acting as/i)).toBeInTheDocument();
   });
+
+  it("links the logo to /dashboard when signed in", () => {
+    render(<Topbar apiBase="https://api.shipaso.com" session={{ authed: true, via: "session", email: "me@x.com" }} />);
+    expect(screen.getByTestId("logo-link")).toHaveAttribute("href", "/dashboard");
+  });
+
+  it("links the logo to / when signed out", () => {
+    render(<Topbar apiBase="https://api.shipaso.com" session={{ authed: false }} />);
+    expect(screen.getByTestId("logo-link")).toHaveAttribute("href", "/");
+  });
 });
