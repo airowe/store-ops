@@ -3,12 +3,14 @@
  * router's <Outlet />. Session comes from GET /auth/me over the shared client
  * (React Query), disabled in the no-API demo path so the shell renders offline.
  */
+import { useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Outlet } from "@tanstack/react-router";
+import { Outlet, useRouterState } from "@tanstack/react-router";
 import { client } from "../api.js";
 import { API_BASE, hasApiBase } from "../config.js";
 import { Topbar } from "./Topbar.js";
 import type { Session } from "./headerState.js";
+import { pageTitle } from "./pageTitle.js";
 
 export function ShellLayout() {
   const { data } = useQuery({
@@ -18,6 +20,14 @@ export function ShellLayout() {
     retry: false,
   });
   const session: Session = data ?? null;
+
+  // Per-route <title>: index.html ships a single static "· dashboard" title, so
+  // without this the public landing page (and every other route) showed
+  // "dashboard" in the tab / SEO / share card. Set it on each navigation.
+  const pathname = useRouterState({ select: (s) => s.location.pathname });
+  useEffect(() => {
+    document.title = pageTitle(pathname);
+  }, [pathname]);
   return (
     <>
       <Topbar apiBase={hasApiBase ? API_BASE : null} session={session} />

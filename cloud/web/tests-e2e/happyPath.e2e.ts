@@ -71,6 +71,8 @@ test("clicking an app is CLIENT-SIDE navigation (no full page reload)", async ({
 test("the landing page at / renders the hero and audits inline", async ({ page }) => {
   await page.goto("/");
   await expect(page.getByTestId("landing-hero")).toBeVisible();
+  // the acquisition front door must not title its tab "dashboard"
+  await expect(page).toHaveTitle("ShipASO");
   await expect(page.getByTestId("how-it-works")).toContainText("Approve");
   // real measured proof from the mock aggregate
   await expect(page.getByTestId("stat-total wins")).toContainText("9");
@@ -84,4 +86,5 @@ test("the landing page at / renders the hero and audits inline", async ({ page }
 test("the dashboard is reachable at /dashboard", async ({ page }) => {
   await page.goto("/dashboard");
   await expect(page.getByRole("heading", { name: "Your apps" })).toBeVisible();
+  await expect(page).toHaveTitle("ShipASO · dashboard");
 });
