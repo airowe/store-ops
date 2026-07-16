@@ -131,8 +131,8 @@ export type Env = {
 
 export default {
   /** HTTP API — dashboard + connect-app flow. */
-  async fetch(request: Request, env: Env, _ctx: ExecutionContext): Promise<Response> {
-    return handleApi(request, env);
+  async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
+    return handleApi(request, env, ctx);
   },
 
   /**

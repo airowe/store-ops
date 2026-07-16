@@ -3739,7 +3739,7 @@ function segments(pathname: string): string[] {
   return pathname.replace(/^\/+|\/+$/g, "").split("/").filter(Boolean);
 }
 
-export async function handleApi(req: Request, env: Env): Promise<Response> {
+export async function handleApi(req: Request, env: Env, _ctx?: ExecutionContext): Promise<Response> {
   const origin = req.headers.get("Origin");
 
   if (req.method === "OPTIONS") {
