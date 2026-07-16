@@ -53,6 +53,9 @@ export const resolveApps = (c: ApiClient, query: string, offset = 0) =>
 // ── public surfaces (funnel) ────────────────────────────────────────────────
 export const authRequest = (c: ApiClient, email: string) =>
   c.post<{ sent: true }>("/auth/request", { email });
+/** Launch-list capture (landing). Idempotent server-side; always resolves ok. */
+export const subscribe = (c: ApiClient, email: string) =>
+  c.post<{ ok: true }>("/subscribe", { email });
 export const getProof = (c: ApiClient) => c.get<ProofAggregate>("/proof");
 export const preview = (c: ApiClient, body: { query?: string; bundle_id?: string; offset?: number }) =>
   c.post<PreviewResult>("/preview", body);
