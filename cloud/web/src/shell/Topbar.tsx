@@ -17,7 +17,7 @@ export function Topbar({ apiBase, session }: { apiBase: string | null; session: 
       <div className="topbar-in">
         <a className="logo" href={homeHref} data-testid="logo-link" style={{ textDecoration: "none" }}>
           <span className="tick" aria-hidden="true">✓</span>
-          <span>ShipASO <small>autonomous ASO</small></span>
+          <span>ShipASO <small>App Store search rankings, automated</small></span>
         </a>
         <div className="spacer" />
         <ThemeToggle />

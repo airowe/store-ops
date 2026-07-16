@@ -25,7 +25,10 @@ a { color: var(--signal); text-decoration: none; }
   width: 22px; height: 22px; border-radius: 6px; display: grid; place-items: center; flex: none;
   background: var(--signal-glow); border: 1px solid var(--signal-dim); color: var(--signal); font-size: 13px;
 }
-.logo small { font-family: var(--mono); color: var(--faint); font-weight: 500; font-size: 11px; }
+.logo small { font-family: var(--mono); color: var(--faint); font-weight: 500; font-size: 11px; white-space: nowrap; }
+/* The tagline is decorative — drop it on narrow screens so the longer plain-language
+   wording never crowds the auth controls or wraps the topbar. Brand + ✓ still carry. */
+@media (max-width: 560px) { .logo small { display: none; } }
 .spacer { flex: 1; }
 .who { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--dim); }
 
