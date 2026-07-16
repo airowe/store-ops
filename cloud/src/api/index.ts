@@ -112,7 +112,7 @@ import { buildPreview } from "../engine/preview.js";
 import { discoverCompetitors, resolveNameToId } from "../engine/competitorWatch.js";
 import { resolveSimilarCompetitors } from "../engine/competitorDiscover.js";
 import { fetchStorefrontListing } from "../engine/storefrontListing.js";
-import { asResponse, buildUrl, fetchJson } from "../engine/itunes.js";
+import { asResponse, buildUrl, fetchJson, ItunesError } from "../engine/itunes.js";
 import { ITUNES_LOOKUP_URL } from "../engine/constants.js";
 import { detectPortfolio } from "../engine/portfolio.js";
 import { fetchChartRank } from "../engine/chartRank.js";
@@ -1108,6 +1108,23 @@ function normalizeOffset(raw: unknown): number {
  * the client can re-POST a bundle_id, same as /apps.
  */
 async function previewApp(req: Request, env: Env): Promise<unknown> {
+  // The preview path leans on the public App Store (iTunes) API for resolve,
+  // lookup, and rank checks. When that upstream is rate-limited or slow,
+  // fetchJson exhausts its retries and throws ItunesError — which is NOT an
+  // HttpError, so without this it fell through the router to a bare
+  // 500 "internal error" on the acquisition surface. Translate it into an
+  // honest, human 503 (our own HttpError 400/404s below still propagate as-is).
+  try {
+    return await runPreview(req, env);
+  } catch (e) {
+    if (e instanceof ItunesError) {
+      throw new HttpError(503, "Couldn’t reach the App Store just now — please try again in a moment.");
+    }
+    throw e;
+  }
+}
+
+async function runPreview(req: Request, env: Env): Promise<unknown> {
   const body = await readJson<{ query?: string; bundle_id?: string; country?: string; offset?: number }>(req);
   const country = body.country?.trim() || env.DEFAULT_COUNTRY || "US";
 
