@@ -5,6 +5,12 @@
  * source markdown can never inject markup. Not a general markdown engine — just
  * what a broadcast needs (YAGNI). The send engine and the UI preview share this.
  */
+import type { Env } from "./index.js";
+import { emailSenderForEnv } from "./emailSender.js";
+import { mintListUnsubToken } from "./auth.js";
+// NOTE: do NOT import sessionSecret from ./api/index.js — api/index.ts imports
+// this file, so that would be a circular import. Read env.SESSION_SECRET directly.
+
 function escapeHtml(s: string): string {
   return s
     .replace(/&/g, "&amp;")
@@ -55,4 +61,59 @@ export function renderBroadcast(_subject: string, markdown: string): { html: str
     .trim();
 
   return { html, text };
+}
+
+const CHUNK = 20;
+const CHUNK_DELAY_MS = 1000;
+const UNSUB_TTL = 60 * 60 * 24 * 90; // 90 days
+
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+/** Send a rendered broadcast to a recipient list in rate-limited chunks. Each
+ *  email carries a one-click List-Unsubscribe (header + footer link) with a
+ *  signed list-unsub token. Per-email failures are caught + logged. */
+export async function sendBroadcastToList(args: {
+  env: Env;
+  subject: string;
+  markdown: string;
+  recipients: { email: string }[];
+  baseUrl: string;
+}): Promise<{ sent: number; failed: number }> {
+  const { env, subject, markdown, recipients, baseUrl } = args;
+  const sender = emailSenderForEnv(env);
+  const secret = env.SESSION_SECRET ?? "";
+  let sentN = 0;
+  let failed = 0;
+
+  for (let i = 0; i < recipients.length; i += CHUNK) {
+    const batch = recipients.slice(i, i + CHUNK);
+    await Promise.all(
+      batch.map(async ({ email }) => {
+        try {
+          const token = await mintListUnsubToken(secret, email, { ttlSeconds: UNSUB_TTL });
+          const unsubUrl = `${baseUrl}/list/unsubscribe?token=${encodeURIComponent(token)}`;
+          const { html, text } = renderBroadcast(subject, markdown);
+          const footer = `<hr/><p style="color:#97a1b6;font-size:12px">You're getting this because you signed up for ShipASO updates. <a href="${unsubUrl}">Unsubscribe</a>.</p>`;
+          const htmlWithFooter = html.replace("</body>", `${footer}</body>`);
+          await sender.send({
+            to: email,
+            subject,
+            html: htmlWithFooter,
+            text: `${text}\n\nUnsubscribe: ${unsubUrl}`,
+            headers: {
+              "List-Unsubscribe": `<${unsubUrl}>`,
+              "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
+            },
+          });
+          sentN++;
+        } catch (e) {
+          failed++;
+          console.error(`[store-ops] broadcast send failed for ${email}: ${String(e)}`);
+        }
+      }),
+    );
+    if (i + CHUNK < recipients.length) await sleep(CHUNK_DELAY_MS);
+  }
+  console.log(`[store-ops] broadcast "${subject}": sent ${sentN}/${recipients.length} (failed ${failed})`);
+  return { sent: sentN, failed };
 }

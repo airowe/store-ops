@@ -244,6 +244,8 @@ import { recommendLocalesFromLanguages } from "../engine/languageCoverage.js";
 import { mintAppJwt, installationToken, GithubAppError } from "../engine/githubApp.js";
 import { openMetadataPr } from "../engine/githubPr.js";
 import { handleMcp } from "../mcp/server.js";
+import { sendBroadcastToList } from "../broadcast.js";
+import { activeSubscribers, subscriberCounts, recordBroadcast } from "../d1.js";
 import type { Env } from "../index.js";
 
 // ── token + cookie lifetimes ───────────────────────────────────────────────────
@@ -832,6 +834,58 @@ async function listUnsubPostRoute(req: Request, env: Env): Promise<Response> {
   if (!res.ok) return htmlPage("Unsubscribe", UNSUB_BAD_BODY, 400);
   await unsubscribeSubscriber(env.DB, res.email);
   return htmlPage("Unsubscribed", `<h1 style="font-size:22px;margin:0 0 10px">You're unsubscribed.</h1><p style="color:#97a1b6">You won't get further ShipASO update emails.</p>`, 200);
+}
+
+// ── Broadcast (owner-gated launch/newsletter send to the subscriber list) ────
+//
+// A single shared secret (`x-broadcast-token` header vs env.BROADCAST_TOKEN)
+// gates all three routes — no admin-role system, so the secret IS the gate;
+// unset means nobody can call it (degrades CLOSED, same pattern as the RLHF
+// export gate above). /broadcast/send returns immediately with the queued
+// count; the actual chunked send runs in ctx.waitUntil so the owner's request
+// doesn't hang on hundreds of emails (falls back to an inline await when no
+// ExecutionContext is available, e.g. some test paths).
+
+function requireBroadcastToken(req: Request, env: Env): boolean {
+  const token = env.BROADCAST_TOKEN;
+  return !!token && req.headers.get("x-broadcast-token") === token;
+}
+
+function broadcastBaseUrl(env: Env): string {
+  return (env.DASHBOARD_ORIGIN ?? "https://shipaso.com").replace(/\/+$/, "");
+}
+
+async function broadcastSubscribersRoute(req: Request, env: Env, origin: string | null): Promise<Response> {
+  if (!requireBroadcastToken(req, env)) return json({ error: "forbidden" }, 403, origin, env);
+  return json(await subscriberCounts(env.DB), 200, origin, env);
+}
+
+async function broadcastTestRoute(req: Request, env: Env, origin: string | null): Promise<Response> {
+  if (!requireBroadcastToken(req, env)) return json({ error: "forbidden" }, 403, origin, env);
+  const body = await readJson<{ subject?: string; markdown?: string; to?: string }>(req);
+  const subject = (body.subject ?? "").trim();
+  const markdown = (body.markdown ?? "").trim();
+  const to = (body.to ?? "").trim();
+  if (!subject || !markdown || !looksLikeEmail(to)) throw new HttpError(400, "subject, markdown, and a valid `to` are required");
+  await sendBroadcastToList({ env, subject, markdown, recipients: [{ email: to }], baseUrl: broadcastBaseUrl(env) });
+  return json({ ok: true }, 200, origin, env);
+}
+
+async function broadcastSendRoute(req: Request, env: Env, origin: string | null, ctx?: ExecutionContext): Promise<Response> {
+  if (!requireBroadcastToken(req, env)) return json({ error: "forbidden" }, 403, origin, env);
+  const body = await readJson<{ subject?: string; markdown?: string; confirm?: boolean }>(req);
+  const subject = (body.subject ?? "").trim();
+  const markdown = (body.markdown ?? "").trim();
+  if (!subject || !markdown) throw new HttpError(400, "subject and markdown are required");
+  if (body.confirm !== true) throw new HttpError(400, "confirm must be true to send to the list");
+
+  const recipients = await activeSubscribers(env.DB);
+  await recordBroadcast(env.DB, { subject, recipientCount: recipients.length, sender: "owner" });
+
+  const work = sendBroadcastToList({ env, subject, markdown, recipients, baseUrl: broadcastBaseUrl(env) });
+  if (ctx) ctx.waitUntil(work);
+  else await work; // no ctx (e.g. some test paths) → send inline
+  return json({ ok: true, queued: recipients.length }, 200, origin, env);
 }
 
 /** POST /auth/logout — clear the session cookie (same scope it was set with). */
@@ -3768,7 +3822,7 @@ function segments(pathname: string): string[] {
   return pathname.replace(/^\/+|\/+$/g, "").split("/").filter(Boolean);
 }
 
-export async function handleApi(req: Request, env: Env, _ctx?: ExecutionContext): Promise<Response> {
+export async function handleApi(req: Request, env: Env, ctx?: ExecutionContext): Promise<Response> {
   const origin = req.headers.get("Origin");
 
   if (req.method === "OPTIONS") {
@@ -3812,6 +3866,16 @@ export async function handleApi(req: Request, env: Env, _ctx?: ExecutionContext)
     if (seg[0] === "list" && seg[1] === "unsubscribe" && seg.length === 2) {
       if (method === "GET") return listUnsubGetRoute(req, env);
       if (method === "POST") return listUnsubPostRoute(req, env);
+    }
+    // Owner-only broadcast tool — gated by the x-broadcast-token header, not requireUser.
+    if (seg[0] === "broadcast" && seg[1] === "subscribers" && seg.length === 2 && method === "GET") {
+      return await broadcastSubscribersRoute(req, env, origin);
+    }
+    if (seg[0] === "broadcast" && seg[1] === "test" && seg.length === 2 && method === "POST") {
+      return await broadcastTestRoute(req, env, origin);
+    }
+    if (seg[0] === "broadcast" && seg[1] === "send" && seg.length === 2 && method === "POST") {
+      return await broadcastSendRoute(req, env, origin, ctx);
     }
     // Stripe calls this server-to-server with NO cookie — auth is the signature.
     if (
