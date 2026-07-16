@@ -1,0 +1,7 @@
+# Appfile — App Store Connect configuration for ShipASO iOS.
+# Mirrors the sibling apps (snagg/Heathen/Mangia): same Apple team, ASC-API-key auth.
+
+app_identifier("com.shipaso.app")
+apple_id("adaminsley@gmail.com")
+team_id("7WWYCV9VT8")
+itc_team_id("7WWYCV9VT8")
