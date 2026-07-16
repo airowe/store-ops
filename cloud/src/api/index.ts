@@ -852,7 +852,9 @@ function requireBroadcastToken(req: Request, env: Env): boolean {
 }
 
 function broadcastBaseUrl(env: Env): string {
-  return (env.DASHBOARD_ORIGIN ?? "https://shipaso.com").replace(/\/+$/, "");
+  // /list/unsubscribe is a WORKER route (served at api.shipaso.com), not the
+  // SPA (app.shipaso.com) — must use API_ORIGIN, not DASHBOARD_ORIGIN.
+  return (env.API_ORIGIN ?? "https://api.shipaso.com").replace(/\/+$/, "");
 }
 
 async function broadcastSubscribersRoute(req: Request, env: Env, origin: string | null): Promise<Response> {

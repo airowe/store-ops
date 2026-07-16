@@ -26,4 +26,16 @@ describe("renderBroadcast", () => {
     expect(text).not.toContain("**");
     expect(text).not.toContain("# ");
   });
+
+  it("escapes markup embedded inside bold (no injection via **...**)", () => {
+    const { html } = renderBroadcast("x", "**<script>alert(1)</script>**");
+    expect(html).not.toContain("<script>");
+    expect(html).toContain("<strong>");
+    expect(html).toContain("&lt;script&gt;");
+  });
+
+  it("escapes a quote inside a link URL (no attribute breakout)", () => {
+    const { html } = renderBroadcast("x", '[click](https://x.com/"onmouseover=alert(1))');
+    expect(html).not.toContain('"onmouseover');
+  });
 });

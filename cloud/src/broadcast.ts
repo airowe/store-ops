@@ -10,9 +10,11 @@
  */
 import type { Env } from "./index.js";
 import { emailSenderForEnv } from "./emailSender.js";
-import { mintListUnsubToken } from "./auth.js";
+import { mintListUnsubToken, resolveSessionSecret } from "./auth.js";
 // NOTE: do NOT import sessionSecret from ./api/index.js — api/index.ts imports
-// this file, so that would be a circular import. Read env.SESSION_SECRET directly.
+// this file, so that would be a circular import. resolveSessionSecret is safe
+// to import directly from ./auth.js and gives the SAME resolved secret (incl.
+// the demo-env dev fallback) that the verify path uses via sessionSecret(env).
 
 function escapeHtml(s: string): string {
   return s
@@ -84,7 +86,7 @@ export async function sendBroadcastToList(args: {
 }): Promise<{ sent: number; failed: number }> {
   const { env, subject, markdown, recipients, baseUrl } = args;
   const sender = emailSenderForEnv(env);
-  const secret = env.SESSION_SECRET ?? "";
+  const secret = resolveSessionSecret(env.SESSION_SECRET, env.APP_ENV);
   let sentN = 0;
   let failed = 0;
 
