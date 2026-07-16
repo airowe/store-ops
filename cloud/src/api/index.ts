@@ -269,7 +269,7 @@ function corsHeaders(origin: string | null, env?: Env): Record<string, string> {
   const headers: Record<string, string> = {
     "access-control-allow-origin": allowOrigin,
     "access-control-allow-methods": "GET,POST,DELETE,OPTIONS",
-    "access-control-allow-headers": "content-type,x-user-email,stripe-signature",
+    "access-control-allow-headers": "content-type,x-user-email,stripe-signature,x-broadcast-token",
     "access-control-max-age": "86400",
     "vary": "Origin",
   };
