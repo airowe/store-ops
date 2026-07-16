@@ -101,6 +101,10 @@ export type Env = {
   // unset, the export route degrades CLOSED (403). Passed as the `x-rlhf-export`
   // request header; must match exactly.
   RLHF_EXPORT_TOKEN?: string;
+  // Owner gate for POST/GET /broadcast/* (owner-only launch/newsletter send to
+  // the subscriber list). Passed as the `x-broadcast-token` request header; must
+  // match exactly. Unset → the broadcast routes degrade CLOSED (403).
+  BROADCAST_TOKEN?: string;
   // #67 post-launch half: the key-encryption key (KEK) for OPT-IN stored store
   // credentials (envelope encryption; design in docs/prd/credential-storage/).
   // base64-encoded 32 bytes. Unset → the store-credential feature is honestly
@@ -131,8 +135,8 @@ export type Env = {
 
 export default {
   /** HTTP API — dashboard + connect-app flow. */
-  async fetch(request: Request, env: Env, _ctx: ExecutionContext): Promise<Response> {
-    return handleApi(request, env);
+  async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
+    return handleApi(request, env, ctx);
   },
 
   /**

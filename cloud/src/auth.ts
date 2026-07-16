@@ -23,7 +23,7 @@ export const SESSION_COOKIE = "store_ops_session";
 /** Fallback secret used ONLY in the demo env when SESSION_SECRET is unset. */
 const DEV_FALLBACK_SECRET = "store-ops-dev-insecure-secret-do-not-use-in-prod";
 
-type TokenKind = "magic" | "session" | "unsub";
+type TokenKind = "magic" | "session" | "unsub" | "list-unsub";
 
 type TokenPayload = {
   /** normalized (trimmed, lowercased) email */
@@ -195,6 +195,27 @@ export function verifyUnsubToken(
   opts?: Clock,
 ): Promise<VerifyResult> {
   return verify(secret, token, "unsub", opts);
+}
+
+/**
+ * List-unsubscribe tokens for the launch/newsletter broadcast list. A SEPARATE
+ * audience from the digest `unsub` token (subscribers are not users), so a
+ * broadcast unsub link can never flip a user's digest pref or pass as a session.
+ */
+export function mintListUnsubToken(
+  secret: string,
+  email: string,
+  opts: Clock & { ttlSeconds: number },
+): Promise<string> {
+  return mint(secret, email, "list-unsub", opts);
+}
+
+export function verifyListUnsubToken(
+  secret: string,
+  token: string,
+  opts?: Clock,
+): Promise<VerifyResult> {
+  return verify(secret, token, "list-unsub", opts);
 }
 
 // ── cookies ─────────────────────────────────────────────────────────────────────

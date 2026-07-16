@@ -49,4 +49,8 @@ describe("resolveSurface (strangler edge map)", () => {
   it("owns /dashboard (the authed dashboard's new home)", () => {
     expect(resolveSurface("/dashboard", OWNED_PATHS)).toBe("web");
   });
+
+  it("owns /broadcast (owner-only composer)", () => {
+    expect(resolveSurface("/broadcast", OWNED_PATHS)).toBe("web");
+  });
 });
