@@ -343,3 +343,25 @@ describe("BrevoEmailSender", () => {
     expect(payload.htmlContent).toContain("&lt;script&gt;");
   });
 });
+
+import { mintListUnsubToken, verifyListUnsubToken, verifyUnsubToken } from "./auth.js";
+
+describe("list-unsub token", () => {
+  const secret = "test-secret-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+  it("round-trips the email", async () => {
+    const t = await mintListUnsubToken(secret, "Me@X.com", { ttlSeconds: 3600 });
+    expect(await verifyListUnsubToken(secret, t)).toEqual({ ok: true, email: "me@x.com" });
+  });
+  it("is audience-separated: a digest unsub token does NOT verify as list-unsub", async () => {
+    const digest = await (await import("./auth.js")).mintUnsubToken(secret, "me@x.com", { ttlSeconds: 3600 });
+    expect(await verifyListUnsubToken(secret, digest)).toEqual({ ok: false });
+  });
+  it("and a list-unsub token does NOT verify as a digest unsub token", async () => {
+    const t = await mintListUnsubToken(secret, "me@x.com", { ttlSeconds: 3600 });
+    expect(await verifyUnsubToken(secret, t)).toEqual({ ok: false });
+  });
+  it("rejects an expired token", async () => {
+    const t = await mintListUnsubToken(secret, "me@x.com", { now: 1000, ttlSeconds: 60 });
+    expect(await verifyListUnsubToken(secret, t, { now: 2000 })).toEqual({ ok: false });
+  });
+});
