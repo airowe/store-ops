@@ -8,6 +8,7 @@ import { useQuery } from "@tanstack/react-query";
 import type { ApiClient, ProofAggregate } from "@shipaso/api";
 import { getProof } from "@shipaso/api";
 import { ListingAudit } from "./ListingAudit.js";
+import { LaunchSignup } from "./LaunchSignup.js";
 
 function Stat({ label, value, suffix }: { label: string; value: number; suffix?: string }) {
   return (
@@ -92,6 +93,8 @@ export function LandingView({
           Sign in
         </button>
       </div>
+
+      <LaunchSignup client={client} />
     </section>
   );
 }
