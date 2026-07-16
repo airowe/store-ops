@@ -173,6 +173,7 @@ import {
   setSchedule,
   setThresholds,
   setTier,
+  unsubscribeSubscriber,
   updateRunCopy,
   upsertCompetitor,
   upsertEngagementRows,
@@ -192,6 +193,7 @@ import {
   SESSION_COOKIE,
   verifyMagicToken,
   verifyUnsubToken,
+  verifyListUnsubToken,
   verifySessionToken,
 } from "../auth.js";
 import { emailSenderForEnv } from "../emailSender.js";
@@ -803,6 +805,33 @@ async function unsubscribePostRoute(req: Request, env: Env): Promise<Response> {
       `<p style="color:#97a1b6">No more weekly digest emails for <strong style="color:#eef1f7">${email}</strong>. ` +
       `ShipASO keeps working — runs still open in your dashboard, and you can turn the digest back on any time in Settings.</p>`,
   );
+}
+
+/** GET /list/unsubscribe?token=… — confirm page. NEVER mutates. */
+async function listUnsubGetRoute(req: Request, env: Env): Promise<Response> {
+  const url = new URL(req.url);
+  const token = url.searchParams.get("token") ?? "";
+  const res = await verifyListUnsubToken(sessionSecret(env), token);
+  if (!res.ok) return htmlPage("Unsubscribe", UNSUB_BAD_BODY, 400);
+  const email = escapeHtmlText(res.email);
+  return htmlPage(
+    "Unsubscribe from ShipASO updates?",
+    `<h1 style="font-size:22px;margin:0 0 10px">Unsubscribe?</h1>` +
+      `<p style="color:#97a1b6">This stops launch + product update emails to <strong style="color:#eef1f7">${email}</strong>.</p>` +
+      `<form method="post" action="${escapeHtmlText(url.pathname + url.search)}">` +
+      `<button type="submit" style="background:#34d399;color:#07090e;border:0;border-radius:10px;padding:12px 18px;font-weight:700;font-size:15px;cursor:pointer">Unsubscribe</button>` +
+      `</form>`,
+  );
+}
+
+/** POST /list/unsubscribe?token=… — the flip. Idempotent; form-encoded body ignored. */
+async function listUnsubPostRoute(req: Request, env: Env): Promise<Response> {
+  const url = new URL(req.url);
+  const token = url.searchParams.get("token") ?? "";
+  const res = await verifyListUnsubToken(sessionSecret(env), token);
+  if (!res.ok) return htmlPage("Unsubscribe", UNSUB_BAD_BODY, 400);
+  await unsubscribeSubscriber(env.DB, res.email);
+  return htmlPage("Unsubscribed", `<h1 style="font-size:22px;margin:0 0 10px">You're unsubscribed.</h1><p style="color:#97a1b6">You won't get further ShipASO update emails.</p>`, 200);
 }
 
 /** POST /auth/logout — clear the session cookie (same scope it was set with). */
@@ -3778,6 +3807,11 @@ export async function handleApi(req: Request, env: Env, _ctx?: ExecutionContext)
     if (seg[0] === "email" && seg[1] === "unsubscribe" && seg.length === 2) {
       if (method === "GET") return unsubscribeGetRoute(req, env);
       if (method === "POST") return unsubscribePostRoute(req, env);
+    }
+    // Broadcast-list unsubscribe (separate audience from digest) — public; the token IS the auth.
+    if (seg[0] === "list" && seg[1] === "unsubscribe" && seg.length === 2) {
+      if (method === "GET") return listUnsubGetRoute(req, env);
+      if (method === "POST") return listUnsubPostRoute(req, env);
     }
     // Stripe calls this server-to-server with NO cookie — auth is the signature.
     if (
