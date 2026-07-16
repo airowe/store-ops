@@ -7,6 +7,7 @@ import { LandingView } from "../features/public/LandingView.js";
 import { LoginView } from "../features/public/LoginView.js";
 import { PreviewView } from "../features/public/PreviewView.js";
 import { ProofView } from "../features/public/ProofView.js";
+import { BroadcastView } from "../features/broadcast/BroadcastView.js";
 import { client } from "../api.js";
 
 export function LandingRoute() {
@@ -30,4 +31,8 @@ export function PreviewRoute() {
 
 export function ProofRoute() {
   return <ProofView client={client} />;
+}
+
+export function BroadcastRoute() {
+  return <BroadcastView client={client} />;
 }

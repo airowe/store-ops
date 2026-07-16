@@ -11,7 +11,7 @@ import { SettingsRoute } from "./routes/settings.js";
 import { AppDetailRoute } from "./routes/appDetail.js";
 import { WarRoomRoute } from "./routes/warRoom.js";
 import { RunRoute } from "./routes/run.js";
-import { LandingRoute, LoginRoute, PreviewRoute, ProofRoute } from "./routes/public.js";
+import { LandingRoute, LoginRoute, PreviewRoute, ProofRoute, BroadcastRoute } from "./routes/public.js";
 
 const rootRoute = createRootRoute({ component: ShellLayout });
 
@@ -25,6 +25,7 @@ const runRoute = createRoute({ getParentRoute: () => rootRoute, path: "/runs/$id
 const loginRoute = createRoute({ getParentRoute: () => rootRoute, path: "/login", component: LoginRoute });
 const previewRoute = createRoute({ getParentRoute: () => rootRoute, path: "/preview", component: PreviewRoute });
 const proofRoute = createRoute({ getParentRoute: () => rootRoute, path: "/proof", component: ProofRoute });
+const broadcastRoute = createRoute({ getParentRoute: () => rootRoute, path: "/broadcast", component: BroadcastRoute });
 
 const routeTree = rootRoute.addChildren([
   indexRoute,
@@ -37,6 +38,7 @@ const routeTree = rootRoute.addChildren([
   loginRoute,
   previewRoute,
   proofRoute,
+  broadcastRoute,
 ]);
 
 export const router = createRouter({ routeTree });

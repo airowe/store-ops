@@ -4,6 +4,9 @@
  * [text](url) links, and - unordered lists. Everything is HTML-escaped first, so
  * source markdown can never inject markup. Not a general markdown engine — just
  * what a broadcast needs (YAGNI). The send engine and the UI preview share this.
+ *
+ * Mirrored at cloud/web/src/lib/renderBroadcast.ts for the compose preview
+ * (the worker's cloud/src is not importable by the web app) — keep in sync.
  */
 import type { Env } from "./index.js";
 import { emailSenderForEnv } from "./emailSender.js";
