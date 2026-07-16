@@ -287,10 +287,25 @@ CREATE INDEX IF NOT EXISTS idx_proposals_run ON proposals(run_id);
 -- Migration for an existing db:
 --   npx wrangler d1 execute store_ops --command "CREATE TABLE IF NOT EXISTS subscribers (id TEXT PRIMARY KEY, email TEXT NOT NULL UNIQUE, source TEXT, created_at TEXT NOT NULL DEFAULT (datetime('now')))"
 CREATE TABLE IF NOT EXISTS subscribers (
-  id          TEXT PRIMARY KEY,                       -- uuid
-  email       TEXT NOT NULL UNIQUE,
-  source      TEXT,                                   -- where they signed up (e.g. 'landing')
-  created_at  TEXT NOT NULL DEFAULT (datetime('now'))
+  id              TEXT PRIMARY KEY,                       -- uuid
+  email           TEXT NOT NULL UNIQUE,
+  source          TEXT,                                   -- where they signed up (e.g. 'landing')
+  unsubscribed_at TEXT,                                   -- null = active; timestamp = suppressed
+  created_at      TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+-- ── broadcasts ───────────────────────────────────────────────────────────────
+-- Audit row per launch/newsletter send. A broadcast is a recorded event, so a
+-- partial send (ctx.waitUntil truncation) is visible and never silent.
+-- Migration for an existing db:
+--   npx wrangler d1 execute store_ops --command "ALTER TABLE subscribers ADD COLUMN unsubscribed_at TEXT"
+--   npx wrangler d1 execute store_ops --command "CREATE TABLE IF NOT EXISTS broadcasts (id TEXT PRIMARY KEY, subject TEXT NOT NULL, recipient_count INTEGER NOT NULL, sender TEXT, sent_at TEXT NOT NULL DEFAULT (datetime('now')))"
+CREATE TABLE IF NOT EXISTS broadcasts (
+  id              TEXT PRIMARY KEY,
+  subject         TEXT NOT NULL,
+  recipient_count INTEGER NOT NULL,
+  sender          TEXT,
+  sent_at         TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
 -- ── proposal_edits ───────────────────────────────────────────────────────────

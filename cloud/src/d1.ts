@@ -664,6 +664,48 @@ export async function recordSubscriber(
   return (res.meta?.changes ?? 0) > 0;
 }
 
+/** Active (non-suppressed) subscriber emails — the broadcast recipients. */
+export async function activeSubscribers(db: D1Database): Promise<{ email: string }[]> {
+  const { results } = await db
+    .prepare("SELECT email FROM subscribers WHERE unsubscribed_at IS NULL ORDER BY created_at")
+    .all<{ email: string }>();
+  return results ?? [];
+}
+
+/** Split counts for the broadcast UI — never returns addresses. */
+export async function subscriberCounts(db: D1Database): Promise<{ active: number; unsubscribed: number }> {
+  const row = await db
+    .prepare(
+      "SELECT " +
+        "SUM(CASE WHEN unsubscribed_at IS NULL THEN 1 ELSE 0 END) AS active, " +
+        "SUM(CASE WHEN unsubscribed_at IS NOT NULL THEN 1 ELSE 0 END) AS unsubscribed " +
+        "FROM subscribers",
+    )
+    .first<{ active: number | null; unsubscribed: number | null }>();
+  return { active: row?.active ?? 0, unsubscribed: row?.unsubscribed ?? 0 };
+}
+
+/** Suppress an address (one-click list unsubscribe). Non-creating, idempotent. */
+export async function unsubscribeSubscriber(db: D1Database, email: string): Promise<void> {
+  await db
+    .prepare("UPDATE subscribers SET unsubscribed_at = datetime('now') WHERE email = ? AND unsubscribed_at IS NULL")
+    .bind(email.trim().toLowerCase())
+    .run();
+}
+
+/** Record a broadcast send (audit). Returns the new row id. */
+export async function recordBroadcast(
+  db: D1Database,
+  m: { subject: string; recipientCount: number; sender: string | null },
+): Promise<string> {
+  const id = uuid();
+  await db
+    .prepare("INSERT INTO broadcasts (id, subject, recipient_count, sender) VALUES (?, ?, ?, ?)")
+    .bind(id, m.subject, m.recipientCount, m.sender)
+    .run();
+  return id;
+}
+
 // ── apps ─────────────────────────────────────────────────────────────────────
 
 /** Connect an app (or return the existing row for this user+bundle). */
