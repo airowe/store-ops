@@ -5,7 +5,7 @@
  * confirmed send to the whole active list. The browser only ever sees counts.
  */
 import { useState } from "react";
-import { useMutation } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import type { ApiClient } from "@shipaso/api";
 import { broadcastCounts, broadcastTest, broadcastSend } from "@shipaso/api";
 import { renderBroadcast } from "../../lib/renderBroadcast.js";
@@ -16,14 +16,20 @@ export function BroadcastView({ client }: { client: ApiClient }) {
   const [markdown, setMarkdown] = useState("");
   const [testTo, setTestTo] = useState("");
   const [confirmed, setConfirmed] = useState(false);
-  const [count, setCount] = useState<number | null>(null);
+  const [loadRequested, setLoadRequested] = useState(false);
   const [note, setNote] = useState<string | null>(null);
 
-  const load = useMutation({
-    mutationFn: () => broadcastCounts(client, token),
-    onSuccess: (r) => { setCount(r.active); setNote(null); },
-    onError: () => setNote("Not authorized (check the token)."),
+  // The subscriber count is a READ, so it's a query (keyed by token) — not a
+  // mutation. Disabled until the owner clicks "Load list"; that keyed cache is
+  // what test/send invalidate after they run, so the shown count stays truthful.
+  const countsQ = useQuery({
+    queryKey: ["broadcast", "counts", token],
+    queryFn: () => broadcastCounts(client, token),
+    enabled: loadRequested && !!token,
+    retry: false,
   });
+  const count = countsQ.data?.active ?? null;
+
   const test = useMutation({
     mutationFn: () => broadcastTest(client, token, { subject: subject.trim(), markdown: markdown.trim(), to: testTo.trim() }),
     onSuccess: () => setNote("Test sent — check your inbox."),
@@ -31,7 +37,9 @@ export function BroadcastView({ client }: { client: ApiClient }) {
   });
   const send = useMutation({
     mutationFn: () => broadcastSend(client, token, { subject: subject.trim(), markdown: markdown.trim(), confirm: true }),
-    onSuccess: (r) => setNote(`Queued to ${r.queued} subscribers.`),
+    // A send changes the list's state — refetch the count so the displayed
+    // number reflects reality (this is the cache invalidation the mutation owes).
+    onSuccess: (r) => { setNote(`Queued to ${r.queued} subscribers.`); void countsQ.refetch(); },
     onError: () => setNote("Send failed."),
   });
 
@@ -47,11 +55,17 @@ export function BroadcastView({ client }: { client: ApiClient }) {
         <b>Owner token</b>
         <div style={{ display: "flex", gap: 8, maxWidth: 480, marginTop: 8 }}>
           <input className="txt" data-testid="bc-token" type="password" value={token} placeholder="BROADCAST_TOKEN" onChange={(e) => setToken(e.target.value)} />
-          <button type="button" className="btn" data-testid="bc-load" disabled={!token || load.isPending} onClick={() => load.mutate()}>
-            {load.isPending ? "Loading…" : "Load list"}
+          <button
+            type="button"
+            className="btn"
+            data-testid="bc-load"
+            disabled={!token || countsQ.isFetching}
+            onClick={() => { setNote(null); loadRequested ? void countsQ.refetch() : setLoadRequested(true); }}
+          >
+            {countsQ.isFetching ? "Loading…" : "Load list"}
           </button>
         </div>
-        {count != null ? <p className="muted" data-testid="bc-count" style={{ marginTop: 8 }}>{count} active subscribers</p> : null}
+        {countsQ.isError ? <p className="muted" data-testid="bc-count" style={{ marginTop: 8 }}>Not authorized (check the token).</p> : count != null ? <p className="muted" data-testid="bc-count" style={{ marginTop: 8 }}>{count} active subscribers</p> : null}
       </div>
 
       <div className="card">
