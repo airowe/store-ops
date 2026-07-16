@@ -1,0 +1,116 @@
+# Fastfile — ShipASO iOS build/sign/ship, on the same fastlane + match pipeline
+# the sibling airowe apps use. This exists because EAS generated orphan signing
+# certs whose private keys weren't in the local keychain; match pulls the shared,
+# valid distribution identity (cert + private key) from the mangia-certs repo, so
+# signing just works.
+#
+# Auth: App Store Connect API key (.p8) — no Apple ID password, no 2FA, no
+# session expiry. Key lives at fastlane/AuthKey_NC235A8728.p8 (git-ignored).
+
+default_platform(:ios)
+
+# App Store Connect API key — used for match, gym signing, and uploads.
+def load_api_key
+  key_file = File.expand_path("AuthKey_NC235A8728.p8", File.dirname(__FILE__))
+  app_store_connect_api_key(
+    key_id: ENV.fetch("ASC_KEY_ID", "NC235A8728"),
+    issuer_id: ENV.fetch("ASC_ISSUER_ID", "166b49fe-7da6-45ec-b392-0aa2f5d391a2"),
+    key_filepath: key_file,
+    in_house: false,
+  )
+end
+
+# `expo prebuild` regenerates ios/ from app.config.ts; the current RN/Expo SDK
+# ships React-Core prebuilt as an xcframework that must be extracted from its
+# release tarball before `pod install` validates vendored_frameworks. Same
+# seeding the Heathen pipeline uses. No-op once seeded.
+def seed_react_prebuilt_frameworks
+  UI.message("Seeding React-Core-prebuilt xcframework (if needed)…")
+  sh(<<~SHELL)
+    DEST="../ios/Pods/React-Core-prebuilt/React.xcframework"
+    TARBALL=$(ls ../ios/Pods/ReactNativeCore-artifacts/*-release.tar.gz 2>/dev/null | head -1)
+    if [ -n "$TARBALL" ] && [ ! -f "$DEST/Info.plist" ]; then
+      mkdir -p "$DEST"; tar -xf "$TARBALL" --strip-components=1 -C "$DEST" 2>&1
+      echo "Extracted $TARBALL"
+    else echo "React-Core-prebuilt already seeded or no tarball — skipping."; fi
+  SHELL
+  sh(<<~SHELL)
+    DEST="../ios/Pods/ReactNativeDependencies/framework/packages/react-native/ReactNativeDependencies.xcframework"
+    TARBALL=$(ls ../ios/Pods/ReactNativeDependencies-artifacts/*-release.tar.gz 2>/dev/null | head -1)
+    if [ -n "$TARBALL" ] && [ ! -f "$DEST/Info.plist" ]; then
+      mkdir -p "$DEST"; tar -xf "$TARBALL" --strip-components=4 -C "$DEST" 2>&1
+      echo "Extracted $TARBALL"
+    else echo "ReactNativeDependencies already seeded or no tarball — skipping."; fi
+  SHELL
+end
+
+platform :ios do
+  before_all do
+    load_api_key
+  end
+
+  desc "One-time: create ShipASO's App Store provisioning profile in the match repo (uses the existing shared cert; API-key auth, no 2FA)"
+  lane :bootstrap_signing do
+    api_key = load_api_key
+    match(type: "appstore", api_key: api_key, readonly: false)
+    UI.success("ShipASO appstore profile created + committed to the match repo. `build` (readonly) will now work.")
+  end
+
+  desc "Prebuild ios/, install pods, sync signing via match, and build a signed App Store .ipa"
+  lane :build do
+    api_key = load_api_key
+
+    # 1) Regenerate ios/ from app.config.ts so version/Info.plist match source.
+    UI.message("expo prebuild…")
+    sh("cd .. && npx expo prebuild --platform ios --no-install 2>&1")
+
+    # 2) Pods.
+    UI.message("pod install…")
+    sh("cd ../ios && pod install 2>&1")
+    seed_react_prebuilt_frameworks
+
+    # 3) Signing identity from the shared match repo (cert + private key).
+    match(type: "appstore", api_key: api_key, readonly: true)
+
+    # 3b) expo prebuild generates the project with automatic signing and no team,
+    #     so archiving fails with "requires a development team". Force MANUAL
+    #     signing onto the match-provided profile (same as the sibling apps).
+    update_code_signing_settings(
+      use_automatic_signing: false,
+      path: "ios/ShipASO.xcodeproj",
+      team_id: "7WWYCV9VT8",
+      code_sign_identity: "Apple Distribution",
+      profile_name: ENV["sigh_com.shipaso.app_appstore_profile-name"],
+      targets: ["ShipASO"],
+    )
+
+    # 4) Build number: monotonic, minute-stamped (avoids collisions with the
+    #    EAS-era remote numbers without depending on them).
+    increment_build_number(
+      build_number: Time.now.utc.strftime("%Y%m%d%H%M").to_i,
+      xcodeproj: "ios/ShipASO.xcodeproj",
+    )
+
+    # 5) Archive + export the signed .ipa.
+    build_app(
+      workspace: "ios/ShipASO.xcworkspace",
+      scheme: "ShipASO",
+      export_method: "app-store",
+      output_directory: "./builds",
+      output_name: "ShipASO.ipa",
+      clean: true,
+    )
+    UI.success("Built signed .ipa → mobile/fastlane/builds/ShipASO.ipa")
+  end
+
+  desc "Upload the built .ipa to App Store Connect / TestFlight (no review submit)"
+  lane :upload do
+    api_key = load_api_key
+    upload_to_testflight(
+      api_key: api_key,
+      ipa: "./builds/ShipASO.ipa",
+      skip_waiting_for_build_processing: true,
+    )
+    UI.success("Uploaded to App Store Connect. Attach to version 1.0 in ASC when processed.")
+  end
+end

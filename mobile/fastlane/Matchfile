@@ -1,0 +1,14 @@
+# Matchfile — shared code-signing identity for ShipASO iOS.
+#
+# Certs + provisioning profiles live in the same private git repo the other
+# airowe apps use (snagg/Heathen/Mangia), so ShipASO signs with the SAME valid
+# App Store distribution cert+key for team 7WWYCV9VT8 — no per-app cert, no
+# keychain drift, no EAS-generated orphan certs. `match appstore` pulls the
+# identity (and its private key) from this repo into a keychain at build time.
+
+git_url("git@github.com:airowe/mangia-certs.git")
+storage_mode("git")
+
+type("appstore")
+app_identifier("com.shipaso.app")
+team_id("7WWYCV9VT8")
