@@ -143,3 +143,26 @@ The engine is ported faithfully from [`../lib/`](../lib/). Load-bearing values
 weights/buckets, run lifecycle) live in
 [`src/engine/constants.ts`](src/engine/constants.ts) and are locked by
 `constants.spec.ts`.
+
+## Broadcast tool (launch list)
+
+One-time D1 migration (existing db):
+
+```bash
+npx wrangler d1 execute store_ops --remote --command "ALTER TABLE subscribers ADD COLUMN unsubscribed_at TEXT"
+npx wrangler d1 execute store_ops --remote --command "CREATE TABLE IF NOT EXISTS broadcasts (id TEXT PRIMARY KEY, subject TEXT NOT NULL, recipient_count INTEGER NOT NULL, sender TEXT, sent_at TEXT NOT NULL DEFAULT (datetime('now')))"
+```
+
+Set the owner token (skip if `wrangler secret list` already shows it):
+
+```bash
+openssl rand -base64 32 | npx wrangler secret put BROADCAST_TOKEN
+```
+
+Then visit `/broadcast`, paste the token, compose (markdown, with a live
+preview), send a test to yourself, and send to the list. Sending runs in the
+background (`ctx.waitUntil`) in chunks of 20; a very large list may exceed the
+Worker background budget — a Cloudflare Queue is the documented upgrade path
+(see `docs/superpowers/specs/2026-07-16-broadcast-tool-design.md`). Every email
+carries a one-click `List-Unsubscribe`; unsubscribes suppress the address
+(`subscribers.unsubscribed_at`) and are skipped on future sends.
