@@ -56,6 +56,21 @@ export const authRequest = (c: ApiClient, email: string) =>
 /** Launch-list capture (landing). Idempotent server-side; always resolves ok. */
 export const subscribe = (c: ApiClient, email: string) =>
   c.post<{ ok: true }>("/subscribe", { email });
+
+/** Owner-gated broadcast tool. `token` is the BROADCAST_TOKEN, sent per-call. */
+export const broadcastCounts = (c: ApiClient, token: string) =>
+  c.get<{ active: number; unsubscribed: number }>("/broadcast/subscribers", { "x-broadcast-token": token });
+export const broadcastTest = (
+  c: ApiClient,
+  token: string,
+  body: { subject: string; markdown: string; to: string },
+) => c.post<{ ok: true }>("/broadcast/test", body, { "x-broadcast-token": token });
+export const broadcastSend = (
+  c: ApiClient,
+  token: string,
+  body: { subject: string; markdown: string; confirm: true },
+) => c.post<{ ok: true; queued: number }>("/broadcast/send", body, { "x-broadcast-token": token });
+
 export const getProof = (c: ApiClient) => c.get<ProofAggregate>("/proof");
 export const preview = (c: ApiClient, body: { query?: string; bundle_id?: string; offset?: number }) =>
   c.post<PreviewResult>("/preview", body);

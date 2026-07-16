@@ -21,8 +21,8 @@ export type ClientConfig = {
 export type RequestInit_ = { method: string; body?: unknown };
 
 export type ApiClient = {
-  get<T>(path: string): Promise<T>;
-  post<T>(path: string, body?: unknown): Promise<T>;
+  get<T>(path: string, extraHeaders?: Record<string, string>): Promise<T>;
+  post<T>(path: string, body?: unknown, extraHeaders?: Record<string, string>): Promise<T>;
   /** Generic escape hatch (DELETE/PUT/…). Every surface's fake is {get,post,request}. */
   request<T>(path: string, init: RequestInit_): Promise<T>;
 };
@@ -30,9 +30,15 @@ export type ApiClient = {
 export function createClient(config: ClientConfig): ApiClient {
   const doFetch = config.fetchImpl ?? fetch;
 
-  async function send<T>(method: string, path: string, body?: unknown): Promise<T> {
+  async function send<T>(
+    method: string,
+    path: string,
+    body?: unknown,
+    extraHeaders?: Record<string, string>,
+  ): Promise<T> {
     const headers: Record<string, string> = { ...(await config.authHeaders?.()) };
     if (body !== undefined) headers["content-type"] = "application/json";
+    Object.assign(headers, extraHeaders);
     const res = await doFetch(config.baseUrl + path, {
       method,
       headers,
@@ -49,8 +55,8 @@ export function createClient(config: ClientConfig): ApiClient {
   }
 
   return {
-    get: (path) => send("GET", path),
-    post: (path, body) => send("POST", path, body),
+    get: (path, extraHeaders) => send("GET", path, undefined, extraHeaders),
+    post: (path, body, extraHeaders) => send("POST", path, body, extraHeaders),
     request: (path, init) => send(init.method, path, init.body),
   };
 }
