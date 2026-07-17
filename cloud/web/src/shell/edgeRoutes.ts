@@ -23,6 +23,7 @@ export const OWNED_PATHS: readonly OwnedPattern[] = [
   "/preview",
   "/proof",
   "/broadcast",
+  "/privacy",
   "/",
   // App detail — exactly one segment after /apps. NOT the bare /apps connect
   // endpoint.
