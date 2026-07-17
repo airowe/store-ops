@@ -17,6 +17,7 @@ const EXACT: Record<string, string> = {
   "/login": `${SITE} · sign in`,
   "/preview": `${SITE} · free audit`,
   "/proof": `${SITE} · proof`,
+  "/privacy": `${SITE} · privacy`,
   "/settings": `${SITE} · settings`,
 };
 
