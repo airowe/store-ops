@@ -20,6 +20,11 @@ describe("resolveSurface (strangler edge map)", () => {
       expect(resolveSurface(p, OWNED_PATHS)).toBe("web");
     }
   });
+  it("owns /privacy (the App Store privacy-policy URL target)", () => {
+    // /privacy is served by the redesign; without it here the edge proxies to
+    // legacy and the App Store Privacy Policy URL renders the wrong page.
+    expect(resolveSurface("/privacy", OWNED_PATHS)).toBe("web");
+  });
   it("still proxies genuinely unknown/deep paths to legacy", () => {
     for (const p of ["/apps/abc/extra/deep", "/some-legacy-thing"]) {
       expect(resolveSurface(p, OWNED_PATHS)).toBe("legacy");
