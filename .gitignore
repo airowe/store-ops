@@ -27,3 +27,4 @@ dist/
 # tracked via GitHub issues instead.)
 docs/competitive/
 cloud/docs/prd/
+.superpowers/
