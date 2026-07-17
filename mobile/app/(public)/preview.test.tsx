@@ -60,6 +60,13 @@ describe("Preview screen — try-before-signup", () => {
     expect(screen.getByTestId("preview-sample")).toBeTruthy();
     // An unmeasured rank is an em-dash, never a fabricated number.
     expect(screen.getByText("—")).toBeTruthy();
+    // Grid-line parity with the web's .move-row: a hairline separates rows,
+    // and the LAST row drops it (mirrors .move-row:last-child { border-bottom: 0 }).
+    const firstRow = screen.getByTestId("preview-row-recipes"); // non-last
+    const lastRow = screen.getByTestId("preview-row-pantry");   // last of 2
+    const flat = (s: unknown) => Object.assign({}, ...[].concat(s as never));
+    expect(flat(firstRow.props.style).borderBottomWidth).toBe(1);
+    expect(flat(lastRow.props.style).borderBottomWidth).toBe(0);
     expect(calls[0]).toEqual({ path: "/preview", body: { query: "Paprika" } });
   });
 
