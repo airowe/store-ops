@@ -4,6 +4,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import type { ApiClient } from "../../src/api/client.js";
 import type { PreviewResult } from "../../src/types/api.js";
 import Preview from "./preview.js";
+import { palette } from "../../src/theme/index.js";
 
 /** The real app supplies this from _layout; a standalone mount must too. */
 function renderPreview(client: ApiClient) {
@@ -48,6 +49,13 @@ describe("Preview screen — try-before-signup", () => {
     await waitFor(() => expect(screen.getByTestId("preview-grade")).toBeTruthy());
     // The honest grade the Worker returned — not a marketing-friendly one.
     expect(screen.getByTestId("preview-grade")).toHaveTextContent("C");
+
+    // Grade-pill parity with the web .grade: the grade text sits inside a pill
+    // View with the signal-glow background and rounded corners.
+    const pill = screen.getByTestId("preview-grade-pill");
+    const flatPill = Object.assign({}, ...[].concat(pill.props.style as never));
+    expect(flatPill.borderRadius).toBe(8);
+    expect(flatPill.backgroundColor).toBe(palette.signalGlow);
 
     // The teaser must actually SHOW the value, not just the signup CTA. These
     // field names are the wire contract (AppPreview); reading a field the server

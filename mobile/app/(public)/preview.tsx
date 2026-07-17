@@ -128,9 +128,22 @@ export default function Preview({ client: injected }: { client?: ApiClient } = {
           <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
             <AppText kind="lead">{result.appName || "Audit preview"}</AppText>
             {result.auditGrade ? (
-              <AppText kind="mono" testID="preview-grade" style={{ color: palette.signal }}>
-                {result.auditGrade}
-              </AppText>
+              <View
+                testID="preview-grade-pill"
+                style={{
+                  minWidth: 30,
+                  height: 30,
+                  paddingHorizontal: 6,
+                  borderRadius: 8,
+                  alignItems: "center",
+                  justifyContent: "center",
+                  backgroundColor: palette.signalGlow,
+                }}
+              >
+                <AppText kind="mono" testID="preview-grade" style={{ color: palette.signal, fontWeight: "700" }}>
+                  {result.auditGrade}
+                </AppText>
+              </View>
             ) : null}
           </View>
 
