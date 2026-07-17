@@ -18,6 +18,7 @@ describe("pageTitle (per-route document.title)", () => {
     ["/login", `${SITE} · sign in`],
     ["/preview", `${SITE} · free audit`],
     ["/proof", `${SITE} · proof`],
+    ["/privacy", `${SITE} · privacy`],
     ["/settings", `${SITE} · settings`],
   ])("titles the known route %s as %s", (path, expected) => {
     expect(pageTitle(path)).toBe(expected);
