@@ -18,6 +18,8 @@ import type { ApiClient } from "../../src/api/client.js";
 import type { PreviewCandidate, PreviewResult } from "../../src/types/api.js";
 import { Screen, AppText, Button, Card } from "../../src/components/primitives.js";
 import { TextField } from "../../src/components/TextField.js";
+import { RankBar } from "../../src/components/RankBar.js";
+import { TopTenRing } from "../../src/components/TopTenRing.js";
 import { palette, spacing } from "../../src/theme/index.js";
 
 type Teaser = NonNullable<PreviewResult["preview"]>;
@@ -147,11 +149,16 @@ export default function Preview({ client: injected }: { client?: ApiClient } = {
             ) : null}
           </View>
 
-          <AppText kind="body" testID="preview-summary">
-            {result.leadKeyword && result.leadRank != null
-              ? `Ranks #${result.leadRank} for “${result.leadKeyword}” · ${result.inTop10} of ${result.keywordsChecked} tracked keywords in the top 10.`
-              : `Checked ${result.keywordsChecked} keywords — none ranking yet.`}
-          </AppText>
+          <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.md, marginTop: spacing.xs }}>
+            {result.keywordsChecked > 0 ? (
+              <TopTenRing inTop10={result.inTop10} total={result.keywordsChecked} />
+            ) : null}
+            <AppText kind="body" testID="preview-summary" style={{ flex: 1 }}>
+              {result.leadKeyword && result.leadRank != null
+                ? `Ranks #${result.leadRank} for “${result.leadKeyword}” · ${result.inTop10} of ${result.keywordsChecked} tracked keywords in the top 10.`
+                : `Checked ${result.keywordsChecked} keywords — none ranking yet.`}
+            </AppText>
+          </View>
 
           {result.sample.length ? (
             <View style={{ marginTop: spacing.sm }} testID="preview-sample">
@@ -161,7 +168,8 @@ export default function Preview({ client: injected }: { client?: ApiClient } = {
                   testID={`preview-row-${s.keyword}`}
                   style={{
                     flexDirection: "row",
-                    justifyContent: "space-between",
+                    alignItems: "center",
+                    gap: spacing.sm,
                     paddingVertical: spacing.xs,
                     // Hairline between rows; the last row drops it — mirrors the
                     // web .move-row:last-child { border-bottom: 0 }.
@@ -169,7 +177,11 @@ export default function Preview({ client: injected }: { client?: ApiClient } = {
                     borderBottomColor: palette.line,
                   }}
                 >
-                  <AppText kind="micro">{s.keyword}</AppText>
+                  <AppText kind="micro" style={{ width: 96 }}>{s.keyword}</AppText>
+                  <View style={{ flex: 1 }}>
+                    {/* null rank → RankBar renders nothing; the "—" on the right carries it. */}
+                    <RankBar rank={s.rank} />
+                  </View>
                   {/* An unmeasured rank is "—", never a fabricated number. */}
                   <AppText kind="mono">{s.rank == null ? "—" : `#${s.rank}`}</AppText>
                 </View>

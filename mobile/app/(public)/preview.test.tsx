@@ -1,5 +1,5 @@
 import React from "react";
-import { render, screen, fireEvent, waitFor } from "@testing-library/react-native";
+import { render, screen, fireEvent, waitFor, within } from "@testing-library/react-native";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import type { ApiClient } from "../../src/api/client.js";
 import type { PreviewResult } from "../../src/types/api.js";
@@ -75,6 +75,13 @@ describe("Preview screen — try-before-signup", () => {
     const flat = (s: unknown) => Object.assign({}, ...[].concat(s as never));
     expect(flat(firstRow.props.style).borderBottomWidth).toBe(1);
     expect(flat(lastRow.props.style).borderBottomWidth).toBe(0);
+    // Option C: a top-10 progress ring reflects the real counts.
+    expect(screen.getByTestId("preview-topten-ring")).toBeTruthy();
+    // A measured row shows a rank bar; the unmeasured row shows NO bar (honesty).
+    const measuredRow = screen.getByTestId("preview-row-recipes");
+    const unmeasuredRow = screen.getByTestId("preview-row-pantry");
+    expect(within(measuredRow).queryByTestId("rank-bar")).toBeTruthy();
+    expect(within(unmeasuredRow).queryByTestId("rank-bar")).toBeNull();
     expect(calls[0]).toEqual({ path: "/preview", body: { query: "Paprika" } });
   });
 
