@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { fonts, lightPalette, palette, paletteFor, theme } from "./tokens.js";
+import { fontSize, fonts, lightPalette, palette, paletteFor, theme } from "./tokens.js";
 
 /** The web's canonical design system — the single source of truth. */
 const stylesCss = readFileSync(
@@ -106,5 +106,11 @@ describe("theme tokens", () => {
     expect(theme.palette).toBe(palette);
     expect(theme.fonts).toBe(fonts);
     expect(theme.radius.base).toBeGreaterThan(0);
+  });
+
+  // Pin: body text must clear iOS's 17pt content default so it never regresses
+  // back to a cramped, sub-16pt size.
+  it("fontSize.body is at least 16 (iOS-readable, never cramped)", () => {
+    expect(fontSize.body).toBeGreaterThanOrEqual(16);
   });
 });
