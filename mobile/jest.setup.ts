@@ -23,6 +23,18 @@ jest.mock("react-native-graph", () => {
   };
 });
 
+// Safe-area context: the Screen primitive now reads useSafeAreaInsets(), which
+// throws without a <SafeAreaProvider> ancestor. The library ships a jest mock
+// that returns zero insets, so every screen test stays headless without each one
+// wrapping a provider. (App root wires the real provider in app/_layout.tsx.)
+jest.mock("react-native-safe-area-context", () => {
+  // The shipped mock exposes everything under a default export; re-expose as
+  // named exports (useSafeAreaInsets, SafeAreaProvider, …) which is how the app
+  // imports them.
+  const mock = require("react-native-safe-area-context/jest/mock");
+  return mock.default ?? mock;
+});
+
 // In-memory SecureStore so session-token persistence is observable in tests.
 jest.mock("expo-secure-store", () => {
   const mem = new Map<string, string>();
