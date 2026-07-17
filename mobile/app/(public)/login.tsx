@@ -7,13 +7,14 @@
  */
 import React, { useState } from "react";
 import { View } from "react-native";
-import { Redirect } from "expo-router";
+import { Redirect, useRouter } from "expo-router";
 import { useAuth } from "../../src/auth/AuthProvider.js";
 import { Screen, AppText, Button, Card } from "../../src/components/primitives.js";
 import { TextField } from "../../src/components/TextField.js";
 
 export default function Login() {
   const { status, requestLink, completeMagicLink } = useAuth();
+  const router = useRouter();
   const [email, setEmail] = useState("");
   const [sent, setSent] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -46,6 +47,15 @@ export default function Login() {
         <AppText kind="display">ShipASO</AppText>
         <AppText kind="dim">Honest ASO. Real numbers or an explicit “unmeasured” — never a guess.</AppText>
       </View>
+
+      {/* Try-before-signup: the free audit needs no account. Surfaced up top so a
+          logged-out visitor (and App Review) reaches the real value without a
+          sign-in wall — mirrors the web landing. */}
+      <Card>
+        <AppText kind="lead">Try it free — no signup</AppText>
+        <AppText kind="dim">Audit any App Store listing on real keyword data. Sign in only to run the fix.</AppText>
+        <Button label="Audit any listing" testID="audit-free" onPress={() => router.push("/(public)/preview")} />
+      </Card>
 
       <Card>
         <AppText kind="lead">Sign in</AppText>
