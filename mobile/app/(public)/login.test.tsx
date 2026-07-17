@@ -7,11 +7,13 @@ import Login from "./login.js";
 
 // Login redirects with expo-router's <Redirect> once auth completes in place;
 // surface the target href so the test can assert on it.
+const pushed: string[] = [];
 jest.mock("expo-router", () => ({
   Redirect: ({ href }: { href: string }) => {
     const { Text: T } = jest.requireActual("react-native");
     return <T testID="redirect-target">{String(href)}</T>;
   },
+  useRouter: () => ({ push: (href: string) => pushed.push(href) }),
 }));
 function fakeClient(onPost: (path: string, body: unknown) => void): ApiClient {
   const call = async <T,>(path: string, body?: unknown) => {
@@ -68,5 +70,16 @@ describe("Login screen", () => {
     fireEvent.press(screen.getByText("Continue"));
 
     await waitFor(() => expect(screen.getByTestId("redirect-target").props.children).toBe("/(app)"));
+  });
+
+  it("offers the free audit without signing in (reviewer + logged-out path)", () => {
+    pushed.length = 0;
+    render(
+      <AuthProvider clientOverride={fakeClient(() => {})}>
+        <Login />
+      </AuthProvider>,
+    );
+    fireEvent.press(screen.getByTestId("audit-free"));
+    expect(pushed).toContain("/(public)/preview");
   });
 });
