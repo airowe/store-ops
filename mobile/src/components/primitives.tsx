@@ -17,6 +17,7 @@ import {
   type TextStyle,
   type ViewStyle,
 } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { fontSize, radius, spacing } from "../theme/index.js";
 import { usePalette } from "../theme/index.js";
 import type { Palette } from "../theme/index.js";
@@ -39,12 +40,19 @@ export function Screen({
 }) {
   const palette = usePalette();
   const { contentMaxWidth, gutter } = useLayout();
+  const insets = useSafeAreaInsets();
   return (
     <ScrollView style={{ flex: 1, backgroundColor: palette.bg }} contentContainerStyle={styles.screenOuter}>
       <View
         testID="screen-content"
         style={[
-          { padding: gutter, gap: gutter },
+          {
+            paddingTop: gutter + insets.top,
+            paddingBottom: gutter + insets.bottom,
+            paddingLeft: gutter,
+            paddingRight: gutter,
+            gap: gutter,
+          },
           !wide && { maxWidth: contentMaxWidth, width: "100%", alignSelf: "center" },
           style,
         ]}

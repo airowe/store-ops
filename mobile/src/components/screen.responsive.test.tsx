@@ -11,6 +11,13 @@ jest.mock("../theme/responsive.js", () => {
   return { ...actual, useLayout: jest.fn(() => actual.resolveLayout(390)) };
 });
 
+// Control ONLY the safe-area insets hook so we can assert Screen pads content
+// below the status bar; the provider/context stays real.
+jest.mock("react-native-safe-area-context", () => ({
+  ...jest.requireActual("react-native-safe-area-context"),
+  useSafeAreaInsets: () => ({ top: 47, bottom: 34, left: 0, right: 0 }),
+}));
+
 import { useLayout } from "../theme/responsive.js";
 const mockLayout = useLayout as jest.Mock;
 
@@ -41,5 +48,13 @@ describe("Screen (responsive width)", () => {
     mockLayout.mockReturnValue(resolveLayout(1024));
     render(<Screen wide><Text>hi</Text></Screen>);
     expect(contentStyles().some((s) => s.maxWidth === CONTENT_MAX_WIDTH)).toBe(false);
+  });
+
+  it("pads content below the status bar using the safe-area inset", () => {
+    mockLayout.mockReturnValue(resolveLayout(390));
+    render(<Screen><AppText>hi</AppText></Screen>);
+    const content = screen.getByTestId("screen-content");
+    const flat = Object.assign({}, ...([] as unknown[]).concat(content.props.style as never));
+    expect(flat.paddingTop).toBeGreaterThanOrEqual(47);
   });
 });
