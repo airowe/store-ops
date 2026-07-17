@@ -90,12 +90,12 @@ export const radius = {
 
 /** A type-scale that reads as "terminal" — tight, monospace-friendly. */
 export const fontSize = {
-  micro: 11,
-  small: 13,
-  body: 15,
-  lead: 18,
-  title: 24,
-  display: 34,
+  micro: 12,
+  small: 14,
+  body: 17,
+  lead: 20,
+  title: 28,
+  display: 40,
 } as const;
 
 export const spacing = {

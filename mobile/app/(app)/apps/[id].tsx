@@ -76,7 +76,7 @@ export default function AppDetail() {
   const { app: a, runs } = app.data;
 
   return (
-    <Screen>
+    <Screen topInset={false}>
       <Stack.Screen options={{ title: a.name, headerShown: true }} />
       <AppText kind="dim">{a.bundle_id} · {a.country}</AppText>
 

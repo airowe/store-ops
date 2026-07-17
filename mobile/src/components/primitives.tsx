@@ -17,6 +17,7 @@ import {
   type TextStyle,
   type ViewStyle,
 } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { fontSize, radius, spacing } from "../theme/index.js";
 import { usePalette } from "../theme/index.js";
 import type { Palette } from "../theme/index.js";
@@ -32,19 +33,36 @@ export function Screen({
   children,
   style,
   wide,
+  topInset = true,
 }: {
   children: React.ReactNode;
   style?: StyleProp<ViewStyle>;
   wide?: boolean;
+  /**
+   * Add the top safe-area inset to the content padding. Default true — correct
+   * for header-less screens (the `(public)` group), whose content would
+   * otherwise render under the status bar. Set FALSE on screens shown under a
+   * native navigation header (the `(app)` group): react-navigation already lays
+   * their content out below the status bar + header, so adding `insets.top`
+   * again produces an excess empty gap under the header.
+   */
+  topInset?: boolean;
 }) {
   const palette = usePalette();
   const { contentMaxWidth, gutter } = useLayout();
+  const insets = useSafeAreaInsets();
   return (
     <ScrollView style={{ flex: 1, backgroundColor: palette.bg }} contentContainerStyle={styles.screenOuter}>
       <View
         testID="screen-content"
         style={[
-          { padding: gutter, gap: gutter },
+          {
+            paddingTop: gutter + (topInset ? insets.top : 0),
+            paddingBottom: gutter + insets.bottom,
+            paddingLeft: gutter,
+            paddingRight: gutter,
+            gap: gutter,
+          },
           !wide && { maxWidth: contentMaxWidth, width: "100%", alignSelf: "center" },
           style,
         ]}

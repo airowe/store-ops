@@ -40,7 +40,7 @@ export default function Dashboard() {
   });
 
   return (
-    <Screen>
+    <Screen topInset={false}>
       <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
         <AppText kind="title">Your apps</AppText>
         <View style={{ flexDirection: "row", gap: 4 }}>

@@ -7,6 +7,7 @@
  * proof) and `(app)` (the authed dashboard + details).
  */
 import { GestureHandlerRootView } from "react-native-gesture-handler";
+import { SafeAreaProvider } from "react-native-safe-area-context";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Stack } from "expo-router";
 import { StatusBar } from "expo-status-bar";
@@ -41,14 +42,16 @@ export default function RootLayout() {
   return (
     // GestureHandlerRootView is required for react-native-graph's pan-scrubber.
     <GestureHandlerRootView style={{ flex: 1 }}>
-      <ThemeProvider>
-        <QueryClientProvider client={queryClient}>
-          <AuthProvider>
-            <NotificationsBridge />
-            <AppShell />
-          </AuthProvider>
-        </QueryClientProvider>
-      </ThemeProvider>
+      <SafeAreaProvider>
+        <ThemeProvider>
+          <QueryClientProvider client={queryClient}>
+            <AuthProvider>
+              <NotificationsBridge />
+              <AppShell />
+            </AuthProvider>
+          </QueryClientProvider>
+        </ThemeProvider>
+      </SafeAreaProvider>
     </GestureHandlerRootView>
   );
 }
