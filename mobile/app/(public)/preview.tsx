@@ -128,9 +128,22 @@ export default function Preview({ client: injected }: { client?: ApiClient } = {
           <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
             <AppText kind="lead">{result.appName || "Audit preview"}</AppText>
             {result.auditGrade ? (
-              <AppText kind="mono" testID="preview-grade" style={{ color: palette.signal }}>
-                {result.auditGrade}
-              </AppText>
+              <View
+                testID="preview-grade-pill"
+                style={{
+                  minWidth: 30,
+                  height: 30,
+                  paddingHorizontal: 6,
+                  borderRadius: 8,
+                  alignItems: "center",
+                  justifyContent: "center",
+                  backgroundColor: palette.signalGlow,
+                }}
+              >
+                <AppText kind="mono" testID="preview-grade" style={{ color: palette.signal, fontWeight: "700" }}>
+                  {result.auditGrade}
+                </AppText>
+              </View>
             ) : null}
           </View>
 
@@ -141,9 +154,21 @@ export default function Preview({ client: injected }: { client?: ApiClient } = {
           </AppText>
 
           {result.sample.length ? (
-            <View style={{ gap: spacing.xs, marginTop: spacing.sm }} testID="preview-sample">
-              {result.sample.map((s) => (
-                <View key={s.keyword} style={{ flexDirection: "row", justifyContent: "space-between" }}>
+            <View style={{ marginTop: spacing.sm }} testID="preview-sample">
+              {result.sample.map((s, i) => (
+                <View
+                  key={s.keyword}
+                  testID={`preview-row-${s.keyword}`}
+                  style={{
+                    flexDirection: "row",
+                    justifyContent: "space-between",
+                    paddingVertical: spacing.xs,
+                    // Hairline between rows; the last row drops it — mirrors the
+                    // web .move-row:last-child { border-bottom: 0 }.
+                    borderBottomWidth: i === result.sample.length - 1 ? 0 : 1,
+                    borderBottomColor: palette.line,
+                  }}
+                >
                   <AppText kind="micro">{s.keyword}</AppText>
                   {/* An unmeasured rank is "—", never a fabricated number. */}
                   <AppText kind="mono">{s.rank == null ? "—" : `#${s.rank}`}</AppText>

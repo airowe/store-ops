@@ -4,6 +4,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import type { ApiClient } from "../../src/api/client.js";
 import type { PreviewResult } from "../../src/types/api.js";
 import Preview from "./preview.js";
+import { palette } from "../../src/theme/index.js";
 
 /** The real app supplies this from _layout; a standalone mount must too. */
 function renderPreview(client: ApiClient) {
@@ -49,6 +50,13 @@ describe("Preview screen — try-before-signup", () => {
     // The honest grade the Worker returned — not a marketing-friendly one.
     expect(screen.getByTestId("preview-grade")).toHaveTextContent("C");
 
+    // Grade-pill parity with the web .grade: the grade text sits inside a pill
+    // View with the signal-glow background and rounded corners.
+    const pill = screen.getByTestId("preview-grade-pill");
+    const flatPill = Object.assign({}, ...[].concat(pill.props.style as never));
+    expect(flatPill.borderRadius).toBe(8);
+    expect(flatPill.backgroundColor).toBe(palette.signalGlow);
+
     // The teaser must actually SHOW the value, not just the signup CTA. These
     // field names are the wire contract (AppPreview); reading a field the server
     // never sends renders an empty card that still type-checks — which is exactly
@@ -60,6 +68,13 @@ describe("Preview screen — try-before-signup", () => {
     expect(screen.getByTestId("preview-sample")).toBeTruthy();
     // An unmeasured rank is an em-dash, never a fabricated number.
     expect(screen.getByText("—")).toBeTruthy();
+    // Grid-line parity with the web's .move-row: a hairline separates rows,
+    // and the LAST row drops it (mirrors .move-row:last-child { border-bottom: 0 }).
+    const firstRow = screen.getByTestId("preview-row-recipes"); // non-last
+    const lastRow = screen.getByTestId("preview-row-pantry");   // last of 2
+    const flat = (s: unknown) => Object.assign({}, ...[].concat(s as never));
+    expect(flat(firstRow.props.style).borderBottomWidth).toBe(1);
+    expect(flat(lastRow.props.style).borderBottomWidth).toBe(0);
     expect(calls[0]).toEqual({ path: "/preview", body: { query: "Paprika" } });
   });
 

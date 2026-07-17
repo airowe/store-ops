@@ -8,6 +8,10 @@ body {
   font: 15px/1.55 var(--sans);
   -webkit-font-smoothing: antialiased;
 }
+/* Defensive guard: nothing may make the page scroll horizontally on mobile.
+   Paired with the shrink/wrap fixes below so this net isn't merely masking a
+   real layout break. Verified on a real device, not by CI. */
+html, body { max-width: 100%; overflow-x: hidden; }
 a { color: var(--signal); text-decoration: none; }
 
 .topbar {
@@ -79,7 +83,7 @@ button.card.run-row { display: flex; }
 .btn.bad { background: transparent; border-color: rgba(248,113,113,.5); color: var(--bad); }
 .btn.bad:hover { border-color: var(--bad); background: rgba(248,113,113,.08); }
 
-.txt { flex: 1; background: var(--bg-2); border: 1px solid var(--line); color: var(--ink); border-radius: 10px; padding: 9px 11px; font: inherit; }
+.txt { flex: 1; min-width: 0; background: var(--bg-2); border: 1px solid var(--line); color: var(--ink); border-radius: 10px; padding: 9px 11px; font: inherit; }
 .txt:focus { outline: none; border-color: var(--signal-dim); box-shadow: 0 0 0 3px var(--signal-glow); }
 
 .grid { display: grid; gap: 14px; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); margin-top: 14px; }
@@ -102,12 +106,12 @@ button.card.run-row { display: flex; }
 }
 .appcard .name { font-weight: 600; font-size: 16px; color: var(--ink); }
 .appcard .row1 .badge { flex: none; }
-.appcard .bundle { color: var(--faint); font-size: 12px; font-family: var(--mono); margin-top: 2px; }
+.appcard .bundle { color: var(--faint); font-size: 12px; font-family: var(--mono); margin-top: 2px; overflow-wrap: anywhere; }
 .appcard .meta { margin-top: 12px; font-family: var(--mono); font-size: 14px; color: var(--dim); }
 .appcard .meta b.good { color: var(--signal); }
 .appcard .meta b.none { color: var(--faint); font-weight: 500; }
 .finding-label { margin-top: 8px; font-size: 13px; }
-.mono { font-family: var(--mono); }
+.mono { font-family: var(--mono); overflow-wrap: anywhere; }
 
 .badge {
   font-family: var(--mono); font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 999px;
@@ -121,9 +125,9 @@ button.card.run-row { display: flex; }
 .empty .big { font-size: 36px; margin-bottom: 8px; }
 
 h2 { font-family: var(--display); font-weight: 600; font-size: 22px; letter-spacing: -.5px; margin: 28px 0 12px; }
-.move-row { display: grid; grid-template-columns: 1fr auto auto; gap: 12px; align-items: center; padding: 8px 0; border-bottom: 1px solid var(--line-soft); }
+.move-row { display: grid; grid-template-columns: 1fr auto auto; gap: 12px; align-items: center; padding: 8px 0; border-bottom: 1px solid var(--line-soft); min-width: 0; }
 .move-row:last-child { border-bottom: 0; }
-.move-row .kw { color: var(--ink); font-weight: 600; }
+.move-row .kw { color: var(--ink); font-weight: 600; min-width: 0; overflow-wrap: anywhere; }
 .move-row .cur { color: var(--ink); }
 /* Timeline rows are events that happened in sequence — a 40ms cascade lets them
    read that way instead of arriving as one instant block. `--row` is set inline
