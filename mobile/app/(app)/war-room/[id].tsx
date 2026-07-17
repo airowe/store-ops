@@ -35,7 +35,7 @@ export default function WarRoomScreen() {
   }
 
   return (
-    <Screen>
+    <Screen topInset={false}>
       <Stack.Screen options={{ title: "War room", headerShown: true }} />
       <AppText kind="dim">As of {wr.data!.checkedAt} · {wr.data!.window}-day window</AppText>
       <WarRoomGrid rows={wr.data!.warRoom} competitors={wr.data!.competitors} />

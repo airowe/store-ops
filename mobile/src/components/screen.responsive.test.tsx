@@ -55,6 +55,20 @@ describe("Screen (responsive width)", () => {
     render(<Screen><AppText>hi</AppText></Screen>);
     const content = screen.getByTestId("screen-content");
     const flat = Object.assign({}, ...([] as unknown[]).concat(content.props.style as never));
-    expect(flat.paddingTop).toBeGreaterThanOrEqual(47);
+    // Exactly gutter + top inset — a bare ">= 47" would pass even if the gutter
+    // were dropped from the sum.
+    const gutter = resolveLayout(390).gutter;
+    expect(flat.paddingTop).toBe(gutter + 47);
+  });
+
+  it("topInset={false} drops the top inset (screens under a native header)", () => {
+    mockLayout.mockReturnValue(resolveLayout(390));
+    render(<Screen topInset={false}><AppText>hi</AppText></Screen>);
+    const content = screen.getByTestId("screen-content");
+    const flat = Object.assign({}, ...([] as unknown[]).concat(content.props.style as never));
+    // No status-bar inset added — react-navigation's header already insets it;
+    // bottom inset still applies (home indicator).
+    const gutter = resolveLayout(390).gutter;
+    expect(flat.paddingTop).toBe(gutter);
   });
 });

@@ -61,7 +61,7 @@ export default function RunDetail() {
   const status = r.findings.filter((f) => f.context);
 
   return (
-    <Screen>
+    <Screen topInset={false}>
       <Stack.Screen options={{ title: "Run", headerShown: true }} />
 
       <AppText kind="dim">{r.findingsSummary.label}</AppText>

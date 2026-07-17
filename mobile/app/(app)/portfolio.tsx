@@ -40,7 +40,7 @@ export default function Portfolio() {
     const upsell = pf.error instanceof ApiError && pf.error.status === 402;
     if (upsell) {
       return (
-        <Screen>
+        <Screen topInset={false}>
           <Stack.Screen options={{ title: "Portfolio", headerShown: true }} />
           <Card>
             <AppText kind="title">Portfolio is a Scale feature</AppText>
@@ -61,7 +61,7 @@ export default function Portfolio() {
 
   const d = pf.data!;
   return (
-    <Screen>
+    <Screen topInset={false}>
       <Stack.Screen options={{ title: "Portfolio", headerShown: true }} />
       <Card>
         <AppText kind="title">{d.totalApps} apps</AppText>

@@ -112,7 +112,7 @@ export default function Settings() {
   }
 
   return (
-    <Screen>
+    <Screen topInset={false}>
       <Stack.Screen options={{ title: "Settings", headerShown: true }} />
 
       <Card>
