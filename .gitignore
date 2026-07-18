@@ -22,6 +22,11 @@ dist/
 .vscode/
 .idea/
 
+# asc CLI run artifacts — machine-generated upload/failure reports (timestamped,
+# absolute local paths). Regenerated per run; never committed. Tracked .asc/
+# config (e.g. workflow.json) is NOT under reports/, so it stays committable.
+.asc/reports/
+
 # Competitive analysis + parity PRDs — kept LOCAL only, never committed.
 # (Competitor intel doesn't belong in the product repo; feature work is
 # tracked via GitHub issues instead.)
