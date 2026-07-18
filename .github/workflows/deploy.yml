@@ -136,6 +136,22 @@ jobs:
           workingDirectory: cloud
           command: pages deploy dist --project-name store-ops-dashboard --branch main
 
+      # ── deploy the marketing site (Pages at shipaso.com) ──
+      # `docs/landing/` is a self-contained static site (index.html +
+      # check-your-rank.html, no build) served by the `store-ops-site` Pages
+      # project. It used to be deployed by hand — so edits sat unshipped (the
+      # project was Git-disconnected and untouched for a month). Codified here so
+      # a merge to main ships shipaso.com the same way it ships the API and the
+      # dashboard. Root workingDirectory because the dir lives at the repo root.
+      - name: Deploy marketing site
+        if: steps.creds.outputs.configured == 'true'
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          workingDirectory: .
+          command: pages deploy docs/landing --project-name store-ops-site --branch main
+
       # ── failure alert: a red deploy on main must be LOUD ──
       # Opens (or comments on) a pinned-by-title issue so a broken deploy can't
       # fail silently across merges (the 2026-07-04 token episode: 10 merges
