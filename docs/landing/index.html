@@ -127,9 +127,6 @@
   .pipe .check { color: var(--signal); }
   .pipe .cursor { display: inline-block; width: 8px; height: 16px; background: var(--signal); vertical-align: -2px; animation: blink 1.1s step-end infinite; margin-left: 4px; }
 
-  .ttv { font-family: var(--mono); font-size: 13.5px; color: var(--dim); margin: 0 0 26px; }
-  .ttv b { color: var(--signal); font-weight: 500; }
-
   /* buttons */
   .cta { display: flex; gap: 13px; flex-wrap: wrap; margin: 0 0 14px; }
   .btn {
@@ -152,6 +149,28 @@
   section p { color: var(--dim); max-width: 64ch; }
   section p em { color: var(--ink); font-style: normal; }
   code { font-family: var(--mono); font-size: .88em; background: var(--panel); border: 1px solid var(--line-soft); border-radius: 5px; padding: 1px 6px; color: var(--signal); }
+
+  /* the gap — a two-column contrast: where data tools stop vs. what ShipASO does.
+     The argument IS a comparison, so it reads as two facing columns, not prose. */
+  .versus { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin: 22px 0 4px; align-items: stretch; }
+  @media (max-width: 560px) { .versus { grid-template-columns: 1fr; } }
+  .vs-col {
+    background: linear-gradient(180deg, var(--panel), var(--bg-2));
+    border: 1px solid var(--line); border-radius: 14px; padding: 20px 22px;
+    display: flex; flex-direction: column;
+  }
+  .vs-col.them { opacity: .82; }
+  .vs-col.us { border-color: var(--signal-dim); box-shadow: 0 18px 40px -24px var(--signal-glow); }
+  .vs-col .lbl { font-family: var(--mono); font-size: 12px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; margin: 0 0 14px; }
+  .vs-col.them .lbl { color: var(--faint); }
+  .vs-col.us .lbl { color: var(--signal); }
+  .vs-col ul { list-style: none; padding: 0; margin: 0; font-size: 14.5px; color: var(--dim); line-height: 1.5; }
+  .vs-col li { padding: 7px 0 7px 26px; position: relative; }
+  .vs-col li + li { border-top: 1px solid var(--line-soft); }
+  .vs-col.them li::before { content: "—"; position: absolute; left: 2px; color: var(--faint); font-family: var(--mono); }
+  .vs-col.us li::before { content: "→"; position: absolute; left: 2px; color: var(--signal); font-family: var(--mono); }
+  .vs-col.us li:last-child { color: var(--ink); font-weight: 500; }
+  .vs-col.us li:last-child::before { content: "✓"; }
 
   blockquote {
     margin: 24px 0; padding: 20px 22px; border-radius: 12px;
@@ -245,9 +264,8 @@
   <header>
     <span class="kicker reveal d1"><span class="dot"></span> App Store + Google Play · open source</span>
     <h1 class="reveal d2">The ASO loop that ships your metadata and <span class="hl">proves the rank moved.</span></h1>
-    <p class="lede reveal d3">Every ASO tool tells you what to do, then leaves you in the
-    App Store Connect form. <b>ShipASO does the work</b> — and reads the rank back to
-    check it worked.</p>
+    <p class="lede reveal d3">Other tools tell you what to do. <b>ShipASO does the work</b> — and
+    reads the rank back to check it worked.</p>
 
     <div class="terminal reveal d4">
       <div class="bar"><i class="r"></i><i class="y"></i><i class="g"></i><span class="ttl">shipaso — the loop</span></div>
@@ -260,8 +278,6 @@
       </div>
     </div>
 
-    <p class="ttv reveal d5">Connect an app → <b>first audit + rank baseline in minutes.</b></p>
-
     <div class="cta reveal d5">
       <a class="btn btn-primary" href="https://app.shipaso.com">Try the hosted agent
         <svg viewBox="0 0 24 24" fill="none"><path d="M5 12h14M13 6l6 6-6 6" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg></a>
@@ -269,8 +285,8 @@
         <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.58 2 12.25c0 4.53 2.87 8.37 6.84 9.73.5.1.68-.22.68-.49v-1.7c-2.78.62-3.37-1.22-3.37-1.22-.46-1.18-1.11-1.5-1.11-1.5-.91-.64.07-.62.07-.62 1 .07 1.53 1.06 1.53 1.06.9 1.56 2.36 1.11 2.94.85.09-.66.35-1.11.63-1.37-2.22-.26-4.56-1.14-4.56-5.06 0-1.12.39-2.03 1.03-2.75-.1-.26-.45-1.3.1-2.71 0 0 .84-.27 2.75 1.05a9.3 9.3 0 015 0c1.91-1.32 2.75-1.05 2.75-1.05.55 1.41.2 2.45.1 2.71.64.72 1.03 1.63 1.03 2.75 0 3.93-2.35 4.79-4.58 5.05.36.32.68.94.68 1.9v2.81c0 .27.18.6.69.49A10.26 10.26 0 0022 12.25C22 6.58 17.52 2 12 2z"/></svg>
         Get the free plugin</a>
     </div>
-    <p class="fineprint reveal d6">The plugin is <strong>free and MIT</strong> — run the whole
-    loop yourself in Claude Code. Or let the hosted agent run it on a schedule.</p>
+    <p class="fineprint reveal d6"><strong>First audit + rank baseline in minutes.</strong> The
+    plugin is free and MIT — run the loop yourself, or let the hosted agent run it on a schedule.</p>
   </header>
 
   <!-- live proof strip — real aggregate wins, hidden until there are any -->
@@ -288,16 +304,29 @@
   <section>
     <div class="eyebrow">the gap</div>
     <h2>The part nobody else ships</h2>
-    <p>The data tools — Astro, AppTweak, Sensor Tower — sell numbers and a
-    dashboard. You read them, then go do the work yourself. <em>ShipASO closes the
-    loop</em>: it picks the keywords, writes the metadata, hands you the exact push
-    commands, and then reads your <em>actual</em> organic rank for each term and
-    logs it over time.</p>
 
-    <p>The rank check is free and needs no account. The public iTunes Search API
-    returns apps in the store's own ranking order, so your app's spot in the
-    results is its rank for that keyword. We just read it — and keep reading it,
-    so you see the change land.</p>
+    <div class="versus">
+      <div class="vs-col them">
+        <p class="lbl">The data tools stop here</p>
+        <ul>
+          <li>Astro, AppTweak, Sensor Tower</li>
+          <li>Sell you numbers and a dashboard</li>
+          <li>You pick the keywords</li>
+          <li>You write the metadata</li>
+          <li>You do the work</li>
+        </ul>
+      </div>
+      <div class="vs-col us">
+        <p class="lbl">ShipASO closes the loop</p>
+        <ul>
+          <li>Picks the keywords on real rank data</li>
+          <li>Writes the metadata to exact limits</li>
+          <li>Hands you the exact push commands</li>
+          <li>Reads your actual organic rank back</li>
+          <li>Logs it over time, so you see it land</li>
+        </ul>
+      </div>
+    </div>
 
     <blockquote>
       Ran it on a meditation app: <span class="rk">#44</span> for "agnostic,"
