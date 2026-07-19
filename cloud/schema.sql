@@ -401,3 +401,22 @@ CREATE TABLE IF NOT EXISTS analytics_engagement (
   PRIMARY KEY (app_id, date, source, cpp, page_type)
 );
 CREATE INDEX IF NOT EXISTS idx_analytics_engagement_app ON analytics_engagement(app_id, date);
+
+-- ── play_funnel_snapshots ────────────────────────────────────────────────────
+-- Google Play conversion funnel (PRD 02-D) — the Play sibling of analytics_engagement.
+-- MONTHLY + LAGGED (the only official Play funnel source is the GCS export, data-map
+-- §3.3): store-listing visitors → acquisitions per (period, country). visitors /
+-- acquisitions are NULL when the report didn't carry them (never a fake 0); the
+-- conversion rate is DERIVED at read time, not stored. Idempotent restatement keyed
+-- by (app, period, country). (Also created by migration 0004 — both IF NOT EXISTS.)
+CREATE TABLE IF NOT EXISTS play_funnel_snapshots (
+  app_id        TEXT NOT NULL REFERENCES apps(id) ON DELETE CASCADE,
+  period        TEXT NOT NULL,                     -- YYYY-MM (monthly)
+  country       TEXT NOT NULL DEFAULT '',          -- lowercased storefront; '' = all-markets
+  visitors      INTEGER,                           -- NULL = not in the report (never a fake 0)
+  acquisitions  INTEGER,
+  source        TEXT NOT NULL DEFAULT 'gcs',        -- provenance (gcs export / bigquery)
+  ingested_at   TEXT NOT NULL DEFAULT (datetime('now')),
+  PRIMARY KEY (app_id, period, country)
+);
+CREATE INDEX IF NOT EXISTS idx_play_funnel_app ON play_funnel_snapshots(app_id, period);

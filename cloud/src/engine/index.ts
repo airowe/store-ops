@@ -161,6 +161,19 @@ export {
   buildSafetyLabelsRequest,
   writeDataSafetyLabels,
 } from "./play/playDataSafetyWrite.js";
+// Play conversion FUNNEL — the monthly GCS export (the only official funnel source).
+export {
+  type PlayFunnelRow,
+  parsePlayFunnelCsv,
+  funnelConversionRate,
+} from "./play/playFunnelParse.js";
+export {
+  DEVSTORAGE_READONLY_SCOPE,
+  pubsiteBucket,
+  storePerformanceObject,
+  gcsObjectUrl,
+  fetchPlayFunnelMonth,
+} from "./play/playFunnelSource.js";
 // Android vitals — owner-keyed, Google-documented visibility lever (gated read).
 export {
   type PlayVitals,

@@ -1722,3 +1722,61 @@ export async function getEngagementSeries(
     downloads: r.downloads,
   }));
 }
+
+/** One persisted month of the Play funnel (PRD 02-D). */
+export type PlayFunnelSeriesRow = {
+  period: string;
+  country: string;
+  visitors: number | null;
+  acquisitions: number | null;
+};
+
+/**
+ * Idempotently persist parsed Play funnel rows, keyed by (app, period, country),
+ * so re-ingesting a month RESTATES it rather than duplicating (Google revises
+ * recent months). An absent metric binds NULL (never a fabricated 0). One atomic
+ * batch; a no-op on empty input (returns 0). Play funnel is `import("./engine/index.js").PlayFunnelRow`.
+ */
+export async function upsertPlayFunnelRows(
+  db: D1Database,
+  appId: string,
+  rows: import("./engine/index.js").PlayFunnelRow[],
+): Promise<number> {
+  if (rows.length === 0) return 0;
+  const stmts = rows.map((r) =>
+    db
+      .prepare(
+        `INSERT INTO play_funnel_snapshots (app_id, period, country, visitors, acquisitions)
+         VALUES (?, ?, ?, ?, ?)
+         ON CONFLICT(app_id, period, country) DO UPDATE SET
+           visitors = excluded.visitors,
+           acquisitions = excluded.acquisitions,
+           ingested_at = datetime('now')`,
+      )
+      .bind(appId, r.period, r.country ?? "", r.visitors ?? null, r.acquisitions ?? null),
+  );
+  await db.batch(stmts);
+  return stmts.length;
+}
+
+/** Read an app's Play funnel series (ascending by period, then country). Metrics
+ *  as-stored (NULL preserved). */
+export async function getPlayFunnelSeries(
+  db: D1Database,
+  appId: string,
+): Promise<PlayFunnelSeriesRow[]> {
+  const { results } = await db
+    .prepare(
+      `SELECT period, country, visitors, acquisitions
+         FROM play_funnel_snapshots WHERE app_id = ?
+        ORDER BY period ASC, country ASC`,
+    )
+    .bind(appId)
+    .all<{ period: string; country: string; visitors: number | null; acquisitions: number | null }>();
+  return (results ?? []).map((r) => ({
+    period: r.period,
+    country: r.country,
+    visitors: r.visitors,
+    acquisitions: r.acquisitions,
+  }));
+}

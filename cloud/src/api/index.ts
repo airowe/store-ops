@@ -75,10 +75,13 @@ import {
   type PushInput,
   type WarRoomRankSnapshot,
   ANDROIDPUBLISHER_SCOPE,
+  DEVSTORAGE_READONLY_SCOPE,
   auditPlayListing,
   buildPushCommands,
   buildWarRoom,
   fetchPlayChartRank,
+  fetchPlayFunnelMonth,
+  funnelConversionRate,
   lookup,
   mintGoogleAccessToken,
   PLAYDEVELOPERREPORTING_SCOPE,
@@ -156,11 +159,13 @@ import {
   listAppsForUser,
   listCompetitors,
   listCompetitorSnapshots,
+  getPlayFunnelSeries,
   listRunsForApp,
   persistPlayChartRank,
   persistRankSnapshots,
   persistRun,
   recordApproval,
+  upsertPlayFunnelRows,
   recordSubscriber,
   registerDeviceToken,
   setAgentPaused,
@@ -2132,6 +2137,112 @@ async function playDataSafetyWriteRoute(
   }
 }
 
+type PlayFunnelBody = {
+  packageName?: string;
+  /** Play developer account id (the pubsite_prod_rev_<id> bucket owner). */
+  accountId?: string;
+  /** how many recent months to try (default 3). */
+  months?: number;
+  serviceAccount?: unknown;
+  useStored?: boolean;
+};
+
+/** The last `n` months as YYYYMM strings, newest first (incl. the current month). */
+function recentMonths(n: number): string[] {
+  const out: string[] = [];
+  const d = new Date();
+  for (let i = 0; i < n; i++) {
+    const y = d.getUTCFullYear();
+    const m = String(d.getUTCMonth() + 1).padStart(2, "0");
+    out.push(`${y}${m}`);
+    d.setUTCMonth(d.getUTCMonth() - 1);
+  }
+  return out;
+}
+
+/**
+ * POST /apps/:id/play-funnel/ingest — pull the owner's monthly Play conversion
+ * funnel from the GCS export bucket and persist it (PRD 02-D). GATED
+ * (PLAY_FUNNEL_ENABLED — the object naming is best-effort), owner-scoped, and
+ * degrade-safe: a month that isn't there yet / isn't readable is skipped (null),
+ * never a fabricated series. Monthly + lagged by construction.
+ */
+async function playFunnelIngestRoute(
+  req: Request,
+  env: Env,
+  userId: string,
+  appId: string,
+): Promise<unknown> {
+  await requireOwnedApp(env, appId, userId);
+  if (!isFlagOn(env.PLAY_FUNNEL_ENABLED)) {
+    throw new HttpError(403, "Play funnel ingest is not enabled.");
+  }
+  const body = (await req.json<PlayFunnelBody>().catch(() => ({}))) as PlayFunnelBody;
+  const packageName = (body.packageName ?? "").trim();
+  const accountId = (body.accountId ?? "").trim();
+  if (!packageName) throw new HttpError(400, "packageName is required.");
+  if (!accountId) throw new HttpError(400, "accountId is required (your Play developer account id).");
+
+  let saRaw: unknown = body.serviceAccount;
+  if ((body.useStored || body.serviceAccount == null) && credentialsEnabled(env)) {
+    const stored = await useCredential(env, userId, appId, "play");
+    if (!stored) throw new HttpError(404, "no saved Google Play service account for this app");
+    saRaw = stored.plaintext;
+  }
+  const sa = parseServiceAccount(saRaw);
+
+  let accessToken: string;
+  try {
+    ({ accessToken } = await mintGoogleAccessToken(workerFetchLike, sa, { scope: DEVSTORAGE_READONLY_SCOPE }));
+  } catch (e) {
+    throw new HttpError(400, e instanceof Error ? e.message : "invalid service account");
+  }
+
+  const months = Math.max(1, Math.min(body.months ?? 3, 12));
+  const periods: string[] = [];
+  let ingested = 0;
+  for (const yyyymm of recentMonths(months)) {
+    const rows = await fetchPlayFunnelMonth(workerFetchLike, {
+      accessToken,
+      accountId,
+      packageName,
+      yyyymm,
+    });
+    if (rows === null || rows.length === 0) continue; // not-there-yet / UNKNOWN — keep prior data
+    ingested += await upsertPlayFunnelRows(env.DB, appId, rows);
+    periods.push(`${yyyymm.slice(0, 4)}-${yyyymm.slice(4)}`);
+  }
+  return { ingested, periods };
+}
+
+/**
+ * GET /apps/:id/play-funnel — the measured monthly conversion series (our own D1,
+ * no key). Honest framing: monthly + lagged; conversion rate is DERIVED from
+ * measured visitors/acquisitions (null when it can't be computed).
+ */
+async function playFunnelRoute(env: Env, userId: string, appId: string): Promise<unknown> {
+  await requireOwnedApp(env, appId, userId);
+  const rows = await getPlayFunnelSeries(env.DB, appId);
+  const months = rows.map((r) => ({
+    period: r.period,
+    country: r.country,
+    visitors: r.visitors,
+    acquisitions: r.acquisitions,
+    conversionRate: funnelConversionRate({
+      period: r.period,
+      ...(r.visitors !== null ? { visitors: r.visitors } : {}),
+      ...(r.acquisitions !== null ? { acquisitions: r.acquisitions } : {}),
+    }),
+  }));
+  const throughPeriod = rows.length > 0 ? rows[rows.length - 1]!.period : null;
+  return {
+    state: rows.length > 0 ? "measured" : "empty",
+    cadence: "monthly",
+    throughPeriod,
+    months,
+  };
+}
+
 /**
  * DELETE /apps/:id — disconnect an app the user owns. Cascades to its runs,
  * rank/competitor snapshots, and approvals/proposals (see deleteApp), freeing a
@@ -4091,6 +4202,12 @@ export async function handleApi(req: Request, env: Env, ctx?: ExecutionContext):
       }
       if (seg.length === 3 && seg[1] && seg[2] === "play-data-safety" && method === "POST") {
         return json(await playDataSafetyWriteRoute(req, env, user.id, seg[1]), 200, origin);
+      }
+      if (seg.length === 4 && seg[1] && seg[2] === "play-funnel" && seg[3] === "ingest" && method === "POST") {
+        return json(await playFunnelIngestRoute(req, env, user.id, seg[1]), 200, origin);
+      }
+      if (seg.length === 3 && seg[1] && seg[2] === "play-funnel" && method === "GET") {
+        return json(await playFunnelRoute(env, user.id, seg[1]), 200, origin);
       }
       // ASC Analytics Reports Phase 1: read-only status probe + the consent-gated
       // enable (create the ongoing request). Both carry the ASC credential.

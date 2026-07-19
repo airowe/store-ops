@@ -30,6 +30,7 @@ import type {
   GithubStatus,
   Me,
   PlayAudit,
+  PlayFunnelSurface,
   NotificationPrefs,
   RankCadence,
   PreviewResult,
@@ -106,6 +107,17 @@ export const ingestAnalytics = (c: ApiClient, id: string, body: AscCredentialBod
 /** The measured conversion surface (analytics-reports Phase 3) — our own D1, no key. */
 export const getEngagement = (c: ApiClient, id: string) =>
   c.get<EngagementSurface>(`/apps/${enc(id)}/analytics/engagement`);
+
+// ── Play conversion funnel (PRD 02-D) — monthly GCS export ───────────────────
+/** The measured monthly Play funnel (our own D1, no key). */
+export const getPlayFunnel = (c: ApiClient, id: string) =>
+  c.get<PlayFunnelSurface>(`/apps/${enc(id)}/play-funnel`);
+/** Pull + persist the owner's monthly Play funnel from GCS (gated; owner key). */
+export const ingestPlayFunnel = (
+  c: ApiClient,
+  id: string,
+  body: { packageName: string; accountId: string; months?: number; serviceAccount?: string; useStored?: boolean },
+) => c.post<{ ingested: number; periods: string[] }>(`/apps/${enc(id)}/play-funnel/ingest`, body);
 
 export const getRanks = (c: ApiClient, id: string, keyword?: string) =>
   c.get<RanksSeries>(`/apps/${enc(id)}/ranks${keyword ? `?keyword=${enc(keyword)}` : ""}`);

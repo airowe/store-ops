@@ -15,11 +15,13 @@ import { fileURLToPath } from "node:url";
 import { beforeEach, describe, expect, it } from "vitest";
 import {
   getPlayChartRankHistory,
+  getPlayFunnelSeries,
   getRankCadence,
   getRankHistory,
   persistPlayChartRank,
   persistRankSnapshots,
   setRankCadence,
+  upsertPlayFunnelRows,
   upsertUser,
 } from "./d1.js";
 import type { PlayChartRank } from "./engine/index.js";
@@ -202,5 +204,40 @@ describe.skipIf(!sqliteAvailable)("persistPlayChartRank — Play chart rank time
     await seedApp();
     await persistPlayChartRank(db, { appId: "app-1", packageName: "com.x.y", rank: null });
     expect(await getPlayChartRankHistory(db, "app-1")).toEqual([]);
+  });
+});
+
+describe.skipIf(!sqliteAvailable)("upsertPlayFunnelRows — Play funnel series (parity/PRD-02-D)", () => {
+  async function seedApp() {
+    const u = await upsertUser(db, "owner@b.co");
+    await db
+      .prepare("INSERT INTO apps (id, user_id, bundle_id, name) VALUES (?, ?, ?, ?)")
+      .bind("app-1", u.id, "com.x.y", "X")
+      .run();
+  }
+
+  it("persists monthly rows and RESTATES a re-ingested (period, country)", async () => {
+    await seedApp();
+    await upsertPlayFunnelRows(db, "app-1", [
+      { period: "2026-06", country: "us", visitors: 1000, acquisitions: 120 },
+      { period: "2026-06", country: "jp", visitors: 500, acquisitions: 40 },
+    ]);
+    // re-ingest US June with revised numbers → restated, not duplicated
+    await upsertPlayFunnelRows(db, "app-1", [
+      { period: "2026-06", country: "us", visitors: 1100, acquisitions: 150 },
+    ]);
+    const series = await getPlayFunnelSeries(db, "app-1");
+    expect(series).toHaveLength(2);
+    const us = series.find((r) => r.country === "us")!;
+    expect(us.visitors).toBe(1100);
+    expect(us.acquisitions).toBe(150);
+  });
+
+  it("binds NULL for an absent metric (never a fabricated 0)", async () => {
+    await seedApp();
+    await upsertPlayFunnelRows(db, "app-1", [{ period: "2026-05", country: "", visitors: 800 }]);
+    const series = await getPlayFunnelSeries(db, "app-1");
+    expect(series[0]!.acquisitions).toBeNull();
+    expect(series[0]!.visitors).toBe(800);
   });
 });
