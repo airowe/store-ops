@@ -77,4 +77,5 @@ jest.mock("expo-linking", () => ({
   useURL: () => null,
   getInitialURL: jest.fn(async () => null),
   addEventListener: jest.fn(() => ({ remove: jest.fn() })),
+  openURL: jest.fn(async () => true),
 }));
