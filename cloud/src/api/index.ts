@@ -152,6 +152,7 @@ import {
   getApproval,
   getLatestCompetitorMap,
   getRankHistory,
+  listTrackedMarkets,
   getRun,
   getTier,
   getUserByStripeCustomer,
@@ -2872,10 +2873,13 @@ async function appRanks(
 ): Promise<unknown> {
   await requireOwnedApp(env, appId, userId);
   let keyword = url.searchParams.get("keyword") ?? undefined;
+  // #180 Phase 2: an optional storefront filter for the market picker. Absent →
+  // all markets (today's behavior); present → the chart is scoped to that market.
+  const country = url.searchParams.get("country") ?? undefined;
 
   // No keyword requested → pick the app's lead keyword from the most recent run.
   if (!keyword) {
-    const all = await getRankHistory(env.DB, appId, {});
+    const all = await getRankHistory(env.DB, appId, country ? { country } : {});
     if (all.length) {
       // most recent checked_at, then best (lowest) rank among ranked terms
       const latestAt = all[all.length - 1]?.checked_at;
@@ -2903,15 +2907,30 @@ async function appRanks(
     competitorSnapshots: compSnapshots,
   });
 
-  if (!keyword) return { keyword: "", points: [], annotations };
+  if (!keyword) return { keyword: "", points: [], annotations, country: country ?? null };
 
-  const history = await getRankHistory(env.DB, appId, { keyword });
+  const history = await getRankHistory(env.DB, appId, country ? { keyword, country } : { keyword });
   const points = history.map((s) => ({
     rank: s.rank,
     total: s.total,
     checked_at: s.checked_at,
   }));
-  return { keyword, points, annotations };
+  return { keyword, points, annotations, country: country ?? null };
+}
+
+/**
+ * GET /apps/:id/markets (#180 Phase 2) — the storefronts this app has measured
+ * rank data for, so the UI can populate a market picker from real data (never a
+ * guessed list). Returns `{ home, markets:[cc,...] }`: `home` is the app's own
+ * storefront; `markets` is the distinct set with rank snapshots (may be empty for
+ * a never-swept app, and may not include `home` yet if it hasn't been swept). The
+ * client selects one and passes it back as `/apps/:id/ranks?country=<cc>`.
+ */
+async function appMarkets(env: Env, userId: string, appId: string): Promise<unknown> {
+  const app = await requireOwnedApp(env, appId, userId);
+  const markets = await listTrackedMarkets(env.DB, appId);
+  const home = (app.country ?? "").trim().toLowerCase() || null;
+  return { home, markets };
 }
 
 /**
@@ -2924,9 +2943,11 @@ async function appRanks(
  * on-render animation. Unblocks the animated-delta dashboard, the share-a-win
  * card (#23), and the competitor war-room view (#25).
  */
-async function appDeltas(env: Env, userId: string, appId: string): Promise<unknown> {
+async function appDeltas(env: Env, userId: string, appId: string, url: URL): Promise<unknown> {
   const app = await requireOwnedApp(env, appId, userId);
-  const history = await getRankHistory(env.DB, appId, {});
+  // #180 Phase 2: scope the delta dashboard to the picked storefront when given.
+  const country = url.searchParams.get("country") ?? undefined;
+  const history = await getRankHistory(env.DB, appId, country ? { country } : {});
   // PRD 02: derive the app's approved pushes so rankDeltasView can overlay the
   // (correlational) attribution — "after you added 'stoic' (Jun 12)" — onto each
   // moved keyword. This is a pure join of already-captured data: shipped runs'
@@ -4283,6 +4304,11 @@ export async function handleApi(req: Request, env: Env, ctx?: ExecutionContext):
       if (seg.length === 3 && seg[1] && seg[2] === "ranks" && method === "GET") {
         return json(await appRanks(env, user.id, seg[1], url), 200, origin);
       }
+      // markets (#180 Phase 2): the storefronts this app has measured rank data
+      // for — populates the market picker. `?country=` on /ranks scopes the chart.
+      if (seg.length === 3 && seg[1] && seg[2] === "markets" && method === "GET") {
+        return json(await appMarkets(env, user.id, seg[1]), 200, origin);
+      }
       // schedule (#52): read / set the sweep schedule
       if (seg.length === 3 && seg[1] && seg[2] === "schedule") {
         if (method === "GET") return json(await scheduleGet(env, user.id, seg[1]), 200, origin);
@@ -4316,7 +4342,7 @@ export async function handleApi(req: Request, env: Env, ctx?: ExecutionContext):
         return json(await appPortfolio(env, user.id, seg[1]), 200, origin);
       }
       if (seg.length === 3 && seg[1] && seg[2] === "deltas" && method === "GET") {
-        return json(await appDeltas(env, user.id, seg[1]), 200, origin);
+        return json(await appDeltas(env, user.id, seg[1], url), 200, origin);
       }
       if (seg.length === 3 && seg[1] && seg[2] === "war-room" && method === "GET") {
         return json(await warRoom(env, user.id, seg[1], url), 200, origin);

@@ -1214,6 +1214,35 @@ export async function getRankHistory(
 }
 
 /**
+ * The distinct storefronts that have MEASURED rank data for an app (#180 Phase 2).
+ * Powers the market picker: the UI populates the storefront dropdown from markets
+ * we actually track, never a guessed/aspirational list. Legacy Phase-1 rows carry
+ * country '' — those aren't a real market, so they're excluded in SQL; the result
+ * is additionally lowercased + de-duplicated defensively. Empty for an app with no
+ * snapshots (no fabricated market).
+ */
+export async function listTrackedMarkets(db: D1Database, appId: string): Promise<string[]> {
+  const { results } = await db
+    .prepare(
+      `SELECT DISTINCT country FROM rank_snapshots
+       WHERE app_id = ? AND country <> ''
+       ORDER BY country ASC`,
+    )
+    .bind(appId)
+    .all<{ country: string }>();
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const r of results ?? []) {
+    const c = normCountry(r.country);
+    if (c && !seen.has(c)) {
+      seen.add(c);
+      out.push(c);
+    }
+  }
+  return out;
+}
+
+/**
  * Persist ONE measured Play category-chart rank sample (ranking-parity step 1).
  * Honesty mirror of persistRankSnapshots: an UNKNOWN read (`rank === null`) is
  * NOT a measured fact → we record nothing. A measured chart — whether the app
