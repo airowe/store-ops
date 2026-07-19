@@ -124,6 +124,7 @@ import { deriveBrandTokens, localizeCopy, LocalizeError, validateLocalizedSubmis
 import { readLocaleKeywords } from "../engine/localeKeywords.js";
 import { analyzeRejection } from "../engine/rejectionAssistant.js";
 import { localizeScreenshots, type LayeredSource, type TextSlot } from "../engine/localizeScreenshots.js";
+import { planScreenshots, type PlannerInputs, type Grade } from "../engine/screenshotPlanner.js";
 import { localizerForEnv } from "./aiLocalizer.js";
 import { credentialsEnabled, deleteCredential, listCredentialMeta, saveCredential, useCredential } from "../credentialStore.js";
 import { createApiKey, listApiKeys, looksLikeApiKey, resolveApiKey, revokeApiKey } from "../apiKeys.js";
@@ -2649,6 +2650,58 @@ async function localizeScreenshotsRoute(req: Request, env: Env): Promise<unknown
 }
 
 /**
+ * POST /plan/screenshots (#153 ShipShots — the LLM planner half) — turn a run's
+ * audit findings + listing metadata + captured screen ids into a schema-validated
+ * ScreenshotPlan the deterministic renderer draws. The LLM only PLANS; every
+ * field is guardrailed in the engine (headline lint, MISSING for unsourceable
+ * shots, template/accent whitelist). Stateless: returns the plan, renders nothing,
+ * ships nothing. No AI binding (or a model failure) degrades to a deterministic
+ * plan, honestly marked `degraded` — never a hard error, never a fabricated shot.
+ */
+async function planScreenshotsRoute(req: Request, env: Env): Promise<unknown> {
+  const body = (await readJson(req)) as {
+    appName?: unknown;
+    subtitle?: unknown;
+    keywords?: unknown;
+    rawScreens?: unknown;
+    audit?: unknown;
+    brandPalette?: unknown;
+  };
+
+  if (typeof body.appName !== "string" || body.appName.trim() === "") {
+    throw new HttpError(400, "appName is required");
+  }
+  const audit = body.audit as { grade?: unknown; recommendedCount?: unknown; findings?: unknown } | undefined;
+  if (
+    !audit ||
+    typeof audit.recommendedCount !== "number" ||
+    !(audit.recommendedCount > 0) ||
+    !Array.isArray(audit.findings)
+  ) {
+    throw new HttpError(400, "audit needs a positive recommendedCount and a findings array");
+  }
+  const asStrings = (v: unknown): string[] =>
+    Array.isArray(v) ? v.filter((s): s is string => typeof s === "string") : [];
+
+  const grade: Grade = (["A", "B", "C", "D", "F", "?"] as const).includes(audit.grade as Grade)
+    ? (audit.grade as Grade)
+    : "?";
+
+  const inputs: PlannerInputs = {
+    appName: body.appName,
+    ...(typeof body.subtitle === "string" ? { subtitle: body.subtitle } : {}),
+    keywords: asStrings(body.keywords),
+    rawScreens: asStrings(body.rawScreens),
+    audit: { grade, recommendedCount: audit.recommendedCount, findings: asStrings(audit.findings) },
+    brandPalette: asStrings(body.brandPalette),
+  };
+
+  // reasonerForEnv returns undefined without an AI binding → planScreenshots
+  // degrades deterministically; a model error degrades too. Never throws here.
+  return await planScreenshots(inputs, reasonerForEnv(env.AI));
+}
+
+/**
  * POST /runs/:id/localize/approve (#78 Phase 2) — the explicit per-market
  * approval: store this locale's (possibly human-edited) draft on the run
  * trace, making it part of the handoff. The server is authoritative: the
@@ -4133,6 +4186,10 @@ export async function handleApi(req: Request, env: Env, ctx?: ExecutionContext):
     // POST /localize/screenshots — localize a layered screenshot source (#78 item 3, v1-A)
     if (seg[0] === "localize" && seg[1] === "screenshots" && seg.length === 2 && method === "POST") {
       return json(await localizeScreenshotsRoute(req, env), 200, origin, env);
+    }
+    // POST /plan/screenshots — LLM-plan a screenshot set from audit findings (#153)
+    if (seg[0] === "plan" && seg[1] === "screenshots" && seg.length === 2 && method === "POST") {
+      return json(await planScreenshotsRoute(req, env), 200, origin, env);
     }
 
     // /account/notifications — communication prefs (comms-prefs Phase 1)
