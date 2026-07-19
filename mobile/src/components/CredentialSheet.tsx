@@ -9,6 +9,7 @@
 import React, { useState } from "react";
 import { View } from "react-native";
 import * as DocumentPicker from "expo-document-picker";
+import * as Linking from "expo-linking";
 import { palette, spacing } from "../theme/index.js";
 import {
   readPickedCredential,
@@ -68,7 +69,18 @@ function AscSheet({ onSubmit, busy, submitLabel }: { onSubmit: (v: AscSubmit) =>
     <Card>
       <AppText kind="lead">App Store Connect (.p8)</AppText>
       <AppText kind="micro">Used once to read your live listing — never stored on this device.</AppText>
+      <AppText kind="micro">
+        No key yet? Any user can make an Individual API key (no admin role): in App Store
+        Connect, your name → Edit Profile → Individual API Key → Generate → Download the
+        .p8 (downloads once). Copy the Key ID and Issuer ID shown next to it.
+      </AppText>
       <View style={{ gap: spacing.sm, marginTop: spacing.sm }}>
+        <Button
+          label="How to get your key ↗"
+          variant="ghost"
+          onPress={() => void Linking.openURL("https://appstoreconnect.apple.com/access/integrations/api")}
+          testID="asc-key-help"
+        />
         <Button label="Pick .p8 file" variant="ghost" onPress={() => void pickFileText().then((t) => t && setP8(t))} testID="asc-pick" />
         <TextField testID="asc-p8" value={p8} onChangeText={setP8} placeholder="…or paste the .p8 contents" multiline />
         <TextField testID="asc-keyid" value={keyId} onChangeText={setKeyId} placeholder="Key ID" />

@@ -33,6 +33,23 @@ describe("CredentialSheet — asc", () => {
   });
 });
 
+describe("CredentialSheet — asc how-to guidance", () => {
+  it("offers a 'how to get your key' link that opens Apple's API-keys page", async () => {
+    const Linking = jest.requireMock("expo-linking") as { openURL: jest.Mock };
+    render(<CredentialSheet variant="asc" onSubmit={jest.fn()} />);
+    fireEvent.press(screen.getByTestId("asc-key-help"));
+    await waitFor(() => expect(Linking.openURL).toHaveBeenCalled());
+    expect(Linking.openURL).toHaveBeenCalledWith(
+      expect.stringContaining("appstoreconnect.apple.com"),
+    );
+  });
+
+  it("mentions the self-serve Individual-key path (no admin role needed)", () => {
+    render(<CredentialSheet variant="asc" onSubmit={jest.fn()} />);
+    expect(screen.getByText(/individual/i)).toBeTruthy();
+  });
+});
+
 describe("CredentialSheet — file picking (security)", () => {
   it("invokes the picker with copyToCacheDirectory:false — a cache copy would persist the credential", async () => {
     const DocumentPicker = jest.requireMock("expo-document-picker") as {
