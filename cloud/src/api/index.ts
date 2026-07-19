@@ -125,7 +125,6 @@ import { readLocaleKeywords } from "../engine/localeKeywords.js";
 import { analyzeRejection } from "../engine/rejectionAssistant.js";
 import { localizeScreenshots, type LayeredSource, type TextSlot } from "../engine/localizeScreenshots.js";
 import { planScreenshots, type PlannerInputs, type Grade } from "../engine/screenshotPlanner.js";
-import { reviewRiskLint, type ReviewRiskInput } from "../engine/reviewRiskLint.js";
 import { localizerForEnv } from "./aiLocalizer.js";
 import { credentialsEnabled, deleteCredential, listCredentialMeta, saveCredential, useCredential } from "../credentialStore.js";
 import { createApiKey, listApiKeys, looksLikeApiKey, resolveApiKey, revokeApiKey } from "../apiKeys.js";
@@ -2703,37 +2702,6 @@ async function planScreenshotsRoute(req: Request, env: Env): Promise<unknown> {
 }
 
 /**
- * POST /lint/review-risk (#178 Phase 1) — guideline-aware copy lint. Deterministic,
- * no LLM: flags proposed copy that is ASO-optimal but App-Review-risky (2.3.1
- * claims, 2.3.7 keyword/competitor-name issues, price-in-title, placeholder text),
- * each finding CITING the guideline section verbatim. Stateless. Every finding is
- * explicitly a heuristic — "flagged, not Apple's verdict".
- */
-async function reviewRiskLintRoute(req: Request): Promise<unknown> {
-  const body = (await readJson(req)) as {
-    copy?: { name?: unknown; subtitle?: unknown; keywords?: unknown; promo?: unknown; description?: unknown };
-    competitorBrands?: unknown;
-  };
-  const c = body.copy;
-  if (!c || typeof c.name !== "string" || typeof c.subtitle !== "string" || typeof c.keywords !== "string") {
-    throw new HttpError(400, "copy needs string name, subtitle, and keywords fields");
-  }
-  const input: ReviewRiskInput = {
-    copy: {
-      name: c.name,
-      subtitle: c.subtitle,
-      keywords: c.keywords,
-      ...(typeof c.promo === "string" ? { promo: c.promo } : {}),
-      ...(typeof c.description === "string" ? { description: c.description } : {}),
-    },
-    ...(Array.isArray(body.competitorBrands)
-      ? { competitorBrands: body.competitorBrands.filter((b): b is string => typeof b === "string") }
-      : {}),
-  };
-  return { findings: reviewRiskLint(input) };
-}
-
-/**
  * POST /runs/:id/localize/approve (#78 Phase 2) — the explicit per-market
  * approval: store this locale's (possibly human-edited) draft on the run
  * trace, making it part of the handoff. The server is authoritative: the
@@ -4222,10 +4190,6 @@ export async function handleApi(req: Request, env: Env, ctx?: ExecutionContext):
     // POST /plan/screenshots — LLM-plan a screenshot set from audit findings (#153)
     if (seg[0] === "plan" && seg[1] === "screenshots" && seg.length === 2 && method === "POST") {
       return json(await planScreenshotsRoute(req, env), 200, origin, env);
-    }
-    // POST /lint/review-risk — guideline-aware copy lint (#178 Phase 1)
-    if (seg[0] === "lint" && seg[1] === "review-risk" && seg.length === 2 && method === "POST") {
-      return json(await reviewRiskLintRoute(req), 200, origin, env);
     }
 
     // /account/notifications — communication prefs (comms-prefs Phase 1)
