@@ -194,12 +194,18 @@ def _load_font(size: int):
     return ImageFont.load_default()
 
 
-def render_locale(plan: DrawPlan, background, out_path) -> Path:
+def render_locale(plan: DrawPlan, background, out_path,
+                  device_screen=None, device_frame: Optional[SlotBox] = None) -> Path:
     """Composite `plan` onto `background` (a PIL image path/Image, or None for a
     neutral fill) and write one PNG at the canvas size. The engine already chose
     every font size and this plan already wrapped every line — the shell only
     draws. When plan.needs_review, stamps a corner watermark so an un-reviewed
-    draft is visibly a draft."""
+    draft is visibly a draft.
+
+    When `device_screen` (a raw app capture) and `device_frame` (a SlotBox, from
+    a shot_templates TemplateLayout) are given, the capture is fitted into that
+    rect BEFORE the captions are drawn — so the template controls exactly where
+    the app screen sits and the copy always lands on top of it."""
     from PIL import Image, ImageDraw
 
     out_path = Path(out_path)
@@ -211,6 +217,20 @@ def render_locale(plan: DrawPlan, background, out_path) -> Path:
     else:
         src = background if isinstance(background, Image.Image) else Image.open(background)
         img = src.convert("RGB").resize((W, H))
+
+    # composite the app capture into the template's device frame (before captions)
+    if device_screen is not None and device_frame is not None:
+        dev = device_screen if isinstance(device_screen, Image.Image) else Image.open(device_screen)
+        dev = dev.convert("RGB")
+        # contain-fit into the frame, preserving aspect (no distortion)
+        fw, fh = device_frame.width, device_frame.height
+        scale = min(fw / dev.width, fh / dev.height)
+        new = (max(1, round(dev.width * scale)), max(1, round(dev.height * scale)))
+        dev = dev.resize(new)
+        ox = device_frame.x + (fw - dev.width) // 2
+        oy = device_frame.y + (fh - dev.height) // 2
+        img.paste(dev, (ox, oy))
+
     draw = ImageDraw.Draw(img)
 
     for d in plan.draws:

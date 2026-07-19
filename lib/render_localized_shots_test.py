@@ -122,6 +122,32 @@ def test_render_locale_writes_png_of_canvas_size():
             assert im.size == (CANVAS.width, CANVAS.height)
 
 
+def test_render_locale_composites_a_device_screen_into_the_frame():
+    # A raw app screen composited into a template's device_frame rect must land
+    # inside that rect (not fill the whole canvas) — the template controls where
+    # the device sits.
+    try:
+        from PIL import Image
+    except ImportError:
+        print("  skip device composite (Pillow not installed)")
+        return
+    device = Image.new("RGB", (600, 1200), (200, 30, 30))  # a red "app screen"
+    frame = SlotBox(x=145, y=728, width=1000, height=1836)  # a device_frame rect
+    plan = build_draw_plan(CANVAS, LAYOUT, manifest_locale(), needs_review=False)
+    with tempfile.TemporaryDirectory() as d:
+        out = Path(d) / "01.png"
+        render_locale(plan, background=None, out_path=out,
+                      device_screen=device, device_frame=frame)
+        with Image.open(out) as im:
+            # a pixel well inside the frame is reddish (device composited there)
+            r, g, b = im.convert("RGB").getpixel((frame.x + frame.width // 2,
+                                                   frame.y + frame.height // 2))
+            assert r > 120 and g < 100 and b < 100, f"device not composited: {(r,g,b)}"
+            # a pixel in the top caption band is NOT the device red
+            tr, tg, tb = im.convert("RGB").getpixel((CANVAS.width // 2, 40))
+            assert not (tr > 120 and tg < 100 and tb < 100), "device bled into caption band"
+
+
 def _run():
     tests = [v for k, v in sorted(globals().items())
              if k.startswith("test_") and callable(v)]
