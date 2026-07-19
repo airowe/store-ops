@@ -1,0 +1,17 @@
+{
+  "_comment": "OFFLINE translation table for the demo Localizer — keeps the loop provable with zero external calls (the 'generic/template first' path). In the real loop you delete this and point the bridge at the live provider (Workers AI via cloud, or DeepL): scripts/localize-shots.mjs --provider. Keyed by source English text, then by target locale. ShipASO (a brandToken) is intentionally kept verbatim in every locale — the engine masks it before translating.",
+  "Prove your rank moved": {
+    "es-ES": "Demuestra que tu posición cambió",
+    "de-DE": "Beweise, dass sich dein Ranking verändert hat",
+    "fr-FR": "Prouvez que votre classement a bougé",
+    "pt-BR": "Prove que sua posição mudou",
+    "it-IT": "Dimostra che il tuo posizionamento è cambiato"
+  },
+  "Track keyword rankings before and after every change": {
+    "es-ES": "Sigue las posiciones de tus palabras clave antes y después de cada cambio",
+    "de-DE": "Verfolge die Keyword-Rankings vor und nach jeder Änderung",
+    "fr-FR": "Suivez le classement de vos mots-clés avant et après chaque modification",
+    "pt-BR": "Acompanhe a posição das palavras-chave antes e depois de cada mudança",
+    "it-IT": "Monitora il posizionamento delle parole chiave prima e dopo ogni modifica"
+  }
+}
