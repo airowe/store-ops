@@ -88,6 +88,28 @@ describe("<ConnectAscCard />", () => {
     await waitFor(() => expect(onRunStarted).toHaveBeenCalledWith("run-new"));
   });
 
+  it("no stored key: shows how-to-get-your-key guidance with an Apple deep link", async () => {
+    const { client } = makeClient();
+    renderCard(client);
+    await waitFor(() => screen.getByTestId("asc-key-id"));
+    const help = screen.getByTestId("asc-key-help");
+    expect(help).toBeInTheDocument();
+    // mentions the self-serve Individual-key path (no admin role needed)
+    expect(help.textContent).toMatch(/individual/i);
+    // deep-links to Apple's key page, opening in a new tab safely
+    const link = screen.getByTestId("asc-key-link") as HTMLAnchorElement;
+    expect(link.getAttribute("href")).toContain("appstoreconnect.apple.com");
+    expect(link.getAttribute("target")).toBe("_blank");
+    expect(link.getAttribute("rel")).toContain("noopener");
+  });
+
+  it("stored key present: the how-to guidance is gone (already connected)", async () => {
+    const { client } = makeClient({ credentials: [ASC_CRED] });
+    renderCard(client);
+    await waitFor(() => screen.getByTestId("asc-run-stored"));
+    expect(screen.queryByTestId("asc-key-help")).toBeNull();
+  });
+
   it("storage disabled on this deployment: form still works, save option absent", async () => {
     const { client, post } = makeClient({ enabled: false });
     renderCard(client);

@@ -77,6 +77,26 @@ export function ConnectAscCard({
             keyword field, screenshots) and push approved copy from here. The key is
             used to mint a short-lived token and is never logged or shown back.
           </p>
+          <details className="micro" data-testid="asc-key-help">
+            <summary>How to get your key (about 2 minutes)</summary>
+            <p style={{ marginTop: 6 }}>
+              Any App Store Connect user can create an{" "}
+              <b>Individual API key</b> — no admin role needed. In App Store
+              Connect: your name (top-right) → <b>Edit Profile</b> →{" "}
+              <b>Individual API Key</b> → <b>Generate Key</b>, then{" "}
+              <b>Download</b> the <code>.p8</code>. It downloads only once — keep it
+              safe. Copy the <b>Key ID</b> and <b>Issuer ID</b> shown next to it,
+              and paste all three below.
+            </p>
+            <a
+              data-testid="asc-key-link"
+              href="https://appstoreconnect.apple.com/access/integrations/api"
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              Open App Store Connect → API keys ↗
+            </a>
+          </details>
           <div style={{ display: "grid", gap: 8 }}>
             <input
               data-testid="asc-key-id"
