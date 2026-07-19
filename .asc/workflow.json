@@ -1,0 +1,61 @@
+{
+  // Automated localization of App Store Previews — the loop from the tweet
+  // (Codex + Figma MCP + XcodeBuildMCP + ASC CLI), rebuilt on this repo's own
+  // pieces and made HONEST: it translates + auto-fits caption copy, renders
+  // per-locale screenshots, frames them, and then STOPS at a human review gate.
+  // It never auto-uploads to the live store (PRD 04's hard rule — a
+  // machine-translated screenshot is a draft until a person approves it).
+  //
+  //   localize  → render → frame → review-generate → STOP
+  //
+  // Run:  asc workflow run localize-previews
+  //   or: asc workflow run --dry-run localize-previews   (preview the plan)
+  //
+  // Swap SOURCE/OUT/LOCALES (and provide real background art + real app IDs)
+  // to point it at a real app. RTL locales are excluded by the engine, stated
+  // in out/excluded.json, and never rendered broken.
+  "env": {
+    "SOURCE": "marketing/localize-demo/source.json",
+    "OUT": "marketing/localize-demo/out",
+    // LTR locales only in this cut (de-DE exercises the auto-fit shrink path).
+    "LOCALES": "es-ES,de-DE,fr-FR,pt-BR,it-IT",
+    // Optional background art for the composition; empty → neutral fill.
+    "BACKGROUND": "",
+    // Framing device for `asc screenshots frame` (see list-frame-devices).
+    "FRAME_DEVICE": "iphone-air"
+  },
+  "workflows": {
+    "localize-previews": {
+      "description": "Translate + auto-fit caption copy, render per-locale App Store previews, frame them, then STOP at a review gate (no auto-upload)",
+      "steps": [
+        {
+          "name": "localize",
+          // Runs the SAME pure engine as the Worker's /localize/screenshots route
+          // (bundled fresh from src). Writes manifest.json + review.json +
+          // excluded.json. Offline provider = zero external calls (the demo path).
+          "run": "node scripts/localize-shots.mjs --source \"$SOURCE\" --locales \"$LOCALES\" --out \"$OUT\" --provider offline"
+        },
+        {
+          "name": "render",
+          // Draws each locale's captions at the engine-chosen font size onto the
+          // background. Flagged locales (overflow/shrink) get a DRAFT watermark.
+          "run": "python3 scripts/render-shots.py --source \"$SOURCE\" --out \"$OUT\" ${BACKGROUND:+--background \"$BACKGROUND\"}"
+        },
+        {
+          "name": "frame",
+          // Device framing via the existing asc CLI. Non-fatal if the
+          // experimental framer isn't available on this machine — the raw
+          // localized PNGs in $OUT/<locale>/ are already reviewable.
+          "run": "for d in \"$OUT\"/*/; do for png in \"$d\"*.png; do [ -f \"$png\" ] && asc screenshots frame --input \"$png\" --device \"$FRAME_DEVICE\" || true; done; done"
+        },
+        {
+          "name": "review_gate",
+          // The STOP. Summarize what to review; DO NOT upload. A person opens the
+          // per-locale PNGs, checks the needsReview/excluded flags, and only then
+          // runs the (separate, explicit) upload command below.
+          "run": "echo '--- REVIEW GATE (no upload performed) ---'; echo 'localized previews:'; find \"$OUT\" -name '*.png' | sort; echo; echo 'flagged for review (see review.json):'; cat \"$OUT/review.json\"; echo; echo 'excluded locales (stated, not rendered):'; cat \"$OUT/excluded.json\"; echo; echo 'To ship a reviewed locale, run explicitly, e.g.:'; echo '  asc screenshots upload --version-localization <ID> --path '\"$OUT\"'/de-DE --device-type IPHONE_67'"
+        }
+      ]
+    }
+  }
+}

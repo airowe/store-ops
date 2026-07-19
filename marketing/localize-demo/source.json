@@ -1,0 +1,27 @@
+{
+  "_comment": "Demo layered source for the localized-App-Store-Previews loop. Swap this (and the per-locale translations, and a real background) for your app's real screenshot composition. 'slots' matches cloud/src/engine/localizeScreenshots.ts LayeredSource: each named caption over the background, with the box it must fit and its base font size. The engine translates + auto-fits per locale; the renderer draws at the size the engine chose.",
+  "brandTokens": ["ShipASO"],
+  "canvas": { "width": 1290, "height": 2796 },
+  "layout": {
+    "headline": { "x": 120, "y": 200, "width": 1050, "height": 300, "align": "center" },
+    "subhead":  { "x": 120, "y": 520, "width": 1050, "height": 200, "align": "center" }
+  },
+  "slots": [
+    {
+      "id": "headline",
+      "text": "Prove your rank moved",
+      "box": { "width": 1050, "height": 300 },
+      "fontSize": 96,
+      "minFontSize": 60,
+      "maxLines": 3
+    },
+    {
+      "id": "subhead",
+      "text": "Track keyword rankings before and after every change",
+      "box": { "width": 1050, "height": 200 },
+      "fontSize": 48,
+      "minFontSize": 34,
+      "maxLines": 3
+    }
+  ]
+}
