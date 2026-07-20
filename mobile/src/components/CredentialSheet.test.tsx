@@ -33,6 +33,38 @@ describe("CredentialSheet — asc", () => {
   });
 });
 
+describe("CredentialSheet — asc save-key option (#270)", () => {
+  it("does NOT offer to save the key when the deployment can't store (allowStore off)", () => {
+    render(<CredentialSheet variant="asc" onSubmit={jest.fn()} />);
+    expect(screen.queryByTestId("asc-store")).toBeNull();
+  });
+
+  it("offers save (default on) and emits store:true — the .p8 still never touches device storage", () => {
+    const onSubmit = jest.fn();
+    render(<CredentialSheet variant="asc" onSubmit={onSubmit} allowStore />);
+    expect(screen.getByTestId("asc-store")).toBeTruthy();
+
+    fireEvent.changeText(screen.getByTestId("asc-p8"), P8);
+    fireEvent.changeText(screen.getByTestId("asc-keyid"), "KEY123");
+    fireEvent.changeText(screen.getByTestId("asc-issuer"), "ISSUER123");
+    fireEvent.press(screen.getByTestId("asc-submit"));
+
+    expect(onSubmit).toHaveBeenCalledWith({ kind: "asc", cred: { p8: P8, keyId: "KEY123", issuerId: "ISSUER123" }, store: true });
+    expect(SecureStore.setItemAsync).not.toHaveBeenCalled(); // storage is server-side; never on device
+  });
+
+  it("toggling save off emits store:false (use-once)", () => {
+    const onSubmit = jest.fn();
+    render(<CredentialSheet variant="asc" onSubmit={onSubmit} allowStore />);
+    fireEvent.press(screen.getByTestId("asc-store")); // on → off
+    fireEvent.changeText(screen.getByTestId("asc-p8"), P8);
+    fireEvent.changeText(screen.getByTestId("asc-keyid"), "K");
+    fireEvent.changeText(screen.getByTestId("asc-issuer"), "I");
+    fireEvent.press(screen.getByTestId("asc-submit"));
+    expect(onSubmit).toHaveBeenCalledWith({ kind: "asc", cred: { p8: P8, keyId: "K", issuerId: "I" }, store: false });
+  });
+});
+
 describe("CredentialSheet — asc how-to guidance", () => {
   it("offers a 'how to get your key' link that opens Apple's API-keys page", async () => {
     const Linking = jest.requireMock("expo-linking") as { openURL: jest.Mock };

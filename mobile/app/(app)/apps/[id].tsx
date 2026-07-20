@@ -8,7 +8,7 @@ import { ActivityIndicator, Pressable, View } from "react-native";
 import { Stack, useLocalSearchParams, useRouter } from "expo-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "../../../src/auth/AuthProvider.js";
-import { auditPlay, getApp, getDeltas, getEngagement, getRanks, runAsc, verifyPlay } from "../../../src/api/endpoints.js";
+import { auditPlay, getApp, getCredentials, getDeltas, getEngagement, getRanks, runAsc, verifyPlay } from "../../../src/api/endpoints.js";
 import { RankMovementRow } from "../../../src/components/RankMovementRow.js";
 import { RankTrendChart } from "../../../src/components/RankTrendChart.js";
 import { CredentialSheet, type AscSubmit, type PlaySubmit } from "../../../src/components/CredentialSheet.js";
@@ -51,11 +51,19 @@ export default function AppDetail() {
 
   const [showCreds, setShowCreds] = useState(false);
   const [playAudit, setPlayAudit] = useState<PlayAudit | null>(null);
+  // #270: does this deployment support server-side (encrypted) key storage?
+  // Drives the "save this key" option — retry:false so a failure just hides it.
+  const creds = useQuery({ queryKey: ["credentials"], queryFn: () => getCredentials(client), retry: false });
 
-  // ASC read-and-improve: the .p8 is used once here and dropped (never stored).
+  // ASC read-and-improve: the .p8 is used once here and never written to this
+  // device. #270: when the user opts to save, we forward store:true so the
+  // server envelope-encrypts it (opt-in) — future pushes are one tap.
   const asc = useMutation({
-    mutationFn: (s: AscSubmit) => runAsc(client, id!, { ...s.cred }),
-    onSuccess: (run) => router.push(`/(app)/runs/${run.id}`),
+    mutationFn: (s: AscSubmit) => runAsc(client, id!, { ...s.cred, ...(s.store !== undefined ? { store: s.store } : {}) }),
+    onSuccess: (run) => {
+      void queryClient.invalidateQueries({ queryKey: ["credentials"] });
+      router.push(`/(app)/runs/${run.id}`);
+    },
   });
 
   // Play own-app audit: verify the service account, then audit. Credential used
@@ -155,7 +163,7 @@ export default function AppDetail() {
 
       {showCreds ? (
         <>
-          <CredentialSheet variant="asc" onSubmit={(v) => asc.mutate(v as AscSubmit)} busy={asc.isPending} />
+          <CredentialSheet variant="asc" onSubmit={(v) => asc.mutate(v as AscSubmit)} busy={asc.isPending} allowStore={creds.data?.enabled ?? false} />
           {asc.isError ? <AppText kind="dim" style={{ color: palette.bad }}>{asc.error instanceof Error ? asc.error.message : "ASC run failed"}</AppText> : null}
           <CredentialSheet variant="play" onSubmit={(v) => play.mutate(v as PlaySubmit)} busy={play.isPending} />
           {play.isError ? <AppText kind="dim" style={{ color: palette.bad }}>{play.error instanceof Error ? play.error.message : "Play audit failed"}</AppText> : null}

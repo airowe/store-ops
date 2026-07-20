@@ -20,7 +20,13 @@ import {
 import { AppText, Button, Card } from "./primitives.js";
 import { TextField } from "./TextField.js";
 
-export type AscSubmit = { kind: "asc"; cred: AscCredential };
+/**
+ * `store` (#270): when true the caller sends the key with `store:true` so the
+ * server envelope-encrypts + saves it (opt-in) — future pushes are one tap and
+ * no re-paste. The custody rule is UNCHANGED on the device: the .p8 still lives
+ * only in this component's local state and is never written to disk here.
+ */
+export type AscSubmit = { kind: "asc"; cred: AscCredential; store?: boolean };
 export type PlaySubmit = { kind: "play"; serviceAccount: string };
 
 export function CredentialSheet({
@@ -28,15 +34,18 @@ export function CredentialSheet({
   onSubmit,
   busy,
   submitLabel,
+  allowStore,
 }: {
   variant: "asc" | "play";
   onSubmit: (v: AscSubmit | PlaySubmit) => void;
   busy?: boolean;
   submitLabel?: string;
+  /** show the "save this key (encrypted)" option — gated on the deployment supporting storage. */
+  allowStore?: boolean;
 }) {
   const shared = { busy: !!busy, ...(submitLabel !== undefined ? { submitLabel } : {}) };
   return variant === "asc" ? (
-    <AscSheet onSubmit={(v) => onSubmit(v)} {...shared} />
+    <AscSheet onSubmit={(v) => onSubmit(v)} allowStore={!!allowStore} {...shared} />
   ) : (
     <PlaySheet onSubmit={(v) => onSubmit(v)} {...shared} />
   );
@@ -51,10 +60,11 @@ async function pickFileText(): Promise<string | null> {
   return readPickedCredential(res.assets[0].uri);
 }
 
-function AscSheet({ onSubmit, busy, submitLabel }: { onSubmit: (v: AscSubmit) => void; busy?: boolean; submitLabel?: string }) {
+function AscSheet({ onSubmit, busy, submitLabel, allowStore }: { onSubmit: (v: AscSubmit) => void; busy?: boolean; submitLabel?: string; allowStore?: boolean }) {
   const [p8, setP8] = useState("");
   const [keyId, setKeyId] = useState("");
   const [issuerId, setIssuerId] = useState("");
+  const [store, setStore] = useState(true); // default on when offered — one-tap pushes
   const [error, setError] = useState<string | null>(null);
 
   const submit = () => {
@@ -62,7 +72,7 @@ function AscSheet({ onSubmit, busy, submitLabel }: { onSubmit: (v: AscSubmit) =>
     const problem = validateAscCredential(cred);
     if (problem) return setError(problem);
     setError(null);
-    onSubmit({ kind: "asc", cred });
+    onSubmit({ kind: "asc", cred, ...(allowStore ? { store } : {}) });
   };
 
   return (
@@ -85,6 +95,20 @@ function AscSheet({ onSubmit, busy, submitLabel }: { onSubmit: (v: AscSubmit) =>
         <TextField testID="asc-p8" value={p8} onChangeText={setP8} placeholder="…or paste the .p8 contents" multiline />
         <TextField testID="asc-keyid" value={keyId} onChangeText={setKeyId} placeholder="Key ID" />
         <TextField testID="asc-issuer" value={issuerId} onChangeText={setIssuerId} placeholder="Issuer ID" />
+        {allowStore ? (
+          <>
+            <AppText kind="micro">
+              Save this key (encrypted, server-side) so pushes are one tap — no re-paste. It’s still
+              never written to this device.
+            </AppText>
+            <Button
+              testID="asc-store"
+              label={store ? "✓ Save this key (encrypted)" : "Don’t save — use once"}
+              variant={store ? "primary" : "ghost"}
+              onPress={() => setStore((v) => !v)}
+            />
+          </>
+        ) : null}
         {error ? <AppText kind="dim" style={{ color: palette.bad }}>{error}</AppText> : null}
         <Button label={submitLabel ?? "Run read-and-improve"} onPress={submit} loading={!!busy} testID="asc-submit" />
       </View>
