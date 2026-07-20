@@ -85,6 +85,14 @@ CLI skills — metadata sync, localization, PPP pricing, screenshots, releases,
 reviews. Install the `asc` and `gplay` CLIs to execute; the reasoning skills work
 standalone and emit the commands regardless.
 
+## Run it from a hosted agent (optional)
+
+**shipaso-mcp** — connect Claude Code / Cursor / any MCP client to the hosted
+ShipASO MCP with a `shipaso_` key and drive the same engine as tools (audit,
+keyword gaps, rank check, war room, …). Read/draft only — nothing ships from the
+MCP. Use it when you want the reasoning without a local install; the plugin
+above stays fully free + offline-capable.
+
 ## Principles
 
 - **No paid data dependency.** The whole point — competitors need
