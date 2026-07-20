@@ -479,6 +479,21 @@ export type AscContext = {
   [k: string]: unknown;
 };
 
+/**
+ * Proposed Product Page Optimization treatment (#182 Phase 3) — a read-only
+ * brief: an outcome-led headline + the steps to run Apple's free A/B test in
+ * ASC yourself. A recommendation with CITED public evidence, never a claim
+ * about your numbers. Present only on a keyed run with no PPO test running.
+ */
+export type PpoTreatmentPlan = {
+  headline: string;
+  steps: string[];
+  evidence: string;
+  guidance: string;
+  /** deep link into App Store Connect to set the test up, when the id is known. */
+  ascUrl?: string;
+};
+
 /** The run-page `result` block — curated copy + counts only (privacy boundary). */
 export type RunResult = {
   audit: {
@@ -502,6 +517,8 @@ export type RunResult = {
   localizedCopy?: Record<string, LocalizedCopy>;
   /** ROI-sorted locales to add (PRD 04) — static heuristic, PII-safe. */
   localizationExpansion?: LocaleRecommendation[];
+  /** proposed outcome-led PPO treatment brief (#182 Phase 3) — read-only. */
+  ppoTreatment?: PpoTreatmentPlan;
 };
 
 export type RunApproval = { decision: string; decided_at: string };
