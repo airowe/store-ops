@@ -214,13 +214,26 @@
       var pct = typeof score === "number" ? score : 0;
       var breakdown = Array.isArray(p.breakdown) ? p.breakdown : [];
       var sample = Array.isArray(p.sample) ? p.sample : [];
+      var measured = typeof p.fieldsMeasured === "number" ? p.fieldsMeasured : breakdown.filter(function (f) { return f.state === "measured"; }).length;
+      var total = typeof p.fieldsTotal === "number" ? p.fieldsTotal : breakdown.length;
+      // A thin public read (fewer than half the fields readable) shouldn't read
+      // as a perfect listing — the score is over what we COULD see, so we say so.
+      var thin = total > 0 && measured < Math.ceil(total / 2);
 
       var html = "";
       html += '<div class="apphead">' +
         '<div class="meta"><h2>' + esc(p.appName || data.bundleId || "This app") + "</h2>" +
-        '<div class="sub">' + esc(data.bundleId || "") + " · " + esc((data.country || "us")).toUpperCase() + "</div></div>" +
+        '<div class="sub">' + esc(data.bundleId || "") + " · " + esc((data.country || "us")).toUpperCase() +
+          (total ? " · " + measured + " of " + total + " fields readable" : "") + "</div></div>" +
         '<div class="ring" style="--pct:' + pct + '"><span class="num">' + (typeof score === "number" ? score : "—") + "</span></div>" +
       "</div>";
+
+      // Honesty caveat when the public page didn't expose much — the score is a
+      // read of what's visible, not a verdict on the whole listing.
+      if (thin) {
+        html += '<div class="msg">Heads up: only <b>' + measured + " of " + total + "</b> fields were readable from the public " +
+          "App Store page, so this score reflects just those. Connect the app (or run the plugin with your key) to score the rest.</div>";
+      }
 
       // per-field breakdown
       if (breakdown.length) {

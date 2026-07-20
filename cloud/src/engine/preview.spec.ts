@@ -81,4 +81,14 @@ describe("buildPreview — teaser-safe subset of a run for logged-out visitors",
     expect(p.score).toBeGreaterThanOrEqual(0);
     expect(p.score).toBeLessThanOrEqual(100);
   });
+
+  it("reports how many fields were actually readable, so a thin read isn't mistaken for a perfect listing", () => {
+    // makeResult() has a title + screenshots + (no storefront/subtitle) → a partial read.
+    const p = buildPreview(makeResult());
+    expect(p.fieldsTotal).toBe(p.breakdown.length);
+    expect(p.fieldsMeasured).toBe(p.breakdown.filter((f) => f.state === "measured").length);
+    // the honest signal: measured ≤ total, and this fixture is NOT fully readable
+    expect(p.fieldsMeasured).toBeLessThan(p.fieldsTotal);
+    expect(p.fieldsMeasured).toBeGreaterThan(0);
+  });
 });

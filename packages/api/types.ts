@@ -431,6 +431,9 @@ export type AppPreview = {
   breakdown: ReportFieldScore[];
   /** composite 0–100 over measurable fields, or null when nothing was measurable. */
   score: number | null;
+  /** how many fields the public read could score, out of the total — a thin read isn't a perfect one. */
+  fieldsMeasured: number;
+  fieldsTotal: number;
 };
 
 /** POST /preview → candidate picker, a preview audit, or an error. */
