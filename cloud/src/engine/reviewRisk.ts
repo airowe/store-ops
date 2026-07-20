@@ -33,6 +33,35 @@ const PLACEHOLDER_RE = /\b(lorem ipsum|placeholder|your app name(?: here)?|to ?d
 const CAVEAT = "Flagged as a review risk — a heuristic, not Apple's verdict; review before you submit.";
 
 /**
+ * Famous app/platform names that must not appear in the keyword field (2.3.7 —
+ * "don't pack your metadata with trademarked terms, popular app names …"). A
+ * small curated set; callers may add confirmed competitor brands per run.
+ */
+const FAMOUS_APP_BRANDS = [
+  "instagram", "tiktok", "facebook", "whatsapp", "snapchat", "youtube", "spotify",
+  "netflix", "uber", "twitter", "threads", "telegram", "pinterest", "reddit",
+] as const;
+
+/** Split a keyword field into normalized, non-empty terms. */
+function keywordTerms(keywords: string): string[] {
+  return keywords.toLowerCase().split(",").map((t) => t.trim()).filter(Boolean);
+}
+
+/**
+ * A crude English root: strip a trailing plural/possessive so "recipe",
+ * "recipes", "recipe's" collapse to one root for the stuffing check. Multi-word
+ * terms use their FIRST word ("recipe app" → "recipe"), which is where stuffing
+ * repeats show up.
+ */
+function root(term: string): string {
+  const head = (term.split(/\s+/)[0] ?? term).replace(/['’]s$/, "");
+  // Strip a trailing plural "s" so "recipe"/"recipes" share a root. We only strip
+  // a bare "s" (not "es"), which would over-collapse distinct words like
+  // "class"→"clas"; a 4+-char guard avoids butchering short terms.
+  return head.length > 3 && head.endsWith("s") && !head.endsWith("ss") ? head.slice(0, -1) : head;
+}
+
+/**
  * Shared claim predicates (#178 Phase 3) — the SAME rules the copy lint uses,
  * exported so the screenshot-compliance lens can apply them to OCR'd screenshot
  * text without duplicating (and drifting from) the regexes.
@@ -55,7 +84,10 @@ function finding(id: string, title: string, detail: string, fix: string, cite: G
  * no copy. Only the name/subtitle/keywords are inspected — the fields the agent
  * proposes and the ones that actually trip metadata review.
  */
-export function reviewRiskFindings(copy: Partial<CopyFields> | undefined): Finding[] {
+export function reviewRiskFindings(
+  copy: Partial<CopyFields> | undefined,
+  opts?: { competitorBrands?: string[] },
+): Finding[] {
   if (!copy) return [];
   const out: Finding[] = [];
   const name = (copy.name ?? "").trim();
@@ -94,14 +126,55 @@ export function reviewRiskFindings(copy: Partial<CopyFields> | undefined): Findi
   // The app's own brand is already indexed from the name — repeating it in the
   // keyword field wastes the 100-char budget and reads as keyword misuse.
   const brand = deriveBrandTokens(name)[0]?.toLowerCase();
-  if (brand && keywords) {
-    const terms = keywords.toLowerCase().split(",").map((t) => t.trim());
-    if (terms.includes(brand)) {
+  const terms = keywords ? keywordTerms(keywords) : [];
+  if (brand && terms.includes(brand)) {
+    out.push(finding(
+      "review_risk_brand_in_keywords",
+      "Your app name is in the keyword field",
+      `“${brand}” is already indexed from your app name, so repeating it in keywords wastes budget and can read as keyword-field misuse.`,
+      "Remove your brand from the keyword field and use the space for a term you don’t already rank for.",
+      "keyword_packing",
+    ));
+  }
+
+  // OTHER apps' / competitors' names in the keyword field — a classic 2.3.7
+  // rejection (piggybacking on trademarked / popular app names). Curated famous
+  // set + any confirmed-competitor brands the caller passes.
+  if (terms.length) {
+    const banned = new Set<string>([
+      ...FAMOUS_APP_BRANDS,
+      ...(opts?.competitorBrands ?? []).map((b) => b.trim().toLowerCase()).filter(Boolean),
+    ]);
+    const hit = terms.find((t) => banned.has(t));
+    if (hit) {
       out.push(finding(
-        "review_risk_brand_in_keywords",
-        "Your app name is in the keyword field",
-        `“${brand}” is already indexed from your app name, so repeating it in keywords wastes budget and can read as keyword-field misuse.`,
-        "Remove your brand from the keyword field and use the space for a term you don’t already rank for.",
+        "review_risk_other_app_in_keywords",
+        "Another app’s name in your keyword field",
+        `“${hit}” is another app’s / a trademarked name — using it in keywords to piggyback on their traffic is a common 2.3.7 rejection.`,
+        "Remove other apps’ names from the keyword field and rank on your own value terms.",
+        "keyword_packing",
+      ));
+    }
+  }
+
+  // Keyword STUFFING — the same root repeated across ≥3 comma-separated terms
+  // (e.g. recipe, recipes, recipe app, best recipe) reads as gaming the field.
+  if (terms.length >= 3) {
+    const counts = new Map<string, number>();
+    for (const t of terms) {
+      const r = root(t);
+      if (r) counts.set(r, (counts.get(r) ?? 0) + 1);
+    }
+    let stuffed: string | null = null;
+    for (const [r, n] of counts) {
+      if (n >= 3) { stuffed = r; break; }
+    }
+    if (stuffed) {
+      out.push(finding(
+        "review_risk_keyword_stuffing",
+        "Keyword stuffing in your keyword field",
+        `“${stuffed}” appears as the root of 3+ of your keyword terms — repeating one word to fill the field reads as stuffing, not relevance.`,
+        "Keep one strong form of the term and use the reclaimed space for distinct keywords.",
         "keyword_packing",
       ));
     }
