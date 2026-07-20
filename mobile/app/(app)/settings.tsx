@@ -10,15 +10,17 @@
  * the agent does. A denied OS permission shows an honest off-state pointing at
  * OS Settings — never a lying "on".
  */
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { Stack } from "expo-router";
 import { View } from "react-native";
 import * as Notifications from "expo-notifications";
 import { useAuth } from "../../src/auth/AuthProvider.js";
-import { setNotifications, setRankCadence } from "../../src/api/endpoints.js";
+import { pauseAgent, resumeAgent, setNotifications, setRankCadence } from "../../src/api/endpoints.js";
 import { registerForPush, getLastKnownPushToken } from "../../src/notifications/register.js";
 import { signOutWithCleanup } from "../../src/lib/signout.js";
 import { StoredKeysCard } from "../../src/components/StoredKeysCard.js";
+import { ApiKeysCard } from "../../src/components/ApiKeysCard.js";
+import { McpHandoffCard } from "../../src/components/McpHandoffCard.js";
 import { GithubCard } from "../../src/components/GithubCard.js";
 import { Screen, AppText, Button, Card } from "../../src/components/primitives.js";
 import { spacing, usePalette, useThemeMode, type ThemeMode } from "../../src/theme/index.js";
@@ -31,8 +33,17 @@ export default function Settings() {
   const [digestOn, setDigestOn] = useState((me?.email_digest ?? "weekly") === "weekly");
   const [pushOn, setPushOn] = useState(me?.push_run_ready ?? true);
   const [cadence, setCadence] = useState(me?.rank_cadence ?? "weekly");
+  const [paused, setPaused] = useState(me?.paused ?? false);
   const [busy, setBusy] = useState<string | null>(null);
   const [note, setNote] = useState<string | null>(null);
+
+  // `me` boots asynchronously from /auth/me, so the initial useState above can
+  // capture the pre-load default. Sync the autonomy state once me carries it
+  // (only when the user hasn't already toggled it this session — busy guards that).
+  useEffect(() => {
+    if (me?.paused !== undefined && busy !== "autonomy") setPaused(me.paused);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [me?.paused]);
 
   async function toggleDigest() {
     setBusy("digest");
@@ -96,6 +107,20 @@ export default function Settings() {
     }
   }
 
+  async function toggleAutonomy() {
+    setBusy("autonomy");
+    setNote(null);
+    try {
+      // Reflect the SERVER's returned state, not an optimistic guess.
+      const r = paused ? await resumeAgent(client) : await pauseAgent(client);
+      setPaused(r.paused);
+    } catch (e) {
+      setNote(e instanceof Error ? e.message : "Couldn’t update the autonomous sweep.");
+    } finally {
+      setBusy(null);
+    }
+  }
+
   async function doSignOut() {
     setBusy("signout");
     await signOutWithCleanup({
@@ -147,6 +172,28 @@ export default function Settings() {
       </Card>
 
       <Card>
+        <AppText kind="lead">Autonomy</AppText>
+        <AppText kind="micro">Unlike the settings above, this changes what the agent does.</AppText>
+        <SettingRow
+          title="Weekly autonomous sweep"
+          detail={
+            paused
+              ? "Paused — no new runs open. Everything you already approved is untouched."
+              : "Active — each week the agent audits, ranks, and drafts a run for your approval. It never pushes."
+          }
+          action={
+            <Button
+              testID="pause-toggle"
+              label={paused ? "Paused" : "Active"}
+              variant={paused ? "ghost" : "primary"}
+              onPress={() => void toggleAutonomy()}
+              loading={busy === "autonomy"}
+            />
+          }
+        />
+      </Card>
+
+      <Card>
         <AppText kind="lead">Appearance</AppText>
         <AppText kind="micro">Theme for this device. “System” follows your OS light/dark setting.</AppText>
         <View style={{ flexDirection: "row", gap: spacing.xs, marginTop: spacing.sm }}>
@@ -163,6 +210,9 @@ export default function Settings() {
       </Card>
 
       <StoredKeysCard client={client} />
+
+      <ApiKeysCard client={client} />
+      <McpHandoffCard />
 
       <GithubCard client={client} />
 

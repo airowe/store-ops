@@ -13,6 +13,8 @@ import type {
   CheckoutResult,
   AnalyticsIngestResult,
   AnalyticsState,
+  ApiKeyCreated,
+  ApiKeyMeta,
   AscCredentialBody,
   Competitor,
   DeltasView,
@@ -220,6 +222,22 @@ export const setNotifications = (c: ApiClient, patch: Partial<NotificationPrefs>
 
 export const setRankCadence = (c: ApiClient, cadence: RankCadence) =>
   c.post<{ rank_cadence: RankCadence }>("/account/rank-cadence", { cadence });
+
+// ── autonomy (#51) — the per-user master switch for the weekly sweep ────────────
+/** Pause the weekly autonomous sweep. Returns the new state ({ paused: true }). */
+export const pauseAgent = (c: ApiClient) => c.post<{ paused: boolean }>("/agent/pause");
+/** Resume the weekly autonomous sweep. Returns the new state ({ paused: false }). */
+export const resumeAgent = (c: ApiClient) => c.post<{ paused: boolean }>("/agent/resume");
+
+// ── agent access — scoped MCP/agent API keys (#93) ─────────────────────────────
+/** This account's API keys — metadata only (never the raw key). */
+export const listApiKeys = (c: ApiClient) => c.get<{ keys: ApiKeyMeta[] }>("/account/api-keys");
+/** Mint a scoped key. The raw `key` is in the response ONCE — copy it then. */
+export const createApiKey = (c: ApiClient, label: string) =>
+  c.post<ApiKeyCreated>("/account/api-keys", { label });
+/** Revoke a key by id (kills agent access; does not touch the session). */
+export const revokeApiKey = (c: ApiClient, id: string) =>
+  c.request<{ revoked: boolean }>(`/account/api-keys/${enc(id)}`, { method: "DELETE" });
 
 /**
  * Unregister this device's push token (the sign-out path). Uses the generic

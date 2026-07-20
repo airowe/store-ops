@@ -39,6 +39,8 @@ export type Me = {
   email_digest?: NotificationPrefs["email_digest"];
   push_run_ready?: boolean;
   rank_cadence?: RankCadence;
+  /** #51 — the per-user master switch: true = weekly autonomous sweep paused. */
+  paused?: boolean;
 };
 
 /** `POST /auth/request {email}` — passwordless magic-link request. Always sent. */
@@ -347,6 +349,18 @@ export type PlayVerifyResult = {
   reason?: string;
   appAccessible?: boolean;
 };
+
+// ── Agent access — scoped MCP/agent API keys (#93) ────────────────────────────
+export type ApiKeyMeta = {
+  id: string;
+  label: string;
+  /** non-secret display prefix, e.g. "shipaso_1a2b3c4d…". */
+  prefix: string;
+  createdAt: string;
+  lastUsedAt: string | null;
+};
+/** The create response — carries the raw `key` ONCE (copy it then; never shown again). */
+export type ApiKeyCreated = ApiKeyMeta & { key: string };
 
 // ── Measured conversion (analytics-reports Phase 3) ───────────────────────────
 /** A conversion shift observed around an approved push — correlational, labelled. */
