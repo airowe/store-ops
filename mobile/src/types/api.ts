@@ -761,3 +761,43 @@ export type ProofAggregate = {
 };
 
 export type CheckoutResult = { url: string };
+
+// ── ShipShots (#153) — mirrors the shared @shipaso/api ScreenshotPlan types ───
+
+/** The fixed ShipShots template library — matches the engine's TEMPLATE_IDS. */
+export type TemplateId = "headline-top" | "headline-bottom" | "full-bleed" | "duo";
+
+/**
+ * One planned shot (mirrors the engine's PlannedShot). A "MISSING" sourceScreen
+ * is an honest gap — the local renderer draws a labeled placeholder, never a
+ * fabricated screen. `needsReview` flags a bad headline (kept, not dropped).
+ */
+export type PlannedShot = {
+  sourceScreen: string;
+  missingReason?: string;
+  headline: string;
+  subline?: string;
+  templateId: TemplateId;
+  accent?: string;
+  needsReview?: boolean;
+  headlineIssue?: string;
+};
+
+/** The planner's output. `degraded` = the deterministic fallback shaped it (no
+ *  model). `label` is the verbatim draft caveat, shown as-is. */
+export type ScreenshotPlan = {
+  narrative: string;
+  shots: PlannedShot[];
+  label: string;
+  degraded: boolean;
+};
+
+/** Request body for POST /plan/screenshots. */
+export type ScreenshotPlanInputs = {
+  appName: string;
+  subtitle?: string;
+  keywords?: string[];
+  rawScreens?: string[];
+  audit: { grade?: string; recommendedCount: number; findings: string[] };
+  brandPalette?: string[];
+};

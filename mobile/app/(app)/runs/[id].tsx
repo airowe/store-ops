@@ -19,6 +19,7 @@ import { KeywordGapList, OpportunityList } from "../../../src/components/Keyword
 import { LocalizationCard } from "../../../src/components/LocalizationCard.js";
 import { LocalizationExpansionCard } from "../../../src/components/LocalizationExpansionCard.js";
 import { PpoTreatmentCard } from "../../../src/components/PpoTreatmentCard.js";
+import { ScreenshotPlanCard } from "../../../src/components/ScreenshotPlanCard.js";
 import { ScreenshotGallery } from "../../../src/components/ScreenshotGallery.js";
 import { EmptyState } from "../../../src/components/EmptyState.js";
 import { Screen, AppText, Button, Centered } from "../../../src/components/primitives.js";
@@ -92,6 +93,25 @@ export default function RunDetail() {
       {r.coverage ? <CoverageGauge coverage={r.coverage} /> : null}
 
       {r.ppoTreatment ? <PpoTreatmentCard plan={r.ppoTreatment} /> : null}
+
+      {screenshots ? (
+        <ScreenshotPlanCard
+          client={client}
+          inputs={{
+            appName: r.proposedCopy.name ?? r.currentCopy.name ?? r.audit.liveName ?? "",
+            ...(r.proposedCopy.subtitle ? { subtitle: r.proposedCopy.subtitle } : {}),
+            keywords: (r.proposedCopy.keywords ?? "").split(",").map((k) => k.trim()).filter(Boolean),
+            rawScreens: [],
+            audit: {
+              grade: screenshots.grade,
+              // App Store minimum-strong set when the audit carries no explicit target.
+              recommendedCount: 6,
+              findings: screenshots.findings,
+            },
+            brandPalette: [],
+          }}
+        />
+      ) : null}
 
       <ApprovalGate
         status={run.data.status}
