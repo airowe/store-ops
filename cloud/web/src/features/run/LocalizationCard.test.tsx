@@ -33,6 +33,19 @@ describe("<LocalizationCard />", () => {
     await waitFor(() => expect(screen.queryByTestId("loc-approved")).toBeNull());
   });
 
+  it("renders the verbatim machine-translation caveat on the draft (honesty)", async () => {
+    const CAVEAT = "draft — machine-translated, review before shipping";
+    const { client } = makeClient({
+      draft: { locale: "de-DE", copy: { name: "Wetterly" }, trimmed: [], validation: { pass: true }, label: CAVEAT },
+    });
+    renderCard(client);
+    fireEvent.change(screen.getByTestId("loc-locale"), { target: { value: "de-DE" } });
+    fireEvent.click(screen.getByTestId("loc-generate"));
+    const caveat = await screen.findByTestId("loc-caveat");
+    // the caveat rides through verbatim — never softened, never omitted.
+    expect(caveat).toHaveTextContent(CAVEAT);
+  });
+
   it("generate → shows the draft + trimmed note → approve adds the locale", async () => {
     const { client, post } = makeClient();
     renderCard(client);

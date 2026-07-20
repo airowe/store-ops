@@ -106,6 +106,9 @@ export function LocalizationCard({ client, runId, initialLocales }: { client: Ap
       {draft ? (
         <div className="card" data-testid="loc-draft" style={{ marginTop: 8 }}>
           <p className="micro">Draft for <b>{draft.locale}</b>:</p>
+          {draft.label ? (
+            <p className="micro" data-testid="loc-caveat"><b>{draft.label}</b></p>
+          ) : null}
           {FIELDS.map((f) => (draft.copy[f] ? (
             <p key={f} className="micro"><span className="fname">{f}</span>: {draft.copy[f]}</p>
           ) : null))}

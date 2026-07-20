@@ -228,6 +228,8 @@ export type LocalizedDraft = {
   /** fields trimmed to fit their App Store limit — surfaced honestly. */
   trimmed: string[];
   validation?: { pass: boolean };
+  /** the verbatim machine-translation caveat the UI must render (server-authored). */
+  label?: string;
 };
 /** POST /runs/:id/localize/approve · DELETE …/:locale — the approved-locale set. */
 export type LocalizeResult = { approved: string[] };
