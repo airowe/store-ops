@@ -25,6 +25,27 @@ fi
 REPO_ROOT="$(git rev-parse --show-toplevel)"
 CLOUD_DIR="$REPO_ROOT/cloud"
 
+ZERO="0000000000000000000000000000000000000000"
+
+# ── Pure branch-deletion → skip the whole gate ───────────────────────────────
+# git feeds "<local-ref> <local-sha> <remote-ref> <remote-sha>" lines on stdin.
+# A deletion has local_sha all-zeros and pushes NO commits, so there is nothing
+# to typecheck or test. If every ref in this push is a deletion, exit clean
+# before requiring node_modules or running any check. stdin is consumed here, so
+# it's re-read below via the buffered copy.
+STDIN_REFS="$(cat)"
+if [ -n "$STDIN_REFS" ]; then
+  only_deletes=1
+  while read -r _lref local_sha _rref _rsha; do
+    [ -z "${local_sha:-}" ] && continue
+    [ "$local_sha" = "$ZERO" ] || only_deletes=0
+  done <<< "$STDIN_REFS"
+  if [ "$only_deletes" = "1" ]; then
+    echo "pre-push: branch deletion only (no commits to validate) — skipping gate."
+    exit 0
+  fi
+fi
+
 if [ ! -d "$CLOUD_DIR/node_modules" ]; then
   echo "pre-push: cloud/node_modules missing — run 'npm ci' in cloud/ first." >&2
   exit 1
@@ -35,7 +56,8 @@ fi
 # stdin — the exact ranges being pushed. We collect every file changed across
 # those ranges and run e2e only if any is UI (cloud/public/** | cloud/tests/e2e/**).
 # New branch (remote all-zeros) → diff vs origin/main. Branch delete → skip.
-ZERO="0000000000000000000000000000000000000000"
+# (A push that is ONLY deletions already exited clean above; here we may still
+# see a delete ref mixed with real pushes, so the per-ref skip stays.)
 needs_e2e=0
 saw_range=0
 
@@ -58,7 +80,7 @@ else
     if printf '%s\n' "$changed" | grep -qE '^cloud/(public/|tests/e2e/)'; then
       needs_e2e=1
     fi
-  done
+  done <<< "$STDIN_REFS"
   # No range info on stdin (e.g. up-to-date push or manual invocation): be safe
   # and run e2e rather than silently skipping the strongest check.
   [ "$saw_range" = "0" ] && needs_e2e=1
