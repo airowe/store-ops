@@ -26,6 +26,7 @@ import type {
   PushCommand,
   RankCadence,
   RanksSeries,
+  RejectionAnalysis,
   ResolveResult,
   RunDetail,
   SweepSchedule,
@@ -84,6 +85,10 @@ export const localizeApprove = (
 /** Un-approve a locale (drop it from the handoff). */
 export const localizeRemove = (c: ApiClient, id: string, locale: string) =>
   c.request<LocalizeResult>(`/runs/${enc(id)}/localize/${enc(locale)}`, { method: "DELETE" });
+
+/** Analyze a pasted App Review rejection (#178 Phase 4) — cited guideline + drafts. */
+export const analyzeRejection = (c: ApiClient, text: string) =>
+  c.post<RejectionAnalysis>("/rejection-assistant", { text });
 
 /** Approve/reject a run (the human gate). Returns the updated run view. */
 export const decideRun = (c: ApiClient, id: string, decision: "approve" | "reject") =>
