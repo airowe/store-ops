@@ -9,8 +9,9 @@ import { ActivityIndicator, View } from "react-native";
 import { Stack, useLocalSearchParams } from "expo-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "../../../src/auth/AuthProvider.js";
-import { decideRun, getGithubStatus, getRun } from "../../../src/api/endpoints.js";
+import { decideRun, getCredentials, getGithubStatus, getRun } from "../../../src/api/endpoints.js";
 import { ApprovalGate } from "../../../src/components/ApprovalGate.js";
+import { AscPushCard } from "../../../src/components/AscPushCard.js";
 import { GithubPrCard } from "../../../src/components/GithubPrCard.js";
 import { CoverageGauge } from "../../../src/components/CoverageGauge.js";
 import { FindingCard, SurfaceLockCard } from "../../../src/components/FindingCard.js";
@@ -43,6 +44,10 @@ export default function RunDetail() {
     retry: false,
   });
 
+  // #270: a stored ASC key unlocks one-tap Push. retry:false so a failed read
+  // just hides the push card (never a dead button).
+  const creds = useQuery({ queryKey: ["credentials"], queryFn: () => getCredentials(client), retry: false });
+
   const decide = useMutation({
     mutationFn: (decision: "approve" | "reject") => decideRun(client, id!, decision),
     onSuccess: (updated) => {
@@ -67,6 +72,10 @@ export default function RunDetail() {
   const r = run.data.result;
   const screenshots = r.audit?.screenshots ?? null;
   const approved = run.data.status === "approved" || run.data.status === "shipped";
+  // #270: the stored ASC key that can push THIS run — app-scoped or a global key.
+  const storedAscKey = (creds.data?.credentials ?? []).find(
+    (c) => c.kind === "asc" && (c.appId === run.data.app_id || c.appId === null),
+  );
   // #71-C: status is what IS, fixes are what to DO. Partition once — the guard and
   // the rendered list then read the same array and can't drift apart.
   const fixes = r.findings.filter((f) => !f.context);
@@ -106,6 +115,13 @@ export default function RunDetail() {
           onPress={() => void downloadAndShareFastlane(id!)}
         />
       ) : null}
+
+      <AscPushCard
+        client={client}
+        runId={id!}
+        approved={approved}
+        storedKeyId={storedAscKey?.keyId ?? null}
+      />
 
       <GithubPrCard
         client={client}

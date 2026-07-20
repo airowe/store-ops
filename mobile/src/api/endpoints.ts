@@ -15,7 +15,9 @@ import type {
   AnalyticsState,
   ApiKeyCreated,
   ApiKeyMeta,
+  AscCreateVersionResult,
   AscCredentialBody,
+  AscPushResult,
   Competitor,
   DeltasView,
   EngagementSurface,
@@ -179,6 +181,22 @@ export const runAsc = (
   appId: string,
   body: { p8?: string; keyId?: string; issuerId?: string; locale?: string; store?: boolean; useStored?: boolean },
 ) => c.post<RunCreated>(`/apps/${enc(appId)}/run-asc`, body);
+
+// ── push to App Store Connect (#270) — approved runs only, explicit, verbatim ──
+/**
+ * Stage the approved copy on the editable version, using a STORED key
+ * (server-side envelope-encrypted; the .p8 is never sent from the device here).
+ * Apple's refusal rides back verbatim in `reason` — never a silent success.
+ */
+export const ascPush = (c: ApiClient, runId: string, body: AscCredentialBody & { locale?: string } = {}) =>
+  c.post<AscPushResult>(`/runs/${enc(runId)}/asc/push`, body);
+
+/** Create a DRAFT App Store version (#34) so a refused push has somewhere to land. */
+export const ascCreateVersion = (
+  c: ApiClient,
+  runId: string,
+  body: AscCredentialBody & { versionString: string },
+) => c.post<AscCreateVersionResult>(`/runs/${enc(runId)}/asc/create-version`, body);
 
 // ── stored credentials (#67 Phase 2) — opt-in, write-only management ─────────
 export type StoredCredential = {

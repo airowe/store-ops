@@ -431,6 +431,16 @@ export type AscCredentialBody = {
   useStored?: boolean;
 };
 
+// ── Push to App Store Connect (#270) — Apple's verdict, verbatim ───────────────
+/** POST /runs/:id/asc/push — staged fields, or Apple's refusal verbatim. */
+export type AscPushResult =
+  | { ok: true; versionId: string; localizationId: string; fieldsPushed: string[] }
+  | { ok: false; reason: string };
+/** POST /runs/:id/asc/create-version (#34) — the created draft, or Apple's refusal verbatim. */
+export type AscCreateVersionResult =
+  | { ok: true; versionId: string; versionString: string; state: string }
+  | { ok: false; reason: string };
+
 // ── Dashboard rows ───────────────────────────────────────────────────────────
 
 export type RankSummary = {
