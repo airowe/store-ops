@@ -11,12 +11,17 @@ import type {
   AuthExchangeResult,
   AuthRequestResult,
   CheckoutResult,
+  AnalyticsIngestResult,
+  AnalyticsState,
+  AscCredentialBody,
   Competitor,
   DeltasView,
+  EngagementSurface,
   GithubConnectResult,
   GithubPrResult,
   GithubStatus,
   LocaleKeywordsResult,
+  PlayFunnelSurface,
   LocalizedDraft,
   LocalizeResult,
   Me,
@@ -104,6 +109,37 @@ export const connectGithub = (c: ApiClient, body: { installation_id?: string; re
 /** Open a metadata PR with the approved copy on the connected repo. */
 export const githubPr = (c: ApiClient, runId: string) =>
   c.post<GithubPrResult>(`/runs/${enc(runId)}/github/pr`);
+
+// ── measured conversion + Play funnel (analytics-reports) ─────────────────────
+/** Measured conversion (downloads ÷ product-page views), or an honest no_data. */
+export const getEngagement = (c: ApiClient, id: string) =>
+  c.get<EngagementSurface>(`/apps/${enc(id)}/analytics/engagement`);
+
+/** Enable the ongoing ASC Analytics Engagement request. Key used once, never stored on-device. */
+export const enableAnalytics = (c: ApiClient, id: string, body: AscCredentialBody = {}) =>
+  c.post<AnalyticsState>(`/apps/${enc(id)}/analytics/enable`, body);
+
+/** Pull the ready Analytics report. Key used once, never stored on-device. */
+export const ingestAnalytics = (c: ApiClient, id: string, body: AscCredentialBody = {}) =>
+  c.post<AnalyticsIngestResult>(`/apps/${enc(id)}/analytics/ingest`, body);
+
+/** The measured monthly Google Play conversion funnel, or an honest empty. */
+export const getPlayFunnel = (c: ApiClient, id: string) =>
+  c.get<PlayFunnelSurface>(`/apps/${enc(id)}/play-funnel`);
+
+/** Ingest the Play funnel from the owner's GCS export. Service account used once, never stored. */
+export const ingestPlayFunnel = (
+  c: ApiClient,
+  id: string,
+  body: { packageName: string; accountId: string; months?: number; serviceAccount?: string; useStored?: boolean },
+) => c.post<{ ingested: number; periods: string[] }>(`/apps/${enc(id)}/play-funnel/ingest`, body);
+
+/** Push the owner's data-safety declaration to Play. Service account used once, never stored. */
+export const pushPlayDataSafety = (
+  c: ApiClient,
+  id: string,
+  body: { packageName: string; safetyLabels: string; serviceAccount?: string; useStored?: boolean },
+) => c.post<{ packageName: string; pushed: true }>(`/apps/${enc(id)}/play-data-safety`, body);
 
 /** Approve/reject a run (the human gate). Returns the updated run view. */
 export const decideRun = (c: ApiClient, id: string, decision: "approve" | "reject") =>
