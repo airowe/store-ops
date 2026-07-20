@@ -8,7 +8,7 @@ import { ActivityIndicator, Pressable, View } from "react-native";
 import { Stack, useLocalSearchParams, useRouter } from "expo-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "../../../src/auth/AuthProvider.js";
-import { auditPlay, getApp, getDeltas, getRanks, runAsc, verifyPlay } from "../../../src/api/endpoints.js";
+import { auditPlay, getApp, getDeltas, getEngagement, getRanks, runAsc, verifyPlay } from "../../../src/api/endpoints.js";
 import { RankMovementRow } from "../../../src/components/RankMovementRow.js";
 import { RankTrendChart } from "../../../src/components/RankTrendChart.js";
 import { CredentialSheet, type AscSubmit, type PlaySubmit } from "../../../src/components/CredentialSheet.js";
@@ -16,6 +16,10 @@ import { PlayAuditView } from "../../../src/components/PlayAuditView.js";
 import { CompetitorsCard } from "../../../src/components/CompetitorsCard.js";
 import { LocaleKeywordsCard } from "../../../src/components/LocaleKeywordsCard.js";
 import { RejectionAssistantCard } from "../../../src/components/RejectionAssistantCard.js";
+import { ConversionCard } from "../../../src/components/ConversionCard.js";
+import { AnalyticsCard } from "../../../src/components/AnalyticsCard.js";
+import { PlayFunnelCard } from "../../../src/components/PlayFunnelCard.js";
+import { PlayDataSafetyCard } from "../../../src/components/PlayDataSafetyCard.js";
 import { AgentTriggersCard } from "../../../src/components/AgentTriggersCard.js";
 import { EmptyState } from "../../../src/components/EmptyState.js";
 import { Screen, AppText, Button, Card, Centered } from "../../../src/components/primitives.js";
@@ -36,6 +40,14 @@ export default function AppDetail() {
   const deltas = useQuery({ queryKey: ["deltas", id], queryFn: () => getDeltas(client, id!), enabled: !!id });
   // #62 parity: the rank series carries observed-change annotations.
   const ranks = useQuery({ queryKey: ["ranks", id], queryFn: () => getRanks(client, id!), enabled: !!id });
+  // Measured conversion (analytics-reports Phase 3). retry:false — a failure just
+  // hides the surface (the setup card shows until a measured series exists).
+  const engagement = useQuery({
+    queryKey: ["engagement", id],
+    queryFn: () => getEngagement(client, id!),
+    enabled: !!id,
+    retry: false,
+  });
 
   const [showCreds, setShowCreds] = useState(false);
   const [playAudit, setPlayAudit] = useState<PlayAudit | null>(null);
@@ -124,6 +136,13 @@ export default function AppDetail() {
       <CompetitorsCard client={client} appId={a.id} />
       <LocaleKeywordsCard client={client} appId={a.id} />
       <RejectionAssistantCard client={client} />
+
+      {/* Measured conversion: the number when there's data, else the setup card. */}
+      <ConversionCard data={engagement.data} />
+      {engagement.data?.state !== "measured" ? <AnalyticsCard client={client} appId={a.id} /> : null}
+      <PlayFunnelCard client={client} appId={a.id} />
+      <PlayDataSafetyCard client={client} appId={a.id} />
+
       <AgentTriggersCard client={client} appId={a.id} />
 
       <Card>

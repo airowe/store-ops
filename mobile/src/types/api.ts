@@ -348,6 +348,75 @@ export type PlayVerifyResult = {
   appAccessible?: boolean;
 };
 
+// ── Measured conversion (analytics-reports Phase 3) ───────────────────────────
+/** A conversion shift observed around an approved push — correlational, labelled. */
+export type ConversionMovement = {
+  at: string;
+  runId?: string;
+  /** "" = all sources (aggregate); otherwise a specific traffic source. */
+  source: string;
+  /** measured fractions 0..1. */
+  before: number;
+  after: number;
+  delta: number;
+  samplesBefore: number;
+  samplesAfter: number;
+};
+
+/**
+ * `GET /apps/:id/analytics/engagement` — measured conversion, or an honest
+ * `no_data`. `latestConversion` is null even when measured (null = unmeasured,
+ * never a fabricated 0).
+ */
+export type EngagementSurface =
+  | { state: "no_data"; message: string }
+  | {
+      state: "measured";
+      latestConversion: { date: string; rate: number } | null;
+      movements: ConversionMovement[];
+      days: number;
+    };
+
+/** `POST /apps/:id/analytics/enable` — the ASC Engagement request state. */
+export type AnalyticsState =
+  | { state: "admin_required"; message: string }
+  | { state: "unavailable"; message: string }
+  | { state: "not_requested"; message: string }
+  | { state: "pending"; message: string; requestId: string; created: boolean };
+
+/** `POST /apps/:id/analytics/ingest` — the pull result (honest message on every non-ingested path). */
+export type AnalyticsIngestResult =
+  | AnalyticsState
+  | { state: "pending"; message: string }
+  | { state: "ingested"; instances: number; rowsPersisted: number; days: number };
+
+// ── Google Play conversion funnel (analytics-reports) ─────────────────────────
+export type PlayFunnelMonth = {
+  period: string;
+  country: string;
+  /** measured counts; null = unmeasured, never a fabricated 0. */
+  visitors: number | null;
+  acquisitions: number | null;
+  /** derived; null when not honestly computable. */
+  conversionRate: number | null;
+};
+
+/** `GET /apps/:id/play-funnel` — the measured monthly funnel, or an honest `empty`. */
+export type PlayFunnelSurface = {
+  state: "measured" | "empty";
+  cadence: "monthly";
+  throughPeriod: string | null;
+  months: PlayFunnelMonth[];
+};
+
+/** ASC credential body — the .p8 trio, or `useStored` when a key is saved. */
+export type AscCredentialBody = {
+  p8?: string;
+  keyId?: string;
+  issuerId?: string;
+  useStored?: boolean;
+};
+
 // ── Dashboard rows ───────────────────────────────────────────────────────────
 
 export type RankSummary = {
