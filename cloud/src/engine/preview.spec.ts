@@ -69,4 +69,16 @@ describe("buildPreview — teaser-safe subset of a run for logged-out visitors",
     const p = buildPreview(makeResult({ audit: { app: "X", bundleId: "b", liveName: "X", screenshots: null } }));
     expect(p.auditGrade).toBeNull();
   });
+
+  it("carries a per-field breakdown + a composite score (the public report card)", () => {
+    const p = buildPreview(makeResult());
+    expect(Array.isArray(p.breakdown)).toBe(true);
+    expect(p.breakdown.length).toBeGreaterThan(0);
+    // every entry names its field + honest state
+    expect(p.breakdown.every((f) => typeof f.field === "string" && (f.state === "measured" || f.state === "unreadable"))).toBe(true);
+    // composite is a 0–100 number when at least one field is measured
+    expect(typeof p.score).toBe("number");
+    expect(p.score).toBeGreaterThanOrEqual(0);
+    expect(p.score).toBeLessThanOrEqual(100);
+  });
 });
