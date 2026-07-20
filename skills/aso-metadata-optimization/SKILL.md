@@ -1,6 +1,6 @@
 ---
 name: aso-metadata-optimization
-description: Generate final, char-limit-correct App Store / Google Play listing copy (name, subtitle, keywords, promotional text, description) from a keyword plan + audit, then emit the exact asc / gplay commands to push it. Cross-platform. Honors exact store char limits. Nothing ships without your approval — it writes copy + commands, you run them. No paid ASO API.
+description: Generate final, char-limit-correct App Store / Google Play listing copy (name, subtitle, keywords, promotional text, description) from a keyword plan + audit, then emit the exact asc / gplay commands to push it. Cross-platform. Honors exact store char limits. Nothing ships without your approval — it writes copy + commands, you run them. No paid ASO API. Use when the user says "write my app store listing", "generate metadata copy", "make my keywords fit 100 chars", "optimize my subtitle and description", or "turn my keyword plan into listing copy".
 ---
 
 # aso-metadata-optimization

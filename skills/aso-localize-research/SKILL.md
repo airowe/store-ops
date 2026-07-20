@@ -1,6 +1,6 @@
 ---
 name: aso-localize-research
-description: Run keyword + rank research per market/locale (de-DE, ja-JP, es-MX, …) instead of US-only. Maps a locale code to the right Google geo/language constants, Apple market, and iTunes country so the volume + rank tools "just work" for any market — no hand-looking-up numeric constant ids. Produces per-locale keyword plans and rank snapshots. Unlocks the asc-localize-metadata push. No paid API.
+description: Run keyword + rank research per market/locale (de-DE, ja-JP, es-MX, …) instead of US-only. Maps a locale code to the right Google geo/language constants, Apple market, and iTunes country so the volume + rank tools "just work" for any market — no hand-looking-up numeric constant ids. Produces per-locale keyword plans and rank snapshots. Unlocks the asc-localize-metadata push. No paid API. Use when the user says "research keywords for de-DE", "localized keyword research", "keywords for the Japanese market", "check my rank in France", or "resolve the geo id for this locale".
 ---
 
 # aso-localize-research

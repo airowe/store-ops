@@ -1,6 +1,6 @@
 ---
 name: store-ops
-description: Router for the full App Store / Google Play optimization loop — audit a live listing, research keywords (no paid data API), optimize metadata to exact char limits, and push it to BOTH stores via the asc / gplay CLIs. The reason→execute ASO loop nobody else ships, with Google Play parity. Use when asked to optimize, audit, or update an app's store listing on iOS and/or Android.
+description: Router for the full App Store / Google Play optimization loop — audit a live listing, research keywords (no paid data API), optimize metadata to exact char limits, and push it to BOTH stores via the asc / gplay CLIs. The reason→execute ASO loop nobody else ships, with Google Play parity. Use when asked to optimize, audit, or update an app's store listing on iOS and/or Android. Use when the user says "optimize my app store listing", "improve my ASO", "run the ASO loop", "audit my app store page", or "boost my app store ranking".
 ---
 
 # store-ops

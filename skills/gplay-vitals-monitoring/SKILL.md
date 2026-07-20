@@ -1,6 +1,6 @@
 ---
 name: gplay-vitals-monitoring
-description: App vitals monitoring for crashes, ANRs, performance metrics, and errors via gplay vitals commands. Use when asked to check app stability, crash rates, ANR rates, or performance data from Google Play Console.
+description: App vitals monitoring for crashes, ANRs, performance metrics, and errors via gplay vitals commands. Use when asked to check app stability, crash rates, ANR rates, or performance data from Google Play Console. Use when the user says "why is my app crashing", "show me the ANRs", "any crash spikes after the release", "what's my slow frame rate", or "list the top crash clusters".
 ---
 
 # App Vitals Monitoring

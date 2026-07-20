@@ -1,6 +1,6 @@
 ---
 name: asc-id-resolver
-description: Resolve App Store Connect IDs (apps, builds, versions, groups, testers) from human-friendly names using asc. Use when commands require IDs.
+description: Resolve App Store Connect IDs (apps, builds, versions, groups, testers) from human-friendly names using asc. Use when commands require IDs. Use when the user says "what's the app ID for", "find the build ID", "get the ID for my app", "look up the tester group ID", or "I only have the app name".
 ---
 
 # asc id resolver

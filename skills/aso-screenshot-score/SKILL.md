@@ -1,6 +1,6 @@
 ---
 name: aso-screenshot-score
-description: Score an app's live App Store screenshot set against ASO best practice — count, device/aspect coverage, and a light caption heuristic. Screenshots drive conversion (the first 2-3 are what most users see); this flags the structural mistakes (too few shots, wrong ratios, no iPad set, plain captions) that quietly cost installs. Pulls the live set via the free iTunes API. No paid API.
+description: Score an app's live App Store screenshot set against ASO best practice — count, device/aspect coverage, and a light caption heuristic. Screenshots drive conversion (the first 2-3 are what most users see); this flags the structural mistakes (too few shots, wrong ratios, no iPad set, plain captions) that quietly cost installs. Pulls the live set via the free iTunes API. No paid API. Use when the user says "score my screenshots", "are my App Store screenshots any good", "check my screenshot set", "do I have enough screenshots", or "grade my app's screenshots".
 ---
 
 # aso-screenshot-score

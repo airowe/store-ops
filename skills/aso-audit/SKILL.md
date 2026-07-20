@@ -1,6 +1,6 @@
 ---
 name: aso-audit
-description: Audit an app's LIVE App Store / Google Play listing against ASO best practices and score every field — title, subtitle, keyword field, description, screenshots, reviews. Pulls real metadata via the asc / gplay CLIs, flags weak spots, and recommends fixes. Cross-platform (iOS + Android). Use to find ASO gaps before optimizing a listing. No paid ASO API.
+description: Audit an app's LIVE App Store / Google Play listing against ASO best practices and score every field — title, subtitle, keyword field, description, screenshots, reviews. Pulls real metadata via the asc / gplay CLIs, flags weak spots, and recommends fixes. Cross-platform (iOS + Android). Use to find ASO gaps before optimizing a listing. No paid ASO API. Use when the user says "audit my listing", "score my ASO", "what's wrong with my app store listing", "grade my metadata", or "find my ASO gaps".
 ---
 
 # aso-audit

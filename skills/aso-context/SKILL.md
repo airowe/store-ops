@@ -1,6 +1,6 @@
 ---
 name: aso-context
-description: Scaffold a per-app context.md — the shared input every store-ops ASO skill reads (category, audience, competitors, seed keywords, brand terms). Auto-fills what it can from the app's live App Store listing via the free iTunes API, and optionally enriches the brand block via context.dev. Use to seed a new app into the ASO workflow, or to backfill apps that lack a context.md. No paid API required.
+description: Scaffold a per-app context.md — the shared input every store-ops ASO skill reads (category, audience, competitors, seed keywords, brand terms). Auto-fills what it can from the app's live App Store listing via the free iTunes API, and optionally enriches the brand block via context.dev. Use to seed a new app into the ASO workflow, or to backfill apps that lack a context.md. No paid API required. Use when the user says "set up ASO for this app", "create a context.md", "onboard a new app into ASO", "we have no context file for this app", or "backfill the ASO context".
 ---
 
 # aso-context

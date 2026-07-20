@@ -1,6 +1,6 @@
 ---
 name: shipaso-mcp
-description: Connect your AI agent to the hosted ShipASO MCP server and drive the ASO loop over it — audit a live listing, find keyword gaps, check ranks, watch competitors, and score screenshots, all as agent tools. Use when you want to run ShipASO from Claude Code / Cursor / any MCP client instead of the local plugin, or to wire up a `shipaso_` API key. Read/draft only — nothing pushes to a live store from here.
+description: Connect your AI agent to the hosted ShipASO MCP server and drive the ASO loop over it — audit a live listing, find keyword gaps, check ranks, watch competitors, and score screenshots, all as agent tools. Use when you want to run ShipASO from Claude Code / Cursor / any MCP client instead of the local plugin, or to wire up a `shipaso_` API key. Read/draft only — nothing pushes to a live store from here. Use when the user says "connect the ShipASO MCP", "add the shipaso mcp server", "set up my shipaso key", "run ShipASO from Claude Code", or "use the hosted ShipASO tools".
 ---
 
 # shipaso-mcp
