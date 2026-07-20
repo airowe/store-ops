@@ -87,6 +87,13 @@ export type Env = {
   // Costs one vision inference per run and reads the user's screenshot, so it
   // stays dark until deliberately switched on.
   CAPTION_OCR_ENABLED?: string;
+  // Opt-in gate for the broad category rank+metadata corpus (#63) — the
+  // compounding data moat. Unset → the daily cron collects NO corpus (default);
+  // set to "1"/"true" to enable collecting the top-N apps per fixed seed keyword.
+  // OFF by default because broad systematic iTunes collection is a different
+  // egress/ToS scale than the product's per-app reads — enable only after the
+  // owner has reviewed acceptable-use + cost. Capped small (seeds × topN).
+  CATEGORY_CORPUS_ENABLED?: string;
   // GitHub App (the metadata-PR path, #8). The App id + its private key (PKCS#8
   // PEM) are ShipASO's own credential. Unset → the /github/pr endpoint is inert.
   GITHUB_APP_ID?: string;
