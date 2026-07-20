@@ -9,8 +9,9 @@ import { ActivityIndicator, View } from "react-native";
 import { Stack, useLocalSearchParams } from "expo-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "../../../src/auth/AuthProvider.js";
-import { decideRun, getRun } from "../../../src/api/endpoints.js";
+import { decideRun, getGithubStatus, getRun } from "../../../src/api/endpoints.js";
 import { ApprovalGate } from "../../../src/components/ApprovalGate.js";
+import { GithubPrCard } from "../../../src/components/GithubPrCard.js";
 import { CoverageGauge } from "../../../src/components/CoverageGauge.js";
 import { FindingCard, SurfaceLockCard } from "../../../src/components/FindingCard.js";
 import { KeywordGapList, OpportunityList } from "../../../src/components/KeywordLists.js";
@@ -32,6 +33,14 @@ export default function RunDetail() {
     queryKey: ["run", id],
     queryFn: () => getRun(client, id!),
     enabled: !!id,
+  });
+
+  // GitHub metadata-PR path (#8): drives the credential-free ship action below.
+  // A status read failure just hides the card (retry:false — never a dead button).
+  const github = useQuery({
+    queryKey: ["github", "status"],
+    queryFn: () => getGithubStatus(client),
+    retry: false,
   });
 
   const decide = useMutation({
@@ -97,6 +106,14 @@ export default function RunDetail() {
           onPress={() => void downloadAndShareFastlane(id!)}
         />
       ) : null}
+
+      <GithubPrCard
+        client={client}
+        runId={id!}
+        approved={approved}
+        connected={github.data?.connected ?? false}
+        repo={github.data?.repo ?? null}
+      />
 
       <LocalizationExpansionCard recommendations={r.localizationExpansion} />
       <LocalizationCard
