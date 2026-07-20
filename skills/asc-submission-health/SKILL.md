@@ -1,6 +1,6 @@
 ---
 name: asc-submission-health
-description: Preflight App Store submissions, submit builds, and monitor review status with asc. Use when shipping or troubleshooting review submissions.
+description: Preflight App Store submissions, submit builds, and monitor review status with asc. Use when shipping or troubleshooting review submissions. Use when the user says "submit to App Store", "why was my submission rejected", "check my review status", "submit for review", or "my app is stuck in review".
 ---
 
 # asc submission health

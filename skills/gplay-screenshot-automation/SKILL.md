@@ -1,6 +1,6 @@
 ---
 name: gplay-screenshot-automation
-description: Automate Android screenshot capture across devices and locales using adb, Espresso/UI Automator, device framing, and gplay CLI upload. Use when building screenshot pipelines for Google Play listings.
+description: Automate Android screenshot capture across devices and locales using adb, Espresso/UI Automator, device framing, and gplay CLI upload. Use when building screenshot pipelines for Google Play listings. Use when the user says "capture Play Store screenshots", "automate Android screenshots", "take emulator screenshots for all locales", "upload screenshots to Google Play", or "frame my Android screenshots".
 ---
 
 # Google Play Screenshot Automation

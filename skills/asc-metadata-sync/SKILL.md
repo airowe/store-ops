@@ -1,6 +1,6 @@
 ---
 name: asc-metadata-sync
-description: Sync and validate App Store metadata and localizations with asc, including legacy metadata format migration. Use when updating metadata or translations.
+description: Sync and validate App Store metadata and localizations with asc, including legacy metadata format migration. Use when updating metadata or translations. Use when the user says "update my app description", "change my keywords", "sync my App Store metadata", "update the what's new notes", or "push my metadata changes to App Store Connect".
 ---
 
 # asc metadata sync

@@ -1,6 +1,6 @@
 ---
 name: aso-rank-check
-description: Read an app's organic App Store search rank for a list of keywords and append the result to a dated log, so you can SEE whether a keyword/metadata change actually moved the needle over time. Uses the free public iTunes Search API (no paid ASO API, no auth). The watch half of the ASO loop — closes the gap left by aso-keyword-research (picks) and aso-metadata-optimization (ships). Use after shipping new keywords, or on a schedule, to verify ranking outcomes.
+description: Read an app's organic App Store search rank for a list of keywords and append the result to a dated log, so you can SEE whether a keyword/metadata change actually moved the needle over time. Uses the free public iTunes Search API (no paid ASO API, no auth). The watch half of the ASO loop — closes the gap left by aso-keyword-research (picks) and aso-metadata-optimization (ships). Use after shipping new keywords, or on a schedule, to verify ranking outcomes. Use when the user says "check my rank", "am I ranking for these keywords", "did my rank move", "where does my app rank", or "track my keyword rankings over time".
 ---
 
 # aso-rank-check

@@ -1,6 +1,6 @@
 ---
 name: aso-rank-monitor
-description: Scheduled App Store rank tracking — run a keyword set on a cadence (weekly), append a dated snapshot to ranks.md, and report the delta vs. the previous run (↑/↓/new/lost). This is the automated tracker the paid tools (Astro, AppTweak) charge a subscription for, built on the free iTunes Search API. Use to watch whether a metadata change actually moved your rank over time, or to set up a recurring per-app rank check.
+description: Scheduled App Store rank tracking — run a keyword set on a cadence (weekly), append a dated snapshot to ranks.md, and report the delta vs. the previous run (↑/↓/new/lost). This is the automated tracker the paid tools (Astro, AppTweak) charge a subscription for, built on the free iTunes Search API. Use to watch whether a metadata change actually moved your rank over time, or to set up a recurring per-app rank check. Use when the user says "track my rank over time", "did my rank change since last week", "set up weekly rank tracking", "how did my rank move after the update", or "log a rank snapshot".
 ---
 
 # aso-rank-monitor

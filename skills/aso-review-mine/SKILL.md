@@ -1,6 +1,6 @@
 ---
 name: aso-review-mine
-description: Mine your app's App Store reviews for the exact words real users use to describe it — keyword candidates, what positive reviewers praise, and pain themes from low-star reviews. Pulls reviews via the authenticated App Store Connect API (asc reviews), separates positive/negative language, and feeds ground-truth user vocabulary into aso-keyword-research. No paid API.
+description: Mine your app's App Store reviews for the exact words real users use to describe it — keyword candidates, what positive reviewers praise, and pain themes from low-star reviews. Pulls reviews via the authenticated App Store Connect API (asc reviews), separates positive/negative language, and feeds ground-truth user vocabulary into aso-keyword-research. No paid API. Use when the user says "mine my reviews", "what words do my users use", "keywords from my reviews", "what do reviewers praise", or "pull pain themes from low-star reviews".
 ---
 
 # aso-review-mine

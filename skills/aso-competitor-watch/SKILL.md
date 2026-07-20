@@ -1,6 +1,6 @@
 ---
 name: aso-competitor-watch
-description: Track competitors' App Store listing changes over time — name, subtitle, version, price, rating, genres — via the free iTunes Lookup API. Appends a dated snapshot to competitors.md and flags what changed since last run (new/changed/same). Use to catch when a competitor renames, reprices, or reshuffles their listing, which usually signals an ASO move worth reacting to. No paid API.
+description: Track competitors' App Store listing changes over time — name, subtitle, version, price, rating, genres — via the free iTunes Lookup API. Appends a dated snapshot to competitors.md and flags what changed since last run (new/changed/same). Use to catch when a competitor renames, reprices, or reshuffles their listing, which usually signals an ASO move worth reacting to. No paid API. Use when the user says "watch my competitors", "did a competitor change their listing", "track competitor app store changes", "what did my rivals change", or "check competitor listings".
 ---
 
 # aso-competitor-watch

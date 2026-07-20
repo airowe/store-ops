@@ -1,6 +1,6 @@
 ---
 name: aso-review-risk
-description: Scan your App Store / Google Play listing copy for the things that get apps REJECTED — unverifiable claims ("#1", "best"), prices or promos in the name/subtitle, competitor/trademark names, and keyword stuffing (Guideline 2.3.7). Flags each risk with the guideline it violates and a concrete fix, BEFORE you submit. Use before any metadata submission or resubmission. Self-contained; no paid API, no account.
+description: Scan your App Store / Google Play listing copy for the things that get apps REJECTED — unverifiable claims ("#1", "best"), prices or promos in the name/subtitle, competitor/trademark names, and keyword stuffing (Guideline 2.3.7). Flags each risk with the guideline it violates and a concrete fix, BEFORE you submit. Use before any metadata submission or resubmission. Self-contained; no paid API, no account. Use when the user says "will my app get rejected", "check my listing before I submit", "is this metadata safe to submit", "review my app store copy for rejection risk", or "will this pass App Store review".
 ---
 
 # aso-review-risk

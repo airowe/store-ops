@@ -1,6 +1,6 @@
 ---
 name: aso-keyword-research
-description: Research and rank App Store / Google Play keywords for an app WITHOUT any paid ASO data API. Expands seeds via Apple/Google autocomplete + competitor listing scrape + synonyms, scores each keyword (volume × difficulty × relevance), buckets into Primary/Secondary/Long-tail/Aspirational, and outputs a title/subtitle/keyword-field placement plan. Use when optimizing an app's store keywords, planning a listing, or before metadata optimization. Chains into aso-metadata-optimization.
+description: Research and rank App Store / Google Play keywords for an app WITHOUT any paid ASO data API. Expands seeds via Apple/Google autocomplete + competitor listing scrape + synonyms, scores each keyword (volume × difficulty × relevance), buckets into Primary/Secondary/Long-tail/Aspirational, and outputs a title/subtitle/keyword-field placement plan. Use when optimizing an app's store keywords, planning a listing, or before metadata optimization. Chains into aso-metadata-optimization. Use when the user says "find keywords for my app", "what keywords should I target", "keyword research", "expand these seed keywords", or "which keywords go in my title and subtitle".
 ---
 
 # aso-keyword-research

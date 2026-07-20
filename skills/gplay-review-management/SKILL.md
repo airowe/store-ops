@@ -1,6 +1,6 @@
 ---
 name: gplay-review-management
-description: Review monitoring, filtering, and automated responses for Google Play. Use when managing user reviews and feedback.
+description: Review monitoring, filtering, and automated responses for Google Play. Use when managing user reviews and feedback. Use when the user says "reply to my Play Store reviews", "find my 1-star reviews", "respond to negative reviews", "check for unreplied reviews", or "find reviews mentioning crashes".
 ---
 
 # Review Management for Google Play

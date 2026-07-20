@@ -1,6 +1,6 @@
 ---
 name: asc-localize-metadata
-description: Automatically translate and sync App Store metadata (description, keywords, what's new, subtitle) to multiple languages using LLM translation and asc CLI. Use when asked to localize an app's App Store listing, translate app descriptions, or add new languages to App Store Connect.
+description: Automatically translate and sync App Store metadata (description, keywords, what's new, subtitle) to multiple languages using LLM translation and asc CLI. Use when asked to localize an app's App Store listing, translate app descriptions, or add new languages to App Store Connect. Use when the user says "localize my app store listing", "translate my app description", "add German and French to my app", "translate my keywords and what's new", or "sync my metadata to more languages".
 ---
 
 # asc localize metadata

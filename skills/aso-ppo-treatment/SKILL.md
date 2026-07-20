@@ -1,6 +1,6 @@
 ---
 name: aso-ppo-treatment
-description: Design a free A/B test for your App Store screenshots — an outcome-led treatment (lead with what the user achieves, not a feature tour) plus the exact steps to run it in App Store Connect's Product Page Optimization. Use when your conversion (downloads ÷ product-page views) is flat or your first screenshot is a feature screen. A recommendation brief; you run the test in ASC. Self-contained; no paid API.
+description: Design a free A/B test for your App Store screenshots — an outcome-led treatment (lead with what the user achieves, not a feature tour) plus the exact steps to run it in App Store Connect's Product Page Optimization. Use when your conversion (downloads ÷ product-page views) is flat or your first screenshot is a feature screen. A recommendation brief; you run the test in ASC. Self-contained; no paid API. Use when the user says "A/B test my screenshots", "set up a PPO test", "my downloads are flat", "improve my conversion rate", or "test a new first screenshot".
 ---
 
 # aso-ppo-treatment

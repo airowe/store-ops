@@ -1,6 +1,6 @@
 ---
 name: aso-rejection-assistant
-description: Turn an App Store / Google Play rejection message into a plan — identify the guideline the reviewer cited, quote the actual rule, recommend fix-vs-appeal as a labelled heuristic, and draft both Resolution Center replies for you to complete. Use whenever you get rejected by App Review (or a Play policy strike) and need to understand what was cited and how to respond. Self-contained; no paid API and no account needed.
+description: Turn an App Store / Google Play rejection message into a plan — identify the guideline the reviewer cited, quote the actual rule, recommend fix-vs-appeal as a labelled heuristic, and draft both Resolution Center replies for you to complete. Use whenever you get rejected by App Review (or a Play policy strike) and need to understand what was cited and how to respond. Self-contained; no paid API and no account needed. Use when the user says "my app got rejected", "App Review rejected me", "help me respond to this rejection", "should I appeal or fix", or "what guideline did they cite".
 ---
 
 # aso-rejection-assistant

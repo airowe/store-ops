@@ -1,6 +1,6 @@
 ---
 name: asc-ppp-pricing
-description: Set territory-specific pricing for subscriptions and in-app purchases using purchasing power parity (PPP). Use when adjusting prices by country or implementing localized pricing strategies.
+description: Set territory-specific pricing for subscriptions and in-app purchases using purchasing power parity (PPP). Use when adjusting prices by country or implementing localized pricing strategies. Use when the user says "cheaper price in India", "set per-country pricing", "PPP pricing", "adjust subscription price by region", or "make my IAP cheaper in some countries".
 ---
 
 # PPP Pricing (Per-Territory Pricing)

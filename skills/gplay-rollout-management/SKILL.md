@@ -1,6 +1,6 @@
 ---
 name: gplay-rollout-management
-description: Staged rollout orchestration and monitoring for Google Play releases. Use when implementing gradual release strategies.
+description: Staged rollout orchestration and monitoring for Google Play releases. Use when implementing gradual release strategies. Use when the user says "roll out to 10%", "increase the rollout", "halt the rollout", "resume the rollout", or "bump my staged release to 100%".
 ---
 
 # Staged Rollout Management

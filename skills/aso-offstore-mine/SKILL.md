@@ -1,6 +1,6 @@
 ---
 name: aso-offstore-mine
-description: Mine OFF-STORE sources — "best <category> apps" review articles and YouTube videos — for the discovery language people use when they talk about your category, plus the competitors they compare you to. The off-store sibling of aso-review-mine: where review-mine reads your own App Store reviews, this reads the outside conversation. Sources via Jina Reader (web) and yt-dlp (YouTube captions). Feeds aso-keyword-research and aso-competitor-watch. No paid API.
+description: Mine OFF-STORE sources — "best <category> apps" review articles and YouTube videos — for the discovery language people use when they talk about your category, plus the competitors they compare you to. The off-store sibling of aso-review-mine: where review-mine reads your own App Store reviews, this reads the outside conversation. Sources via Jina Reader (web) and yt-dlp (YouTube captions). Feeds aso-keyword-research and aso-competitor-watch. No paid API. Use when the user says "mine the best apps articles", "scrape review articles for keywords", "what do the listicles call my category", "pull keywords from a YouTube review", or "see which competitors the articles mention".
 ---
 
 # aso-offstore-mine
