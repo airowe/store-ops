@@ -408,6 +408,16 @@ export type ProofAggregate = {
  * empty. Every field here is required for that reason: an optional field that
  * doesn't exist type-checks fine and fails silently at runtime.)
  */
+/** One field of the public report card — measured, or unreadable (never a fake 0). */
+export type ReportFieldScore = {
+  field: "title" | "subtitle" | "description" | "screenshots" | "ratings" | "freshness";
+  max: number;
+  /** measured points, or null when the public read couldn't see this field. */
+  score: number | null;
+  state: "measured" | "unreadable";
+  note: string;
+};
+
 export type AppPreview = {
   appName: string;
   auditGrade: string | null;
@@ -417,6 +427,10 @@ export type AppPreview = {
   inTop10: number;
   /** a short ranked sample (keyword + position), enough to feel real */
   sample: { keyword: string; rank: number | null }[];
+  /** per-field scored breakdown (#287) — the public report card. */
+  breakdown: ReportFieldScore[];
+  /** composite 0–100 over measurable fields, or null when nothing was measurable. */
+  score: number | null;
 };
 
 /** POST /preview → candidate picker, a preview audit, or an error. */

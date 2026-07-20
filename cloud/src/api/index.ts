@@ -1257,6 +1257,42 @@ async function runPreview(req: Request, env: Env): Promise<unknown> {
   return { preview: buildPreview(result), bundleId, country };
 }
 
+/**
+ * GET /report/:appId — the PUBLIC, shareable ASO report (#287). A GET-by-App-
+ * Store-id sibling of POST /preview: resolve the numeric id to its bundle +
+ * name, run the read-only agent (audit + rank + scored breakdown), and return
+ * the teaser-safe preview. No auth, no DB write. The shareable URL is the whole
+ * point — a cold visitor gets a real scored report they can send to anyone.
+ */
+async function reportByAppId(appId: string, url: URL, env: Env): Promise<unknown> {
+  const country = (url.searchParams.get("country") || env.DEFAULT_COUNTRY || "US").trim();
+  if (!/^\d{3,}$/.test(appId)) throw new HttpError(400, "appId must be a numeric App Store id");
+
+  try {
+    // Resolve the numeric track id → the live listing via the public lookup API
+    // (which returns the bundleId + name + genres for a raw id).
+    const data = asResponse(
+      await fetchJson(fetchForEnv(env), buildUrl(ITUNES_LOOKUP_URL, { id: appId, country })),
+    );
+    const r = (data.results ?? [])[0] as { bundleId?: string; trackName?: string; genres?: string[] } | undefined;
+    const bundleId = r?.bundleId;
+    if (!bundleId) throw new HttpError(404, `no App Store app for id ${appId}`);
+    const name = [r?.trackName ?? "", (r?.genres ?? []).join(" ")].filter(Boolean).join(" ").trim() || bundleId;
+
+    const appRow = { id: "report", user_id: "report", bundle_id: bundleId, name, country } as AppRow;
+    const reasoner = reasonerForEnv(env.AI);
+    const input = await buildAppInput(appRow, reasoner ? { reasoner } : {}, {});
+    const result = await runAgent(fetchForEnv(env), input);
+    return { preview: buildPreview(result), appId, bundleId, country };
+  } catch (e) {
+    if (e instanceof HttpError) throw e;
+    if (e instanceof ItunesError) {
+      throw new HttpError(503, "Couldn’t reach the App Store just now — please try again in a moment.");
+    }
+    throw e;
+  }
+}
+
 /** A loose email shape check — not validation, just "looks like an address". */
 function looksLikeEmail(s: string): boolean {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(s);
@@ -4088,6 +4124,11 @@ export async function handleApi(req: Request, env: Env, ctx?: ExecutionContext):
     // Public try-before-signup: a real audit + rank preview, no DB write, no auth.
     if (seg[0] === "preview" && seg.length === 1 && method === "POST") {
       return json(await previewApp(req, env), 200, origin, env);
+    }
+    // Public shareable report (#287): GET /report/:appId — a scored audit of any
+    // App Store app by numeric id, no signup. The URL is the funnel.
+    if (seg[0] === "report" && seg.length === 2 && method === "GET") {
+      return json(await reportByAppId(seg[1]!, new URL(req.url), env), 200, origin, env);
     }
     // Owner-only RLHF export (#39 Part 2). NOT session-gated — it has its own
     // secret-token gate (x-rlhf-export === env.RLHF_EXPORT_TOKEN) and degrades
