@@ -1,7 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { reviewRiskFindings } from "./reviewRisk.js";
 
-const ids = (copy: Parameters<typeof reviewRiskFindings>[0]) => reviewRiskFindings(copy).map((f) => f.id);
+const ids = (
+  copy: Parameters<typeof reviewRiskFindings>[0],
+  opts?: Parameters<typeof reviewRiskFindings>[1],
+) => reviewRiskFindings(copy, opts).map((f) => f.id);
 
 describe("reviewRiskFindings", () => {
   it("clean copy emits nothing (no fabricated risk)", () => {
@@ -32,6 +35,26 @@ describe("reviewRiskFindings", () => {
     expect(ids({ name: "Weatherly - Forecasts", keywords: "weatherly,radar" })).toContain("review_risk_brand_in_keywords");
     // brand NOT in keywords → no flag
     expect(ids({ name: "Weatherly", keywords: "radar,forecast" })).not.toContain("review_risk_brand_in_keywords");
+  });
+
+  it("flags a famous OTHER-app name in the keyword field (2.3.7)", () => {
+    // piggybacking on a well-known app's name in keywords is a classic 2.3.7 rejection
+    expect(ids({ name: "Weatherly", keywords: "weather,instagram,forecast" })).toContain("review_risk_other_app_in_keywords");
+    // a term that merely CONTAINS a brand substring is not flagged (word-boundary)
+    expect(ids({ name: "Weatherly", keywords: "weather,forecaster,radar" })).not.toContain("review_risk_other_app_in_keywords");
+  });
+
+  it("flags a per-run competitor brand in the keyword field (2.3.7)", () => {
+    expect(ids({ name: "Weatherly", keywords: "weather,acmecast,radar" }, { competitorBrands: ["AcmeCast"] }))
+      .toContain("review_risk_other_app_in_keywords");
+    // without the competitor list, that term is just a normal keyword
+    expect(ids({ name: "Weatherly", keywords: "weather,acmecast,radar" })).not.toContain("review_risk_other_app_in_keywords");
+  });
+
+  it("flags keyword stuffing — the same root repeated across ≥3 terms (2.3.7)", () => {
+    expect(ids({ name: "Recipe Box", keywords: "recipe,recipes,recipe app,best recipe" })).toContain("review_risk_keyword_stuffing");
+    // two variants of a root is fine (normal pluralization), not stuffing
+    expect(ids({ name: "Recipe Box", keywords: "recipe,recipes,dinner,meal plan" })).not.toContain("review_risk_keyword_stuffing");
   });
 
   it("every finding cites a guideline (with a verbatim quote) and carries the 'not Apple's verdict' caveat", () => {
