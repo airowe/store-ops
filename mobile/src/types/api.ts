@@ -448,6 +448,23 @@ export type LocaleKeywordsResult = {
   note?: string;
 };
 
+// ── post-rejection assistant (#178 Phase 4) ──────────────────────────────────
+export type ResolutionPath = "fix_and_resubmit" | "appeal";
+/**
+ * POST /rejection-assistant — the cited guideline, its verbatim rule text (or
+ * null when the guideline isn't in our corpus), a fix-vs-appeal heuristic, and
+ * two scaffolded Resolution Center replies with [bracketed placeholders].
+ */
+export type RejectionAnalysis = {
+  guidelines: string[];
+  primaryGuideline: string | null;
+  /** verbatim rule text when the cited guideline is in our corpus, else null. */
+  quote: string | null;
+  recommended: ResolutionPath | "unclear";
+  rationale: string;
+  drafts: Record<ResolutionPath, string>;
+};
+
 /** Keyword gap (PRD 01) — a term competitors use that you could win. */
 export type KeywordGap = {
   keyword: string;

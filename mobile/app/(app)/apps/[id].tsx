@@ -15,6 +15,7 @@ import { CredentialSheet, type AscSubmit, type PlaySubmit } from "../../../src/c
 import { PlayAuditView } from "../../../src/components/PlayAuditView.js";
 import { CompetitorsCard } from "../../../src/components/CompetitorsCard.js";
 import { LocaleKeywordsCard } from "../../../src/components/LocaleKeywordsCard.js";
+import { RejectionAssistantCard } from "../../../src/components/RejectionAssistantCard.js";
 import { AgentTriggersCard } from "../../../src/components/AgentTriggersCard.js";
 import { EmptyState } from "../../../src/components/EmptyState.js";
 import { Screen, AppText, Button, Card, Centered } from "../../../src/components/primitives.js";
@@ -122,6 +123,7 @@ export default function AppDetail() {
 
       <CompetitorsCard client={client} appId={a.id} />
       <LocaleKeywordsCard client={client} appId={a.id} />
+      <RejectionAssistantCard client={client} />
       <AgentTriggersCard client={client} appId={a.id} />
 
       <Card>
