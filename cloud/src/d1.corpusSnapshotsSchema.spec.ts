@@ -10,7 +10,7 @@ import { readFileSync, readdirSync } from "node:fs";
 import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
 import { beforeEach, describe, expect, it } from "vitest";
-import { persistCorpusSnapshots, type CorpusRow } from "./d1.js";
+import { persistCorpusSnapshots, readCorpusPoints, type CorpusRow } from "./d1.js";
 
 let DatabaseSync: typeof import("node:sqlite").DatabaseSync | null = null;
 try {
@@ -121,5 +121,32 @@ describe.skipIf(!sqliteAvailable)("corpus_snapshots schema (#63)", () => {
     await persistCorpusSnapshots(db, []);
     const count = raw.prepare("SELECT COUNT(*) AS n FROM corpus_snapshots").get() as { n: number };
     expect(count.n).toBe(0);
+  });
+
+  it("readCorpusPoints scopes by seed and maps snake_case → CorpusPoint shape", async () => {
+    await persistCorpusSnapshots(db, [
+      corpusRow({ seedKeyword: "weather", bundleId: "com.w" }),
+      corpusRow({ seedKeyword: "budget", bundleId: "com.b" }),
+    ]);
+    const weather = await readCorpusPoints(db, { seedKeyword: "weather" });
+    expect(weather).toHaveLength(1);
+    expect(weather[0]!.bundleId).toBe("com.w");
+    expect(weather[0]!.seedKeyword).toBe("weather");
+    expect(weather[0]!.checkedAt).toBeTruthy();
+  });
+
+  it("readCorpusPoints orders by (seed, bundle, checked_at) so transitions can pair", async () => {
+    // two dated snapshots of one app — must come back oldest-first, adjacent
+    await persistCorpusSnapshots(db, [corpusRow({ bundleId: "com.a", rank: 8 })]);
+    // force a later checked_at by inserting a second row with an explicit newer time
+    raw
+      .prepare(
+        "INSERT INTO corpus_snapshots (id, seed_keyword, country, bundle_id, name, category_id, category_name, rank, version, rating, rating_count, description, checked_at) VALUES ('x2','weather','us','com.a','Weatherly','6001','Weather',3,'2.2.0',4.6,1200,'d','2026-07-05 08:00:00')",
+      )
+      .run();
+    const pts = await readCorpusPoints(db, { seedKeyword: "weather" });
+    const forApp = pts.filter((p) => p.bundleId === "com.a");
+    expect(forApp).toHaveLength(2);
+    expect(forApp[0]!.checkedAt <= forApp[1]!.checkedAt).toBe(true);
   });
 });
