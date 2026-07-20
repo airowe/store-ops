@@ -16,6 +16,7 @@ import { FindingCard, SurfaceLockCard } from "../../../src/components/FindingCar
 import { KeywordGapList, OpportunityList } from "../../../src/components/KeywordLists.js";
 import { LocalizationCard } from "../../../src/components/LocalizationCard.js";
 import { LocalizationExpansionCard } from "../../../src/components/LocalizationExpansionCard.js";
+import { PpoTreatmentCard } from "../../../src/components/PpoTreatmentCard.js";
 import { ScreenshotGallery } from "../../../src/components/ScreenshotGallery.js";
 import { EmptyState } from "../../../src/components/EmptyState.js";
 import { Screen, AppText, Button, Centered } from "../../../src/components/primitives.js";
@@ -71,6 +72,8 @@ export default function RunDetail() {
       <ScreenshotGallery shots={screenshots} />
 
       {r.coverage ? <CoverageGauge coverage={r.coverage} /> : null}
+
+      {r.ppoTreatment ? <PpoTreatmentCard plan={r.ppoTreatment} /> : null}
 
       <ApprovalGate
         status={run.data.status}
