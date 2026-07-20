@@ -24,7 +24,10 @@ const ME: Me = {
 };
 
 /** Fake client: /auth/me boots ME; POSTs echo a server-truth response. */
-function fakeClient(events: string[], state = { email_digest: "weekly", push_run_ready: true, rank_cadence: "weekly" }) {
+function fakeClient(
+  events: string[],
+  state = { email_digest: "weekly", push_run_ready: true, rank_cadence: "weekly", paused: false },
+) {
   const call = async <T,>(path: string, bodyOrOpts?: unknown) => {
     if (path === "/auth/me") return { ...ME, ...state } as T;
     if (path === "/account/notifications") {
@@ -39,6 +42,11 @@ function fakeClient(events: string[], state = { email_digest: "weekly", push_run
       state.rank_cadence = body.cadence;
       events.push(`POST /account/rank-cadence ${body.cadence}`);
       return { rank_cadence: state.rank_cadence } as T;
+    }
+    if (path === "/agent/pause" || path === "/agent/resume") {
+      state.paused = path === "/agent/pause";
+      events.push(`POST ${path}`);
+      return { paused: state.paused } as T;
     }
     if (path === "/account/push-token") {
       events.push("POST /account/push-token");
@@ -56,9 +64,12 @@ function fakeClient(events: string[], state = { email_digest: "weekly", push_run
   } as unknown as ApiClient;
 }
 
-function renderSettings(events: string[] = []) {
+function renderSettings(
+  events: string[] = [],
+  state = { email_digest: "weekly", push_run_ready: true, rank_cadence: "weekly", paused: false },
+) {
   return render(
-    <AuthProvider clientOverride={fakeClient(events)}>
+    <AuthProvider clientOverride={fakeClient(events, state)}>
       <Settings />
     </AuthProvider>,
   );
@@ -133,6 +144,37 @@ describe("Settings screen (comms-prefs)", () => {
 
     fireEvent.press(screen.getByTestId("cadence-daily"));
     await waitFor(() => expect(events).toContain("POST /account/rank-cadence daily"));
+  });
+
+  it("shows the autonomy control booted from me, in its own agent-scoped card", async () => {
+    renderSettings();
+    await waitFor(() => expect(screen.getByTestId("pause-toggle")).toBeTruthy());
+    // active by default (paused:false) — the toggle reads "Active"
+    expect(screen.getByTestId("pause-toggle")).toHaveTextContent(/Active/);
+    // the honesty line: this card changes what the AGENT does (unlike comms)
+    expect(screen.getByText(/changes what the agent does/i)).toBeTruthy();
+    // and it never pushes on its own
+    expect(screen.getByText(/never pushes/i)).toBeTruthy();
+  });
+
+  it("pausing POSTs /agent/pause and reflects the server's paused state", async () => {
+    const events: string[] = [];
+    renderSettings(events);
+    await waitFor(() => expect(screen.getByTestId("pause-toggle")).toHaveTextContent(/Active/));
+
+    fireEvent.press(screen.getByTestId("pause-toggle"));
+    await waitFor(() => expect(events).toContain("POST /agent/pause"));
+    await waitFor(() => expect(screen.getByTestId("pause-toggle")).toHaveTextContent(/Paused/));
+  });
+
+  it("resumes from a paused boot state via /agent/resume", async () => {
+    const events: string[] = [];
+    renderSettings(events, { email_digest: "weekly", push_run_ready: true, rank_cadence: "weekly", paused: true });
+    await waitFor(() => expect(screen.getByTestId("pause-toggle")).toHaveTextContent(/Paused/));
+
+    fireEvent.press(screen.getByTestId("pause-toggle"));
+    await waitFor(() => expect(events).toContain("POST /agent/resume"));
+    await waitFor(() => expect(screen.getByTestId("pause-toggle")).toHaveTextContent(/Active/));
   });
 
   it("sign-out unregisters the captured device token FIRST", async () => {
