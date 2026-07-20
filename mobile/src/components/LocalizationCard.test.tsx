@@ -73,8 +73,8 @@ describe("LocalizationCard", () => {
     expect(screen.getByTestId("loc-trimmed")).toHaveTextContent(/subtitle/);
 
     fireEvent.press(screen.getByTestId("loc-approve"));
+    await waitFor(() => expect(calls).toContain("POST /runs/run-1/localize/approve"));
     await waitFor(() => expect(screen.getByTestId("loc-approved-de-DE")).toBeTruthy());
-    expect(calls).toContain("POST /runs/run-1/localize/approve");
   });
 
   it("renders an RTL draft with right-to-left writing direction (allowed, shown correctly)", async () => {
@@ -105,7 +105,8 @@ describe("LocalizationCard", () => {
     expect(screen.getByTestId("loc-approved-fr-FR")).toBeTruthy();
 
     fireEvent.press(screen.getByTestId("loc-remove-fr-FR"));
+    // the DELETE fires (deterministic), then the row clears from the server's set.
+    await waitFor(() => expect(calls).toContain("DELETE /runs/run-1/localize/fr-FR"));
     await waitFor(() => expect(screen.queryByTestId("loc-approved-fr-FR")).toBeNull());
-    expect(calls).toContain("DELETE /runs/run-1/localize/fr-FR");
   });
 });
