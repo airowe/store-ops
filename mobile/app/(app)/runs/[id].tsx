@@ -14,6 +14,8 @@ import { ApprovalGate } from "../../../src/components/ApprovalGate.js";
 import { CoverageGauge } from "../../../src/components/CoverageGauge.js";
 import { FindingCard, SurfaceLockCard } from "../../../src/components/FindingCard.js";
 import { KeywordGapList, OpportunityList } from "../../../src/components/KeywordLists.js";
+import { LocalizationCard } from "../../../src/components/LocalizationCard.js";
+import { LocalizationExpansionCard } from "../../../src/components/LocalizationExpansionCard.js";
 import { ScreenshotGallery } from "../../../src/components/ScreenshotGallery.js";
 import { EmptyState } from "../../../src/components/EmptyState.js";
 import { Screen, AppText, Button, Centered } from "../../../src/components/primitives.js";
@@ -92,6 +94,14 @@ export default function RunDetail() {
           onPress={() => void downloadAndShareFastlane(id!)}
         />
       ) : null}
+
+      <LocalizationExpansionCard recommendations={r.localizationExpansion} />
+      <LocalizationCard
+        client={client}
+        runId={id!}
+        status={run.data.status}
+        initialLocales={Object.keys(r.localizedCopy ?? {}).sort()}
+      />
 
       <KeywordGapList gaps={r.keywordGaps} />
       <OpportunityList opportunities={r.opportunities} />
