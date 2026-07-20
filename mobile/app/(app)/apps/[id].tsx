@@ -14,6 +14,7 @@ import { RankTrendChart } from "../../../src/components/RankTrendChart.js";
 import { CredentialSheet, type AscSubmit, type PlaySubmit } from "../../../src/components/CredentialSheet.js";
 import { PlayAuditView } from "../../../src/components/PlayAuditView.js";
 import { CompetitorsCard } from "../../../src/components/CompetitorsCard.js";
+import { LocaleKeywordsCard } from "../../../src/components/LocaleKeywordsCard.js";
 import { AgentTriggersCard } from "../../../src/components/AgentTriggersCard.js";
 import { EmptyState } from "../../../src/components/EmptyState.js";
 import { Screen, AppText, Button, Card, Centered } from "../../../src/components/primitives.js";
@@ -120,6 +121,7 @@ export default function AppDetail() {
       ) : null}
 
       <CompetitorsCard client={client} appId={a.id} />
+      <LocaleKeywordsCard client={client} appId={a.id} />
       <AgentTriggersCard client={client} appId={a.id} />
 
       <Card>

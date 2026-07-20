@@ -398,6 +398,56 @@ export type CopyFields = {
   whatsNew?: string;
 };
 
+/**
+ * A stored per-locale draft (#78): the fitted copy plus the verbatim
+ * machine-translation caveat the UI must render. `label` is server-authored;
+ * it is optional because runs approved before the caveat was threaded through
+ * carry none. Mirrors the shared @shipaso/api `LocalizedCopy`.
+ */
+export type LocalizedCopy = CopyFields & { label?: string };
+
+/** A generated localized draft for one locale (POST /runs/:id/localize, #78). */
+export type LocalizedDraft = {
+  locale: string;
+  copy: CopyFields;
+  /** fields trimmed to fit their App Store limit — surfaced honestly. */
+  trimmed: string[];
+  validation?: { pass: boolean };
+  /** the verbatim machine-translation caveat the UI must render. */
+  label?: string;
+};
+
+/** POST /runs/:id/localize/approve · DELETE …/:locale — the approved-locale set. */
+export type LocalizeResult = { approved: string[] };
+
+export type StorefrontTier = "large" | "mid" | "long-tail";
+
+/** ROI-sorted locale to add (PRD 04) — static heuristic, PII-safe. */
+export type LocaleRecommendation = {
+  locale: string;
+  rationale: string;
+  storefrontTier: StorefrontTier;
+  /** "translate" = existing copy to translate; "new" = net-new metadata. */
+  effort: "translate" | "new";
+};
+
+/** A keyword term measured from the top apps in a target storefront (#180). */
+export type LocaleKeywordCandidate = {
+  term: string;
+  market: string;
+  usedByCount: number;
+  usedBy: string[];
+};
+
+/** POST /apps/:id/locale-keywords — measured, market-native keyword ideas. */
+export type LocaleKeywordsResult = {
+  market: string;
+  seeds?: string[];
+  candidates: LocaleKeywordCandidate[];
+  /** honest empty-state (no tracked keywords + no seeds). */
+  note?: string;
+};
+
 /** Keyword gap (PRD 01) — a term competitors use that you could win. */
 export type KeywordGap = {
   keyword: string;
@@ -448,6 +498,10 @@ export type RunResult = {
   locks?: SurfaceLock[];
   opportunities?: Opportunity[];
   keywordGaps?: KeywordGap[];
+  /** locales the human approved a localized draft for (#78) — copy + verbatim MT caveat. */
+  localizedCopy?: Record<string, LocalizedCopy>;
+  /** ROI-sorted locales to add (PRD 04) — static heuristic, PII-safe. */
+  localizationExpansion?: LocaleRecommendation[];
 };
 
 export type RunApproval = { decision: string; decided_at: string };

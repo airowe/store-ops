@@ -13,6 +13,9 @@ import type {
   CheckoutResult,
   Competitor,
   DeltasView,
+  LocaleKeywordsResult,
+  LocalizedDraft,
+  LocalizeResult,
   Me,
   NotificationPrefs,
   PlayAudit,
@@ -57,6 +60,30 @@ export const getRanks = (c: ApiClient, id: string, keyword?: string) =>
   c.get<RanksSeries>(`/apps/${enc(id)}/ranks${keyword ? `?keyword=${enc(keyword)}` : ""}`);
 export const getDeltas = (c: ApiClient, id: string) => c.get<DeltasView>(`/apps/${enc(id)}/deltas`);
 export const getRun = (c: ApiClient, id: string) => c.get<RunDetail>(`/runs/${enc(id)}`);
+
+// ── localization (#78) — generate → review → approve per market ──────────────────
+/** Measured, market-native keyword ideas for a target storefront (#180 Phase 3). */
+export const getLocaleKeywords = (
+  c: ApiClient,
+  id: string,
+  body: { market: string; seeds?: string[] },
+) => c.post<LocaleKeywordsResult>(`/apps/${enc(id)}/locale-keywords`, body);
+
+/** Generate a localized draft of the approved copy for one locale. */
+export const localizeGenerate = (c: ApiClient, id: string, locale: string) =>
+  c.post<LocalizedDraft>(`/runs/${enc(id)}/localize`, { locale });
+
+/** Approve a (possibly edited) localized draft — adds the locale to the handoff. */
+export const localizeApprove = (
+  c: ApiClient,
+  id: string,
+  locale: string,
+  copy: LocalizedDraft["copy"],
+) => c.post<LocalizeResult>(`/runs/${enc(id)}/localize/approve`, { locale, copy });
+
+/** Un-approve a locale (drop it from the handoff). */
+export const localizeRemove = (c: ApiClient, id: string, locale: string) =>
+  c.request<LocalizeResult>(`/runs/${enc(id)}/localize/${enc(locale)}`, { method: "DELETE" });
 
 /** Approve/reject a run (the human gate). Returns the updated run view. */
 export const decideRun = (c: ApiClient, id: string, decision: "approve" | "reject") =>
