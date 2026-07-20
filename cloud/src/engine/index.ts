@@ -221,6 +221,7 @@ export {
   buildKeywordField,
   optimizeCopy,
 } from "./optimize.js";
+export { type LocalizedCopyEntry, DRAFT_LABEL } from "./localizeCopy.js";
 export {
   type AppInput,
   type AgentResult,

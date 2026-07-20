@@ -47,6 +47,14 @@ export type LocalizeInput = {
 
 export const DRAFT_LABEL = "draft — machine-translated, review before shipping" as const;
 
+/**
+ * A stored per-locale draft: the fitted copy plus the verbatim honesty caveat.
+ * The label is server-authored (never trusted from the client) and rides all
+ * the way to a fetched run so every surface renders the SAME caveat — the
+ * engine is the single source of the string.
+ */
+export type LocalizedCopyEntry = CopyFields & { label: typeof DRAFT_LABEL };
+
 export type LocalizedDraft = {
   locale: string;
   copy: CopyFields;
@@ -187,7 +195,7 @@ export async function localizeCopy(
 export function validateLocalizedSubmission(input: {
   copy: unknown;
   sourceName: string;
-}): { ok: true; copy: CopyFields } | { ok: false; error: string } {
+}): { ok: true; copy: LocalizedCopyEntry } | { ok: false; error: string } {
   const c = input.copy;
   if (!c || typeof c !== "object" || Array.isArray(c)) return { ok: false, error: "copy must be an object" };
   const r = c as Record<string, unknown>;
@@ -218,5 +226,8 @@ export function validateLocalizedSubmission(input: {
       return { ok: false, error: `the brand token "${t}" is missing from the localized name` };
     }
   }
-  return { ok: true, copy: fields };
+  // Stamp the caveat server-side — any client-supplied `label` is ignored (the
+  // rebuild above never copies it), so the stored draft always carries the
+  // verbatim, engine-authored honesty string.
+  return { ok: true, copy: { ...fields, label: DRAFT_LABEL } };
 }

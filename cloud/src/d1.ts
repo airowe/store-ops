@@ -21,6 +21,7 @@ import type {
   ChartRank,
   LanguageCoverage,
   LocaleRecommendation,
+  LocalizedCopyEntry,
   Opportunity,
   PlayChartRank,
   PpoTreatmentPlan,
@@ -176,7 +177,7 @@ export type ReasoningTrace = {
    * fitted copy). Written ONLY by the explicit approve route; the fastlane
    * bundle emits exactly these locales and nothing else.
    */
-  localizedCopy?: Record<string, CopyFields> | undefined;
+  localizedCopy?: Record<string, LocalizedCopyEntry> | undefined;
   pushCommands: AgentResult["pushCommands"];
   /**
    * Scored, prioritized listing findings (PRD 01/02). EVERY run carries them —
@@ -1627,7 +1628,7 @@ export async function setLocalizedCopy(
   db: D1Database,
   runId: string,
   locale: string,
-  copy: CopyFields,
+  copy: LocalizedCopyEntry,
 ): Promise<boolean> {
   const run = await db
     .prepare("SELECT reasoning_json FROM runs WHERE id = ?")

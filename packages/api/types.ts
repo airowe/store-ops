@@ -73,6 +73,13 @@ export type CopyFields = {
   description?: string;
   whatsNew?: string;
 };
+/**
+ * A stored per-locale draft (#78): the fitted copy plus the verbatim
+ * machine-translation caveat the UI must render. `label` is server-authored;
+ * it is optional here only because runs approved before the caveat was
+ * threaded through carry none.
+ */
+export type LocalizedCopy = CopyFields & { label?: string };
 export type PushCommand = {
   store: "appstore" | "googleplay";
   tool: "asc" | "gplay";
@@ -202,8 +209,8 @@ export type RunResult = {
   audit?: RunAudit;
   findings?: Finding[];
   locks?: SurfaceLock[];
-  /** locales the human approved a localized draft for (#78) — the copy is theirs. */
-  localizedCopy?: Record<string, CopyFields>;
+  /** locales the human approved a localized draft for (#78) — the copy is theirs, plus the verbatim MT caveat. */
+  localizedCopy?: Record<string, LocalizedCopy>;
   /** winnability-ranked keyword opportunities (PRD 06) — "where to push next." */
   opportunities?: Opportunity[];
   /** ROI-sorted locales to add (PRD 04) — static heuristic, PII-safe. */

@@ -3,6 +3,7 @@ import { serializeRunResult } from "./index.js";
 import { auditFindings, summarizeFindings, surfaceLocks } from "../engine/auditFindings.js";
 import { buildAscContext } from "../engine/ascContext.js";
 import { metadataCoverage } from "../engine/metadataCoverage.js";
+import { DRAFT_LABEL } from "../engine/localizeCopy.js";
 import type { ReasoningTrace } from "../d1.js";
 import type { AscSnapshot } from "../engine/ascRead.js";
 import type { Audit } from "../engine/agent.js";
@@ -330,6 +331,30 @@ describe("serializeRunResult — storefront intel on the audit (one thread-throu
   it("stays absent on an audit that never read the page (unknown, never {})", () => {
     const result = serializeRunResult(noKeyTrace(), false);
     expect("storefront" in result.audit).toBe(false);
+  });
+});
+
+describe("serializeRunResult — localized copy carries the verbatim draft caveat (#78)", () => {
+  it("rides the per-locale label through to the client verbatim", () => {
+    const trace = modeATrace();
+    trace.localizedCopy = {
+      "de-DE": {
+        name: APP_NAME,
+        subtitle: "Hyperlokale Vorhersagen",
+        keywords: "wetter,vorhersage,regen,sturm",
+        label: DRAFT_LABEL,
+      },
+    };
+    const result = serializeRunResult(trace, false) as {
+      localizedCopy?: Record<string, { label?: string }>;
+    };
+    // the honesty caveat is not dropped between the approve write and the fetch.
+    expect(result.localizedCopy?.["de-DE"]?.label).toBe(DRAFT_LABEL);
+  });
+
+  it("omits localizedCopy entirely on a run with no approved locales", () => {
+    const result = serializeRunResult(noKeyTrace(), false) as Record<string, unknown>;
+    expect("localizedCopy" in result).toBe(false);
   });
 });
 

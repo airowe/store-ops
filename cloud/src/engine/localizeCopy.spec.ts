@@ -145,8 +145,11 @@ describe("validateLocalizedSubmission (#78 Phase 2)", () => {
   const SOURCE = "Mangia - Recipe Manager";
   const GOOD = { name: "Mangia - Rezept Manager", subtitle: "Koche mit Vorrat", keywords: "essensplan,einkaufsliste" };
 
-  it("accepts a valid edited draft", () => {
-    expect(validateLocalizedSubmission({ copy: GOOD, sourceName: SOURCE })).toEqual({ ok: true, copy: GOOD });
+  it("accepts a valid edited draft, stamping the verbatim caveat", () => {
+    expect(validateLocalizedSubmission({ copy: GOOD, sourceName: SOURCE })).toEqual({
+      ok: true,
+      copy: { ...GOOD, label: DRAFT_LABEL },
+    });
   });
 
   it("rejects non-objects, wrong types, empty name — loudly", () => {
@@ -177,5 +180,22 @@ describe("validateLocalizedSubmission (#78 Phase 2)", () => {
       sourceName: SOURCE,
     });
     expect(v.ok).toBe(false);
+  });
+
+  it("stamps the verbatim draft caveat on the validated copy (honesty end-to-end)", () => {
+    // The approved draft that gets STORED must carry the caveat, so a later
+    // GET /runs/:id surfaces it verbatim — the engine is the single source.
+    const v = validateLocalizedSubmission({ copy: GOOD, sourceName: SOURCE });
+    expect(v.ok).toBe(true);
+    if (v.ok) expect(v.copy.label).toBe(DRAFT_LABEL);
+  });
+
+  it("ignores any client-supplied label — the server sets the caveat, not the client", () => {
+    const v = validateLocalizedSubmission({
+      copy: { ...GOOD, label: "totally fine, ship it" },
+      sourceName: SOURCE,
+    });
+    expect(v.ok).toBe(true);
+    if (v.ok) expect(v.copy.label).toBe(DRAFT_LABEL);
   });
 });
