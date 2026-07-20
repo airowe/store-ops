@@ -67,6 +67,17 @@ pre-fills from the live listing), then fill the `competitors:` / `audience:` /
    on-store (your reviews) and off-store ("best <category> apps" articles +
    YouTube), as high-signal keyword seeds + competitor mentions.
 
+## The ship-safely + convert layer (the last mile)
+
+8. **aso-review-risk** — scan copy for the things that get apps REJECTED
+   (unverifiable claims, prices in the name, trademark/keyword stuffing — 2.3.7)
+   *before* you submit. Each flag cites the guideline + a fix.
+9. **aso-rejection-assistant** — already rejected? Parse the cited guideline,
+   quote the actual rule, recommend fix-vs-appeal (your call), and draft both
+   Resolution Center replies.
+10. **aso-ppo-treatment** — rank is fine but installs lag? Design an outcome-led
+    screenshot A/B test + the steps to run Apple's free Product Page Optimization.
+
 ## The execution layer (bundled / referenced)
 
 The push half reuses the `asc` (App Store Connect) and `gplay` (Play Console)
