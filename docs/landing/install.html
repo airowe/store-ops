@@ -1,0 +1,308 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="dark">
+<title>Install ShipASO — run the free ASO plugin in Claude Code</title>
+<meta name="description" content="Install the free ShipASO plugin in Claude Code with two commands, then audit your live App Store / Google Play listing in about 30 seconds. MIT-licensed, no account, no paid ASO API.">
+<meta property="og:title" content="Install ShipASO — the free ASO plugin for Claude Code">
+<meta property="og:description" content="Two commands to install, one to run. Audit your live listing on real rank data — free, no account.">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://shipaso.com/install">
+<link rel="canonical" href="https://shipaso.com/install">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%230b0e14'/%3E%3Cg fill='%2334d399'%3E%3Cpath d='M16 6 L8.5 17 h15 Z'/%3E%3Cpath d='M5.5 19 h21 l-3 5 H8.5 Z'/%3E%3C/g%3E%3Cline x1='16' y1='8' x2='16' y2='17' stroke='%230b0e14' stroke-width='1.5'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&family=Fraunces:opsz,wght@9..144,500;9..144,600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #07090e;
+    --bg-2: #0b0e14;
+    --panel: #11151f;
+    --panel-2: #151a26;
+    --line: #222a3b;
+    --line-soft: #1a2130;
+    --ink: #eef1f7;
+    --dim: #97a1b6;
+    --faint: #626c83;
+    --signal: #34d399;
+    --signal-dim: #1f8f66;
+    --signal-glow: rgba(52, 211, 153, 0.18);
+    --brand: #5b8cff;
+    --warn: #fbbf24;
+    --bad: #f87171;
+    --mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
+    --sans: "Space Grotesk", -apple-system, "Segoe UI", Roboto, sans-serif;
+    --display: "Fraunces", Georgia, serif;
+  }
+  * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; scroll-behavior: smooth; }
+  body {
+    margin: 0; font-family: var(--sans); font-size: 17px; line-height: 1.6;
+    color: var(--ink); background: var(--bg);
+    -webkit-font-smoothing: antialiased;
+    background-image:
+      radial-gradient(900px 500px at 12% -8%, var(--signal-glow), transparent 60%),
+      radial-gradient(700px 600px at 108% 12%, rgba(91,140,255,0.10), transparent 55%),
+      linear-gradient(var(--line-soft) 1px, transparent 1px),
+      linear-gradient(90deg, var(--line-soft) 1px, transparent 1px);
+    background-size: 100% 100%, 100% 100%, 46px 46px, 46px 46px;
+    background-position: 0 0, 0 0, -1px -1px, -1px -1px;
+  }
+  body::before {
+    content: ""; position: fixed; inset: 0; pointer-events: none; z-index: 0; opacity: 0.025;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  }
+  .wrap { max-width: 860px; margin: 0 auto; padding: 0 24px; position: relative; z-index: 1; }
+  a { color: inherit; }
+
+  /* ── top bar ── */
+  .topbar { display: flex; align-items: center; padding: 22px 0 0; }
+  .brand a { display: inline-flex; align-items: center; gap: 9px; font-weight: 700; font-size: 18px; letter-spacing: -0.3px; text-decoration: none; color: var(--ink); }
+  .brand .tick { display: inline-flex; width: 24px; height: 24px; }
+  .brand .tick svg { width: 24px; height: 24px; }
+  .nav { margin-left: auto; display: flex; gap: 26px; font-size: 14.5px; font-weight: 500; }
+  .nav a { color: var(--dim); text-decoration: none; transition: color .15s; }
+  .nav a:hover { color: var(--ink); }
+  @media (max-width: 640px) { .nav { display: none; } }
+
+  /* ── hero ── */
+  .hero { padding: 56px 0 20px; }
+  .eyebrow { font-family: var(--mono); font-size: 12px; letter-spacing: .08em; text-transform: uppercase; color: var(--signal-dim); margin: 0 0 14px; display: flex; align-items: center; gap: 9px; }
+  .eyebrow .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--signal); box-shadow: 0 0 10px var(--signal); animation: pulse 2.4s ease-in-out infinite; }
+  @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: .4; } }
+  h1 { font-family: var(--display); font-weight: 600; font-size: clamp(30px, 5.4vw, 46px); line-height: 1.08; letter-spacing: -0.6px; margin: 0 0 16px; text-wrap: balance; }
+  h1 .hl { color: var(--signal); }
+  .lede { font-size: clamp(17px, 2.3vw, 20px); color: var(--dim); max-width: 60ch; margin: 0 0 4px; line-height: 1.55; }
+  .prereq { margin: 22px 0 0; font-family: var(--mono); font-size: 13px; color: var(--faint); }
+  .prereq b { color: var(--dim); font-weight: 500; }
+  .prereq a { color: var(--dim); text-decoration: underline; text-underline-offset: 2px; }
+
+  /* ── step numbering ── */
+  .flow { margin: 44px 0 0; }
+  .stephead { display: flex; align-items: baseline; gap: 12px; margin: 40px 0 4px; }
+  .stephead .num { font-family: var(--mono); font-size: 13px; font-weight: 700; color: var(--signal); letter-spacing: .06em; }
+  .stephead h2 { font-family: var(--sans); font-size: clamp(19px, 3vw, 24px); font-weight: 600; letter-spacing: -0.3px; margin: 0; }
+  .flow > p { color: var(--dim); font-size: 15.5px; margin: 6px 0 0; max-width: 64ch; }
+
+  /* ── terminal command block (shared with check-your-rank) ── */
+  .cmd {
+    background: linear-gradient(180deg, var(--panel), var(--bg-2));
+    border: 1px solid var(--line); border-radius: 12px;
+    overflow: hidden; margin: 18px 0 8px; box-shadow: 0 18px 50px -28px rgba(0,0,0,.6);
+  }
+  .cmd .bar { display: flex; align-items: center; gap: 8px; padding: 10px 14px; border-bottom: 1px solid var(--line-soft); background: rgba(255,255,255,0.015); }
+  .cmd .bar i { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
+  .cmd .bar .r { background: #ff5f57; } .cmd .bar .y { background: #febc2e; } .cmd .bar .g { background: #28c840; }
+  .cmd .bar .ttl { margin-left: 8px; font-family: var(--mono); font-size: 11.5px; color: var(--faint); }
+  .cmd .bar .copy {
+    margin-left: auto; font-family: var(--mono); font-size: 11px; color: var(--dim);
+    background: rgba(255,255,255,0.03); border: 1px solid var(--line-soft); border-radius: 6px;
+    padding: 3px 9px; cursor: pointer; transition: color .15s, border-color .15s, background .15s;
+  }
+  .cmd .bar .copy:hover { color: var(--ink); border-color: var(--dim); }
+  .cmd .bar .copy.done { color: var(--signal); border-color: var(--signal-dim); }
+  .cmd .body {
+    font-family: var(--mono); font-size: 14px; line-height: 1.7; color: var(--ink);
+    padding: 16px 18px; overflow-x: auto; white-space: pre;
+  }
+  .cmd .p { color: var(--signal-dim); }
+  .cmd .c { color: var(--signal); }
+  .cmd .dimc { color: var(--faint); }
+
+  /* ── the audit output preview ── */
+  .out {
+    background: linear-gradient(180deg, var(--panel), var(--bg-2));
+    border: 1px solid var(--line); border-radius: 12px; overflow: hidden;
+    margin: 18px 0 8px; box-shadow: 0 18px 50px -28px rgba(0,0,0,.6);
+  }
+  .out .bar { display: flex; align-items: center; gap: 8px; padding: 10px 14px; border-bottom: 1px solid var(--line-soft); background: rgba(255,255,255,0.015); }
+  .out .bar i { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
+  .out .bar .r { background: #ff5f57; } .out .bar .y { background: #febc2e; } .out .bar .g { background: #28c840; }
+  .out .bar .ttl { margin-left: 8px; font-family: var(--mono); font-size: 11.5px; color: var(--faint); }
+  .out .body { font-family: var(--mono); font-size: 13px; line-height: 1.75; padding: 16px 18px; overflow-x: auto; white-space: pre; color: var(--dim); }
+  .out .body .ok { color: var(--signal); }
+  .out .body .flag { color: var(--warn); }
+  .out .body .hd { color: var(--ink); font-weight: 700; }
+  .out .body .grade { color: var(--signal); font-weight: 700; }
+
+  /* ── what you get: cards ── */
+  .steps { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin: 20px 0 8px; }
+  @media (max-width: 620px) { .steps { grid-template-columns: 1fr; } }
+  .step {
+    background: linear-gradient(180deg, var(--panel), var(--bg-2));
+    border: 1px solid var(--line); border-radius: 14px; padding: 18px 18px;
+    transition: transform .18s, border-color .18s, box-shadow .18s;
+  }
+  .step:hover { transform: translateY(-3px); border-color: var(--signal-dim); box-shadow: 0 18px 40px -20px var(--signal-glow); }
+  .step .n { font-family: var(--mono); font-size: 12px; font-weight: 700; color: var(--signal); letter-spacing: .04em; }
+  .step h3 { margin: 8px 0 6px; font-size: 16px; font-weight: 600; letter-spacing: -0.2px; }
+  .step p { margin: 0; font-size: 14px; color: var(--dim); line-height: 1.55; }
+  .step code { font-family: var(--mono); font-size: .86em; background: var(--panel-2); border: 1px solid var(--line-soft); border-radius: 5px; padding: 1px 5px; color: var(--signal); }
+
+  /* ── buttons ── */
+  .btn {
+    display: inline-flex; align-items: center; gap: 9px; font-family: var(--sans);
+    font-size: 15px; font-weight: 600; text-decoration: none; padding: 12px 22px;
+    border-radius: 10px; border: 1px solid transparent; cursor: pointer;
+    transition: transform .15s, box-shadow .15s, border-color .15s;
+  }
+  .btn svg { width: 16px; height: 16px; }
+  .btn-primary { color: #04140d; background: var(--signal); }
+  .btn-primary:hover { transform: translateY(-1px); box-shadow: 0 12px 30px -8px var(--signal-glow); }
+  .btn-ghost { color: var(--ink); background: rgba(255,255,255,0.02); border-color: var(--line); }
+  .btn-ghost:hover { border-color: var(--dim); transform: translateY(-1px); }
+  .cta-row { display: flex; flex-wrap: wrap; gap: 12px; margin: 30px 0 0; }
+
+  /* ── next-steps list ── */
+  .next { margin: 18px 0 0; padding: 0; list-style: none; }
+  .next li { padding: 11px 0; border-top: 1px solid var(--line-soft); display: flex; gap: 12px; align-items: baseline; color: var(--dim); font-size: 15px; }
+  .next li:first-child { border-top: none; }
+  .next li code { font-family: var(--mono); font-size: .86em; color: var(--signal); background: var(--panel-2); border: 1px solid var(--line-soft); border-radius: 5px; padding: 1px 6px; white-space: nowrap; }
+  .next li b { color: var(--ink); font-weight: 600; }
+
+  .note { margin: 40px 0 0; padding: 16px 18px; border: 1px solid var(--line-soft); border-left: 3px solid var(--signal-dim); border-radius: 8px; background: rgba(52,211,153,0.03); color: var(--dim); font-size: 14.5px; }
+  .note b { color: var(--ink); font-weight: 600; }
+
+  hr.rule { border: none; border-top: 1px solid var(--line-soft); margin: 52px 0 0; }
+
+  footer { margin: 60px 0 60px; padding-top: 26px; border-top: 1px solid var(--line-soft); color: var(--faint); font-size: 13.5px; line-height: 1.7; }
+  footer a { color: var(--dim); text-decoration: none; }
+  footer a:hover { color: var(--ink); }
+  footer .mono { font-family: var(--mono); }
+
+  @media (prefers-reduced-motion: reduce) {
+    * { animation: none !important; transition: none !important; scroll-behavior: auto; }
+  }
+</style>
+</head>
+<body>
+  <div class="wrap">
+    <header class="topbar">
+      <div class="brand"><a href="https://shipaso.com"><span class="tick"><svg viewBox="0 0 24 24" fill="none"><g fill="#34d399"><path d="M12 4 L6.5 12.5 h11 Z"/><path d="M4 14.5 h16 l-2.2 4 H6.2 Z"/></g></svg></span>ShipASO</a></div>
+      <nav class="nav">
+        <a href="https://shipaso.com">Home</a>
+        <a href="https://shipaso.com/check-your-rank">Check your rank</a>
+        <a href="https://github.com/airowe/store-ops">GitHub</a>
+        <a href="https://app.shipaso.com">Hosted agent</a>
+      </nav>
+    </header>
+
+    <section class="hero">
+      <p class="eyebrow"><span class="dot"></span> Free · MIT · runs in Claude Code</p>
+      <h1>Install ShipASO. <span class="hl">Audit your listing in 30 seconds.</span></h1>
+      <p class="lede">ShipASO is a Claude Code plugin — the ASO reasoning loop runs right in your
+      editor, on your machine, with your credentials. Two commands to install, one to run. No
+      account, no paid ASO API.</p>
+      <p class="prereq">Prerequisite: <b>Claude Code</b> — the CLI/editor agent.
+      Don't have it? <a href="https://claude.com/claude-code">Get Claude Code →</a></p>
+    </section>
+
+    <div class="flow">
+      <!-- STEP 1 -->
+      <div class="stephead"><span class="num">01</span><h2>Add the marketplace + install</h2></div>
+      <p>In Claude Code, paste these two lines. The first registers this repo as a plugin
+      marketplace; the second installs the plugin from it.</p>
+      <div class="cmd">
+        <div class="bar"><i class="r"></i><i class="y"></i><i class="g"></i><span class="ttl">Claude Code</span><button class="copy" data-copy="/plugin marketplace add airowe/store-ops&#10;/plugin install store-ops@store-ops">Copy</button></div>
+        <div class="body"><span class="p">&gt;</span> <span class="c">/plugin marketplace add airowe/store-ops</span>
+<span class="p">&gt;</span> <span class="c">/plugin install store-ops@store-ops</span></div>
+      </div>
+      <p class="prereq" style="margin-top:12px">That installs <b>27 skills</b> — the full audit → research → optimize →
+      ship → verify loop, plus the ship-safely + convert layer (review-risk, rejection assistant, PPO).</p>
+
+      <!-- STEP 2 -->
+      <div class="stephead"><span class="num">02</span><h2>Run your first audit</h2></div>
+      <p>Point it at any app by slug or bundle id. This one's read-only — it pulls your live
+      listing and scores every field. No credentials needed to start.</p>
+      <div class="cmd">
+        <div class="bar"><i class="r"></i><i class="y"></i><i class="g"></i><span class="ttl">Claude Code</span><button class="copy" data-copy="/aso-audit --app your-app --store appstore">Copy</button></div>
+        <div class="body"><span class="p">&gt;</span> <span class="c">/aso-audit</span> <span class="dimc">--app your-app --store appstore</span><span class="cursor" style="display:inline-block;width:8px;height:15px;background:var(--signal);vertical-align:-2px;margin-left:6px"></span></div>
+      </div>
+
+      <!-- What you'll see -->
+      <div class="stephead"><span class="num">→</span><h2>What you'll see</h2></div>
+      <p>A per-field ASO score against real best practice, the specific weak spots, and the exact
+      next skill to run for each gap — written to <code style="font-family:var(--mono);font-size:.9em;color:var(--signal)">marketing/aso/&lt;app&gt;/</code>.</p>
+      <div class="out">
+        <div class="bar"><i class="r"></i><i class="y"></i><i class="g"></i><span class="ttl">audit-2026-07-20.md</span></div>
+        <div class="body"><span class="hd">ASO audit · your-app · App Store</span>
+
+  Title       <span class="grade">88</span>  primary keyword present, brand+kw balanced
+  Subtitle    <span class="flag">61</span>  <span class="flag">⚠ "budget" duplicates the title — reclaim ~7 chars</span>
+  Keywords    <span class="flag">54</span>  <span class="flag">⚠ 3 dupes of title/subtitle · 1 unverifiable claim (2.3.7)</span>
+  Description  <span class="ok">79</span>  first 3 lines keyword-rich
+  Screenshots  <span class="flag">?</span>   <span class="flag">first shot is a UI screen, not an outcome</span>
+
+  <span class="hd">Prioritized fixes</span>
+   1. de-dupe keyword field    <span class="dimc">→ /aso-metadata-optimization</span>
+   2. drop the "#1" claim       <span class="dimc">→ /aso-review-risk</span>
+   3. outcome-led first shot    <span class="dimc">→ /aso-ppo-treatment</span>
+</div>
+      </div>
+
+      <div class="cta-row">
+        <a class="btn btn-primary" href="https://claude.com/claude-code">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg>
+          Get Claude Code
+        </a>
+        <a class="btn btn-ghost" href="https://github.com/airowe/store-ops">
+          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.58 2 12.25c0 4.53 2.87 8.37 6.84 9.73.5.1.68-.22.68-.49 0-.24-.01-.87-.01-1.71-2.78.62-3.37-1.37-3.37-1.37-.45-1.18-1.11-1.49-1.11-1.49-.91-.64.07-.62.07-.62 1 .07 1.53 1.06 1.53 1.06.89 1.56 2.34 1.11 2.91.85.09-.66.35-1.11.63-1.37-2.22-.26-4.56-1.14-4.56-5.07 0-1.12.39-2.03 1.03-2.75-.1-.26-.45-1.3.1-2.71 0 0 .84-.28 2.75 1.05A9.35 9.35 0 0112 6.84c.85 0 1.71.12 2.51.34 1.91-1.33 2.75-1.05 2.75-1.05.55 1.41.2 2.45.1 2.71.64.72 1.03 1.63 1.03 2.75 0 3.94-2.34 4.81-4.57 5.06.36.32.68.94.68 1.9 0 1.37-.01 2.48-.01 2.82 0 .27.18.6.69.49A10.02 10.02 0 0022 12.25C22 6.58 17.52 2 12 2z"/></svg>
+          View on GitHub
+        </a>
+      </div>
+
+      <hr class="rule">
+
+      <!-- Where to go next -->
+      <div class="stephead"><span class="num">03</span><h2>Where to go next</h2></div>
+      <p>The audit tells you which skill to run for each gap. The common path:</p>
+      <ul class="next">
+        <li><code>/aso-keyword-research</code> <span><b>Find terms worth ranking for</b> — expands seeds on real autocomplete + competitor data. No paid API.</span></li>
+        <li><code>/aso-metadata-optimization</code> <span><b>Generate final copy</b> at exact char limits and print the push commands. Never auto-ships.</span></li>
+        <li><code>/aso-review-risk</code> <span><b>Pre-flight for rejections</b> — scans copy for 2.3.7 triggers before you submit.</span></li>
+        <li><code>/aso-rank-monitor</code> <span><b>Prove the rank moved</b> — log your organic rank over time and watch the deltas.</span></li>
+      </ul>
+
+      <div class="note">
+        <b>Nothing ships without you.</b> The plugin reasons over free + owned data and prints the
+        exact <span class="mono">asc</span> / <span class="mono">gplay</span> push commands — you run
+        the push. To execute, install the <span class="mono">asc</span> / <span class="mono">gplay</span>
+        CLIs and auth with your own developer credentials; the reasoning skills work standalone and
+        emit the commands regardless.
+      </div>
+
+      <div class="note" style="border-left-color: var(--brand); background: rgba(91,140,255,0.04)">
+        <b>Want it to run itself?</b> The plugin is the whole loop, free, run by you. The
+        <a href="https://app.shipaso.com" style="color:var(--ink);text-decoration:underline;text-underline-offset:2px">hosted agent</a>
+        reruns it weekly — tracking rank, watching competitors, drafting the next optimization, and
+        pinging you only when there's a real move to approve. Same engine; your store credentials are
+        never held. → <a href="https://app.shipaso.com" style="color:var(--dim);text-decoration:underline;text-underline-offset:2px">app.shipaso.com</a>
+      </div>
+    </div>
+
+    <footer>
+      <p><strong>ShipASO</strong> — MIT-licensed ASO for App Store &amp; Google Play.<br>
+      Free plugin: <a href="https://github.com/airowe/store-ops">github.com/airowe/store-ops</a> ·
+      Hosted agent: <a href="https://app.shipaso.com">app.shipaso.com</a> ·
+      <a href="https://shipaso.com/check-your-rank">Check your rank</a></p>
+    </footer>
+  </div>
+
+  <script>
+    // Copy-to-clipboard on the command blocks. Decodes the newline entity in data-copy.
+    document.querySelectorAll(".copy").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        var text = btn.getAttribute("data-copy").replace(/&#10;/g, "\n");
+        navigator.clipboard.writeText(text).then(function () {
+          var prev = btn.textContent;
+          btn.textContent = "Copied ✓";
+          btn.classList.add("done");
+          setTimeout(function () { btn.textContent = prev; btn.classList.remove("done"); }, 1600);
+        });
+      });
+    });
+  </script>
+</body>
+</html>
