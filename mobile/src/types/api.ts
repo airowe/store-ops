@@ -465,6 +465,16 @@ export type RejectionAnalysis = {
   drafts: Record<ResolutionPath, string>;
 };
 
+// ── GitHub metadata-PR path (#8) ─────────────────────────────────────────────
+/** GET /github/status — is the App configured on this deploy + is a repo linked? */
+export type GithubStatus = { appConfigured: boolean; connected: boolean; repo: string | null };
+/** POST /github/connect — link/unlink the installation + repo. */
+export type GithubConnectResult = { connected: boolean; repo: string | null };
+/** POST /runs/:id/github/pr — the opened PR, or GitHub's refusal verbatim. */
+export type GithubPrResult =
+  | { ok: true; url: string; number: number; branch: string }
+  | { ok: false; reason: string };
+
 /** Keyword gap (PRD 01) — a term competitors use that you could win. */
 export type KeywordGap = {
   keyword: string;

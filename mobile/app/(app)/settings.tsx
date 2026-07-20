@@ -19,6 +19,7 @@ import { setNotifications, setRankCadence } from "../../src/api/endpoints.js";
 import { registerForPush, getLastKnownPushToken } from "../../src/notifications/register.js";
 import { signOutWithCleanup } from "../../src/lib/signout.js";
 import { StoredKeysCard } from "../../src/components/StoredKeysCard.js";
+import { GithubCard } from "../../src/components/GithubCard.js";
 import { Screen, AppText, Button, Card } from "../../src/components/primitives.js";
 import { spacing, usePalette, useThemeMode, type ThemeMode } from "../../src/theme/index.js";
 
@@ -162,6 +163,8 @@ export default function Settings() {
       </Card>
 
       <StoredKeysCard client={client} />
+
+      <GithubCard client={client} />
 
       <Card>
         <AppText kind="lead">Account</AppText>

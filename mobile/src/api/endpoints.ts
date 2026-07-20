@@ -13,6 +13,9 @@ import type {
   CheckoutResult,
   Competitor,
   DeltasView,
+  GithubConnectResult,
+  GithubPrResult,
+  GithubStatus,
   LocaleKeywordsResult,
   LocalizedDraft,
   LocalizeResult,
@@ -89,6 +92,18 @@ export const localizeRemove = (c: ApiClient, id: string, locale: string) =>
 /** Analyze a pasted App Review rejection (#178 Phase 4) — cited guideline + drafts. */
 export const analyzeRejection = (c: ApiClient, text: string) =>
   c.post<RejectionAnalysis>("/rejection-assistant", { text });
+
+// ── GitHub metadata-PR path (#8) — credential-free ship path ─────────────────
+/** Is the GitHub App configured on this deploy, and is a repo linked? */
+export const getGithubStatus = (c: ApiClient) => c.get<GithubStatus>("/github/status");
+
+/** Link (or, with an empty body, unlink) the App installation + target repo. */
+export const connectGithub = (c: ApiClient, body: { installation_id?: string; repo?: string }) =>
+  c.post<GithubConnectResult>("/github/connect", body);
+
+/** Open a metadata PR with the approved copy on the connected repo. */
+export const githubPr = (c: ApiClient, runId: string) =>
+  c.post<GithubPrResult>(`/runs/${enc(runId)}/github/pr`);
 
 /** Approve/reject a run (the human gate). Returns the updated run view. */
 export const decideRun = (c: ApiClient, id: string, decision: "approve" | "reject") =>
