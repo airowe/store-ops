@@ -28,6 +28,14 @@ export type AppPreview = {
    * knowable, never penalizing for what the public page didn't expose).
    */
   score: number | null;
+  /**
+   * How many fields the public read could actually score, out of the total —
+   * so a THIN read (e.g. 100 from just 2 readable fields) is shown as
+   * "2 of 6 fields readable" rather than presented as a flawless listing. The
+   * score reflects only what's knowable; this is how knowable it was.
+   */
+  fieldsMeasured: number;
+  fieldsTotal: number;
 };
 
 const SAMPLE_SIZE = 5;
@@ -65,5 +73,7 @@ export function buildPreview(result: AgentResult): AppPreview {
     sample: ranks.slice(0, SAMPLE_SIZE).map((r) => ({ keyword: r.keyword, rank: r.rank })),
     breakdown,
     score: compositeScore(breakdown),
+    fieldsMeasured: breakdown.filter((f) => f.state === "measured").length,
+    fieldsTotal: breakdown.length,
   };
 }
