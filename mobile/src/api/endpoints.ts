@@ -39,6 +39,8 @@ import type {
   RankCadence,
   RanksSeries,
   RejectionAnalysis,
+  ScreenshotPlan,
+  ScreenshotPlanInputs,
   ResolveResult,
   RunDetail,
   SweepSchedule,
@@ -101,6 +103,11 @@ export const localizeRemove = (c: ApiClient, id: string, locale: string) =>
 /** Analyze a pasted App Review rejection (#178 Phase 4) — cited guideline + drafts. */
 export const analyzeRejection = (c: ApiClient, text: string) =>
   c.post<RejectionAnalysis>("/rejection-assistant", { text });
+
+/** POST /plan/screenshots — LLM-plan a corrected screenshot set from a run's
+ *  audit findings (#153). Returns the ScreenshotPlan; renders/ships nothing. */
+export const planScreenshots = (c: ApiClient, inputs: ScreenshotPlanInputs) =>
+  c.post<ScreenshotPlan>("/plan/screenshots", inputs);
 
 // ── GitHub metadata-PR path (#8) — credential-free ship path ─────────────────
 /** Is the GitHub App configured on this deploy, and is a repo linked? */

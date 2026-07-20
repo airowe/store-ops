@@ -40,6 +40,8 @@ import type {
   RunAscResult,
   RunDecision,
   RunDetail,
+  ScreenshotPlan,
+  ScreenshotPlanInputs,
   StoredCredential,
   WarRoomView,
 } from "./types.js";
@@ -147,6 +149,11 @@ export const removeCompetitor = (c: ApiClient, id: string, key: string) =>
 /** Analyze a pasted App Review rejection (#178 Phase 4) — guideline + drafts. */
 export const analyzeRejection = (c: ApiClient, text: string) =>
   c.post<RejectionAnalysis>("/rejection-assistant", { text });
+
+/** POST /plan/screenshots — LLM-plan a corrected screenshot set from a run's
+ *  audit findings (#153). Returns the ScreenshotPlan; renders/ships nothing. */
+export const planScreenshots = (c: ApiClient, inputs: ScreenshotPlanInputs) =>
+  c.post<ScreenshotPlan>("/plan/screenshots", inputs);
 
 export const warRoom = (c: ApiClient, id: string, competitors?: string[]) =>
   c.get<WarRoomView>(

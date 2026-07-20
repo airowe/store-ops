@@ -23,6 +23,7 @@ import { OpportunitiesCard } from "./OpportunitiesCard.js";
 import { LocalizationExpansionCard } from "./LocalizationExpansionCard.js";
 import { CoverageCard } from "./CoverageCard.js";
 import { PpoTreatmentCard } from "./PpoTreatmentCard.js";
+import { ScreenshotPlanCard } from "./ScreenshotPlanCard.js";
 import { LocalizationCard } from "./LocalizationCard.js";
 import { API_BASE } from "../../config.js";
 
@@ -116,6 +117,24 @@ export function RunView({
         <LocalizationExpansionCard recommendations={r.localizationExpansion} />
       ) : null}
       {r.ppoTreatment ? <PpoTreatmentCard plan={r.ppoTreatment} /> : null}
+      {r.audit?.screenshots ? (
+        <ScreenshotPlanCard
+          client={client}
+          inputs={{
+            appName: r.proposedCopy.name ?? r.currentCopy.name ?? r.audit.liveName ?? "",
+            ...(r.proposedCopy.subtitle ? { subtitle: r.proposedCopy.subtitle } : {}),
+            keywords: (r.proposedCopy.keywords ?? "").split(",").map((k) => k.trim()).filter(Boolean),
+            rawScreens: [],
+            audit: {
+              grade: r.audit.screenshots.grade,
+              // App Store minimum-strong set when the audit carries no explicit target.
+              recommendedCount: 6,
+              findings: r.audit.screenshots.findings ?? [],
+            },
+            brandPalette: [],
+          }}
+        />
+      ) : null}
 
       {pending ? (
         <div className="btn-row" style={{ display: "flex", gap: 10, marginTop: 14 }}>
