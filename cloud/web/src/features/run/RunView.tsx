@@ -27,6 +27,7 @@ import { ScreenshotPlanCard } from "./ScreenshotPlanCard.js";
 import { CppSetsCard } from "./CppSetsCard.js";
 import { LocalizationCard } from "./LocalizationCard.js";
 import { API_BASE } from "../../config.js";
+import { runStatusLabel } from "../../lib/status.js";
 
 /** The ShipASO MCP endpoint the agent connects to (absolute when an API base is
  *  configured, else a relative path in the demo build). */
@@ -87,7 +88,11 @@ export function RunView({
   const run = runQ.data;
   const approved = run.status === "approved" || run.status === "shipped";
   const rejected = run.status === "rejected";
-  const pending = !approved && !rejected;
+  // A superseded run is a dead iteration (a newer run replaced it) — it's NOT
+  // pending, so it never shows Approve/Reject. Only a genuinely-open run is
+  // actionable; everything terminal (decided or superseded) is read-only.
+  const superseded = run.status === "superseded";
+  const pending = !approved && !rejected && !superseded;
   const r = run.result;
   const tierLimited = decide.error instanceof ApiError && decide.error.isTierLimit;
 
@@ -163,7 +168,7 @@ export function RunView({
         </div>
       ) : (
         <p className={"run-status" + (approved ? " good" : "")} data-testid="run-status">
-          {approved ? "Approved · ready to push" : "Rejected"}
+          {runStatusLabel(run.status)}
         </p>
       )}
 

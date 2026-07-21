@@ -56,4 +56,13 @@ describe("ApprovalGate (honesty: no push before approval)", () => {
     );
     expect(screen.getByText("(was unread)")).toBeTruthy();
   });
+
+  it("superseded: reads as replaced by a newer run, not actionable (no approve/reject)", () => {
+    render(
+      <ApprovalGate status="superseded" current={current} proposed={proposed} pushCommands={[]} onApprove={() => {}} onReject={() => {}} />,
+    );
+    expect(screen.getByText("Superseded by a newer run")).toBeTruthy();
+    expect(screen.queryByTestId("approve")).toBeNull();
+    expect(screen.queryByTestId("reject")).toBeNull();
+  });
 });
