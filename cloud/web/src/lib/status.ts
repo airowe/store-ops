@@ -11,6 +11,9 @@ const LABELS: Record<string, string> = {
   approved: "Approved · ready to push",
   rejected: "Rejected",
   shipped: "Approved · ready to push",
+  // an older run replaced by a newer one for the same app — a dead iteration,
+  // not a phantom pending. Reads as resolved so nobody tries to act on it.
+  superseded: "Superseded by a newer run",
 };
 
 export function runStatusLabel(status: string): string {

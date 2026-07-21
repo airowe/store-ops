@@ -45,8 +45,9 @@ function makeClient({
   github = { appConfigured: true, connected: false, repo: null } as unknown,
   prResult = { ok: true, url: "https://github.com/o/r/pull/7", number: 7, branch: "shipaso/run1" } as unknown,
   extra = {} as Record<string, unknown>,
+  status = "awaiting_approval" as string,
 } = {}) {
-  const state = runDetail("awaiting_approval", [], extra);
+  const state = runDetail(status, [], extra);
   const get = vi.fn(async (path: string) => {
     if (path === "/runs/run1") return state;
     if (path === "/account/credentials") return { enabled: true, credentials };
@@ -113,6 +114,15 @@ describe("<RunView /> — the money screen", () => {
     fireEvent.click(screen.getByTestId("reject"));
     await waitFor(() => expect(screen.getByTestId("run-status")).toHaveTextContent("Rejected"));
     expect(screen.queryByTestId("handoff")).toBeNull();
+  });
+
+  it("superseded: reads as replaced by a newer run, NOT actionable (no Approve/Reject)", async () => {
+    const { client } = makeClient({ status: "superseded" });
+    renderView(client);
+    await waitFor(() => expect(screen.getByTestId("run-status")).toHaveTextContent("Superseded by a newer run"));
+    // a superseded run is a dead iteration — never offer approve/reject on it
+    expect(screen.queryByTestId("approve")).toBeNull();
+    expect(screen.queryByTestId("reject")).toBeNull();
   });
 
   it("renders the listing audit findings + collapses locks into one connect CTA", async () => {

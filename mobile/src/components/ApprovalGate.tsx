@@ -30,7 +30,10 @@ export function ApprovalGate({
 }) {
   const approved = status === "approved" || status === "shipped";
   const rejected = status === "rejected";
-  const pending = !approved && !rejected;
+  // A superseded run (a newer run replaced it) is a dead iteration — never
+  // pending, so it shows no Approve/Reject; it reads as resolved.
+  const superseded = status === "superseded";
+  const pending = !approved && !rejected && !superseded;
 
   return (
     <Card>
@@ -44,7 +47,7 @@ export function ApprovalGate({
         </View>
       ) : (
         <AppText kind="dim" style={{ color: approved ? palette.signal : palette.dim }}>
-          {approved ? "Approved" : "Rejected"}
+          {approved ? "Approved" : superseded ? "Superseded by a newer run" : "Rejected"}
         </AppText>
       )}
 

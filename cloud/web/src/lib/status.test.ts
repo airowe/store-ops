@@ -9,6 +9,10 @@ describe("runStatusLabel", () => {
     expect(runStatusLabel("shipped")).toBe("Approved · ready to push");
     expect(runStatusLabel("shipped")).not.toMatch(/^Shipped$/);
   });
+  it("superseded reads as replaced by a newer run (not a phantom pending)", () => {
+    expect(runStatusLabel("superseded")).toBe("Superseded by a newer run");
+    expect(runStatusLabel("superseded")).not.toMatch(/approval|pending/i);
+  });
   it("falls back to the raw status", () => {
     expect(runStatusLabel("weird")).toBe("weird");
   });
