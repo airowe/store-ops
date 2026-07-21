@@ -1329,6 +1329,75 @@ export async function persistCorpusSnapshots(db: D1Database, rows: CorpusRow[]):
   await db.batch(stmts);
 }
 
+/** A corpus point read back for pattern-mining (#64) — mirrors CorpusPoint. */
+export type CorpusPointRow = {
+  seedKeyword: string;
+  country: string;
+  bundleId: string;
+  name: string;
+  rank: number | null;
+  version: string;
+  rating: number | null;
+  description: string;
+  checkedAt: string;
+};
+
+/**
+ * Read corpus_snapshots for pattern-mining (#64), ordered by
+ * (seed_keyword, bundle_id, checked_at) so buildTransitions can pair consecutive
+ * snapshots. Optionally scoped by seed/country and a recency window. Bounded.
+ */
+export async function readCorpusPoints(
+  db: D1Database,
+  opts: { seedKeyword?: string; country?: string; sinceDays?: number; limit?: number } = {},
+): Promise<CorpusPointRow[]> {
+  const conds: string[] = [];
+  const binds: unknown[] = [];
+  if (opts.seedKeyword) {
+    conds.push("seed_keyword = ?");
+    binds.push(opts.seedKeyword);
+  }
+  if (opts.country) {
+    conds.push("country = ?");
+    binds.push(opts.country);
+  }
+  if (opts.sinceDays !== undefined) {
+    conds.push("checked_at >= datetime('now', ?)");
+    binds.push(`-${opts.sinceDays} days`);
+  }
+  const where = conds.length ? `WHERE ${conds.join(" AND ")}` : "";
+  const limit = opts.limit ?? 5000;
+  const { results } = await db
+    .prepare(
+      `SELECT seed_keyword, country, bundle_id, name, rank, version, rating, description, checked_at
+       FROM corpus_snapshots ${where}
+       ORDER BY seed_keyword ASC, bundle_id ASC, checked_at ASC LIMIT ?`,
+    )
+    .bind(...binds, limit)
+    .all<{
+      seed_keyword: string;
+      country: string;
+      bundle_id: string;
+      name: string;
+      rank: number | null;
+      version: string;
+      rating: number | null;
+      description: string;
+      checked_at: string;
+    }>();
+  return (results ?? []).map((r) => ({
+    seedKeyword: r.seed_keyword,
+    country: r.country,
+    bundleId: r.bundle_id,
+    name: r.name,
+    rank: r.rank,
+    version: r.version,
+    rating: r.rating,
+    description: r.description,
+    checkedAt: r.checked_at,
+  }));
+}
+
 /**
  * Play chart-rank history for an app (oldest → newest), for a Play rank-delta
  * chart and the analysis modules. Optionally scoped to one (category, collection,
