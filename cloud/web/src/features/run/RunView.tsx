@@ -24,6 +24,7 @@ import { LocalizationExpansionCard } from "./LocalizationExpansionCard.js";
 import { CoverageCard } from "./CoverageCard.js";
 import { PpoTreatmentCard } from "./PpoTreatmentCard.js";
 import { ScreenshotPlanCard } from "./ScreenshotPlanCard.js";
+import { CppSetsCard } from "./CppSetsCard.js";
 import { LocalizationCard } from "./LocalizationCard.js";
 import { API_BASE } from "../../config.js";
 
@@ -132,6 +133,21 @@ export function RunView({
               findings: r.audit.screenshots.findings ?? [],
             },
             brandPalette: [],
+          }}
+        />
+      ) : null}
+      {r.audit?.screenshots && (r.opportunities?.length ?? 0) >= 2 ? (
+        <CppSetsCard
+          client={client}
+          inputs={{
+            appName: r.proposedCopy.name ?? r.currentCopy.name ?? r.audit.liveName ?? "",
+            ...(r.proposedCopy.subtitle ? { subtitle: r.proposedCopy.subtitle } : {}),
+            keywords: (r.opportunities ?? []).map((o) => o.keyword).filter(Boolean),
+            rawScreens: [],
+            auditGrade: r.audit.screenshots.grade,
+            findings: r.audit.screenshots.findings ?? [],
+            brandPalette: [],
+            recommendedCount: 6,
           }}
         />
       ) : null}
