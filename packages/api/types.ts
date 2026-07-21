@@ -529,3 +529,32 @@ export type ScreenshotPlanInputs = {
   audit: { grade?: string; recommendedCount: number; findings: string[] };
   brandPalette?: string[];
 };
+
+// ── CPP sets (#154 Part 2) — per-intent Custom Product Page screenshot sets ────
+
+/** A cluster of tracked keywords sharing a term — the evidence a CPP is for. */
+export type KeywordIntent = { label: string; keywords: string[] };
+
+/** One proposed CPP set: the named intent + the ShipShots plan pitched at it. */
+export type CppSet = { intent: KeywordIntent; plan: ScreenshotPlan };
+
+/**
+ * POST /cpp/sets result. `ok:false` is the honest sparse-data refusal (a CPP is
+ * only worth proposing per distinct measured intent) — a valid answer, not an
+ * error. `ok:true` carries one set per qualifying intent.
+ */
+export type CppSetsResult =
+  | { ok: false; reason: string }
+  | { ok: true; sets: CppSet[]; intentsMeasured: number };
+
+/** Request body for POST /cpp/sets. */
+export type CppSetsInputs = {
+  appName: string;
+  subtitle?: string;
+  keywords?: string[];
+  rawScreens?: string[];
+  auditGrade?: string;
+  findings?: string[];
+  brandPalette?: string[];
+  recommendedCount?: number;
+};

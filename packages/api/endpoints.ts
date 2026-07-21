@@ -42,6 +42,8 @@ import type {
   RunDetail,
   ScreenshotPlan,
   ScreenshotPlanInputs,
+  CppSetsInputs,
+  CppSetsResult,
   StoredCredential,
   WarRoomView,
 } from "./types.js";
@@ -154,6 +156,12 @@ export const analyzeRejection = (c: ApiClient, text: string) =>
  *  audit findings (#153). Returns the ScreenshotPlan; renders/ships nothing. */
 export const planScreenshots = (c: ApiClient, inputs: ScreenshotPlanInputs) =>
   c.post<ScreenshotPlan>("/plan/screenshots", inputs);
+
+/** POST /cpp/sets — cluster tracked keywords into intents and plan a CPP set per
+ *  intent (#154 Part 2). Returns CppSetsResult; the sparse-data refusal is
+ *  ok:false, not an error. Renders/ships/creates nothing. */
+export const buildCppSets = (c: ApiClient, inputs: CppSetsInputs) =>
+  c.post<CppSetsResult>("/cpp/sets", inputs);
 
 export const warRoom = (c: ApiClient, id: string, competitors?: string[]) =>
   c.get<WarRoomView>(

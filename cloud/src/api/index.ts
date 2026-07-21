@@ -125,6 +125,7 @@ import { readLocaleKeywords } from "../engine/localeKeywords.js";
 import { analyzeRejection } from "../engine/rejectionAssistant.js";
 import { localizeScreenshots, type LayeredSource, type TextSlot } from "../engine/localizeScreenshots.js";
 import { planScreenshots, type PlannerInputs, type Grade } from "../engine/screenshotPlanner.js";
+import { buildCppSets } from "../engine/cppSets.js";
 import { localizerForEnv } from "./aiLocalizer.js";
 import { credentialsEnabled, deleteCredential, listCredentialMeta, saveCredential, useCredential } from "../credentialStore.js";
 import { createApiKey, listApiKeys, looksLikeApiKey, resolveApiKey, revokeApiKey } from "../apiKeys.js";
@@ -2739,6 +2740,49 @@ async function planScreenshotsRoute(req: Request, env: Env): Promise<unknown> {
 }
 
 /**
+ * POST /cpp/sets (#154 Part 2) — cluster a run's tracked keywords into intents and
+ * run the ShipShots planner once per intent → a proposed CPP set per intent.
+ * Stateless: returns the sets (plans), renders/ships/creates nothing. The
+ * sparse-data floor is a normal { ok:false } answer (not an error) — a CPP is only
+ * worth proposing per distinct measured intent. No AI binding degrades each
+ * intent's plan deterministically; never a fabricated set.
+ */
+async function cppSetsRoute(req: Request, env: Env): Promise<unknown> {
+  const body = (await readJson(req)) as {
+    appName?: unknown;
+    subtitle?: unknown;
+    keywords?: unknown;
+    rawScreens?: unknown;
+    auditGrade?: unknown;
+    findings?: unknown;
+    brandPalette?: unknown;
+    recommendedCount?: unknown;
+  };
+  if (typeof body.appName !== "string" || body.appName.trim() === "") {
+    throw new HttpError(400, "appName is required");
+  }
+  const asStrings = (v: unknown): string[] =>
+    Array.isArray(v) ? v.filter((s): s is string => typeof s === "string") : [];
+  const grade: Grade = (["A", "B", "C", "D", "F", "?"] as const).includes(body.auditGrade as Grade)
+    ? (body.auditGrade as Grade)
+    : "?";
+
+  return await buildCppSets(
+    {
+      appName: body.appName,
+      ...(typeof body.subtitle === "string" ? { subtitle: body.subtitle } : {}),
+      keywords: asStrings(body.keywords),
+      rawScreens: asStrings(body.rawScreens),
+      auditGrade: grade,
+      findings: asStrings(body.findings),
+      brandPalette: asStrings(body.brandPalette),
+      recommendedCount: typeof body.recommendedCount === "number" ? body.recommendedCount : 6,
+    },
+    reasonerForEnv(env.AI),
+  );
+}
+
+/**
  * POST /runs/:id/localize/approve (#78 Phase 2) — the explicit per-market
  * approval: store this locale's (possibly human-edited) draft on the run
  * trace, making it part of the handoff. The server is authoritative: the
@@ -4252,6 +4296,10 @@ export async function handleApi(req: Request, env: Env, ctx?: ExecutionContext):
     // POST /plan/screenshots — LLM-plan a screenshot set from audit findings (#153)
     if (seg[0] === "plan" && seg[1] === "screenshots" && seg.length === 2 && method === "POST") {
       return json(await planScreenshotsRoute(req, env), 200, origin, env);
+    }
+    // POST /cpp/sets — per-intent CPP screenshot sets from tracked keywords (#154 P2)
+    if (seg[0] === "cpp" && seg[1] === "sets" && seg.length === 2 && method === "POST") {
+      return json(await cppSetsRoute(req, env), 200, origin, env);
     }
 
     // /account/notifications — communication prefs (comms-prefs Phase 1)
