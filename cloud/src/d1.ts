@@ -1276,6 +1276,59 @@ export async function persistPlayChartRank(
     .run();
 }
 
+/** One corpus_snapshots row to persist (#63) — VISIBLE fields only, no app FK. */
+export type CorpusRow = {
+  seedKeyword: string;
+  country: string;
+  bundleId: string;
+  trackId?: number;
+  name: string;
+  categoryId: string;
+  categoryName: string;
+  rank: number | null;
+  version: string;
+  rating: number | null;
+  ratingCount: number | null;
+  description: string;
+};
+
+/**
+ * Persist a batch of category-corpus observations (#63). One row per observed
+ * app; a null rank is persisted honestly (beyond the cap, not a fake 0). Atomic
+ * via db.batch. No-op on an empty batch.
+ */
+export async function persistCorpusSnapshots(db: D1Database, rows: CorpusRow[]): Promise<void> {
+  if (!rows.length) return;
+  const at = now();
+  // A FRESH prepared statement per row (mirrors persistRankSnapshots): each
+  // carries its own bound args, so batch can't collapse to a shared/last binding.
+  const stmts = rows.map((r) =>
+    db
+      .prepare(
+        `INSERT INTO corpus_snapshots
+           (id, seed_keyword, country, bundle_id, track_id, name, category_id, category_name, rank, version, rating, rating_count, description, checked_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      )
+      .bind(
+        uuid(),
+        r.seedKeyword,
+        r.country,
+        r.bundleId,
+        r.trackId ?? null,
+        r.name,
+        r.categoryId,
+        r.categoryName,
+        r.rank,
+        r.version,
+        r.rating,
+        r.ratingCount,
+        r.description,
+        at,
+      ),
+  );
+  await db.batch(stmts);
+}
+
 /**
  * Play chart-rank history for an app (oldest → newest), for a Play rank-delta
  * chart and the analysis modules. Optionally scoped to one (category, collection,

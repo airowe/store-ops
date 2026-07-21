@@ -33,6 +33,7 @@ import {
 } from "../d1.js";
 import { canRunCron } from "../billing.js";
 import { runAnalyticsIngest } from "./analyticsIngest.js";
+import { runCorpusCollection } from "./corpusCollection.js";
 import { buildAppInput } from "../api/runConfig.js";
 import { reasonerForEnv } from "../api/aiReasoner.js";
 import { fetchForEnv } from "../fetchAdapter.js";
@@ -178,5 +179,17 @@ export async function handleDailySnapshot(env: Env): Promise<void> {
   } catch (e) {
     // The analytics ingest must never break the daily snapshot cron.
     console.error(`[store-ops cron] analytics ingest failed: ${String(e)}`);
+  }
+
+  try {
+    const corpus = await runCorpusCollection(env);
+    if (corpus.enabled) {
+      console.log(
+        `[store-ops cron] category corpus: ${corpus.rowsPersisted} rows from ${corpus.seedsProcessed} seeds`,
+      );
+    }
+  } catch (e) {
+    // The corpus collection must never break the daily snapshot cron either.
+    console.error(`[store-ops cron] category corpus failed: ${String(e)}`);
   }
 }

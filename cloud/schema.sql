@@ -420,3 +420,40 @@ CREATE TABLE IF NOT EXISTS play_funnel_snapshots (
   PRIMARY KEY (app_id, period, country)
 );
 CREATE INDEX IF NOT EXISTS idx_play_funnel_app ON play_funnel_snapshots(app_id, period);
+
+-- ── corpus_snapshots ─────────────────────────────────────────────────────────
+-- The compounding rank+metadata data moat (#63): a daily, category-tagged sample
+-- of the top-N apps per broad seed keyword — NOT just customer apps. Over months
+-- this becomes a "movers & shakers" dataset nobody can buy retroactively.
+--
+-- Deliberately NO app_id / FK — these are arbitrary store apps, not customer apps
+-- (unlike rank_snapshots). Collection is OFF by default, gated by
+-- env.CATEGORY_CORPUS_ENABLED, and capped small (seeds × topN ≈ 200 rows/day) so
+-- the egress + storage footprint is reviewable before the owner widens it.
+--
+-- HONESTY: VISIBLE fields only — iTunes exposes name/version/description/rating/
+-- category/rank, but NOT subtitle or the keyword field, so this picture is
+-- partial and every downstream use must say so. A rank we couldn't read is NULL
+-- (beyond the cap), never a fake 0. Retention/rollup is a follow-up (indexed by
+-- checked_at); trivial at the default caps.
+--
+-- MIGRATION (run once against prod D1):
+--   npx wrangler d1 execute store_ops --command "CREATE TABLE IF NOT EXISTS corpus_snapshots (id TEXT PRIMARY KEY, seed_keyword TEXT NOT NULL, country TEXT NOT NULL DEFAULT '', bundle_id TEXT NOT NULL, track_id INTEGER, name TEXT NOT NULL DEFAULT '', category_id TEXT NOT NULL DEFAULT '', category_name TEXT NOT NULL DEFAULT '', rank INTEGER, version TEXT NOT NULL DEFAULT '', rating REAL, rating_count INTEGER, description TEXT NOT NULL DEFAULT '', checked_at TEXT NOT NULL DEFAULT (datetime('now')))"
+CREATE TABLE IF NOT EXISTS corpus_snapshots (
+  id            TEXT PRIMARY KEY,                 -- uuid
+  seed_keyword  TEXT NOT NULL,                    -- the search term this sample came from
+  country       TEXT NOT NULL DEFAULT '',         -- lowercased storefront
+  bundle_id     TEXT NOT NULL,                    -- the observed app (NOT a customer app; no FK)
+  track_id      INTEGER,                          -- iTunes trackId
+  name          TEXT NOT NULL DEFAULT '',
+  category_id   TEXT NOT NULL DEFAULT '',         -- primaryGenreId (e.g. "6001")
+  category_name TEXT NOT NULL DEFAULT '',
+  rank          INTEGER,                          -- 1-based position in the seed's results; NULL = beyond cap
+  version       TEXT NOT NULL DEFAULT '',
+  rating        REAL,                             -- averageUserRating; NULL when absent
+  rating_count  INTEGER,                          -- userRatingCount; NULL when absent
+  description   TEXT NOT NULL DEFAULT '',         -- VISIBLE description (subtitle/keywords NOT available)
+  checked_at    TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_corpus_seed ON corpus_snapshots(seed_keyword, country, checked_at);
+CREATE INDEX IF NOT EXISTS idx_corpus_bundle ON corpus_snapshots(bundle_id, checked_at);
