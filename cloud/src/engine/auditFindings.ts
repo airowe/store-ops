@@ -41,6 +41,7 @@ import type { Finding, SurfaceLock } from "./findings/core.js";
 import type { CopyFields } from "./optimize.js";
 import { reviewRiskFindings } from "./reviewRisk.js";
 import { ppoFindings } from "./ppoFindings.js";
+import { ppoResultFindings } from "./ppoResults.js";
 import { clusterKeywordIntents } from "./cppIntents.js";
 import { cppIdenticalFindings, screenshotSignature } from "./cppScreenshotDiff.js";
 export {
@@ -1102,6 +1103,7 @@ export function auditFindings(input: AuditFindingsInput): Finding[] {
     ...metaFindings(input),
     ...reviewRiskFindings(input.proposedCopy),
     ...ppoFindings(input.snapshot?.experiments),
+    ...ppoResultFindings(input.snapshot?.ppoResults?.results ?? []),
   ];
 
   return sortFindings(findings);

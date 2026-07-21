@@ -37,6 +37,7 @@ import {
   type LiveListingCopy,
 } from "./ascWrite.js";
 import { readAscExperiments, type AscExperimentsResult } from "./ascExperiments.js";
+import { readPpoResults, type PpoResultsResult } from "./ppoResults.js";
 
 /** A single screenshot asset read from ASC. All fields optional — apps vary. */
 export type AscScreenshot = {
@@ -597,6 +598,9 @@ export type AscSnapshot = {
   locales?: LiveListingCopy[] | undefined;
   /** Product Page Optimization experiments + state (#182 Phase 2). */
   experiments?: AscExperimentsResult | undefined;
+  /** PPO measured result metrics per experiment (#182 Phase 4), robust to the
+   *  metrics endpoint being UI-only (degrades to deep-link results). */
+  ppoResults?: PpoResultsResult | undefined;
   /** per-surface read errors (token-free), empty when all reads succeeded. */
   errors: { surface: string; message: string }[];
 };
@@ -635,7 +639,20 @@ export async function readAscSnapshot(
       tryRead("experiments", () => readAscExperiments(fetchFn, { token: opts.token, appId: opts.appId })),
     ]);
 
-  return { screenshots, previews, appInfo, versionState, pricing, ageRating, customProductPages, locales, experiments, errors };
+  // Phase 4: once we've read the experiments, read each one's result metrics.
+  // Depends on `experiments`, so it runs after the parallel batch. Degrade-safe.
+  const ppoResults =
+    experiments && experiments.read && experiments.experiments.length > 0
+      ? await tryRead("ppoResults", () =>
+          readPpoResults(fetchFn, {
+            token: opts.token,
+            appId: opts.appId,
+            experiments: experiments.experiments.map((e) => ({ id: e.id, ...(e.state !== undefined ? { state: e.state } : {}) })),
+          }),
+        )
+      : undefined;
+
+  return { screenshots, previews, appInfo, versionState, pricing, ageRating, customProductPages, locales, experiments, ppoResults, errors };
 }
 
 /**
