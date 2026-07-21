@@ -1280,3 +1280,18 @@ describe("review-risk lint integration (#178)", () => {
     expect(ids(input({ proposedCopy: { name: "Weatherly", subtitle: "Honest forecasts", keywords: "weather,radar" } })).some((i) => i.startsWith("review_risk_"))).toBe(false);
   });
 });
+
+describe("Studio grade projection (#26)", () => {
+  it("projects a before→after grade for a set with count headroom (C with 3 shots)", () => {
+    const got = ids(input({ audit: audit(shot({ iphoneCount: 3, score: 60, grade: "C" })) }));
+    expect(got).toContain("studio_grade_projection");
+  });
+  it("is silent for an A-grade set (no headroom → never over-sell)", () => {
+    const got = ids(input({ audit: audit(shot({ iphoneCount: 8, score: 90, grade: "A" })) }));
+    expect(got).not.toContain("studio_grade_projection");
+  });
+  it("is silent for an unreadable set", () => {
+    const got = ids(input({ audit: audit(shot({ score: null, grade: "?" })) }));
+    expect(got).not.toContain("studio_grade_projection");
+  });
+});
