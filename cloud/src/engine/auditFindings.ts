@@ -42,6 +42,10 @@ import type { CopyFields } from "./optimize.js";
 import { reviewRiskFindings } from "./reviewRisk.js";
 import { ppoFindings } from "./ppoFindings.js";
 import { ppoResultFindings } from "./ppoResults.js";
+import { projectGrade, leversAddressedByPlan, gradeProjectionFinding } from "./gradeProjection.js";
+
+/** App Store minimum-strong screenshot set — what a generated Studio set ships. */
+const RECOMMENDED_SHOT_COUNT = 6;
 import { clusterKeywordIntents } from "./cppIntents.js";
 import { cppIdenticalFindings, screenshotSignature } from "./cppScreenshotDiff.js";
 export {
@@ -277,6 +281,19 @@ function screenshotFindings(input: AuditFindingsInput): Finding[] {
         fix: "Connect App Store Connect for a real screenshot grade.",
       }),
     );
+  }
+
+  // #26 Studio: the honest before→after. Project the grade a GENERATED set (a full
+  // recommended-count, target-aspect set) would reach — "B → projected A" — so the
+  // audit closes the loop instead of stopping at the problem. Null/A/no-headroom →
+  // silent (projectGrade + gradeProjectionFinding both no-op there).
+  if (shot) {
+    const addressed = leversAddressedByPlan(
+      { shotCount: RECOMMENDED_SHOT_COUNT, hasIpad: shot.ipadCount > 0, atTargetAspect: true },
+      shot,
+    );
+    const projFinding = gradeProjectionFinding(projectGrade(shot, addressed));
+    if (projFinding) out.push(projFinding);
   }
   return out;
 }
