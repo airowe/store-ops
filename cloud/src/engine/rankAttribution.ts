@@ -195,7 +195,12 @@ function lastTwoDistinct(bucket: RankSnapshotRow[]): Window {
   return { from, to: newest.rank, prevAt, curAt: newest.checked_at };
 }
 
-function classify(from: number | null, to: number | null): {
+/**
+ * Classify a rank move (lower is better). Exported so per-market proof (#180)
+ * reuses the EXACT same new/lost/up/down/same rules — the movement vocabulary
+ * must be single-sourced or two surfaces drift.
+ */
+export function classifyMovement(from: number | null, to: number | null): {
   delta: number | null;
   direction: MovementDirection;
 } {
@@ -272,7 +277,7 @@ export function attributeRankMovements(input: AttributeInput): RankMovement[] {
   const out: RankMovement[] = [];
   for (const [keyword, bucket] of buckets) {
     const win = lastTwoDistinct(bucket);
-    const { delta, direction } = classify(win.from, win.to);
+    const { delta, direction } = classifyMovement(win.from, win.to);
 
     // No movement → confidence "none", never attributed.
     if (direction === "same") {

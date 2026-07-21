@@ -101,3 +101,26 @@ describe("GET /apps/:id/ranks?country=", () => {
     expect(body.points.length).toBe(2); // both markets
   });
 });
+
+describe("GET /apps/:id/market-proof (#180 Phase 1)", () => {
+  it("assembles a per-market before/after proof from the rank history", async () => {
+    const snapshots = [
+      SNAP({ id: 1, country: "jp", keyword: "meal planner", rank: 12, checked_at: "2026-06-01 08:00:00" }),
+      SNAP({ id: 2, country: "jp", keyword: "meal planner", rank: 4, checked_at: "2026-06-20 08:00:00" }),
+    ];
+    const { db } = fakeDb(snapshots, ["jp"]);
+    const res = await handleApi(get("/apps/app1/market-proof"), makeEnv(db));
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { proofs: Array<{ country: string; measured: boolean; keywords: Array<{ from: number; to: number; direction: string }> }> };
+    const jp = body.proofs.find((p) => p.country === "jp")!;
+    expect(jp.measured).toBe(true);
+    expect(jp.keywords[0]!.from).toBe(12);
+    expect(jp.keywords[0]!.to).toBe(4);
+    expect(jp.keywords[0]!.direction).toBe("up");
+  });
+
+  it("401 without a user", async () => {
+    const { db } = fakeDb([], []);
+    expect((await handleApi(get("/apps/app1/market-proof", ""), makeEnv(db))).status).toBe(401);
+  });
+});

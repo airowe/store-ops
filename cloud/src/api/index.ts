@@ -249,6 +249,8 @@ import { buildAscContext } from "../engine/ascContext.js";
 import { metadataCoverage } from "../engine/metadataCoverage.js";
 import { recommendLocales } from "../engine/localizationExpansion.js";
 import { recommendLocalesFromLanguages } from "../engine/languageCoverage.js";
+import { buildMarketProof, marketProofFindings } from "../engine/marketRankProof.js";
+import { pickMarkets, marketPickerFindings } from "../engine/marketPicker.js";
 import { mintAppJwt, installationToken, GithubAppError } from "../engine/githubApp.js";
 import { openMetadataPr } from "../engine/githubPr.js";
 import { handleMcp } from "../mcp/server.js";
@@ -3014,6 +3016,48 @@ async function appMarkets(env: Env, userId: string, appId: string): Promise<unkn
 }
 
 /**
+ * GET /apps/:id/market-proof (#180 Phase 1+2) — the LocalizeRank loop's proof
+ * surface. Reads per-storefront rank history → a before/after MEASURED proof per
+ * market (correlational, each market measured only from its own snapshots), scoped
+ * to on/after each approved localized push (from the latest trace's localizedCopy).
+ * Also returns the market-PICKER (phase 2) from the trace's measured language
+ * coverage. All pure-engine over already-captured data; no new ASC read.
+ */
+async function appMarketProof(env: Env, userId: string, appId: string): Promise<unknown> {
+  await requireOwnedApp(env, appId, userId);
+  const history = await getRankHistory(env.DB, appId, {});
+  const latest = await latestRunTraceForApp(env.DB, appId);
+  const trace = latest?.trace;
+
+  // Approved localized markets → the run's date as the per-market window start
+  // (the closest timestamp we have for "when you localized"). locale codes like
+  // "ja" map to storefront "jp"; we key the proof by storefront (country), so use
+  // the locale's region when present, else the locale itself lowercased — the
+  // proof still no-ops on unmatched markets.
+  const localizedCopy = trace?.localizedCopy ?? {};
+  const decidedAt = latest?.createdAt;
+  const since: Record<string, string> = {};
+  const locales: Record<string, string> = {};
+  for (const locale of Object.keys(localizedCopy)) {
+    const region = locale.includes("-") ? locale.split("-")[1]!.toLowerCase() : locale.toLowerCase();
+    if (decidedAt) since[region] = decidedAt.slice(0, 10);
+    locales[region] = locale;
+  }
+
+  const proofs = buildMarketProof(history, { since });
+  const proofFindings = marketProofFindings(proofs, { locales });
+
+  const coverageLanguages = trace?.languageCoverage?.languages ?? [];
+  const picks = pickMarkets({
+    currentLanguages: coverageLanguages,
+    alreadyLocalized: Object.keys(localizedCopy),
+    limit: 3,
+  });
+
+  return { proofs, proofFindings, picks, pickerFindings: marketPickerFindings(picks) };
+}
+
+/**
  * GET /apps/:id/deltas — per-keyword week-over-week rank movement for the
  * animated dashboard. Reads the full rank history and shapes it with the same
  * `rankDeltasView` the digest uses, so the email and the UI never disagree about
@@ -4395,6 +4439,9 @@ export async function handleApi(req: Request, env: Env, ctx?: ExecutionContext):
       }
       // markets (#180 Phase 2): the storefronts this app has measured rank data
       // for — populates the market picker. `?country=` on /ranks scopes the chart.
+      if (seg.length === 3 && seg[1] && seg[2] === "market-proof" && method === "GET") {
+        return json(await appMarketProof(env, user.id, seg[1]), 200, origin);
+      }
       if (seg.length === 3 && seg[1] && seg[2] === "markets" && method === "GET") {
         return json(await appMarkets(env, user.id, seg[1]), 200, origin);
       }
