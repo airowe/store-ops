@@ -913,6 +913,21 @@ export async function persistRun(
 
   const stmts: D1PreparedStatement[] = [];
 
+  // Supersede: a NEW awaiting_approval run replaces any older still-open ones for
+  // the same app (iterating shouldn't leave phantom "pending" runs). Runs FIRST in
+  // the batch, before the INSERT, and excludes the new id defensively — so the new
+  // run is never self-superseded. Decided runs (approved/rejected/shipped) are
+  // history and are untouched (only status='awaiting_approval' is flipped).
+  if (args.status === "awaiting_approval") {
+    stmts.push(
+      db
+        .prepare(
+          "UPDATE runs SET status = 'superseded' WHERE app_id = ? AND status = 'awaiting_approval' AND id != ?",
+        )
+        .bind(args.appId, runId),
+    );
+  }
+
   stmts.push(
     db
       .prepare(

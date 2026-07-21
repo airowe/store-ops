@@ -53,6 +53,7 @@ describe("run lifecycle", () => {
       "approved",
       "rejected",
       "shipped",
+      "superseded",
     ]);
   });
 });

@@ -102,7 +102,7 @@ CREATE TABLE IF NOT EXISTS runs (
   status         TEXT NOT NULL DEFAULT 'detected'
                    CHECK (status IN (
                      'detected', 'researching', 'awaiting_approval',
-                     'approved', 'rejected', 'shipped'
+                     'approved', 'rejected', 'shipped', 'superseded'
                    )),
   created_at     TEXT NOT NULL DEFAULT (datetime('now')),
   reasoning_json TEXT NOT NULL DEFAULT '{}'           -- JSON blob (agent trace)

@@ -112,5 +112,8 @@ export const RUN_STATUSES = [
   "approved",
   "rejected",
   "shipped",
+  // terminal: an older awaiting_approval run replaced by a newer one for the same
+  // app (never a decided run — approved/rejected/shipped are history, not phantoms).
+  "superseded",
 ] as const;
 export type RunStatus = (typeof RUN_STATUSES)[number];
