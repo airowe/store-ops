@@ -256,6 +256,12 @@ import { openMetadataPr } from "../engine/githubPr.js";
 import { handleMcp } from "../mcp/server.js";
 import { sendBroadcastToList } from "../broadcast.js";
 import { activeSubscribers, subscriberCounts, recordBroadcast } from "../d1.js";
+import {
+  getWebhookSecretByAscAppId,
+  enqueueWebhookDelivery,
+  shouldDebounce as shouldDebounceWebhook,
+  markWebhookSwept,
+} from "../d1.js";
 import type { Env } from "../index.js";
 
 // ── token + cookie lifetimes ───────────────────────────────────────────────────
@@ -4025,6 +4031,21 @@ function isoFromUnix(secs: number | undefined): string | null {
 }
 
 /**
+ * Resolve the app row + stored webhook secret for an ASC numeric app id — the
+ * only identity the webhook receiver has until AFTER signature verification.
+ * Thin wrapper over the D1 lookup (src/d1.ts `getWebhookSecretByAscAppId`,
+ * backed by `migrations/0008_webhook_secrets.sql`); kept as its own function
+ * so the receiver's dependency shape (`WebhookDeps.resolveAppAndSecret`) stays
+ * injectable/testable independent of D1.
+ */
+async function resolveAppAndSecret(
+  env: Env,
+  ascAppId: string,
+): Promise<{ app: AppRow; secret: string } | null> {
+  return getWebhookSecretByAscAppId(env.DB, ascAppId);
+}
+
+/**
  * POST /billing/webhook — verify the Stripe-Signature over the RAW body, then
  * apply the subscription state to the user's tier. Handles:
  *   checkout.session.completed       → set tier from the line-item price (+ ids)
@@ -4196,6 +4217,27 @@ export async function handleApi(req: Request, env: Env, ctx?: ExecutionContext):
       method === "POST"
     ) {
       return billingWebhook(req, env, origin);
+    }
+    // Apple calls this server-to-server with NO cookie — auth is the HMAC
+    // signature over the raw body (verified inside handleWebhookReceive).
+    if (seg[0] === "webhooks" && seg[1] === "asc" && seg.length === 2 && method === "POST") {
+      const { handleWebhookReceive } = await import("./webhookReceiver.js");
+      const { runKeyedSweepForApp } = await import("../cron/keyedSweep.js");
+      const work = (execCtx: ExecutionContext) =>
+        handleWebhookReceive(req, env, execCtx, {
+          resolveAppAndSecret,
+          runKeyedSweepForApp,
+          enqueue: (e, a) => enqueueWebhookDelivery(e.DB, a),
+          shouldDebounce: (e, id, w, n) => shouldDebounceWebhook(e.DB, id, w, n),
+          markSwept: (e, id, at) => markWebhookSwept(e.DB, id, at),
+          now: () => Math.floor(Date.now() / 1000),
+        });
+      // Mirrors broadcastSendRoute's ctx? handling: no ctx (e.g. some test
+      // paths) → the sweep's waitUntil is unavailable, so run inline instead
+      // of silently dropping the scheduled sweep.
+      if (ctx) return work(ctx);
+      const inlineCtx = { waitUntil: (p: Promise<unknown>) => p } as unknown as ExecutionContext;
+      return work(inlineCtx);
     }
     // Public launch-list capture from the marketing landing (HTML form or JSON).
     if (seg[0] === "subscribe" && seg.length === 1 && method === "POST") {

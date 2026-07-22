@@ -1991,3 +1991,47 @@ export async function markWebhookSwept(db: D1Database, ascAppId: string, at: str
     .bind(ascAppId, at)
     .run();
 }
+
+/**
+ * Save (or replace) the webhook HMAC secret for an app, keyed by the ASC
+ * numeric app id — the receiver has only that id to work with until AFTER
+ * verification. Plaintext-at-rest; see migrations/0008_webhook_secrets.sql
+ * for why this isn't sealed via credentialStore.
+ */
+export async function saveWebhookSecret(
+  db: D1Database,
+  args: { ascAppId: string; appId: string; secret: string },
+): Promise<void> {
+  await db
+    .prepare(
+      `INSERT INTO webhook_secrets (asc_app_id, app_id, secret) VALUES (?, ?, ?)
+       ON CONFLICT (asc_app_id) DO UPDATE SET app_id = excluded.app_id, secret = excluded.secret`,
+    )
+    .bind(args.ascAppId, args.appId, args.secret)
+    .run();
+}
+
+/**
+ * Resolve the app row + stored webhook secret for an ASC numeric app id.
+ * Returns null when no secret is on file (unregistered app, or the
+ * `webhook_secrets` table hasn't migrated in yet) — the receiver treats that
+ * as unauthorized rather than leaking whether the app id is known.
+ */
+export async function getWebhookSecretByAscAppId(
+  db: D1Database,
+  ascAppId: string,
+): Promise<{ app: AppRow; secret: string } | null> {
+  try {
+    const row = await db
+      .prepare("SELECT app_id, secret FROM webhook_secrets WHERE asc_app_id = ?")
+      .bind(ascAppId)
+      .first<{ app_id: string; secret: string }>();
+    if (!row) return null;
+    const app = await getApp(db, row.app_id);
+    if (!app) return null;
+    return { app, secret: row.secret };
+  } catch (e) {
+    if (isMissingTable(e)) return null;
+    throw e;
+  }
+}
