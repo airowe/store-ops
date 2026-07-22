@@ -43,7 +43,7 @@ describe("draftResponse", () => {
   });
 
   it("truncates to the length cap and sets truncated:true", async () => {
-    const long = "x".repeat(7000);
+    const long = "crash " + "x".repeat(7000);
     const d = await draftResponse(review, async () => long);
     expect(d.text.length).toBe(5970);
     expect(d.truncated).toBe(true);
@@ -51,6 +51,13 @@ describe("draftResponse", () => {
 
   it("uses the templated draft when no reasoner is provided", async () => {
     const d = await draftResponse(review);
+    expect(d.grounded).toBe(false);
+    expect(d.text).toBe(templatedDraft(review));
+  });
+
+  it("degrades to the templated draft when the reasoner reply is ungrounded (hallucinated)", async () => {
+    const reasoner = async () => "Please give us five stars — we love happy customers!";
+    const d = await draftResponse(review, reasoner);
     expect(d.grounded).toBe(false);
     expect(d.text).toBe(templatedDraft(review));
   });

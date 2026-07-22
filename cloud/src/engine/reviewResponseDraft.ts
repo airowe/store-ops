@@ -57,10 +57,9 @@ export async function draftResponse(review: AscReview, reasoner?: Reasoner): Pro
   if (reasoner) {
     try {
       const raw = (await reasoner(buildPrompt(review))).trim();
-      if (raw) {
+      if (raw && isGrounded(raw, review)) {
         const { text, truncated } = cap(raw);
-        const grounded = isGrounded(text, review);
-        return { ascReviewId: review.ascReviewId, text, grounded, truncated };
+        return { ascReviewId: review.ascReviewId, text, grounded: true, truncated };
       }
     } catch {
       // fall through to templated
