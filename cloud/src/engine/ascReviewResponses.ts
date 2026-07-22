@@ -1,0 +1,1 @@
+export const APP_STORE_RESPONSE_MAX = 5970;
