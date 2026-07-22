@@ -1947,3 +1947,47 @@ export async function getPlayFunnelSeries(
     acquisitions: r.acquisitions,
   }));
 }
+
+/**
+ * Insert a webhook delivery; the PRIMARY KEY makes a repeat a no-op. Returns
+ * fresh:false when the delivery id already existed (Apple's at-least-once retry).
+ */
+export async function enqueueWebhookDelivery(
+  db: D1Database,
+  args: { deliveryId: string; ascAppId: string; eventType: string; at: string },
+): Promise<{ fresh: boolean }> {
+  const res = await db
+    .prepare(
+      "INSERT OR IGNORE INTO webhook_deliveries (delivery_id, asc_app_id, event_type, received_at) VALUES (?, ?, ?, ?)",
+    )
+    .bind(args.deliveryId, args.ascAppId, args.eventType, args.at)
+    .run();
+  return { fresh: (res.meta?.changes ?? 0) > 0 };
+}
+
+/** True when the app was swept from a webhook within `windowSeconds` of `now`
+ *  (unix seconds). False when never swept. */
+export async function shouldDebounce(
+  db: D1Database,
+  ascAppId: string,
+  windowSeconds: number,
+  now: number,
+): Promise<boolean> {
+  const row = await db
+    .prepare("SELECT last_swept_at FROM webhook_sweeps WHERE asc_app_id = ?")
+    .bind(ascAppId)
+    .first<{ last_swept_at: string }>();
+  if (!row) return false;
+  const last = Date.parse(row.last_swept_at) / 1000;
+  return Number.isFinite(last) && now - last < windowSeconds;
+}
+
+/** Record that the app was just swept from a webhook (upsert). */
+export async function markWebhookSwept(db: D1Database, ascAppId: string, at: string): Promise<void> {
+  await db
+    .prepare(
+      "INSERT INTO webhook_sweeps (asc_app_id, last_swept_at) VALUES (?, ?) ON CONFLICT (asc_app_id) DO UPDATE SET last_swept_at = excluded.last_swept_at",
+    )
+    .bind(ascAppId, at)
+    .run();
+}
