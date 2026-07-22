@@ -36,6 +36,15 @@ import type { RunStatus } from "./engine/constants.js";
 import type { EngagementRow } from "./engine/analyticsEngagement.js";
 import { buildPreferenceRows } from "./engine/preferenceSignal.js";
 import { encryptField } from "./crypto/rlhfCrypto.js";
+import {
+  importKek,
+  openCredential,
+  sealCredential,
+  type SealedCredential,
+  type VaultContext,
+} from "./crypto/credentialVault.js";
+import { currentKek, kekForVersion } from "./credentialStore.js";
+import type { Env } from "./index.js";
 
 // ── Row types (mirror schema.sql) ────────────────────────────────────────────
 
@@ -1946,4 +1955,120 @@ export async function getPlayFunnelSeries(
     visitors: r.visitors,
     acquisitions: r.acquisitions,
   }));
+}
+
+/**
+ * Insert a webhook delivery; the PRIMARY KEY makes a repeat a no-op. Returns
+ * fresh:false when the delivery id already existed (Apple's at-least-once retry).
+ */
+export async function enqueueWebhookDelivery(
+  db: D1Database,
+  args: { deliveryId: string; ascAppId: string; eventType: string; at: string },
+): Promise<{ fresh: boolean }> {
+  const res = await db
+    .prepare(
+      "INSERT OR IGNORE INTO webhook_deliveries (delivery_id, asc_app_id, event_type, received_at) VALUES (?, ?, ?, ?)",
+    )
+    .bind(args.deliveryId, args.ascAppId, args.eventType, args.at)
+    .run();
+  return { fresh: (res.meta?.changes ?? 0) > 0 };
+}
+
+/** True when the app was swept from a webhook within `windowSeconds` of `now`
+ *  (unix seconds). False when never swept. */
+export async function shouldDebounce(
+  db: D1Database,
+  ascAppId: string,
+  windowSeconds: number,
+  now: number,
+): Promise<boolean> {
+  const row = await db
+    .prepare("SELECT last_swept_at FROM webhook_sweeps WHERE asc_app_id = ?")
+    .bind(ascAppId)
+    .first<{ last_swept_at: string }>();
+  if (!row) return false;
+  const last = Date.parse(row.last_swept_at) / 1000;
+  return Number.isFinite(last) && now - last < windowSeconds;
+}
+
+/** Record that the app was just swept from a webhook (upsert). */
+export async function markWebhookSwept(db: D1Database, ascAppId: string, at: string): Promise<void> {
+  await db
+    .prepare(
+      "INSERT INTO webhook_sweeps (asc_app_id, last_swept_at) VALUES (?, ?) ON CONFLICT (asc_app_id) DO UPDATE SET last_swept_at = excluded.last_swept_at",
+    )
+    .bind(ascAppId, at)
+    .run();
+}
+
+/** The stable AAD context for a webhook secret's envelope, keyed by the ASC
+ *  numeric app id (the only identity available at both seal and open time —
+ *  the receiver has no user id until AFTER verification). Must be
+ *  reconstructable identically from the stored row at read time. */
+function webhookSecretCtx(ascAppId: string, kekVersion: number): VaultContext {
+  return { userId: "webhook", appId: ascAppId, kind: "asc", kekVersion };
+}
+
+/**
+ * Save (or replace) the webhook HMAC secret for an app, keyed by the ASC
+ * numeric app id — the receiver has only that id to work with until AFTER
+ * verification. SEALED via the credentialVault KEK/DEK envelope (the same
+ * crypto as `stored_credentials`) — see migrations/0008_webhook_secrets.sql.
+ */
+export async function saveWebhookSecret(
+  env: Env,
+  args: { ascAppId: string; appId: string; secret: string },
+): Promise<void> {
+  const kek = currentKek(env);
+  if (!kek) throw new Error("credential storage is not enabled on this deployment");
+  const key = await importKek(kek.b64);
+  const sealed = await sealCredential(key, args.secret, webhookSecretCtx(args.ascAppId, kek.version));
+  await env.DB.prepare(
+    `INSERT INTO webhook_secrets (asc_app_id, app_id, ciphertext, wrapped_dek, kek_version) VALUES (?, ?, ?, ?, ?)
+     ON CONFLICT (asc_app_id) DO UPDATE SET
+       app_id = excluded.app_id, ciphertext = excluded.ciphertext,
+       wrapped_dek = excluded.wrapped_dek, kek_version = excluded.kek_version`,
+  )
+    .bind(args.ascAppId, args.appId, sealed.ciphertext, sealed.wrappedDek, kek.version)
+    .run();
+}
+
+/**
+ * Resolve the app row + stored webhook secret for an ASC numeric app id.
+ * Returns null when no secret is on file (unregistered app, or the
+ * `webhook_secrets` table hasn't migrated in yet) — the receiver treats that
+ * as unauthorized rather than leaking whether the app id is known. Throws on
+ * a genuine decrypt failure (tamper / a KEK version whose secret is missing)
+ * — an operator-visible error, never a broken secret.
+ */
+export async function getWebhookSecretByAscAppId(
+  env: Env,
+  ascAppId: string,
+): Promise<{ app: AppRow; secret: string } | null> {
+  let row: { app_id: string; ciphertext: string; wrapped_dek: string; kek_version: number } | null;
+  try {
+    row = await env.DB
+      .prepare("SELECT app_id, ciphertext, wrapped_dek, kek_version FROM webhook_secrets WHERE asc_app_id = ?")
+      .bind(ascAppId)
+      .first<{ app_id: string; ciphertext: string; wrapped_dek: string; kek_version: number }>();
+  } catch (e) {
+    if (isMissingTable(e)) return null;
+    throw e;
+  }
+  if (!row) return null;
+  const app = await getApp(env.DB, row.app_id);
+  if (!app) return null;
+
+  const rowKekB64 = kekForVersion(env, row.kek_version);
+  if (!rowKekB64) {
+    throw new Error(`webhook secret sealed under KEK v${row.kek_version}, whose secret is not configured`);
+  }
+  const rowKek = await importKek(rowKekB64);
+  const sealed: SealedCredential = {
+    ciphertext: row.ciphertext,
+    wrappedDek: row.wrapped_dek,
+    kekVersion: row.kek_version,
+  };
+  const secret = await openCredential(rowKek, sealed, webhookSecretCtx(ascAppId, row.kek_version));
+  return { app, secret };
 }
