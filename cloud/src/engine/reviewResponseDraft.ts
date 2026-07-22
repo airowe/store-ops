@@ -44,8 +44,8 @@ function isGrounded(text: string, review: AscReview): boolean {
   const reviewText = `${review.title} ${review.content}`.toLowerCase();
   const reviewWords = reviewText.split(/[^a-z0-9]+/).filter((w) => w.length >= 4);
   if (reviewWords.length === 0) return true; // nothing to ground against → accept
-  const textWords = t.split(/[^a-z0-9]+/).filter((w) => w.length >= 4);
-  return reviewWords.some((rw) => textWords.some((tw) => rw.includes(tw) || tw.includes(rw)));
+  const textWordSet = new Set(t.split(/[^a-z0-9]+/).filter((w) => w.length >= 4));
+  return reviewWords.some((rw) => textWordSet.has(rw));
 }
 
 export async function draftResponse(review: AscReview, reasoner?: Reasoner): Promise<ResponseDraft> {

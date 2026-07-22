@@ -22,7 +22,7 @@ describe("templatedDraft", () => {
 
 describe("draftResponse", () => {
   it("uses the reasoner output when grounded and marks grounded:true", async () => {
-    const reasoner = async () => "Sorry about the crash on iOS 18 — a fix is on the way.";
+    const reasoner = async () => "Sorry about the crashes — a fix is on the way.";
     const d = await draftResponse(review, reasoner);
     expect(d.ascReviewId).toBe("R1");
     expect(d.grounded).toBe(true);
@@ -43,7 +43,7 @@ describe("draftResponse", () => {
   });
 
   it("truncates to the length cap and sets truncated:true", async () => {
-    const long = "crash " + "x".repeat(7000);
+    const long = "crashes " + "x".repeat(7000);
     const d = await draftResponse(review, async () => long);
     expect(d.text.length).toBe(5970);
     expect(d.truncated).toBe(true);
@@ -57,6 +57,15 @@ describe("draftResponse", () => {
 
   it("degrades to the templated draft when the reasoner reply is ungrounded (hallucinated)", async () => {
     const reasoner = async () => "Please give us five stars — we love happy customers!";
+    const d = await draftResponse(review, reasoner);
+    expect(d.grounded).toBe(false);
+    expect(d.text).toBe(templatedDraft(review));
+  });
+
+  it("does not treat a mere substring overlap as grounded (whole-word only)", async () => {
+    // "crashed"/"crashes" share the substring "crash" but are different whole words;
+    // a reply that only shares a SUBSTRING (not a whole 4+ char word) must degrade.
+    const reasoner = async () => "We adore our beloved supporters and their glowing praise!";
     const d = await draftResponse(review, reasoner);
     expect(d.grounded).toBe(false);
     expect(d.text).toBe(templatedDraft(review));

@@ -66,7 +66,7 @@ describe("publishResponse", () => {
       ({ ok: false, status: 409, json: async () => ({ errors: [{ detail: "conflict" }] }) }) as unknown as Response;
     await expect(
       publishResponse(fetchFn, { token: "SECRET_TOKEN", ascReviewId: "R", text: "hi" }),
-    ).rejects.toThrow(/(?!SECRET_TOKEN).*/);
+    ).rejects.toThrow();
     await publishResponse(fetchFn, { token: "SECRET_TOKEN", ascReviewId: "R", text: "hi" }).catch((e) => {
       expect(String(e.message)).not.toContain("SECRET_TOKEN");
     });
