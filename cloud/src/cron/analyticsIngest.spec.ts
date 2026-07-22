@@ -31,38 +31,63 @@ const gunzipPassthrough = async (b: Uint8Array) => new TextDecoder().decode(b);
 const jsonRes = (b: unknown, status = 200) => new Response(JSON.stringify(b), { status, headers: { "content-type": "application/json" } });
 const ongoing = { data: [{ id: "R1", attributes: { accessType: "ONGOING" } }] };
 const FILE = "Date\tSource Type\tImpressions\tProduct Page Views\tTotal Downloads\n2026-07-01\tApp Store Search\t100\t40\t8";
+const COMMERCE_FILE = "Date\tContent Name\tPurchase Type\tSales\tProceeds\tPaying Users\n2026-07-01\tWidget\tPaid\t5\t70\t3";
 
-/** Stub the whole ASC graph for any app that reaches fetch. */
-function graphFetch(): { fetchFn: FetchLike } {
+/** Stub the whole ASC graph for any app that reaches fetch. Reports endpoint
+ *  returns one report per requested category (engagement/commerce/usage all
+ *  "ready" — the category-loop test asserts commerce persists too). */
+function graphFetch(opts: { withCommerce?: boolean } = {}): { fetchFn: FetchLike } {
   const fetchFn: FetchLike = async (url: string) => {
     const u = String(url);
     if (u.includes("filter[bundleId]")) return jsonRes({ data: [{ id: "A1" }] });
-    if (u.includes("/analyticsReportRequests/R1/reports")) return jsonRes({ data: [{ id: "RPT", attributes: { category: "APP_STORE_ENGAGEMENT" } }] });
+    if (u.includes("/analyticsReportRequests/R1/reports")) {
+      if (u.includes("filter[category]=COMMERCE")) {
+        return opts.withCommerce
+          ? jsonRes({ data: [{ id: "RPT-C", attributes: { category: "COMMERCE" } }] })
+          : jsonRes({ data: [] });
+      }
+      if (u.includes("filter[category]=APP_USAGE")) return jsonRes({ data: [] });
+      return jsonRes({ data: [{ id: "RPT", attributes: { category: "APP_STORE_ENGAGEMENT" } }] });
+    }
+    if (u.includes("/analyticsReports/RPT-C/instances")) return jsonRes({ data: [{ id: "INST-C", attributes: { granularity: "DAILY" } }] });
     if (u.includes("/analyticsReports/RPT/instances")) return jsonRes({ data: [{ id: "INST", attributes: { granularity: "DAILY" } }] });
+    if (u.includes("/analyticsReportInstances/INST-C/segments")) return jsonRes({ data: [{ id: "SEG-C", attributes: { url: "https://signed.example/commerce.gz" } }] });
     if (u.includes("/analyticsReportInstances/INST/segments")) return jsonRes({ data: [{ id: "SEG", attributes: { url: "https://signed.example/seg.gz" } }] });
     if (u === "https://signed.example/seg.gz") return new Response(new TextEncoder().encode(FILE), { status: 200 });
+    if (u === "https://signed.example/commerce.gz") return new Response(new TextEncoder().encode(COMMERCE_FILE), { status: 200 });
     if (u.includes("/analyticsReportRequests")) return jsonRes(ongoing);
     return jsonRes({}, 404);
   };
   return { fetchFn };
 }
 
-function fakeDb(apps: unknown[]): { db: D1Database; batches: () => number } {
+function fakeDb(apps: unknown[]): {
+  db: D1Database;
+  batches: () => number;
+  commerceRows: () => unknown[][];
+} {
   let batched = 0;
+  const commerceInserts: unknown[][] = [];
   const db = {
     prepare(sql: string) {
       const s = sql.replace(/\s+/g, " ").trim();
+      let bound: unknown[] = [];
+      const isCommerceInsert = /INSERT INTO analytics_commerce/.test(s);
       const stmt = {
-        bind() { return stmt; },
+        bind(...a: unknown[]) {
+          bound = a;
+          if (isCommerceInsert) commerceInserts.push(a);
+          return stmt;
+        },
         async all<T>() { return { results: (/FROM apps/.test(s) ? apps : []) as T[] }; },
         async first<T>() { return null as T | null; },
-        async run() { return { success: true, meta: { changes: 1 } }; },
+        async run() { void bound; return { success: true, meta: { changes: 1 } }; },
       };
       return stmt;
     },
     async batch(stmts: unknown[]) { batched++; return stmts.map(() => ({ success: true })); },
   };
-  return { db: db as unknown as D1Database, batches: () => batched };
+  return { db: db as unknown as D1Database, batches: () => batched, commerceRows: () => commerceInserts };
 }
 
 const app = (id: string, bundle: string) => ({ id, user_id: "u1", bundle_id: bundle, name: id, country: "US", created_at: "2026-01-01" });
@@ -95,6 +120,21 @@ describe("runAnalyticsIngest", () => {
     expect(r.perApp.find((p) => p.appId === "app1")).toMatchObject({ rows: 1, days: 1 });
     expect(r.perApp.find((p) => p.appId === "app2")).toMatchObject({ skipped: "no_key" });
     expect(batches()).toBe(1); // exactly one app persisted
+  });
+
+  it("ingests COMMERCE alongside Engagement, sharing the same requestId — per-category isolation", async () => {
+    useCredential.mockResolvedValue(STORED);
+    const { db, batches, commerceRows } = fakeDb([app("app1", "com.a")]);
+    const r = await runAnalyticsIngest(env({ DB: db }), {
+      fetchFn: graphFetch({ withCommerce: true }).fetchFn,
+      gunzip: gunzipPassthrough,
+    });
+
+    expect(r.ingested).toBe(1); // Engagement still reported as the app's ingest
+    expect(commerceRows().length).toBe(1); // COMMERCE row persisted too
+    expect(commerceRows()[0]).toEqual(["app1", "2026-07-01", "Widget", "Paid", 5, 70, 3]);
+    // Engagement batch + Commerce batch (Usage stays not_ready → no batch call).
+    expect(batches()).toBe(2);
   });
 
   it("skips (not_ready) an app whose key is stored but has no ongoing request — no throw", async () => {

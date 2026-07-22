@@ -17,12 +17,14 @@
  * leaves that app's prior persisted data intact (upsert only runs on ok rows).
  * The `.p8` is decrypted for a single mint and never logged.
  */
-import { listAllApps, upsertEngagementRows } from "../d1.js";
+import { listAllApps, upsertEngagementRows, upsertCommerceRows, upsertUsageRows, recordReportHeaders } from "../d1.js";
 import { credentialsEnabled, useCredential } from "../credentialStore.js";
 import { mintAscJwt } from "../engine/ascJwt.js";
 import { findAscAppId, type FetchLike } from "../engine/ascWrite.js";
 import { getAnalyticsStatus } from "../engine/ascAnalytics.js";
 import { gunzipText, ingestEngagement, type Gunzip } from "../engine/analyticsEngagement.js";
+import { ingestCommerce, type CommerceRow } from "../engine/analyticsCommerce.js";
+import { ingestUsage, type UsageRow } from "../engine/analyticsUsage.js";
 import { fetchForEnv } from "../fetchAdapter.js";
 import type { Env } from "../index.js";
 
@@ -99,6 +101,21 @@ export async function runAnalyticsIngest(
       const days = new Set(result.rows.map((r) => r.date)).size;
       report.ingested++;
       report.perApp.push({ appId: app.id, bundleId: app.bundle_id, rows, days });
+
+      // COMMERCE and APP_USAGE ride the same ongoing request (status.requestId).
+      // Each category is independently guarded — a not-ready/unavailable category
+      // never blocks the others or the app; prior persisted data stays intact.
+      const commerce = await ingestCommerce(fetchFn, gunzip, { token, requestId: status.requestId });
+      if (commerce.ok) {
+        await upsertCommerceRows(env.DB, app.id, commerce.rows as CommerceRow[]);
+        for (const h of commerce.headers) await recordReportHeaders(env.DB, { appId: app.id, category: "COMMERCE", header: h });
+      }
+
+      const usage = await ingestUsage(fetchFn, gunzip, { token, requestId: status.requestId });
+      if (usage.ok) {
+        await upsertUsageRows(env.DB, app.id, usage.rows as UsageRow[]);
+        for (const h of usage.headers) await recordReportHeaders(env.DB, { appId: app.id, category: "APP_USAGE", header: h });
+      }
     } catch (e) {
       // Per-app isolation: one bad app never aborts the run; prior data is intact.
       report.perApp.push({ appId: app.id, bundleId: app.bundle_id, error: String(e) });
