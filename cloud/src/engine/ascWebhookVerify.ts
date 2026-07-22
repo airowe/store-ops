@@ -39,3 +39,45 @@ export function parseWebhookEvent(rawBody: string): WebhookEvent | null {
 
   return { deliveryId, eventType, ascAppId, occurredAt: str(attrs.createdDate) };
 }
+
+/** Hex-decode to bytes, or null on odd/invalid hex. */
+function hexToBytes(hex: string): Uint8Array | null {
+  if (hex.length === 0 || hex.length % 2 !== 0 || !/^[0-9a-f]+$/i.test(hex)) return null;
+  const out = new Uint8Array(hex.length / 2);
+  for (let i = 0; i < out.length; i++) out[i] = parseInt(hex.slice(i * 2, i * 2 + 2), 16);
+  return out;
+}
+
+/** Length-equalized constant-time byte compare. */
+function timingSafeEqual(a: Uint8Array, b: Uint8Array): boolean {
+  // Compare against the max length so a length mismatch doesn't short-circuit.
+  const len = Math.max(a.length, b.length);
+  let diff = a.length ^ b.length;
+  for (let i = 0; i < len; i++) diff |= (a[i] ?? 0) ^ (b[i] ?? 0);
+  return diff === 0;
+}
+
+/**
+ * Constant-time HMAC-SHA256 verification of a raw webhook body against the
+ * app's stored secret. `signatureHeader` is the hex digest Apple sent. Returns
+ * false (never throws) on any malformed input.
+ */
+export async function verifyDelivery(
+  secret: string,
+  rawBody: string,
+  signatureHeader: string,
+): Promise<boolean> {
+  const provided = hexToBytes(signatureHeader.trim().toLowerCase());
+  if (!provided) return false;
+  let expected: ArrayBuffer;
+  try {
+    const key = await crypto.subtle.importKey(
+      "raw", new TextEncoder().encode(secret),
+      { name: "HMAC", hash: "SHA-256" }, false, ["sign"],
+    );
+    expected = await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(rawBody));
+  } catch {
+    return false;
+  }
+  return timingSafeEqual(provided, new Uint8Array(expected));
+}
