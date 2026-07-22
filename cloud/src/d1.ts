@@ -36,6 +36,15 @@ import type { RunStatus } from "./engine/constants.js";
 import type { EngagementRow } from "./engine/analyticsEngagement.js";
 import { buildPreferenceRows } from "./engine/preferenceSignal.js";
 import { encryptField } from "./crypto/rlhfCrypto.js";
+import {
+  importKek,
+  openCredential,
+  sealCredential,
+  type SealedCredential,
+  type VaultContext,
+} from "./crypto/credentialVault.js";
+import { currentKek, kekForVersion } from "./credentialStore.js";
+import type { Env } from "./index.js";
 
 // ── Row types (mirror schema.sql) ────────────────────────────────────────────
 
@@ -1992,22 +2001,35 @@ export async function markWebhookSwept(db: D1Database, ascAppId: string, at: str
     .run();
 }
 
+/** The stable AAD context for a webhook secret's envelope, keyed by the ASC
+ *  numeric app id (the only identity available at both seal and open time —
+ *  the receiver has no user id until AFTER verification). Must be
+ *  reconstructable identically from the stored row at read time. */
+function webhookSecretCtx(ascAppId: string, kekVersion: number): VaultContext {
+  return { userId: "webhook", appId: ascAppId, kind: "asc", kekVersion };
+}
+
 /**
  * Save (or replace) the webhook HMAC secret for an app, keyed by the ASC
  * numeric app id — the receiver has only that id to work with until AFTER
- * verification. Plaintext-at-rest; see migrations/0008_webhook_secrets.sql
- * for why this isn't sealed via credentialStore.
+ * verification. SEALED via the credentialVault KEK/DEK envelope (the same
+ * crypto as `stored_credentials`) — see migrations/0008_webhook_secrets.sql.
  */
 export async function saveWebhookSecret(
-  db: D1Database,
+  env: Env,
   args: { ascAppId: string; appId: string; secret: string },
 ): Promise<void> {
-  await db
-    .prepare(
-      `INSERT INTO webhook_secrets (asc_app_id, app_id, secret) VALUES (?, ?, ?)
-       ON CONFLICT (asc_app_id) DO UPDATE SET app_id = excluded.app_id, secret = excluded.secret`,
-    )
-    .bind(args.ascAppId, args.appId, args.secret)
+  const kek = currentKek(env);
+  if (!kek) throw new Error("credential storage is not enabled on this deployment");
+  const key = await importKek(kek.b64);
+  const sealed = await sealCredential(key, args.secret, webhookSecretCtx(args.ascAppId, kek.version));
+  await env.DB.prepare(
+    `INSERT INTO webhook_secrets (asc_app_id, app_id, ciphertext, wrapped_dek, kek_version) VALUES (?, ?, ?, ?, ?)
+     ON CONFLICT (asc_app_id) DO UPDATE SET
+       app_id = excluded.app_id, ciphertext = excluded.ciphertext,
+       wrapped_dek = excluded.wrapped_dek, kek_version = excluded.kek_version`,
+  )
+    .bind(args.ascAppId, args.appId, sealed.ciphertext, sealed.wrappedDek, kek.version)
     .run();
 }
 
@@ -2015,23 +2037,38 @@ export async function saveWebhookSecret(
  * Resolve the app row + stored webhook secret for an ASC numeric app id.
  * Returns null when no secret is on file (unregistered app, or the
  * `webhook_secrets` table hasn't migrated in yet) — the receiver treats that
- * as unauthorized rather than leaking whether the app id is known.
+ * as unauthorized rather than leaking whether the app id is known. Throws on
+ * a genuine decrypt failure (tamper / a KEK version whose secret is missing)
+ * — an operator-visible error, never a broken secret.
  */
 export async function getWebhookSecretByAscAppId(
-  db: D1Database,
+  env: Env,
   ascAppId: string,
 ): Promise<{ app: AppRow; secret: string } | null> {
+  let row: { app_id: string; ciphertext: string; wrapped_dek: string; kek_version: number } | null;
   try {
-    const row = await db
-      .prepare("SELECT app_id, secret FROM webhook_secrets WHERE asc_app_id = ?")
+    row = await env.DB
+      .prepare("SELECT app_id, ciphertext, wrapped_dek, kek_version FROM webhook_secrets WHERE asc_app_id = ?")
       .bind(ascAppId)
-      .first<{ app_id: string; secret: string }>();
-    if (!row) return null;
-    const app = await getApp(db, row.app_id);
-    if (!app) return null;
-    return { app, secret: row.secret };
+      .first<{ app_id: string; ciphertext: string; wrapped_dek: string; kek_version: number }>();
   } catch (e) {
     if (isMissingTable(e)) return null;
     throw e;
   }
+  if (!row) return null;
+  const app = await getApp(env.DB, row.app_id);
+  if (!app) return null;
+
+  const rowKekB64 = kekForVersion(env, row.kek_version);
+  if (!rowKekB64) {
+    throw new Error(`webhook secret sealed under KEK v${row.kek_version}, whose secret is not configured`);
+  }
+  const rowKek = await importKek(rowKekB64);
+  const sealed: SealedCredential = {
+    ciphertext: row.ciphertext,
+    wrappedDek: row.wrapped_dek,
+    kekVersion: row.kek_version,
+  };
+  const secret = await openCredential(rowKek, sealed, webhookSecretCtx(ascAppId, row.kek_version));
+  return { app, secret };
 }

@@ -4042,7 +4042,7 @@ async function resolveAppAndSecret(
   env: Env,
   ascAppId: string,
 ): Promise<{ app: AppRow; secret: string } | null> {
-  return getWebhookSecretByAscAppId(env.DB, ascAppId);
+  return getWebhookSecretByAscAppId(env, ascAppId);
 }
 
 /**

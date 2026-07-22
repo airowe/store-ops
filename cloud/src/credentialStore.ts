@@ -26,15 +26,20 @@ import type { Env } from "./index.js";
 
 const uuid = () => crypto.randomUUID();
 
-/** The highest KEK version configured on this deployment, and its secret. */
-function currentKek(env: Env): { version: number; b64: string } | null {
+/**
+ * The highest KEK version configured on this deployment, and its secret.
+ * Exported so other envelope-sealed stores (e.g. `webhook_secrets`, see
+ * src/d1.ts `saveWebhookSecret`/`getWebhookSecretByAscAppId`) reuse the SAME
+ * KEK acquisition rather than re-deriving it.
+ */
+export function currentKek(env: Env): { version: number; b64: string } | null {
   if (env.CRED_KEK_V2) return { version: 2, b64: env.CRED_KEK_V2 };
   if (env.CRED_KEK_V1) return { version: 1, b64: env.CRED_KEK_V1 };
   return null;
 }
 
 /** The secret for a specific version (for opening/ rotating older rows). */
-function kekForVersion(env: Env, version: number): string | null {
+export function kekForVersion(env: Env, version: number): string | null {
   if (version === 2) return env.CRED_KEK_V2 ?? null;
   if (version === 1) return env.CRED_KEK_V1 ?? null;
   return null;
