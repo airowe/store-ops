@@ -9,6 +9,8 @@
  * The `.p8` never reaches this module — only the short-lived JWT.
  */
 
+import { ASC_BASE, type FetchLike } from "./ascWrite.js";
+
 /** A single authenticated ASC review. Superset of reviewSentiment.ts `Review`. */
 export type AscReview = {
   id: string; // dedup/identity key for reviewSentiment `Review` compatibility (NOT the response target)
@@ -60,4 +62,56 @@ export function mapAscReview(raw: unknown): AscReview | null {
     responseState: existingResponseId ? "published" : "none",
     existingResponseId,
   };
+}
+
+export type AscReviewsResult =
+  | { state: "ok"; reviews: AscReview[] }
+  | { state: "permission_required" }
+  | { state: "unavailable" };
+
+const DEFAULT_MAX_PAGES = 10;
+const DEFAULT_MAX_REVIEWS = 500;
+
+/**
+ * READ-ONLY authenticated corpus fetch. Bounded cursor paging. Honest states:
+ * 401/403 → permission_required (role gap); any other non-OK or thrown error →
+ * unavailable. NEVER throws — a read limitation must not fail or slow the audit.
+ */
+export async function fetchAscReviews(
+  fetchFn: FetchLike,
+  opts: { token: string; appId: string; maxPages?: number; maxReviews?: number },
+): Promise<AscReviewsResult> {
+  const maxPages = Math.max(1, opts.maxPages ?? DEFAULT_MAX_PAGES);
+  const maxReviews = Math.max(1, opts.maxReviews ?? DEFAULT_MAX_REVIEWS);
+  const auth = { authorization: `Bearer ${opts.token}` };
+  const reviews: AscReview[] = [];
+
+  let url: string | null =
+    `${ASC_BASE}/apps/${encodeURIComponent(opts.appId)}/customerReviews` +
+    `?include=response&limit=200&sort=-createdDate`;
+
+  for (let page = 0; page < maxPages && url; page++) {
+    let res: Response;
+    try {
+      res = await fetchFn(url, { headers: auth });
+    } catch {
+      return { state: "unavailable" };
+    }
+    if (!res.ok) {
+      return res.status === 401 || res.status === 403
+        ? { state: "permission_required" }
+        : { state: "unavailable" };
+    }
+    const body = (await res.json().catch(() => ({}))) as {
+      data?: unknown[];
+      links?: { next?: string };
+    };
+    for (const row of body.data ?? []) {
+      const mapped = mapAscReview(row);
+      if (mapped) reviews.push(mapped);
+      if (reviews.length >= maxReviews) return { state: "ok", reviews };
+    }
+    url = body.links?.next ?? null;
+  }
+  return { state: "ok", reviews };
 }

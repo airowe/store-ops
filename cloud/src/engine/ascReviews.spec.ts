@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { mapAscReview } from "./ascReviews.js";
+import { mapAscReview, fetchAscReviews } from "./ascReviews.js";
 
 describe("mapAscReview", () => {
   const raw = {
@@ -47,5 +47,49 @@ describe("mapAscReview", () => {
   it("coerces a missing rating to null rather than dropping the row", () => {
     const noRating = { id: "R2", attributes: { body: "text", reviewerNickname: "x" } };
     expect(mapAscReview(noRating)!.rating).toBeNull();
+  });
+});
+
+function page(ids: string[], next?: string) {
+  return {
+    ok: true,
+    json: async () => ({
+      data: ids.map((id) => ({ id, attributes: { body: `body ${id}`, rating: 5, territory: "USA" } })),
+      links: next ? { next } : {},
+    }),
+  } as unknown as Response;
+}
+
+describe("fetchAscReviews", () => {
+  it("follows cursor paging up to maxPages and returns ok with all reviews", async () => {
+    const calls: string[] = [];
+    const fetchFn = async (url: string) => {
+      calls.push(url);
+      return url.includes("cursor=2")
+        ? page(["C", "D"])
+        : page(["A", "B"], "https://api.appstoreconnect.apple.com/v1/apps/1/customerReviews?cursor=2");
+    };
+    const res = await fetchAscReviews(fetchFn, { token: "t", appId: "1", maxPages: 5 });
+    expect(res.state).toBe("ok");
+    if (res.state === "ok") expect(res.reviews.map((r) => r.id)).toEqual(["A", "B", "C", "D"]);
+    expect(calls.length).toBe(2);
+  });
+
+  it("returns permission_required on 401/403", async () => {
+    const fetchFn = async () => ({ ok: false, status: 403 }) as Response;
+    expect((await fetchAscReviews(fetchFn, { token: "t", appId: "1" })).state).toBe("permission_required");
+  });
+
+  it("returns unavailable on other non-OK and never throws on a network error", async () => {
+    const bad = async () => ({ ok: false, status: 500 }) as Response;
+    expect((await fetchAscReviews(bad, { token: "t", appId: "1" })).state).toBe("unavailable");
+    const boom = async () => { throw new Error("network"); };
+    expect((await fetchAscReviews(boom, { token: "t", appId: "1" })).state).toBe("unavailable");
+  });
+
+  it("stops at maxReviews", async () => {
+    const fetchFn = async () => page(["A", "B", "C"]);
+    const res = await fetchAscReviews(fetchFn, { token: "t", appId: "1", maxReviews: 2 });
+    if (res.state === "ok") expect(res.reviews.length).toBe(2);
   });
 });
