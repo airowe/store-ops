@@ -66,4 +66,33 @@ describe("verifyDelivery", () => {
     expect(await verifyDelivery(secret, raw, "")).toBe(false);
     expect(await verifyDelivery(secret, raw, "zz")).toBe(false);
   });
+
+  // Apple delivers the signature as `x-apple-signature: hmacsha256=<hex>`, NOT a
+  // bare hex string (per developer.apple.com/.../configuring-webhook-notifications).
+  // The verifier MUST strip the `hmacsha256=` prefix before decoding, or every
+  // real delivery fails verification (uniform 401).
+  it("accepts Apple's real header format (hmacsha256=<hex>) — official worked example", async () => {
+    // Apple's documented vector: secret "This is my secret" + body "Hello, World!".
+    const appleSecret = "This is my secret";
+    const appleBody = "Hello, World!";
+    const appleHeader =
+      "hmacsha256=7f062172b01cb00b53ca068614674a3d982a34062a0f5d37687d5e3377e54657";
+    expect(await verifyDelivery(appleSecret, appleBody, appleHeader)).toBe(true);
+  });
+
+  it("accepts the prefixed form for an arbitrary body (case-insensitive prefix)", async () => {
+    const hex = await hmacHex(secret, raw);
+    expect(await verifyDelivery(secret, raw, `hmacsha256=${hex}`)).toBe(true);
+    expect(await verifyDelivery(secret, raw, `HMACSHA256=${hex}`)).toBe(true);
+  });
+
+  it("rejects a prefixed signature with a tampered body", async () => {
+    const hex = await hmacHex(secret, raw);
+    expect(await verifyDelivery(secret, raw + " ", `hmacsha256=${hex}`)).toBe(false);
+  });
+
+  it("still accepts a bare hex signature (defensive — no prefix)", async () => {
+    const hex = await hmacHex(secret, raw);
+    expect(await verifyDelivery(secret, raw, hex)).toBe(true);
+  });
 });
