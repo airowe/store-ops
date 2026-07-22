@@ -186,6 +186,8 @@ import {
   upsertCompetitor,
   upsertEngagementRows,
   getEngagementSeries,
+  getCommerceSeries,
+  getUsageSeries,
   upsertUser,
 } from "../d1.js";
 import { isExpoPushToken } from "../push.js";
@@ -4036,6 +4038,36 @@ async function analyticsEngagementRoute(env: Env, userId: string, appId: string)
   };
 }
 
+/**
+ * GET /apps/:id/analytics/commerce (analytics-reports Phase 3 / Task 6) — the
+ * MEASURED COMMERCE surface. Reads the persisted COMMERCE series (our own D1,
+ * no ASC call, no credential). Honest `no_data` until the cron/on-demand ingest
+ * has persisted something — never a fabricated zero series.
+ */
+async function analyticsCommerceRoute(env: Env, userId: string, appId: string): Promise<unknown> {
+  await requireOwnedApp(env, appId, userId);
+  const series = await getCommerceSeries(env.DB, appId);
+  if (series.length === 0) {
+    return { state: "no_data", message: "No commerce analytics ingested yet — enable analytics and ingest first." };
+  }
+  return { state: "measured", series, days: new Set(series.map((r) => r.date)).size };
+}
+
+/**
+ * GET /apps/:id/analytics/usage (analytics-reports Phase 3 / Task 6) — the
+ * MEASURED APP_USAGE surface. Reads the persisted APP_USAGE series (our own D1,
+ * no ASC call, no credential). Honest `no_data` until the cron/on-demand ingest
+ * has persisted something — never a fabricated zero series.
+ */
+async function analyticsUsageRoute(env: Env, userId: string, appId: string): Promise<unknown> {
+  await requireOwnedApp(env, appId, userId);
+  const series = await getUsageSeries(env.DB, appId);
+  if (series.length === 0) {
+    return { state: "no_data", message: "No usage analytics ingested yet — enable analytics and ingest first." };
+  }
+  return { state: "measured", series, days: new Set(series.map((r) => r.date)).size };
+}
+
 // ── billing ────────────────────────────────────────────────────────────────────
 
 /** The Stripe secret key — STRIPE_SECRET_KEY, with the legacy STRIPE_TEST_KEY as
@@ -4560,6 +4592,12 @@ export async function handleApi(req: Request, env: Env, ctx?: ExecutionContext):
       }
       if (seg.length === 4 && seg[1] && seg[2] === "analytics" && seg[3] === "engagement" && method === "GET") {
         return json(await analyticsEngagementRoute(env, user.id, seg[1]), 200, origin);
+      }
+      if (seg.length === 4 && seg[1] && seg[2] === "analytics" && seg[3] === "commerce" && method === "GET") {
+        return json(await analyticsCommerceRoute(env, user.id, seg[1]), 200, origin);
+      }
+      if (seg.length === 4 && seg[1] && seg[2] === "analytics" && seg[3] === "usage" && method === "GET") {
+        return json(await analyticsUsageRoute(env, user.id, seg[1]), 200, origin);
       }
       if (seg.length === 3 && seg[1] && seg[2] === "ranks" && method === "GET") {
         return json(await appRanks(env, user.id, seg[1], url), 200, origin);

@@ -402,6 +402,53 @@ CREATE TABLE IF NOT EXISTS analytics_engagement (
 );
 CREATE INDEX IF NOT EXISTS idx_analytics_engagement_app ON analytics_engagement(app_id, date);
 
+-- ── analytics_commerce / analytics_usage / analytics_report_headers ────────────
+-- COMMERCE + APP_USAGE analytics series (migration 0007) — siblings of
+-- analytics_engagement above: one row per app × date × dimension, metric columns
+-- NULL when Apple's report didn't carry them (never a fake 0), re-ingest RESTATES
+-- via the composite PRIMARY KEY. analytics_report_headers captures the real header
+-- row per category so an unconfirmed COLUMN_MAP is a visible, one-line fix.
+-- Migration for an EXISTING db (the CREATEs below only fire on a fresh db):
+--   npx wrangler d1 execute store_ops --command "CREATE TABLE IF NOT EXISTS analytics_commerce (app_id TEXT NOT NULL REFERENCES apps(id) ON DELETE CASCADE, date TEXT NOT NULL, content_name TEXT NOT NULL DEFAULT '', purchase_type TEXT NOT NULL DEFAULT '', sales INTEGER, proceeds REAL, paying_users INTEGER, ingested_at TEXT NOT NULL DEFAULT (datetime('now')), PRIMARY KEY (app_id, date, content_name, purchase_type))"
+-- (add `--local` for the local D1; drop it for remote. See migrations/0009_analytics_commerce_usage.sql for the full set.)
+CREATE TABLE IF NOT EXISTS analytics_commerce (
+  app_id        TEXT NOT NULL REFERENCES apps(id) ON DELETE CASCADE,
+  date          TEXT NOT NULL,
+  content_name  TEXT NOT NULL DEFAULT '',
+  purchase_type TEXT NOT NULL DEFAULT '',
+  sales         INTEGER,                              -- NULL = report didn't carry it (never a fake 0)
+  proceeds      REAL,
+  paying_users  INTEGER,
+  ingested_at   TEXT NOT NULL DEFAULT (datetime('now')),
+  PRIMARY KEY (app_id, date, content_name, purchase_type)
+);
+CREATE INDEX IF NOT EXISTS idx_analytics_commerce_app ON analytics_commerce(app_id, date);
+
+CREATE TABLE IF NOT EXISTS analytics_usage (
+  app_id         TEXT NOT NULL REFERENCES apps(id) ON DELETE CASCADE,
+  date           TEXT NOT NULL,
+  app_version    TEXT NOT NULL DEFAULT '',
+  device         TEXT NOT NULL DEFAULT '',
+  sessions       INTEGER,
+  active_devices INTEGER,
+  installations  INTEGER,
+  deletions      INTEGER,
+  crashes        INTEGER,                              -- verified (App Crashes report)
+  unique_devices INTEGER,                               -- verified (App Crashes report)
+  ingested_at    TEXT NOT NULL DEFAULT (datetime('now')),
+  PRIMARY KEY (app_id, date, app_version, device)
+);
+CREATE INDEX IF NOT EXISTS idx_analytics_usage_app ON analytics_usage(app_id, date);
+
+CREATE TABLE IF NOT EXISTS analytics_report_headers (
+  app_id         TEXT NOT NULL REFERENCES apps(id) ON DELETE CASCADE,
+  category       TEXT NOT NULL,
+  report_version TEXT NOT NULL DEFAULT '',
+  header_row     TEXT NOT NULL,
+  captured_at    TEXT NOT NULL DEFAULT (datetime('now')),
+  PRIMARY KEY (app_id, category, header_row)
+);
+
 -- ── play_funnel_snapshots ────────────────────────────────────────────────────
 -- Google Play conversion funnel (PRD 02-D) — the Play sibling of analytics_engagement.
 -- MONTHLY + LAGGED (the only official Play funnel source is the GCS export, data-map
