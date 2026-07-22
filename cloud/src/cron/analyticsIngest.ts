@@ -90,31 +90,39 @@ export async function runAnalyticsIngest(
         continue;
       }
 
-      const result = await ingestEngagement(fetchFn, gunzip, { token, requestId: status.requestId });
-      if (!result.ok) {
-        report.skippedNotReady++;
-        report.perApp.push({ appId: app.id, bundleId: app.bundle_id, skipped: result.reason });
-        continue;
+      // ENGAGEMENT, COMMERCE, and APP_USAGE all ride the same ongoing request
+      // (status.requestId). Each category is independently guarded here — a
+      // not-ready/unavailable category never blocks the others; they are peers,
+      // not a chain. Prior persisted data for a skipped category stays intact.
+      let anyIngested = false;
+
+      const engagement = await ingestEngagement(fetchFn, gunzip, { token, requestId: status.requestId });
+      if (engagement.ok) {
+        const rows = await upsertEngagementRows(env.DB, app.id, engagement.rows);
+        const days = new Set(engagement.rows.map((r) => r.date)).size;
+        report.perApp.push({ appId: app.id, bundleId: app.bundle_id, rows, days });
+        anyIngested = true;
       }
 
-      const rows = await upsertEngagementRows(env.DB, app.id, result.rows);
-      const days = new Set(result.rows.map((r) => r.date)).size;
-      report.ingested++;
-      report.perApp.push({ appId: app.id, bundleId: app.bundle_id, rows, days });
-
-      // COMMERCE and APP_USAGE ride the same ongoing request (status.requestId).
-      // Each category is independently guarded — a not-ready/unavailable category
-      // never blocks the others or the app; prior persisted data stays intact.
       const commerce = await ingestCommerce(fetchFn, gunzip, { token, requestId: status.requestId });
       if (commerce.ok) {
         await upsertCommerceRows(env.DB, app.id, commerce.rows as CommerceRow[]);
         for (const h of commerce.headers) await recordReportHeaders(env.DB, { appId: app.id, category: "COMMERCE", header: h });
+        anyIngested = true;
       }
 
       const usage = await ingestUsage(fetchFn, gunzip, { token, requestId: status.requestId });
       if (usage.ok) {
         await upsertUsageRows(env.DB, app.id, usage.rows as UsageRow[]);
         for (const h of usage.headers) await recordReportHeaders(env.DB, { appId: app.id, category: "APP_USAGE", header: h });
+        anyIngested = true;
+      }
+
+      if (anyIngested) {
+        report.ingested++;
+      } else {
+        report.skippedNotReady++;
+        report.perApp.push({ appId: app.id, bundleId: app.bundle_id, skipped: "not_ready" });
       }
     } catch (e) {
       // Per-app isolation: one bad app never aborts the run; prior data is intact.

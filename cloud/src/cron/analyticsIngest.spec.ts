@@ -137,6 +137,32 @@ describe("runAnalyticsIngest", () => {
     expect(batches()).toBe(2);
   });
 
+  it("persists COMMERCE even when Engagement itself is not_ready — Engagement is a peer, not a gate", async () => {
+    useCredential.mockResolvedValue(STORED);
+    const { db, batches, commerceRows } = fakeDb([app("app1", "com.a")]);
+    // Engagement's own report list is empty (not_ready), but COMMERCE is ready.
+    const fetchFn: FetchLike = async (url: string) => {
+      const u = String(url);
+      if (u.includes("filter[bundleId]")) return jsonRes({ data: [{ id: "A1" }] });
+      if (u.includes("/analyticsReportRequests/R1/reports")) {
+        if (u.includes("filter[category]=COMMERCE")) return jsonRes({ data: [{ id: "RPT-C", attributes: { category: "COMMERCE" } }] });
+        if (u.includes("filter[category]=APP_USAGE")) return jsonRes({ data: [] });
+        return jsonRes({ data: [] }); // Engagement: no ready report → not_ready
+      }
+      if (u.includes("/analyticsReports/RPT-C/instances")) return jsonRes({ data: [{ id: "INST-C", attributes: { granularity: "DAILY" } }] });
+      if (u.includes("/analyticsReportInstances/INST-C/segments")) return jsonRes({ data: [{ id: "SEG-C", attributes: { url: "https://signed.example/commerce.gz" } }] });
+      if (u === "https://signed.example/commerce.gz") return new Response(new TextEncoder().encode(COMMERCE_FILE), { status: 200 });
+      if (u.includes("/analyticsReportRequests")) return jsonRes(ongoing);
+      return jsonRes({}, 404);
+    };
+    const r = await runAnalyticsIngest(env({ DB: db }), { fetchFn, gunzip: gunzipPassthrough });
+
+    expect(commerceRows().length).toBe(1); // COMMERCE persisted despite Engagement not_ready
+    expect(commerceRows()[0]).toEqual(["app1", "2026-07-01", "Widget", "Paid", 5, 70, 3]);
+    expect(r.ingested).toBe(1); // app counted as ingested because SOMETHING persisted
+    expect(batches()).toBe(1); // Commerce batch only (Engagement/Usage not_ready → no batch)
+  });
+
   it("skips (not_ready) an app whose key is stored but has no ongoing request — no throw", async () => {
     useCredential.mockResolvedValue(STORED);
     const noRequest: FetchLike = async (url) =>
