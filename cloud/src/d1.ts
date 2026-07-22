@@ -34,6 +34,8 @@ import type {
 } from "./engine/index.js";
 import type { RunStatus } from "./engine/constants.js";
 import type { EngagementRow } from "./engine/analyticsEngagement.js";
+import type { CommerceRow } from "./engine/analyticsCommerce.js";
+import type { UsageRow } from "./engine/analyticsUsage.js";
 import { buildPreferenceRows } from "./engine/preferenceSignal.js";
 import { encryptField } from "./crypto/rlhfCrypto.js";
 
@@ -1946,4 +1948,138 @@ export async function getPlayFunnelSeries(
     visitors: r.visitors,
     acquisitions: r.acquisitions,
   }));
+}
+
+/**
+ * Idempotently persist parsed COMMERCE rows, keyed by (app, date, content_name,
+ * purchase_type) — a sibling of upsertPlayFunnelRows/analytics_engagement. An
+ * absent metric binds NULL (never a fabricated 0). One atomic batch; a no-op on
+ * empty input (returns 0).
+ */
+export async function upsertCommerceRows(db: D1Database, appId: string, rows: CommerceRow[]): Promise<number> {
+  if (rows.length === 0) return 0;
+  const stmts = rows.map((r) =>
+    db
+      .prepare(
+        `INSERT INTO analytics_commerce (app_id, date, content_name, purchase_type, sales, proceeds, paying_users)
+         VALUES (?, ?, ?, ?, ?, ?, ?)
+         ON CONFLICT(app_id, date, content_name, purchase_type) DO UPDATE SET
+           sales = excluded.sales, proceeds = excluded.proceeds, paying_users = excluded.paying_users,
+           ingested_at = datetime('now')`,
+      )
+      .bind(appId, r.date, r.contentName ?? "", r.purchaseType ?? "", r.sales ?? null, r.proceeds ?? null, r.payingUsers ?? null),
+  );
+  await db.batch(stmts);
+  return stmts.length;
+}
+
+/** Read an app's COMMERCE series (ascending by date, then content_name). Metrics
+ *  as-stored (NULL preserved). */
+export async function getCommerceSeries(db: D1Database, appId: string): Promise<CommerceRow[]> {
+  const { results } = await db
+    .prepare(
+      `SELECT date, content_name, purchase_type, sales, proceeds, paying_users
+         FROM analytics_commerce WHERE app_id = ? ORDER BY date ASC, content_name ASC`,
+    )
+    .bind(appId)
+    .all<{
+      date: string;
+      content_name: string;
+      purchase_type: string;
+      sales: number | null;
+      proceeds: number | null;
+      paying_users: number | null;
+    }>();
+  return (results ?? []).map((r) => ({
+    date: r.date,
+    contentName: r.content_name,
+    purchaseType: r.purchase_type,
+    sales: r.sales,
+    proceeds: r.proceeds,
+    payingUsers: r.paying_users,
+  })) as CommerceRow[];
+}
+
+/**
+ * Idempotently persist parsed APP_USAGE rows, keyed by (app, date, app_version,
+ * device). An absent metric binds NULL (never a fabricated 0). One atomic batch;
+ * a no-op on empty input (returns 0).
+ */
+export async function upsertUsageRows(db: D1Database, appId: string, rows: UsageRow[]): Promise<number> {
+  if (rows.length === 0) return 0;
+  const stmts = rows.map((r) =>
+    db
+      .prepare(
+        `INSERT INTO analytics_usage (app_id, date, app_version, device, sessions, active_devices, installations, deletions, crashes, unique_devices)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+         ON CONFLICT(app_id, date, app_version, device) DO UPDATE SET
+           sessions = excluded.sessions, active_devices = excluded.active_devices,
+           installations = excluded.installations, deletions = excluded.deletions,
+           crashes = excluded.crashes, unique_devices = excluded.unique_devices,
+           ingested_at = datetime('now')`,
+      )
+      .bind(
+        appId,
+        r.date,
+        r.appVersion ?? "",
+        r.device ?? "",
+        r.sessions ?? null,
+        r.activeDevices ?? null,
+        r.installations ?? null,
+        r.deletions ?? null,
+        r.crashes ?? null,
+        r.uniqueDevices ?? null,
+      ),
+  );
+  await db.batch(stmts);
+  return stmts.length;
+}
+
+/** Read an app's APP_USAGE series (ascending by date, then app_version). Metrics
+ *  as-stored (NULL preserved), including the verified crash/unique-device cols. */
+export async function getUsageSeries(db: D1Database, appId: string): Promise<UsageRow[]> {
+  const { results } = await db
+    .prepare(
+      `SELECT date, app_version, device, sessions, active_devices, installations, deletions, crashes, unique_devices
+         FROM analytics_usage WHERE app_id = ? ORDER BY date ASC, app_version ASC`,
+    )
+    .bind(appId)
+    .all<{
+      date: string;
+      app_version: string;
+      device: string;
+      sessions: number | null;
+      active_devices: number | null;
+      installations: number | null;
+      deletions: number | null;
+      crashes: number | null;
+      unique_devices: number | null;
+    }>();
+  return (results ?? []).map((r) => ({
+    date: r.date,
+    appVersion: r.app_version,
+    device: r.device,
+    sessions: r.sessions,
+    activeDevices: r.active_devices,
+    installations: r.installations,
+    deletions: r.deletions,
+    crashes: r.crashes,
+    uniqueDevices: r.unique_devices,
+  })) as UsageRow[];
+}
+
+/** Capture Apple's real header row for a category so an unconfirmed COLUMN_MAP is
+ *  a visible, one-line fix. Idempotent on (app_id, category, header_row). */
+export async function recordReportHeaders(
+  db: D1Database,
+  args: { appId: string; category: string; reportVersion?: string; header: string },
+): Promise<void> {
+  if (!args.header) return;
+  await db
+    .prepare(
+      `INSERT OR IGNORE INTO analytics_report_headers (app_id, category, report_version, header_row)
+       VALUES (?, ?, ?, ?)`,
+    )
+    .bind(args.appId, args.category, args.reportVersion ?? "", args.header)
+    .run();
 }
