@@ -15,7 +15,6 @@ function fakeDb() {
           return stmt;
         },
         async run() {
-          // Debug: log the SQL being executed
           if (s.includes("WEBHOOK_DELIVERIES")) {
             const [deliveryId, ascAppId, eventType, at] = bound as [string, string, string, string];
             if (!deliveries.find((r) => r.delivery_id === deliveryId)) {
