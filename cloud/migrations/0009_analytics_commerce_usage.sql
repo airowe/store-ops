@@ -1,4 +1,4 @@
--- 0007_analytics_commerce_usage — COMMERCE + APP_USAGE analytics series + a raw
+-- 0009_analytics_commerce_usage — COMMERCE + APP_USAGE analytics series + a raw
 -- header-capture table. Siblings of analytics_engagement: composite PK over
 -- (app_id, date, <dimensions>); metric columns NULL when absent (never a fake 0).
 -- analytics_report_headers stores Apple's real header row per category so an

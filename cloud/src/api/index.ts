@@ -234,6 +234,8 @@ import { buildFastlaneBundle } from "../engine/fastlane.js";
 import { zipStore } from "../engine/zip.js";
 import { mintAscJwt } from "../engine/ascJwt.js";
 import { findAscAppId, applyAscMetadata, createAscLocalization, createAscVersion, getEditableVersionId, isValidVersionString, readAscLocalization, AscWriteError } from "../engine/ascWrite.js";
+import { registerWebhook, WEBHOOK_EVENT_TYPES } from "../engine/ascWebhookRegister.js";
+import { saveWebhookSecret } from "../d1.js";
 import { readAscSnapshot, ascScreenshotsToListing, type AscSnapshot } from "../engine/ascRead.js";
 import { PENDING_MESSAGE, UNAVAILABLE_MESSAGE, enableAnalyticsReports, getAnalyticsStatus } from "../engine/ascAnalytics.js";
 import { gunzipText, ingestEngagement } from "../engine/analyticsEngagement.js";
@@ -258,6 +260,12 @@ import { openMetadataPr } from "../engine/githubPr.js";
 import { handleMcp } from "../mcp/server.js";
 import { sendBroadcastToList } from "../broadcast.js";
 import { activeSubscribers, subscriberCounts, recordBroadcast } from "../d1.js";
+import {
+  getWebhookSecretByAscAppId,
+  enqueueWebhookDelivery,
+  shouldDebounce as shouldDebounceWebhook,
+  markWebhookSwept,
+} from "../d1.js";
 import type { Env } from "../index.js";
 
 // ── token + cookie lifetimes ───────────────────────────────────────────────────
@@ -1692,6 +1700,23 @@ async function runAppWithAsc(
       issuerId: cred.issuerId,
       plaintext: cred.p8,
     }).catch(() => undefined);
+
+    // Best-effort webhook registration: the app becomes event-driven (Apple
+    // pushes review/build state changes to our receiver) instead of relying
+    // solely on the cron sweep. NEVER blocks or fails the run — a
+    // registration failure just leaves the app on cron-only, same as before
+    // this feature existed.
+    await (async () => {
+      try {
+        const ascAppId = await findAscAppId(fetch, token, app.bundle_id);
+        await maybeRegisterWebhook(
+          { token, ascAppId, appId: app.id, receiverUrl: webhookReceiverUrl(env) },
+          liveWebhookDeps(env),
+        );
+      } catch {
+        // additive — cron still covers this app
+      }
+    })();
   }
   const { result, resultWithSnapshot } = await keyedAscPass(env, app, token, locale, {
     ...(body.keywords ? { keywords: body.keywords } : {}),
@@ -1707,6 +1732,72 @@ async function runAppWithAsc(
     trigger: { source: "manual", reasons: ["manual run requested (App Store Connect read)"] },
   });
   return { id: runId, status: "awaiting_approval", digest: result.competitors.digest, ascRead: true };
+}
+
+export type MaybeRegisterDeps = {
+  register: typeof registerWebhook;
+  // Adapted from the plan's original reference shape (which had `persist:
+  // (args: {ascAppId; webhookId; secret}) => Promise<void>`) to the REAL,
+  // sealed Task-5 persistence: `saveWebhookSecret(env, {ascAppId, appId,
+  // secret})` seals the secret via the KEK/DEK envelope and needs the
+  // internal app row id (`appId`) alongside the ASC numeric app id to key the
+  // `webhook_secrets` row — so `appId` is threaded through here too.
+  persist: (args: { ascAppId: string; appId: string; webhookId: string; secret: string }) => Promise<void>;
+  genSecret: () => string;
+};
+
+/**
+ * Best-effort webhook registration on connect. Generates a per-app secret,
+ * registers it with Apple, and persists it (SEALED — see `saveWebhookSecret`)
+ * so the receiver can verify future deliveries. NEVER throws — a
+ * registration OR persist failure degrades the app to cron-only (webhooks are
+ * strictly additive; the scheduled sweep still covers this app). Returns
+ * whether event-driven delivery is enabled for this app.
+ */
+export async function maybeRegisterWebhook(
+  opts: { token: string; ascAppId: string; appId: string; receiverUrl: string },
+  deps: MaybeRegisterDeps,
+): Promise<{ enabled: boolean }> {
+  try {
+    const secret = deps.genSecret();
+    const res = await deps.register(fetch as any, {
+      token: opts.token,
+      ascAppId: opts.ascAppId,
+      url: opts.receiverUrl,
+      secret,
+      eventTypes: [...WEBHOOK_EVENT_TYPES],
+    });
+    await deps.persist({ ascAppId: opts.ascAppId, appId: opts.appId, webhookId: res.webhookId, secret });
+    return { enabled: true };
+  } catch {
+    return { enabled: false }; // additive — cron still covers this app
+  }
+}
+
+/** A real (non-test) secret generator: `whsec_` + 48 hex chars from CSPRNG
+ *  bytes — same posture as Apple's own `.p8` secrets: random, per-app, never
+ *  derived from anything guessable. */
+function generateWebhookSecret(): string {
+  const bytes = crypto.getRandomValues(new Uint8Array(24));
+  return "whsec_" + [...bytes].map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+
+/** The real `MaybeRegisterDeps`, backed by the live `registerWebhook` call and
+ *  the SEALED `saveWebhookSecret` persistence (Task 5) — used at the real
+ *  connect call site. Kept separate from `maybeRegisterWebhook` itself so the
+ *  latter stays dependency-injected and testable without env/network. */
+function liveWebhookDeps(env: Env): MaybeRegisterDeps {
+  return {
+    register: registerWebhook,
+    persist: ({ ascAppId, appId, secret }) => saveWebhookSecret(env, { ascAppId, appId, secret }),
+    genSecret: generateWebhookSecret,
+  };
+}
+
+/** Public base URL of THIS API worker's webhook receiver (see the
+ *  `broadcastBaseUrl` sibling for the same `API_ORIGIN` pattern). */
+function webhookReceiverUrl(env: Env): string {
+  return `${(env.API_ORIGIN ?? "https://api.shipaso.com").replace(/\/+$/, "")}/webhooks/asc`;
 }
 
 /**
@@ -4057,6 +4148,21 @@ function isoFromUnix(secs: number | undefined): string | null {
 }
 
 /**
+ * Resolve the app row + stored webhook secret for an ASC numeric app id — the
+ * only identity the webhook receiver has until AFTER signature verification.
+ * Thin wrapper over the D1 lookup (src/d1.ts `getWebhookSecretByAscAppId`,
+ * backed by `migrations/0008_webhook_secrets.sql`); kept as its own function
+ * so the receiver's dependency shape (`WebhookDeps.resolveAppAndSecret`) stays
+ * injectable/testable independent of D1.
+ */
+async function resolveAppAndSecret(
+  env: Env,
+  ascAppId: string,
+): Promise<{ app: AppRow; secret: string } | null> {
+  return getWebhookSecretByAscAppId(env, ascAppId);
+}
+
+/**
  * POST /billing/webhook — verify the Stripe-Signature over the RAW body, then
  * apply the subscription state to the user's tier. Handles:
  *   checkout.session.completed       → set tier from the line-item price (+ ids)
@@ -4228,6 +4334,27 @@ export async function handleApi(req: Request, env: Env, ctx?: ExecutionContext):
       method === "POST"
     ) {
       return billingWebhook(req, env, origin);
+    }
+    // Apple calls this server-to-server with NO cookie — auth is the HMAC
+    // signature over the raw body (verified inside handleWebhookReceive).
+    if (seg[0] === "webhooks" && seg[1] === "asc" && seg.length === 2 && method === "POST") {
+      const { handleWebhookReceive } = await import("./webhookReceiver.js");
+      const { runKeyedSweepForApp } = await import("../cron/keyedSweep.js");
+      const work = (execCtx: ExecutionContext) =>
+        handleWebhookReceive(req, env, execCtx, {
+          resolveAppAndSecret,
+          runKeyedSweepForApp,
+          enqueue: (e, a) => enqueueWebhookDelivery(e.DB, a),
+          shouldDebounce: (e, id, w, n) => shouldDebounceWebhook(e.DB, id, w, n),
+          markSwept: (e, id, at) => markWebhookSwept(e.DB, id, at),
+          now: () => Math.floor(Date.now() / 1000),
+        });
+      // Mirrors broadcastSendRoute's ctx? handling: no ctx (e.g. some test
+      // paths) → the sweep's waitUntil is unavailable, so run inline instead
+      // of silently dropping the scheduled sweep.
+      if (ctx) return work(ctx);
+      const inlineCtx = { waitUntil: (p: Promise<unknown>) => p } as unknown as ExecutionContext;
+      return work(inlineCtx);
     }
     // Public launch-list capture from the marketing landing (HTML form or JSON).
     if (seg[0] === "subscribe" && seg.length === 1 && method === "POST") {

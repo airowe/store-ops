@@ -410,7 +410,7 @@ CREATE INDEX IF NOT EXISTS idx_analytics_engagement_app ON analytics_engagement(
 -- row per category so an unconfirmed COLUMN_MAP is a visible, one-line fix.
 -- Migration for an EXISTING db (the CREATEs below only fire on a fresh db):
 --   npx wrangler d1 execute store_ops --command "CREATE TABLE IF NOT EXISTS analytics_commerce (app_id TEXT NOT NULL REFERENCES apps(id) ON DELETE CASCADE, date TEXT NOT NULL, content_name TEXT NOT NULL DEFAULT '', purchase_type TEXT NOT NULL DEFAULT '', sales INTEGER, proceeds REAL, paying_users INTEGER, ingested_at TEXT NOT NULL DEFAULT (datetime('now')), PRIMARY KEY (app_id, date, content_name, purchase_type))"
--- (add `--local` for the local D1; drop it for remote. See migrations/0007_analytics_commerce_usage.sql for the full set.)
+-- (add `--local` for the local D1; drop it for remote. See migrations/0009_analytics_commerce_usage.sql for the full set.)
 CREATE TABLE IF NOT EXISTS analytics_commerce (
   app_id        TEXT NOT NULL REFERENCES apps(id) ON DELETE CASCADE,
   date          TEXT NOT NULL,

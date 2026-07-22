@@ -1,7 +1,7 @@
 /**
  * Analytics commerce/usage/header-capture persistence (Task 5). Runs against a
  * REAL node:sqlite in-memory DB built from schema.sql + migration
- * 0007_analytics_commerce_usage.sql (not `cloudflare:test` — this repo doesn't
+ * 0009_analytics_commerce_usage.sql (not `cloudflare:test` — this repo doesn't
  * wire the workers vitest pool for the default suite). Mirrors the d1From
  * pattern used for webhook secret storage.
  */
@@ -19,7 +19,7 @@ try {
 }
 const sqliteAvailable = DatabaseSync !== null;
 const SCHEMA_PATH = fileURLToPath(new URL("../schema.sql", import.meta.url).href);
-const MIGRATION_PATH = fileURLToPath(new URL("../migrations/0007_analytics_commerce_usage.sql", import.meta.url).href);
+const MIGRATION_PATH = fileURLToPath(new URL("../migrations/0009_analytics_commerce_usage.sql", import.meta.url).href);
 
 function d1From(sql: string): D1Database {
   const sqlite = new DatabaseSync!(":memory:");
