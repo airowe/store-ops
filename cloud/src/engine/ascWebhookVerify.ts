@@ -40,6 +40,17 @@ export function parseWebhookEvent(rawBody: string): WebhookEvent | null {
   return { deliveryId, eventType, ascAppId, occurredAt: str(attrs.createdDate) };
 }
 
+/**
+ * Strip Apple's `hmacsha256=` algorithm prefix from a signature header value.
+ * Apple delivers `x-apple-signature: hmacsha256=<hex>` (per
+ * developer.apple.com/.../configuring-webhook-notifications), NOT a bare hex
+ * string. Case-insensitive; tolerant of the prefix being absent (returns the
+ * value unchanged) so a bare-hex sender still verifies.
+ */
+function stripSignaturePrefix(value: string): string {
+  return value.replace(/^hmacsha256=/i, "");
+}
+
 /** Hex-decode to bytes, or null on odd/invalid hex. */
 function hexToBytes(hex: string): Uint8Array | null {
   if (hex.length === 0 || hex.length % 2 !== 0 || !/^[0-9a-f]+$/i.test(hex)) return null;
@@ -59,15 +70,16 @@ function timingSafeEqual(a: Uint8Array, b: Uint8Array): boolean {
 
 /**
  * Constant-time HMAC-SHA256 verification of a raw webhook body against the
- * app's stored secret. `signatureHeader` is the hex digest Apple sent. Returns
- * false (never throws) on any malformed input.
+ * app's stored secret. `signatureHeader` is the `x-apple-signature` value, which
+ * Apple sends as `hmacsha256=<hex>` (the algorithm prefix is stripped here before
+ * decoding). Returns false (never throws) on any malformed input.
  */
 export async function verifyDelivery(
   secret: string,
   rawBody: string,
   signatureHeader: string,
 ): Promise<boolean> {
-  const provided = hexToBytes(signatureHeader.trim().toLowerCase());
+  const provided = hexToBytes(stripSignaturePrefix(signatureHeader.trim()).toLowerCase());
   if (!provided) return false;
   let expected: ArrayBuffer;
   try {
