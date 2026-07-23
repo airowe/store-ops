@@ -79,8 +79,8 @@ describe("parseKeyBundleJson", () => {
     if (r.ok) expect(r.bundle.issuerId).toBeNull();
   });
 
-  it("treats issuer_id null and empty-string both as issuerId null", () => {
-    for (const issuer_id of [null, ""]) {
+  it("treats issuer_id null, empty-string, and whitespace-only all as issuerId null", () => {
+    for (const issuer_id of [null, "", "   "]) {
       const r = parseKeyBundleJson(JSON.stringify({ key_id: "K1", issuer_id, key: REAL_P8 }));
       expect(r.ok).toBe(true);
       if (r.ok) expect(r.bundle.issuerId).toBeNull();

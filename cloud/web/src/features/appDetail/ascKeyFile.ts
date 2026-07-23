@@ -91,7 +91,8 @@ export function parseKeyBundleJson(text: string): KeyBundleResult {
   if (!looksLikeEcPrivateKey(key)) return { ok: false };
 
   const issuerRaw = o.issuer_id;
-  const issuerId = typeof issuerRaw === "string" && issuerRaw.length > 0 ? issuerRaw : null;
+  const issuerId =
+    typeof issuerRaw === "string" && issuerRaw.trim().length > 0 ? issuerRaw : null;
 
   return { ok: true, bundle: { keyId, issuerId, key: normalizeP8(key) } };
 }
