@@ -66,7 +66,7 @@ function healthySnapshot(): AscSnapshot {
       iaps: [{ id: "iap1", name: "Pro", productId: "p", state: "ACTIVE", promoted: true } as never],
       pricing: { priceTier: "0.00 USD", baseTerritoryPrice: 0, baseTerritory: "USA" },
     },
-    ageRating: { ageRating: "FOUR_PLUS" },
+    ageRating: { declared: true, contentDescriptors: ["violenceCartoonOrFantasy"] },
     customProductPages: { pages: [{ id: "c1", name: "Holiday", state: "VISIBLE" }] },
     locales: locales([
       { locale: "en-US", name: "Demo", subtitle: "Do it", keywords: "a,b,c" },
@@ -329,8 +329,8 @@ const RULES: RuleCase[] = [
     },
   },
   {
-    id: "age_rating_context",
-    severity: "info",
+    id: "age_rating_declared",
+    severity: "good",
     impact: "completeness",
     surface: "ageRating",
     trigger: (b) => b, // declared in healthy
@@ -410,13 +410,21 @@ const ALWAYS_ON = new Set([
   "primary_category_context",
   "version_context",
   "pricing_context",
-  "age_rating_context",
+  "age_rating_declared",
   "cpp_present",
 ]);
 
 describe.each(RULES.filter((r) => !ALWAYS_ON.has(r.id)))("rule $id stays silent", (rule) => {
   it("does not fire on the healthy baseline", () => {
     expect(ids(input())).not.toContain(rule.id);
+  });
+});
+
+describe("age rating declared vs unconfirmed", () => {
+  it("a declared age rating emits 'declared', never the false 'not confirmed'", () => {
+    const got = ids(input()); // healthySnapshot is declared
+    expect(got).toContain("age_rating_declared");
+    expect(got).not.toContain("age_rating_unconfirmed");
   });
 });
 

@@ -575,46 +575,49 @@ function isPromotedIap(iap: InAppPurchase): boolean {
   return (iap as InAppPurchase & { promoted?: boolean }).promoted === true;
 }
 
-/** ageRating — `snapshot.ageRating`. Low-signal: never above `warn`. */
+/** ageRating — from `snapshot.ageRating`. Low-signal: never above `info`/`good`.
+ *  Apple returns no derived rating bucket, so a PRESENT declaration is itself the
+ *  confirmation; only a genuinely-absent declaration reads "not confirmed". */
 function ageRatingFindings(snapshot: AscSnapshot | undefined): Finding[] {
   const ageRating = snapshot?.ageRating;
-  if (!ageRating) return [];
-  const out: Finding[] = [];
+  if (!ageRating) return []; // non-keyed / unread → say nothing
 
-  if (!ageRating.ageRating) {
-    // #71-A3: an empty parsed rating does NOT prove "not declared". We may have
-    // read the declaration but failed to parse Apple's value (format drift), or
-    // hit a restricted field. Asserting "not declared — can block submission" on
-    // a live app is alarming AND almost certainly wrong (a READY_FOR_SALE app
-    // necessarily HAS a rating). So we don't claim it's missing — we say plainly
-    // that we couldn't confirm it, at info level, never a false blocker warning.
-    out.push(
+  if (ageRating.declared) {
+    const descriptors = ageRating.contentDescriptors ?? [];
+    const bits: string[] = [];
+    if (ageRating.override) bits.push(`override ${ageRating.override.replace(/_/g, " ").toLowerCase()}`);
+    if (descriptors.length > 0) bits.push(`${descriptors.length} content descriptor${descriptors.length === 1 ? "" : "s"} flagged`);
+    return [
       mk({
-        id: "age_rating_unconfirmed",
+        id: "age_rating_declared",
         surface: "ageRating",
-        severity: "info",
+        severity: "good",
         impact: "completeness",
-        title: "Age rating not confirmed",
-        detail: "We couldn't read a declared age rating from App Store Connect — that may be a read limitation, not a missing rating.",
-        fix: "Confirm your age rating is set in App Store Connect (it's required to ship).",
-      }),
-    );
-  } else {
-    out.push(
-      mk({
-        id: "age_rating_context",
-        surface: "ageRating",
-        severity: "info",
-        impact: "completeness",
-        title: `Age rating: ${ageRating.ageRating}`,
-        detail: "Your declared age rating, for context.",
+        title: "Age rating declared",
+        detail:
+          "Your app has an age-rating declaration in App Store Connect" +
+          (bits.length ? ` (${bits.join(", ")})` : "") +
+          ". Apple computes the displayed rating from your declaration answers.",
         fix: "No action — context only.",
-        evidence: ageRating.ageRating,
-        context: true, // #71-C
+        ...(descriptors.length > 0 ? { evidence: descriptors.join(", ") } : {}),
+        context: true,
       }),
-    );
+    ];
   }
-  return out;
+
+  // Declaration genuinely absent (readAscAgeRating returned {}). Honest, info-level,
+  // never a blocker — a live app necessarily has a rating, so this is rare.
+  return [
+    mk({
+      id: "age_rating_unconfirmed",
+      surface: "ageRating",
+      severity: "info",
+      impact: "completeness",
+      title: "Age rating not confirmed",
+      detail: "We couldn't read an age-rating declaration from App Store Connect — that may be a read limitation, not a missing rating.",
+      fix: "Confirm your age rating is set in App Store Connect (it's required to ship).",
+    }),
+  ];
 }
 
 /** customProductPages — `snapshot.customProductPages.pages[]`. */

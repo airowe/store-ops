@@ -42,7 +42,7 @@ function richSnapshot(): AscSnapshot {
       pricing: { baseTerritoryPrice: 4.99, baseTerritory: "USA" },
       iaps: [{ id: "iap1", name: "Pro Monthly", productId: "com.weatherly.pro" }],
     } as unknown as AscSnapshot["pricing"],
-    ageRating: { ageRating: "FOUR_PLUS" },
+    ageRating: { declared: true, override: "SEVENTEEN_PLUS" },
     customProductPages: { pages: [{ id: "cpp1", name: "Summer Promo" }] } as unknown as AscSnapshot["customProductPages"],
     locales: [
       { locale: "en-US", name: "Weatherly", subtitle: "Hyperlocal forecasts", keywords: "weather,forecast,rain" },
@@ -58,7 +58,7 @@ describe("buildAscContext", () => {
     expect(ctx).toEqual({
       category: "Weather",
       secondaryCategory: "Utilities",
-      ageRating: "FOUR_PLUS",
+      ageRating: "SEVENTEEN_PLUS",
       versionState: "READY_FOR_SALE",
       localeCount: 2,
       previewDeviceCount: 2,
@@ -116,5 +116,12 @@ describe("buildAscContext", () => {
     for (const key of Object.keys(ctx ?? {})) {
       expect(allowed.has(key)).toBe(true);
     }
+  });
+
+  it("omits ageRating context when the declaration has no override (Apple returns no bucket)", () => {
+    const snap = richSnapshot();
+    snap.ageRating = { declared: true };
+    const ctx = buildAscContext(snap);
+    expect(ctx?.ageRating).toBeUndefined();
   });
 });

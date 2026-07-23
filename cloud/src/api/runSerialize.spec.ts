@@ -50,7 +50,7 @@ function richSnapshot(): AscSnapshot {
       pricing: { baseTerritoryPrice: 4.99, baseTerritory: "USA" },
       iaps: [{ id: "iap1", name: "Pro Monthly", productId: "com.weatherly.pro.monthly" }],
     } as unknown as AscSnapshot["pricing"],
-    ageRating: { ageRating: "FOUR_PLUS" },
+    ageRating: { declared: true, override: "SEVENTEEN_PLUS" },
     customProductPages: { pages: [] } as unknown as AscSnapshot["customProductPages"],
     locales: [
       { locale: "en-US", name: APP_NAME, subtitle: "Hyperlocal forecasts", keywords: "weather,forecast,rain,storm" },
@@ -146,7 +146,7 @@ describe("serializeRunResult — Mode-A (ASC) run", () => {
   it("includes a slim ascContext with exactly the expected safe keys", () => {
     expect(result.ascContext).toEqual({
       category: "Weather",
-      ageRating: "FOUR_PLUS",
+      ageRating: "SEVENTEEN_PLUS",
       versionState: "READY_FOR_SALE",
       localeCount: 1,
       previewDeviceCount: 1,

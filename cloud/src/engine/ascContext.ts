@@ -24,7 +24,9 @@ export type AscContext = {
   category?: string | undefined;
   /** secondary category display name (or id), when one is set. */
   secondaryCategory?: string | undefined;
-  /** Apple's derived age-rating bucket label, e.g. "FOUR_PLUS". */
+  /** the declared age-rating OVERRIDE when one is set (e.g. "SEVENTEEN_PLUS") —
+   *  never a derived bucket. Apple's API returns no computed rating here, so this
+   *  is absent unless the developer set an explicit override. */
   ageRating?: string | undefined;
   /** the live version's App Store state, e.g. "READY_FOR_SALE". */
   versionState?: string | undefined;
@@ -70,8 +72,10 @@ export function buildAscContext(snapshot: AscSnapshot | undefined): AscContext |
     ctx.secondaryCategory = appInfo.secondaryCategory.name ?? appInfo.secondaryCategory.id;
   }
 
-  const ageRating = snapshot.ageRating?.ageRating;
-  if (ageRating) ctx.ageRating = ageRating;
+  // Apple returns no derived bucket; the override is the only real rating value.
+  // No override → we have nothing to report, so omit (never fabricate a bucket).
+  const override = snapshot.ageRating?.override;
+  if (override) ctx.ageRating = override;
 
   const versionState = snapshot.versionState?.current.appStoreState;
   if (versionState) ctx.versionState = versionState;
