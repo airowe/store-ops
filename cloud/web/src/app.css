@@ -267,3 +267,9 @@ h2 { font-family: var(--display); font-weight: 600; font-size: 22px; letter-spac
   font: inherit; font-size: 13px; color: var(--dim);
 }
 .healthy-toggle:hover { color: var(--ink); }
+
+.winbar {
+  display: inline-block; vertical-align: middle; width: 64px; height: 5px; margin-left: 8px;
+  background: var(--line-soft); border-radius: 999px; overflow: hidden;
+}
+.winbar-fill { display: block; height: 100%; background: var(--signal, #34d399); border-radius: 999px; }

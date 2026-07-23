@@ -58,4 +58,16 @@ describe("<OpportunitiesCard />", () => {
     const { container } = render(<OpportunitiesCard opportunities={[]} />);
     expect(container).toBeEmptyDOMElement();
   });
+
+  it("shows a winnability bar for a scored keyword and none for an unscored one", () => {
+    render(<OpportunitiesCard opportunities={[reachable, unscored]} />);
+    // scored → bar present, width reflects the score
+    const bar = screen.getByTestId(`opp-bar-${reachable.keyword}`);
+    expect(bar).toBeInTheDocument();
+    expect(bar).toHaveStyle({ width: "82%" });
+    // unscored → no bar
+    expect(screen.queryByTestId(`opp-bar-${unscored.keyword}`)).toBeNull();
+    // and still the honest text
+    expect(screen.getByTestId(`opp-score-${unscored.keyword}`)).toHaveTextContent("not enough data to score");
+  });
 });
