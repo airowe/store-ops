@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import { CopyDiff } from "./CopyDiff.js";
 
 describe("<CopyDiff />", () => {
@@ -35,5 +35,24 @@ describe("<CopyDiff />", () => {
     expect(screen.queryByTestId("diff-name")).toBeNull();
     expect(screen.queryByTestId("diff-subtitle")).toBeNull();
     expect(screen.queryByTestId("diff-keywords")).toBeNull();
+  });
+
+  it("renders the keywords field as a token diff: removed struck, added highlighted, kept quiet", () => {
+    render(
+      <CopyDiff
+        current={{ keywords: "mindfulness,calm,stress" }}
+        proposed={{ keywords: "mindfulness,stress,sleep" }}
+      />,
+    );
+    const row = screen.getByTestId("diff-keywords");
+    // token chips present
+    expect(within(row).getByTestId("kw-removed-calm")).toBeInTheDocument();
+    expect(within(row).getByTestId("kw-added-sleep")).toBeInTheDocument();
+    expect(within(row).getByTestId("kw-kept-mindfulness")).toBeInTheDocument();
+    // summary line
+    expect(row).toHaveTextContent("1 added");
+    expect(row).toHaveTextContent("1 removed");
+    // char budget still shown
+    expect(within(row).getByTestId("count-keywords")).toBeInTheDocument();
   });
 });

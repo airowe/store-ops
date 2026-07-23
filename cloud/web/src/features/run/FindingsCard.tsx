@@ -10,6 +10,7 @@
  * without it the CTA falls back to a plain link so the card stays standalone.
  * Pure presentational; data arrives from the run detail response.
  */
+import { useState } from "react";
 import type { Finding, FindingsSummary, SurfaceLock } from "@shipaso/api";
 
 const SEVERITY_COLOR: Record<Finding["severity"], string> = {
@@ -19,9 +20,19 @@ const SEVERITY_COLOR: Record<Finding["severity"], string> = {
   info: "var(--muted, #718096)",
 };
 
+const SEV_RANK: Record<Finding["severity"], number> = { critical: 0, warn: 1, info: 2, good: 3 };
+/** "Healthy" = nothing to act on: a good finding, or an info with no fix. */
+function isHealthy(f: Finding): boolean {
+  return f.severity === "good" || (f.severity === "info" && f.fix.trim() === "");
+}
+
 function FindingRow({ f }: { f: Finding }) {
   return (
-    <div className="finding-row" data-testid={`finding-${f.id}`} style={{ margin: "10px 0" }}>
+    <div
+      className={"finding-row sev-" + f.severity}
+      data-testid={`finding-${f.id}`}
+      data-severity={f.severity}
+    >
       <p style={{ margin: 0 }}>
         <span
           className="sev-chip"
@@ -57,6 +68,12 @@ export function FindingsCard({
   // more"), so they collapse into one CTA instead of a per-surface wall.
   const showUnlock = unlock !== undefined || locks.length > 0;
 
+  const [showHealthy, setShowHealthy] = useState(false);
+  const blockers = actionable
+    .filter((f) => !isHealthy(f))
+    .sort((a, b) => SEV_RANK[a.severity] - SEV_RANK[b.severity]);
+  const healthy = actionable.filter(isHealthy);
+
   if (findings.length === 0 && locks.length === 0) return null;
 
   return (
@@ -65,11 +82,25 @@ export function FindingsCard({
       {summary ? <p className="micro">{summary.label}</p> : null}
 
       <div data-testid="findings-list">
-        {actionable.length === 0 ? (
+        {blockers.length === 0 && healthy.length === 0 ? (
           <p className="micro muted">No fixes found on the surfaces we could read.</p>
         ) : (
-          actionable.map((f) => <FindingRow key={f.id} f={f} />)
+          blockers.map((f) => <FindingRow key={f.id} f={f} />)
         )}
+        {healthy.length > 0 ? (
+          <div className="healthy-block" style={{ marginTop: 8 }}>
+            <button
+              type="button"
+              className="healthy-toggle"
+              data-testid="healthy-toggle"
+              aria-expanded={showHealthy}
+              onClick={() => setShowHealthy((v) => !v)}
+            >
+              {showHealthy ? "▾" : "▸"} {healthy.length} healthy check{healthy.length === 1 ? "" : "s"}
+            </button>
+            {showHealthy ? healthy.map((f) => <FindingRow key={f.id} f={f} />) : null}
+          </div>
+        ) : null}
       </div>
 
       {context.length > 0 ? (

@@ -17,26 +17,35 @@ const TIER_LABEL: Record<StorefrontTier, string> = {
   "long-tail": "long-tail",
 };
 
+const TIER_SIZE: Record<StorefrontTier, number> = { large: 100, mid: 60, "long-tail": 30 };
+
 export function LocalizationExpansionCard({ recommendations }: { recommendations: LocaleRecommendation[] }) {
   if (recommendations.length === 0) return null;
   return (
     <div className="card" data-testid="localization-expansion-card">
       <b>Markets to expand into</b>
-      <p className="micro muted" style={{ margin: "2px 0 0" }}>
-        ROI-sorted locales you don’t list in yet — a market-size heuristic, not live install data.
+      <p className="micro muted" data-testid="loc-rationale" style={{ margin: "2px 0 8px" }}>
+        ROI-sorted locales you don’t list in yet — translate your existing copy to claim them.
+        A market-size heuristic, not live install data.
       </p>
-      {recommendations.map((r) => (
-        <div key={r.locale} className="loc-rec-row" data-testid={`loc-rec-${r.locale}`} style={{ margin: "10px 0" }}>
-          <p style={{ margin: 0 }}>
-            <b>{r.locale}</b>
-            <span className="micro muted" style={{ marginLeft: 8 }}>{TIER_LABEL[r.storefrontTier]}</span>
-            <span className="micro muted" style={{ marginLeft: 8 }}>
+      <div className="loc-table">
+        {recommendations.map((r) => (
+          <div key={r.locale} className="loc-row" data-testid={`loc-rec-${r.locale}`}>
+            <span className="loc-code">{r.locale}</span>
+            <span className="loc-size">
+              <span
+                className="loc-size-fill"
+                data-testid={`loc-bar-${r.locale}`}
+                style={{ width: `${TIER_SIZE[r.storefrontTier]}%` }}
+              />
+            </span>
+            <span className="micro muted loc-tier">{TIER_LABEL[r.storefrontTier]}</span>
+            <span className="micro muted loc-effort">
               {r.effort === "translate" ? "translate existing copy" : "net-new metadata"}
             </span>
-          </p>
-          <p className="micro" style={{ margin: "2px 0 0" }}>{r.rationale}</p>
-        </div>
-      ))}
+          </div>
+        ))}
+      </div>
     </div>
   );
 }

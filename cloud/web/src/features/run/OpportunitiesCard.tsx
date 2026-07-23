@@ -50,6 +50,15 @@ export function OpportunitiesCard({ opportunities }: { opportunities: Opportunit
             <span className="micro muted" style={{ marginLeft: 8 }} data-testid={`opp-score-${o.keyword}`}>
               {o.scored === false ? "not enough data to score" : `score ${Math.round(o.opportunityScore)}`}
             </span>
+            {o.scored !== false ? (
+              <span className="winbar" aria-hidden="true">
+                <span
+                  className="winbar-fill"
+                  data-testid={`opp-bar-${o.keyword}`}
+                  style={{ width: `${Math.max(0, Math.min(100, Math.round(o.opportunityScore)))}%` }}
+                />
+              </span>
+            ) : null}
           </p>
           <p className="micro" style={{ margin: "2px 0 0" }}>{o.why}</p>
         </div>

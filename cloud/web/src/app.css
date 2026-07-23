@@ -174,6 +174,15 @@ h2 { font-family: var(--display); font-weight: 600; font-size: 22px; letter-spac
 .diffside .strike { text-decoration: line-through; color: var(--faint); }
 .darrow { display: flex; align-items: center; color: var(--dim); }
 .diff-issues { color: var(--bad); font-size: 12px; margin-top: 6px; }
+.kwdiff { margin-top: 2px; }
+.kwchips { display: flex; flex-wrap: wrap; gap: 6px; }
+.kwchip {
+  font-family: var(--mono); font-size: 12px; padding: 3px 9px; border-radius: 999px;
+  border: 1px solid var(--line); color: var(--dim);
+}
+.kwchip.removed { color: var(--bad, #f87171); border-color: var(--bad, #f87171); text-decoration: line-through; }
+.kwchip.added { color: var(--signal, #34d399); border-color: var(--signal-dim, #1f8f66); }
+.kwchip.kept { color: var(--faint); }
 /* The decision landing — the product's money moment. Enters from 0.96, never
    from nothing. @starting-style animates the mount with no JS. */
 .run-status {
@@ -243,3 +252,77 @@ h2 { font-family: var(--display); font-weight: 600; font-size: 22px; letter-spac
     .anno-row { transform: none; }
   }
 }
+
+.finding-row { position: relative; margin: 10px 0; padding-left: 12px; }
+.finding-row::before {
+  content: ""; position: absolute; left: 0; top: 2px; bottom: 2px; width: 3px; border-radius: 2px;
+  background: var(--dim);
+}
+.finding-row.sev-critical::before { background: var(--bad, #f87171); }
+.finding-row.sev-warn::before { background: var(--warn, #fbbf24); }
+.finding-row.sev-good::before { background: var(--signal, #34d399); }
+.finding-row.sev-info::before { background: var(--dim); }
+.healthy-toggle {
+  appearance: none; background: transparent; border: 0; cursor: pointer; padding: 4px 0;
+  font: inherit; font-size: 13px; color: var(--dim);
+}
+.healthy-toggle:hover { color: var(--ink); }
+
+.winbar {
+  display: inline-block; vertical-align: middle; width: 64px; height: 5px; margin-left: 8px;
+  background: var(--line-soft); border-radius: 999px; overflow: hidden;
+}
+.winbar-fill { display: block; height: 100%; background: var(--signal, #34d399); border-radius: 999px; }
+
+.loc-table { display: flex; flex-direction: column; gap: 6px; margin-top: 4px; }
+.loc-row {
+  display: grid; grid-template-columns: 68px 90px 1fr auto; gap: 10px; align-items: center;
+  padding: 6px 0; border-bottom: 1px solid var(--line-soft);
+}
+.loc-code { font-family: var(--mono); font-size: 13px; color: var(--ink); }
+.loc-size { height: 6px; background: var(--line-soft); border-radius: 999px; overflow: hidden; }
+.loc-size-fill { display: block; height: 100%; background: var(--signal, #34d399); border-radius: 999px; }
+.loc-effort { text-align: right; }
+@media (max-width: 560px) {
+  .loc-row { grid-template-columns: 56px 1fr; }
+  .loc-size, .loc-effort { display: none; }
+}
+
+.decision-summary { display: flex; flex-wrap: wrap; gap: 8px; margin: 10px 0 18px; }
+.ds-pill {
+  font-family: var(--mono); font-size: 12px; padding: 5px 11px; border-radius: 999px;
+  border: 1px solid var(--line); color: var(--dim);
+}
+.ds-pill .add { color: var(--signal, #34d399); } .ds-pill .rem { color: var(--bad, #f87171); }
+.ds-pill.warn { color: var(--warn, #fbbf24); border-color: var(--warn, #fbbf24); }
+.ds-pill.ok { color: var(--signal, #34d399); border-color: var(--signal-dim, #1f8f66); }
+.ds-pill.quiet { color: var(--faint); }
+
+.section-rail {
+  position: sticky; top: 24px; display: flex; flex-direction: column; gap: 2px;
+  font-family: var(--mono); font-size: 12px;
+}
+.rail-link {
+  color: var(--faint); text-decoration: none; padding: 4px 10px; border-left: 2px solid var(--line-soft);
+}
+.rail-link:hover { color: var(--dim); }
+.rail-link.active { color: var(--ink); border-left-color: var(--signal, #34d399); }
+
+.run-layout { display: grid; grid-template-columns: 1fr; gap: 24px; }
+@media (min-width: 900px) {
+  .run-layout--railed { grid-template-columns: 160px minmax(0, 1fr); align-items: start; }
+}
+.run-main.has-decision-bar { padding-bottom: 88px; }
+.decision-bar {
+  position: fixed; left: 0; right: 0; bottom: 0; z-index: 20;
+  display: flex; align-items: center; gap: 16px;
+  padding: 12px max(16px, calc((100% - 940px) / 2));
+  background: var(--panel); border-top: 1px solid var(--line);
+}
+.decision-bar .db-summary { margin-right: auto; }
+.decision-bar .db-actions { display: flex; gap: 10px; }
+@media (prefers-reduced-motion: no-preference) {
+  .decision-bar { animation: db-in .18s ease-out; }
+  @keyframes db-in { from { transform: translateY(100%); } to { transform: none; } }
+}
+@media (max-width: 900px) { .section-rail { display: none; } }

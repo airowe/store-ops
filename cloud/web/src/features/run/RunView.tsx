@@ -13,7 +13,7 @@
  *     what the run measured — the PRD 07 slice ported from the legacy dashboard.
  * Client + id injected for testability.
  */
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ApiError, ascCreateVersion, ascPush, decideRun, getCredentials, getGithubStatus, getRun, githubPr } from "@shipaso/api";
 import type { AscPushResult, RunDetail } from "@shipaso/api";
@@ -26,6 +26,8 @@ import { PpoTreatmentCard } from "./PpoTreatmentCard.js";
 import { ScreenshotPlanCard } from "./ScreenshotPlanCard.js";
 import { CppSetsCard } from "./CppSetsCard.js";
 import { LocalizationCard } from "./LocalizationCard.js";
+import { DecisionSummary } from "./DecisionSummary.js";
+import { SectionRail, type RailItem } from "./SectionRail.js";
 import { API_BASE } from "../../config.js";
 import { runStatusLabel } from "../../lib/status.js";
 
@@ -81,6 +83,31 @@ export function RunView({
   const githubQ = useQuery({ queryKey: ["github", "status"], queryFn: () => getGithubStatus(client), retry: false });
   const pr = useMutation({ mutationFn: () => githubPr(client, id) });
 
+  // Presence booleans read defensively off possibly-undefined data — this must
+  // run unconditionally, ABOVE the loading/error early returns below, so hook
+  // order stays stable across renders (Rules of Hooks).
+  const rMaybe = runQ.data?.result;
+  const hasAudit = Boolean(rMaybe?.findings?.length || rMaybe?.locks?.length);
+  const hasMetadata = Boolean(rMaybe?.coverage);
+  const hasKeywords = Boolean(rMaybe?.opportunities?.length);
+  const hasMarkets = Boolean(rMaybe?.localizationExpansion?.length);
+  const hasScreenshots = Boolean(rMaybe?.audit?.screenshots);
+
+  // Stable reference: SectionRail's effect re-subscribes IntersectionObserver
+  // whenever `items` changes identity, so this must not be a fresh array on
+  // every render — key the memo on the presence booleans, not `r` itself.
+  const railItems: RailItem[] = useMemo(
+    () => [
+      { id: "changes", label: "Changes" },
+      ...(hasAudit ? [{ id: "audit", label: "Audit" }] : []),
+      ...(hasMetadata ? [{ id: "metadata", label: "Metadata" }] : []),
+      ...(hasKeywords ? [{ id: "keywords", label: "Keywords" }] : []),
+      ...(hasMarkets ? [{ id: "markets", label: "Markets" }] : []),
+      ...(hasScreenshots ? [{ id: "screenshots", label: "Screenshots" }] : []),
+    ],
+    [hasAudit, hasMetadata, hasKeywords, hasMarkets, hasScreenshots],
+  );
+
   if (runQ.isLoading) return <p className="muted">Loading run…</p>;
   if (runQ.isError || !runQ.data || !runQ.data.result)
     return <p className="muted">Couldn’t load this run.</p>;
@@ -104,79 +131,96 @@ export function RunView({
   const pushResult: AscPushResult | undefined = push.data;
 
   return (
-    <section>
-      <h1>Proposed changes</h1>
-      <CopyDiff current={r.currentCopy} proposed={r.proposedCopy} />
-
-      {(r.findings?.length || r.locks?.length) ? (
-        <FindingsCard
-          findings={r.findings ?? []}
-          {...(r.locks !== undefined ? { locks: r.locks } : {})}
-          {...(r.findingsSummary !== undefined ? { summary: r.findingsSummary } : {})}
-          {...(onConnect ? { onConnect } : {})}
-        />
-      ) : null}
-
-      {r.coverage ? <CoverageCard coverage={r.coverage} /> : null}
-      {r.opportunities?.length ? <OpportunitiesCard opportunities={r.opportunities} /> : null}
-      {r.localizationExpansion?.length ? (
-        <LocalizationExpansionCard recommendations={r.localizationExpansion} />
-      ) : null}
-      {r.ppoTreatment ? <PpoTreatmentCard plan={r.ppoTreatment} /> : null}
-      {r.audit?.screenshots ? (
-        <ScreenshotPlanCard
-          client={client}
-          inputs={{
-            appName: r.proposedCopy.name ?? r.currentCopy.name ?? r.audit.liveName ?? "",
-            ...(r.proposedCopy.subtitle ? { subtitle: r.proposedCopy.subtitle } : {}),
-            keywords: (r.proposedCopy.keywords ?? "").split(",").map((k) => k.trim()).filter(Boolean),
-            rawScreens: [],
-            audit: {
-              grade: r.audit.screenshots.grade,
-              // App Store minimum-strong set when the audit carries no explicit target.
-              recommendedCount: 6,
-              findings: r.audit.screenshots.findings ?? [],
-            },
-            brandPalette: [],
-          }}
-        />
-      ) : null}
-      {r.audit?.screenshots && (r.opportunities?.length ?? 0) >= 2 ? (
-        <CppSetsCard
-          client={client}
-          inputs={{
-            appName: r.proposedCopy.name ?? r.currentCopy.name ?? r.audit.liveName ?? "",
-            ...(r.proposedCopy.subtitle ? { subtitle: r.proposedCopy.subtitle } : {}),
-            keywords: (r.opportunities ?? []).map((o) => o.keyword).filter(Boolean),
-            rawScreens: [],
-            auditGrade: r.audit.screenshots.grade,
-            findings: r.audit.screenshots.findings ?? [],
-            brandPalette: [],
-            recommendedCount: 6,
-          }}
-        />
-      ) : null}
-
+    <div className={"run-layout" + (pending ? " run-layout--railed" : "")}>
       {pending ? (
-        <div className="btn-row" style={{ display: "flex", gap: 10, marginTop: 14 }}>
-          <button type="button" className="btn primary" data-testid="approve" disabled={decide.isPending} onClick={() => decide.mutate("approve")}>
-            {decide.isPending ? "Approving…" : "Approve"}
-          </button>
-          <button type="button" className="btn ghost" data-testid="reject" disabled={decide.isPending} onClick={() => decide.mutate("reject")}>
-            Reject
-          </button>
-        </div>
-      ) : (
-        <p className={"run-status" + (approved ? " good" : "")} data-testid="run-status">
-          {runStatusLabel(run.status)}
-        </p>
-      )}
-
-      {tierLimited ? (
-        <p className="muted" data-testid="tier-limit">
-          You’ve hit your plan’s run limit — upgrade to approve more.
-        </p>
+        <aside className="run-rail-col">
+          <SectionRail items={railItems} />
+        </aside>
       ) : null}
+      <section className={pending ? "run-main has-decision-bar" : "run-main"}>
+        <h1>Proposed changes</h1>
+        <div id="changes">
+          <CopyDiff current={r.currentCopy} proposed={r.proposedCopy} />
+        </div>
+
+        {pending ? (
+          <DecisionSummary current={r.currentCopy} proposed={r.proposedCopy} findings={r.findings ?? []} />
+        ) : null}
+
+        {hasAudit ? (
+          <div id="audit">
+            <FindingsCard
+              findings={r.findings ?? []}
+              {...(r.locks !== undefined ? { locks: r.locks } : {})}
+              {...(r.findingsSummary !== undefined ? { summary: r.findingsSummary } : {})}
+              {...(onConnect ? { onConnect } : {})}
+            />
+          </div>
+        ) : null}
+
+        {hasMetadata ? (
+          <div id="metadata">
+            <CoverageCard coverage={r.coverage!} />
+          </div>
+        ) : null}
+        {hasKeywords ? (
+          <div id="keywords">
+            <OpportunitiesCard opportunities={r.opportunities!} />
+          </div>
+        ) : null}
+        {hasMarkets ? (
+          <div id="markets">
+            <LocalizationExpansionCard recommendations={r.localizationExpansion!} />
+          </div>
+        ) : null}
+        {r.ppoTreatment ? <PpoTreatmentCard plan={r.ppoTreatment} /> : null}
+        {hasScreenshots ? (
+          <div id="screenshots">
+            <ScreenshotPlanCard
+              client={client}
+              inputs={{
+                appName: r.proposedCopy.name ?? r.currentCopy.name ?? r.audit!.liveName ?? "",
+                ...(r.proposedCopy.subtitle ? { subtitle: r.proposedCopy.subtitle } : {}),
+                keywords: (r.proposedCopy.keywords ?? "").split(",").map((k) => k.trim()).filter(Boolean),
+                rawScreens: [],
+                audit: {
+                  grade: r.audit!.screenshots!.grade,
+                  // App Store minimum-strong set when the audit carries no explicit target.
+                  recommendedCount: 6,
+                  findings: r.audit!.screenshots!.findings ?? [],
+                },
+                brandPalette: [],
+              }}
+            />
+            {(r.opportunities?.length ?? 0) >= 2 ? (
+              <CppSetsCard
+                client={client}
+                inputs={{
+                  appName: r.proposedCopy.name ?? r.currentCopy.name ?? r.audit!.liveName ?? "",
+                  ...(r.proposedCopy.subtitle ? { subtitle: r.proposedCopy.subtitle } : {}),
+                  keywords: (r.opportunities ?? []).map((o) => o.keyword).filter(Boolean),
+                  rawScreens: [],
+                  auditGrade: r.audit!.screenshots!.grade,
+                  findings: r.audit!.screenshots!.findings ?? [],
+                  brandPalette: [],
+                  recommendedCount: 6,
+                }}
+              />
+            ) : null}
+          </div>
+        ) : null}
+
+        {pending ? null : (
+          <p className={"run-status" + (approved ? " good" : "")} data-testid="run-status">
+            {runStatusLabel(run.status)}
+          </p>
+        )}
+
+        {tierLimited ? (
+          <p className="muted" data-testid="tier-limit">
+            You’ve hit your plan’s run limit — upgrade to approve more.
+          </p>
+        ) : null}
 
       {approved && storedAscKey ? (
         <div className="card" data-testid="asc-push-card">
@@ -314,6 +358,27 @@ export function RunView({
           </p>
         </div>
       ) : null}
-    </section>
+      </section>
+
+      {pending && !tierLimited ? (
+        <div className="decision-bar" data-testid="decision-bar">
+          <span className="db-summary micro muted">
+            {(() => {
+              const added = (r.proposedCopy.keywords ?? "").split(",").map((s) => s.trim()).filter(Boolean).length;
+              const needsYou = r.findings?.filter((f) => !f.context && (f.severity === "critical" || f.severity === "warn")).length ?? 0;
+              return `${needsYou} to review · ${added} keywords`;
+            })()}
+          </span>
+          <span className="db-actions">
+            <button type="button" className="btn ghost" data-testid="reject" disabled={decide.isPending} onClick={() => decide.mutate("reject")}>
+              Reject
+            </button>
+            <button type="button" className="btn primary" data-testid="approve" disabled={decide.isPending} onClick={() => decide.mutate("approve")}>
+              {decide.isPending ? "Approving…" : "Approve changes"}
+            </button>
+          </span>
+        </div>
+      ) : null}
+    </div>
   );
 }

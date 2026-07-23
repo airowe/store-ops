@@ -10,6 +10,7 @@
  * When nothing changed, the whole diff collapses to one honest line.
  */
 import type { CopyFields } from "@shipaso/api";
+import { diffKeywords } from "./keywordDiff.js";
 
 const LIMITS: Partial<Record<keyof CopyFields, number>> = { name: 30, subtitle: 30, keywords: 100, promo: 170 };
 const FIELDS: Array<keyof CopyFields> = ["name", "subtitle", "keywords", "promo"];
@@ -53,17 +54,41 @@ export function CopyDiff({ current, proposed }: { current: CopyFields; proposed:
                 </span>
               ) : null}
             </div>
-            <div className="diffcols">
-              <div className="diffside was">
-                {before !== undefined ? (
-                  <span className={changed ? "strike" : ""}>{before || "—"}</span>
-                ) : (
-                  <span className="faint">(was unread)</span>
-                )}
+            {f === "keywords" ? (
+              (() => {
+                const d = diffKeywords(before, after);
+                return (
+                  <div className="kwdiff" data-testid="kwdiff">
+                    <div className="kwchips">
+                      {d.removed.map((t) => (
+                        <span key={t} className="kwchip removed" data-testid={`kw-removed-${t}`}>{t}</span>
+                      ))}
+                      {d.added.map((t) => (
+                        <span key={t} className="kwchip added" data-testid={`kw-added-${t}`}>{t}</span>
+                      ))}
+                      {d.kept.map((t) => (
+                        <span key={t} className="kwchip kept" data-testid={`kw-kept-${t}`}>{t}</span>
+                      ))}
+                    </div>
+                    <p className="micro muted kwdiff-sum" style={{ margin: "6px 0 0" }}>
+                      {d.added.length} added · {d.removed.length} removed · {d.kept.length} kept
+                    </p>
+                  </div>
+                );
+              })()
+            ) : (
+              <div className="diffcols">
+                <div className="diffside was">
+                  {before !== undefined ? (
+                    <span className={changed ? "strike" : ""}>{before || "—"}</span>
+                  ) : (
+                    <span className="faint">(was unread)</span>
+                  )}
+                </div>
+                <div className="darrow">→</div>
+                <div className={"diffside now" + (over ? " invalid" : "")} data-testid={`now-${f}`}>{after || "—"}</div>
               </div>
-              <div className="darrow">→</div>
-              <div className={"diffside now" + (over ? " invalid" : "")} data-testid={`now-${f}`}>{after || "—"}</div>
-            </div>
+            )}
             {over ? (
               <div className="diff-issues" data-testid={`over-${f}`}>
                 Over the {limit}-char limit by {used - limit}.
