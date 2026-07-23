@@ -252,3 +252,18 @@ h2 { font-family: var(--display); font-weight: 600; font-size: 22px; letter-spac
     .anno-row { transform: none; }
   }
 }
+
+.finding-row { position: relative; margin: 10px 0; padding-left: 12px; }
+.finding-row::before {
+  content: ""; position: absolute; left: 0; top: 2px; bottom: 2px; width: 3px; border-radius: 2px;
+  background: var(--dim);
+}
+.finding-row.sev-critical::before { background: var(--bad, #f87171); }
+.finding-row.sev-warn::before { background: var(--warn, #fbbf24); }
+.finding-row.sev-good::before { background: var(--signal, #34d399); }
+.finding-row.sev-info::before { background: var(--dim); }
+.healthy-toggle {
+  appearance: none; background: transparent; border: 0; cursor: pointer; padding: 4px 0;
+  font: inherit; font-size: 13px; color: var(--dim);
+}
+.healthy-toggle:hover { color: var(--ink); }
