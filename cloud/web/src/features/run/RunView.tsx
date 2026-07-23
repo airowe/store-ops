@@ -131,7 +131,7 @@ export function RunView({
   const pushResult: AscPushResult | undefined = push.data;
 
   return (
-    <div className="run-layout">
+    <div className={"run-layout" + (pending ? " run-layout--railed" : "")}>
       {pending ? (
         <aside className="run-rail-col">
           <SectionRail items={railItems} />

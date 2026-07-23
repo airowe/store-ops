@@ -310,7 +310,7 @@ h2 { font-family: var(--display); font-weight: 600; font-size: 22px; letter-spac
 
 .run-layout { display: grid; grid-template-columns: 1fr; gap: 24px; }
 @media (min-width: 900px) {
-  .run-layout { grid-template-columns: 160px minmax(0, 1fr); align-items: start; }
+  .run-layout--railed { grid-template-columns: 160px minmax(0, 1fr); align-items: start; }
 }
 .run-main.has-decision-bar { padding-bottom: 88px; }
 .decision-bar {

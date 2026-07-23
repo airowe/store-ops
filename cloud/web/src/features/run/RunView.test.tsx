@@ -251,4 +251,25 @@ describe("<RunView /> — the money screen", () => {
     expect(await screen.findByTestId("decision-summary")).toBeInTheDocument();
     expect(screen.getByTestId("section-rail")).toBeInTheDocument();
   });
+
+  it("LAYOUT: only a pending (railed) run gets the 2-column grid class — a terminal run stays single-column, not crushed into the rail track", async () => {
+    // Terminal run: no rail is rendered, so .run-layout must NOT carry the
+    // railed modifier — otherwise the CSS grid still reserves a 160px first
+    // track and the sole child (run-main) gets crushed into it on desktop.
+    const { client: approvedClient } = makeClient({ status: "approved" });
+    const { container: approvedContainer } = renderView(approvedClient);
+    await waitFor(() => expect(screen.getByTestId("run-status")).toBeInTheDocument());
+    const approvedLayout = approvedContainer.querySelector(".run-layout");
+    expect(approvedLayout).not.toBeNull();
+    expect(approvedLayout?.className).not.toMatch(/railed/);
+
+    // Pending run: the rail is rendered alongside run-main, so the modifier
+    // class must be present to opt into the 2-column grid.
+    const { client: pendingClient } = makeClient();
+    const { container: pendingContainer } = renderView(pendingClient);
+    await waitFor(() => expect(screen.getByTestId("approve")).toBeInTheDocument());
+    const pendingLayout = pendingContainer.querySelector(".run-layout");
+    expect(pendingLayout).not.toBeNull();
+    expect(pendingLayout?.className).toMatch(/\brun-layout--railed\b/);
+  });
 });
