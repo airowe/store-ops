@@ -524,13 +524,18 @@ export async function readAscAppInfo(
  *  ageRatingDeclaration. Every field is optional — many apps never set this,
  *  and Apple's schema evolves, so we degrade gracefully on anything missing. */
 export type AscAgeRatingResult = {
-  /** Apple's derived rating bucket, when present. */
-  ageRating?: "FOUR_PLUS" | "TWELVE_PLUS" | "SEVENTEEN_PLUS" | "EIGHTEEN_PLUS" | undefined;
-  /** Names of the declaration questions that came back set (non-NONE / truthy),
-   *  e.g. ["alcoholTobaccoOrDrugUseOrReferences", "violenceCartoonOrFantasy"]. */
+  /** True when a real age-rating declaration exists for the app. On a live
+   *  (READY_FOR_SALE) app a present declaration IS the confirmation — Apple
+   *  returns NO derived rating bucket on this resource. */
+  declared?: boolean;
+  /** The developer override when set — the only real rating SIGNAL Apple returns
+   *  here (ageRatingOverrideV2). "NONE" is normalized to undefined. */
+  override?: "NINE_PLUS" | "THIRTEEN_PLUS" | "SIXTEEN_PLUS" | "SEVENTEEN_PLUS" | "UNRATED" | undefined;
+  /** Korea-specific override when present, passed through as a label. */
+  koreaOverride?: string | undefined;
+  /** Names of the declaration questions that came back set (non-NONE string,
+   *  or truthy boolean), e.g. ["violenceCartoonOrFantasy"]. */
   contentDescriptors?: string[] | undefined;
-  /** Rating system label when surfaced (e.g. "PEGI", "ESRB", "CLASSIND"). */
-  kindOfAgeRating?: string | undefined;
 };
 
 type Relationship = { data?: { id?: string; type?: string } | null };
@@ -545,22 +550,25 @@ type AppInfo = {
   relationships?: { ageRatingDeclaration?: Relationship };
 };
 
-/** A declared-rating bucket if Apple's value is one we recognise, else undefined. */
-function normalizeAgeRating(value: unknown): AscAgeRatingResult["ageRating"] {
-  return value === "FOUR_PLUS" ||
-    value === "TWELVE_PLUS" ||
+/** A developer override bucket if Apple's ageRatingOverrideV2 is one we recognise
+ *  and it's an actual override (not "NONE"), else undefined. */
+function normalizeOverride(value: unknown): AscAgeRatingResult["override"] {
+  return value === "NINE_PLUS" ||
+    value === "THIRTEEN_PLUS" ||
+    value === "SIXTEEN_PLUS" ||
     value === "SEVENTEEN_PLUS" ||
-    value === "EIGHTEEN_PLUS"
+    value === "UNRATED"
     ? value
-    : undefined;
+    : undefined; // "NONE" (or anything unrecognised) → no override
 }
 
 /** Keys that carry the rating itself, not a content-descriptor question. */
 const AGE_RATING_META_KEYS = new Set([
-  "ageRating",
-  "kindOfAgeRating",
   "ageRatingOverride",
+  "ageRatingOverrideV2",
+  "koreaAgeRatingOverride",
   "kidsAgeBand",
+  "developerAgeRatingInfoUrl",
 ]);
 
 /**
@@ -577,11 +585,11 @@ export function mapAgeRatingDeclaration(decl: AgeRatingDeclaration | undefined):
     const set = typeof value === "string" ? value !== "" && value !== "NONE" : value === true;
     if (set) descriptors.push(key);
   }
-  const result: AscAgeRatingResult = {};
-  const rating = normalizeAgeRating(attrs.ageRating);
-  if (rating) result.ageRating = rating;
-  if (typeof attrs.kindOfAgeRating === "string" && attrs.kindOfAgeRating !== "") {
-    result.kindOfAgeRating = attrs.kindOfAgeRating;
+  const result: AscAgeRatingResult = { declared: true };
+  const override = normalizeOverride(attrs.ageRatingOverrideV2 ?? attrs.ageRatingOverride);
+  if (override) result.override = override;
+  if (typeof attrs.koreaAgeRatingOverride === "string" && attrs.koreaAgeRatingOverride !== "" && attrs.koreaAgeRatingOverride !== "NONE") {
+    result.koreaOverride = attrs.koreaAgeRatingOverride;
   }
   if (descriptors.length > 0) result.contentDescriptors = descriptors;
   return result;

@@ -683,11 +683,11 @@ describe("readAscAgeRating — appInfo → ageRatingDeclaration", () => {
   }
 
   const declarationAttributes = {
-    ageRatingOverride: "NONE",
+    ageRatingOverrideV2: "SEVENTEEN_PLUS", // the real override signal Apple returns
+    ageRatingOverride: "NONE",             // deprecated; ignored in favor of V2
+    koreaAgeRatingOverride: "NONE",
     kidsAgeBand: null,
-    // the derived rating Apple computes from the declaration answers
-    ageRating: "TWELVE_PLUS",
-    kindOfAgeRating: "PEGI",
+    developerAgeRatingInfoUrl: "https://example.com/rating",
     // content descriptor questions that came back set
     violenceCartoonOrFantasy: "INFREQUENT_OR_MILD",
     alcoholTobaccoOrDrugUseOrReferences: "FREQUENT_OR_INTENSE",
@@ -716,13 +716,16 @@ describe("readAscAgeRating — appInfo → ageRatingDeclaration", () => {
       },
     ]);
     const r = await readAscAgeRating(fetchFn, { token: "JWT", appId: "APP1" });
-    expect(r.ageRating).toBe("TWELVE_PLUS");
-    expect(r.kindOfAgeRating).toBe("PEGI");
+    expect(r.declared).toBe(true);
+    expect(r.override).toBe("SEVENTEEN_PLUS");
     // descriptors are the non-NONE / truthy declaration keys
     expect(r.contentDescriptors).toContain("violenceCartoonOrFantasy");
     expect(r.contentDescriptors).toContain("alcoholTobaccoOrDrugUseOrReferences");
     expect(r.contentDescriptors).not.toContain("horrorOrFearThemes"); // NONE → excluded
     expect(r.contentDescriptors).not.toContain("gambling"); // false → excluded
+    // override/meta keys are NOT descriptors
+    expect(r.contentDescriptors).not.toContain("ageRatingOverrideV2");
+    expect(r.contentDescriptors).not.toContain("developerAgeRatingInfoUrl");
     // no fallback GET needed when included is present
     expect(calls.some((u) => u.includes("/ageRatingDeclarations/"))).toBe(false);
   });
@@ -749,8 +752,26 @@ describe("readAscAgeRating — appInfo → ageRatingDeclaration", () => {
       },
     ]);
     const r = await readAscAgeRating(fetchFn, { token: "JWT", appId: "APP1" });
-    expect(r.ageRating).toBe("TWELVE_PLUS");
+    expect(r.override).toBe("SEVENTEEN_PLUS");
+    expect(r.declared).toBe(true);
     expect(calls.some((u) => u.includes("/ageRatingDeclarations/DECL1"))).toBe(true);
+  });
+
+  it("marks declared:true with no override when ageRatingOverrideV2 is NONE", async () => {
+    const { fetchFn } = makeFetch([
+      {
+        match: "/appInfos?",
+        body: {
+          data: [{ id: "INFO1", type: "appInfos",
+            relationships: { ageRatingDeclaration: { data: { id: "DECL1", type: "ageRatingDeclarations" } } } }],
+          included: [{ id: "DECL1", type: "ageRatingDeclarations",
+            attributes: { ageRatingOverrideV2: "NONE", violenceCartoonOrFantasy: "NONE" } }],
+        },
+      },
+    ]);
+    const r = await readAscAgeRating(fetchFn, { token: "JWT", appId: "APP1" });
+    expect(r.declared).toBe(true);
+    expect(r.override).toBeUndefined();
   });
 
   it("degrades to an empty result when there are no appInfos", async () => {
