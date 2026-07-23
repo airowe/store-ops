@@ -307,4 +307,22 @@ h2 { font-family: var(--display); font-weight: 600; font-size: 22px; letter-spac
 }
 .rail-link:hover { color: var(--dim); }
 .rail-link.active { color: var(--ink); border-left-color: var(--signal, #34d399); }
+
+.run-layout { display: grid; grid-template-columns: 1fr; gap: 24px; }
+@media (min-width: 900px) {
+  .run-layout { grid-template-columns: 160px minmax(0, 1fr); align-items: start; }
+}
+.run-main.has-decision-bar { padding-bottom: 88px; }
+.decision-bar {
+  position: fixed; left: 0; right: 0; bottom: 0; z-index: 20;
+  display: flex; align-items: center; gap: 16px;
+  padding: 12px max(16px, calc((100% - 940px) / 2));
+  background: var(--panel); border-top: 1px solid var(--line);
+}
+.decision-bar .db-summary { margin-right: auto; }
+.decision-bar .db-actions { display: flex; gap: 10px; }
+@media (prefers-reduced-motion: no-preference) {
+  .decision-bar { animation: db-in .18s ease-out; }
+  @keyframes db-in { from { transform: translateY(100%); } to { transform: none; } }
+}
 @media (max-width: 900px) { .section-rail { display: none; } }

@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect, vi, beforeAll } from "vitest";
 import { render, screen, waitFor, fireEvent } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import type { ApiClient } from "@shipaso/api";
@@ -80,6 +80,12 @@ function renderView(client: ApiClient) {
     </QueryClientProvider>,
   );
 }
+
+beforeAll(() => {
+  // jsdom lacks IntersectionObserver — provide a no-op so SectionRail mounts.
+  (globalThis as unknown as { IntersectionObserver: unknown }).IntersectionObserver =
+    class { observe() {} disconnect() {} unobserve() {} };
+});
 
 describe("<RunView /> — the money screen", () => {
   it("pending: shows the diff + Approve/Reject, and NO handoff commands yet", async () => {
@@ -228,5 +234,21 @@ describe("<RunView /> — the money screen", () => {
     fireEvent.click(screen.getByTestId("approve"));
     await waitFor(() => expect(screen.getByTestId("handoff")).toBeInTheDocument());
     expect(screen.queryByTestId("asc-push")).toBeNull();
+  });
+
+  it("shows the sticky decision bar with Approve/Reject on an open run", async () => {
+    const { client } = makeClient();
+    renderView(client);
+    expect(await screen.findByTestId("decision-bar")).toBeInTheDocument();
+    // buttons still carry their original testids + wiring (unchanged)
+    expect(screen.getByTestId("approve")).toBeInTheDocument();
+    expect(screen.getByTestId("reject")).toBeInTheDocument();
+  });
+
+  it("renders the decision summary and a section rail on an open run", async () => {
+    const { client } = makeClient();
+    renderView(client);
+    expect(await screen.findByTestId("decision-summary")).toBeInTheDocument();
+    expect(screen.getByTestId("section-rail")).toBeInTheDocument();
   });
 });
