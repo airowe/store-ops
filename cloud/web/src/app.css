@@ -273,3 +273,17 @@ h2 { font-family: var(--display); font-weight: 600; font-size: 22px; letter-spac
   background: var(--line-soft); border-radius: 999px; overflow: hidden;
 }
 .winbar-fill { display: block; height: 100%; background: var(--signal, #34d399); border-radius: 999px; }
+
+.loc-table { display: flex; flex-direction: column; gap: 6px; margin-top: 4px; }
+.loc-row {
+  display: grid; grid-template-columns: 68px 90px 1fr auto; gap: 10px; align-items: center;
+  padding: 6px 0; border-bottom: 1px solid var(--line-soft);
+}
+.loc-code { font-family: var(--mono); font-size: 13px; color: var(--ink); }
+.loc-size { height: 6px; background: var(--line-soft); border-radius: 999px; overflow: hidden; }
+.loc-size-fill { display: block; height: 100%; background: var(--signal, #34d399); border-radius: 999px; }
+.loc-effort { text-align: right; }
+@media (max-width: 560px) {
+  .loc-row { grid-template-columns: 56px 1fr; }
+  .loc-size, .loc-effort { display: none; }
+}
