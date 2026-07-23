@@ -50,3 +50,48 @@ export function looksLikeEcPrivateKey(text: string): boolean {
 export function normalizeP8(text: string): string {
   return text.replace(/\n$/, "");
 }
+
+/** A Fastlane-style API-key bundle: the three credential parts ShipASO needs. */
+export type KeyBundle = { keyId: string; issuerId: string | null; key: string };
+
+/** Usable-or-not result. The caller decides messaging; this only decides validity. */
+export type KeyBundleResult = { ok: true; bundle: KeyBundle } | { ok: false };
+
+/**
+ * Parse a Fastlane-style API-key JSON bundle. The JSON is the one credential
+ * format that carries the Issuer ID (a .p8 does not). Requires key_id + key;
+ * issuer_id is optional (absent/null for an individual key). Honors
+ * is_key_content_base64. Reuses looksLikeEcPrivateKey — no separate validator.
+ * duration/in_house are ignored (our mint owns duration; no enterprise model).
+ */
+export function parseKeyBundleJson(text: string): KeyBundleResult {
+  let raw: unknown;
+  try {
+    raw = JSON.parse(text);
+  } catch {
+    return { ok: false };
+  }
+  if (typeof raw !== "object" || raw === null) return { ok: false };
+  const o = raw as Record<string, unknown>;
+
+  const keyId = o.key_id;
+  if (typeof keyId !== "string" || keyId.length === 0) return { ok: false };
+
+  const keyRaw = o.key;
+  if (typeof keyRaw !== "string" || keyRaw.length === 0) return { ok: false };
+  let key = keyRaw;
+
+  if (o.is_key_content_base64 === true) {
+    try {
+      key = atob(key);
+    } catch {
+      return { ok: false };
+    }
+  }
+  if (!looksLikeEcPrivateKey(key)) return { ok: false };
+
+  const issuerRaw = o.issuer_id;
+  const issuerId = typeof issuerRaw === "string" && issuerRaw.length > 0 ? issuerRaw : null;
+
+  return { ok: true, bundle: { keyId, issuerId, key: normalizeP8(key) } };
+}

@@ -3,6 +3,7 @@ import {
   parseKeyIdFromFilename,
   looksLikeEcPrivateKey,
   normalizeP8,
+  parseKeyBundleJson,
 } from "./ascKeyFile.js";
 
 // A real, structurally-valid P-256 PKCS#8 key (test fixture — not a live Apple key).
@@ -54,5 +55,65 @@ describe("normalizeP8", () => {
     expect(normalizeP8("a\nb\n")).toBe("a\nb");
     expect(normalizeP8("a\nb")).toBe("a\nb");
     expect(normalizeP8("a\nb\n\n")).toBe("a\nb\n");
+  });
+});
+
+describe("parseKeyBundleJson", () => {
+  const teamBundle = JSON.stringify({
+    key_id: "D383SF739",
+    issuer_id: "6053b7fe-68a8-4acb-89be-165aa6465141",
+    key: REAL_P8,
+  });
+
+  it("parses a Fastlane team bundle into all three fields", () => {
+    const r = parseKeyBundleJson(teamBundle);
+    expect(r).toEqual({
+      ok: true,
+      bundle: { keyId: "D383SF739", issuerId: "6053b7fe-68a8-4acb-89be-165aa6465141", key: REAL_P8 },
+    });
+  });
+
+  it("treats a missing issuer_id (individual key) as issuerId null, not an error", () => {
+    const r = parseKeyBundleJson(JSON.stringify({ key_id: "K1", key: REAL_P8 }));
+    expect(r.ok).toBe(true);
+    if (r.ok) expect(r.bundle.issuerId).toBeNull();
+  });
+
+  it("treats issuer_id null and empty-string both as issuerId null", () => {
+    for (const issuer_id of [null, ""]) {
+      const r = parseKeyBundleJson(JSON.stringify({ key_id: "K1", issuer_id, key: REAL_P8 }));
+      expect(r.ok).toBe(true);
+      if (r.ok) expect(r.bundle.issuerId).toBeNull();
+    }
+  });
+
+  it("decodes key when is_key_content_base64 is true", () => {
+    const b64 = btoa(REAL_P8);
+    const r = parseKeyBundleJson(
+      JSON.stringify({ key_id: "K1", issuer_id: "I1", key: b64, is_key_content_base64: true }),
+    );
+    expect(r.ok).toBe(true);
+    if (r.ok) expect(r.bundle.key).toBe(REAL_P8);
+  });
+
+  it("rejects a bundle missing key_id or key", () => {
+    expect(parseKeyBundleJson(JSON.stringify({ issuer_id: "I1", key: REAL_P8 })).ok).toBe(false);
+    expect(parseKeyBundleJson(JSON.stringify({ key_id: "K1", issuer_id: "I1" })).ok).toBe(false);
+  });
+
+  it("rejects when key is present but not an EC private key", () => {
+    expect(parseKeyBundleJson(JSON.stringify({ key_id: "K1", key: "nope" })).ok).toBe(false);
+  });
+
+  it("rejects non-JSON text", () => {
+    expect(parseKeyBundleJson("not json at all").ok).toBe(false);
+    expect(parseKeyBundleJson("").ok).toBe(false);
+  });
+
+  it("rejects is_key_content_base64 true when key does not decode to a valid key", () => {
+    const r = parseKeyBundleJson(
+      JSON.stringify({ key_id: "K1", key: "!!!not base64!!!", is_key_content_base64: true }),
+    );
+    expect(r.ok).toBe(false);
   });
 });
