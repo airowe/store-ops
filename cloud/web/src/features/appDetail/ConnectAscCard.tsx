@@ -11,10 +11,12 @@
  *   • a deployment without credential storage (no KEK) still supports the
  *     request-only keyed run; the save option simply isn't offered.
  */
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { ApiClient } from "@shipaso/api";
 import { getCredentials, runAppWithAsc } from "@shipaso/api";
+import { parseKeyIdFromFilename, looksLikeEcPrivateKey, normalizeP8, parseKeyBundleJson } from "./ascKeyFile.js";
+import { readIssuerId, writeIssuerId } from "./issuerIdMemory.js";
 
 export function ConnectAscCard({
   client,
@@ -28,18 +30,56 @@ export function ConnectAscCard({
   const qc = useQueryClient();
   const credsQ = useQuery({ queryKey: ["credentials"], queryFn: () => getCredentials(client) });
   const [keyId, setKeyId] = useState("");
-  const [issuerId, setIssuerId] = useState("");
+  const [issuerId, setIssuerId] = useState(() => readIssuerId());
   const [p8, setP8] = useState("");
   const [store, setStore] = useState(true);
+  const [fileError, setFileError] = useState("");
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   const run = useMutation({
     mutationFn: (body: Parameters<typeof runAppWithAsc>[2]) => runAppWithAsc(client, appId, body),
     onSuccess: (res) => {
+      writeIssuerId(issuerId.trim());
       // A stored:true run saved a key — refresh the metadata list.
       void qc.invalidateQueries({ queryKey: ["credentials"] });
       onRunStarted(res.id);
     },
   });
+
+  async function onFilePicked(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.target.value = ""; // allow re-picking the same file
+    if (!file) return;
+    const text = await file.text();
+
+    // Route by content, not extension: a JSON bundle starts with "{".
+    if (text.trimStart().startsWith("{")) {
+      const parsed = parseKeyBundleJson(text);
+      if (!parsed.ok) {
+        setFileError(
+          "That file isn't a valid API-key JSON. Upload the .p8 or the JSON key file you exported.",
+        );
+        return;
+      }
+      setFileError("");
+      setP8(parsed.bundle.key);
+      setKeyId(parsed.bundle.keyId);
+      // Present issuer_id is authoritative; absent (individual key) leaves the field as-is.
+      if (parsed.bundle.issuerId) setIssuerId(parsed.bundle.issuerId);
+      return;
+    }
+
+    if (!looksLikeEcPrivateKey(text)) {
+      setFileError(
+        "That doesn't look like a .p8 private key. Upload the file you downloaded from Apple.",
+      );
+      return;
+    }
+    setFileError("");
+    setP8(normalizeP8(text));
+    const parsedKeyId = parseKeyIdFromFilename(file.name);
+    if (parsedKeyId) setKeyId(parsedKeyId);
+  }
 
   const enabled = credsQ.data?.enabled ?? false;
   const storedKey = (credsQ.data?.credentials ?? []).find(
@@ -98,6 +138,28 @@ export function ConnectAscCard({
             </a>
           </details>
           <div style={{ display: "grid", gap: 8 }}>
+            <div>
+              <input
+                ref={fileInputRef}
+                data-testid="asc-p8-file"
+                type="file"
+                accept=".p8,.json"
+                style={{ display: "none" }}
+                onChange={onFilePicked}
+              />
+              <button type="button"
+                className="btn"
+                data-testid="asc-p8-upload"
+                onClick={() => fileInputRef.current?.click()}
+              >
+                Upload key file
+              </button>
+              {fileError ? (
+                <p className="micro" data-testid="asc-p8-file-error">
+                  {fileError}
+                </p>
+              ) : null}
+            </div>
             <input
               data-testid="asc-key-id"
               placeholder="Key ID"

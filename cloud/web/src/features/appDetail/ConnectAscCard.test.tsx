@@ -39,6 +39,20 @@ function renderCard(client: ApiClient, onRunStarted = vi.fn()) {
   return onRunStarted;
 }
 
+// Structurally-valid P-256 PKCS#8 (test fixture, not a live key).
+const REAL_P8 = [
+  "-----BEGIN PRIVATE KEY-----",
+  "MIGHAgEAMBMGByqGSM49AgEGCCqGSM49AwEHBG0wawIBAQQgevZzL1gdAFr88hb2",
+  "OF/2NxApJCzGCEDdfSp6VQO3o8fhRANCAAQRWz+jn65BtOMvdyHKcvjBeBSDZH2r",
+  "1RTwjmYSi9R/zpBnuQ4EiMnCqfMPWiZqB4QdbAd0E7oH50VpuZ1P087G",
+  "-----END PRIVATE KEY-----",
+].join("\n");
+
+function uploadFile(name: string, contents: string) {
+  const input = screen.getByTestId("asc-p8-file") as HTMLInputElement;
+  fireEvent.change(input, { target: { files: [new File([contents], name)] } });
+}
+
 describe("<ConnectAscCard />", () => {
   it("no stored key: submits the trio with store:true (default) and reports the new run", async () => {
     const { client, post } = makeClient();
@@ -133,5 +147,146 @@ describe("<ConnectAscCard />", () => {
     await waitFor(() =>
       expect(screen.getByTestId("asc-error")).toHaveTextContent(/Apple rejected the credential/),
     );
+  });
+
+  it("upload AuthKey_<ID>.p8: fills the .p8 contents and parses Key ID from the filename", async () => {
+    const { client } = makeClient();
+    renderCard(client);
+    await waitFor(() => screen.getByTestId("asc-p8-file"));
+    uploadFile("AuthKey_KID9.p8", REAL_P8);
+    await waitFor(() =>
+      expect((screen.getByTestId("asc-key-id") as HTMLInputElement).value).toBe("KID9"),
+    );
+    expect((screen.getByTestId("asc-p8") as HTMLTextAreaElement).value).toContain(
+      "BEGIN PRIVATE KEY",
+    );
+  });
+
+  it("upload a renamed valid .p8: fills contents but leaves Key ID empty", async () => {
+    const { client } = makeClient();
+    renderCard(client);
+    await waitFor(() => screen.getByTestId("asc-p8-file"));
+    uploadFile("my-renamed-key.p8", REAL_P8);
+    await waitFor(() =>
+      expect((screen.getByTestId("asc-p8") as HTMLTextAreaElement).value).toContain(
+        "BEGIN PRIVATE KEY",
+      ),
+    );
+    expect((screen.getByTestId("asc-key-id") as HTMLInputElement).value).toBe("");
+  });
+
+  it("upload a non-key file: shows an error and leaves every field unchanged", async () => {
+    const { client } = makeClient();
+    renderCard(client);
+    await waitFor(() => screen.getByTestId("asc-p8-file"));
+    uploadFile("cert.cer", "this is not a private key");
+    await waitFor(() => screen.getByTestId("asc-p8-file-error"));
+    expect((screen.getByTestId("asc-p8") as HTMLTextAreaElement).value).toBe("");
+    expect((screen.getByTestId("asc-key-id") as HTMLInputElement).value).toBe("");
+  });
+
+  it("pre-fills Issuer ID from localStorage on mount", async () => {
+    localStorage.setItem("store-ops:asc.issuerId", "REMEMBERED-ISS");
+    const { client } = makeClient();
+    renderCard(client);
+    await waitFor(() =>
+      expect((screen.getByTestId("asc-issuer-id") as HTMLInputElement).value).toBe(
+        "REMEMBERED-ISS",
+      ),
+    );
+    localStorage.clear();
+  });
+
+  it("remembers the entered Issuer ID after a successful connect", async () => {
+    localStorage.clear();
+    const { client } = makeClient();
+    renderCard(client);
+    await waitFor(() => screen.getByTestId("asc-key-id"));
+    fireEvent.change(screen.getByTestId("asc-key-id"), { target: { value: "K" } });
+    fireEvent.change(screen.getByTestId("asc-issuer-id"), { target: { value: "ISS-SAVE" } });
+    fireEvent.change(screen.getByTestId("asc-p8"), { target: { value: "P" } });
+    fireEvent.click(screen.getByTestId("asc-connect"));
+    await waitFor(() =>
+      expect(localStorage.getItem("store-ops:asc.issuerId")).toBe("ISS-SAVE"),
+    );
+    localStorage.clear();
+  });
+
+  function teamJson(issuer = "ISS-TEAM") {
+    return JSON.stringify({ key_id: "JKID", issuer_id: issuer, key: REAL_P8 });
+  }
+
+  it("upload a team JSON bundle: fills Key ID, Issuer ID, and .p8 contents", async () => {
+    localStorage.clear();
+    const { client } = makeClient();
+    renderCard(client);
+    await waitFor(() => screen.getByTestId("asc-p8-file"));
+    uploadFile("AuthKey.json", teamJson());
+    await waitFor(() =>
+      expect((screen.getByTestId("asc-issuer-id") as HTMLInputElement).value).toBe("ISS-TEAM"),
+    );
+    expect((screen.getByTestId("asc-key-id") as HTMLInputElement).value).toBe("JKID");
+    expect((screen.getByTestId("asc-p8") as HTMLTextAreaElement).value).toContain("BEGIN PRIVATE KEY");
+  });
+
+  it("upload a team JSON: bundle issuer_id overrides an existing field value", async () => {
+    localStorage.setItem("store-ops:asc.issuerId", "OLD-REMEMBERED");
+    const { client } = makeClient();
+    renderCard(client);
+    await waitFor(() => screen.getByTestId("asc-p8-file"));
+    // starts pre-filled from memory
+    await waitFor(() =>
+      expect((screen.getByTestId("asc-issuer-id") as HTMLInputElement).value).toBe("OLD-REMEMBERED"),
+    );
+    uploadFile("AuthKey.json", teamJson("NEW-FROM-FILE"));
+    await waitFor(() =>
+      expect((screen.getByTestId("asc-issuer-id") as HTMLInputElement).value).toBe("NEW-FROM-FILE"),
+    );
+    localStorage.clear();
+  });
+
+  it("upload an individual JSON (no issuer_id): fills Key ID + .p8, does not clobber remembered Issuer ID", async () => {
+    localStorage.setItem("store-ops:asc.issuerId", "KEEP-ME");
+    const { client } = makeClient();
+    renderCard(client);
+    await waitFor(() => screen.getByTestId("asc-p8-file"));
+    await waitFor(() =>
+      expect((screen.getByTestId("asc-issuer-id") as HTMLInputElement).value).toBe("KEEP-ME"),
+    );
+    uploadFile("AuthKey.json", JSON.stringify({ key_id: "INDIV", key: REAL_P8 }));
+    await waitFor(() =>
+      expect((screen.getByTestId("asc-key-id") as HTMLInputElement).value).toBe("INDIV"),
+    );
+    expect((screen.getByTestId("asc-p8") as HTMLTextAreaElement).value).toContain("BEGIN PRIVATE KEY");
+    // remembered issuer preserved, not cleared
+    expect((screen.getByTestId("asc-issuer-id") as HTMLInputElement).value).toBe("KEEP-ME");
+    localStorage.clear();
+  });
+
+  it("upload a {-leading non-key JSON: shows the JSON error, leaves fields unchanged", async () => {
+    localStorage.clear();
+    const { client } = makeClient();
+    renderCard(client);
+    await waitFor(() => screen.getByTestId("asc-p8-file"));
+    uploadFile("bad.json", JSON.stringify({ hello: "world" }));
+    await waitFor(() =>
+      expect(screen.getByTestId("asc-p8-file-error").textContent).toContain(
+        "isn't a valid API-key JSON",
+      ),
+    );
+    expect((screen.getByTestId("asc-key-id") as HTMLInputElement).value).toBe("");
+    expect((screen.getByTestId("asc-p8") as HTMLTextAreaElement).value).toBe("");
+  });
+
+  it("upload a .p8 still works (route-by-content regression)", async () => {
+    localStorage.clear();
+    const { client } = makeClient();
+    renderCard(client);
+    await waitFor(() => screen.getByTestId("asc-p8-file"));
+    uploadFile("AuthKey_KID9.p8", REAL_P8);
+    await waitFor(() =>
+      expect((screen.getByTestId("asc-key-id") as HTMLInputElement).value).toBe("KID9"),
+    );
+    expect((screen.getByTestId("asc-p8") as HTMLTextAreaElement).value).toContain("BEGIN PRIVATE KEY");
   });
 });
