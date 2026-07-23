@@ -55,7 +55,7 @@ export function RankChart({ points, height = 160 }: { points: readonly RankSerie
     if (!host || series.empty) return;
     const signal = cssVar("--signal", "#34d399");
     const grid = cssVar("--line-soft", "#1a2130");
-    const faint = cssVar("--faint", "#626c83");
+    const faint = cssVar("--faint", "#828ca3");
     const width = host.clientWidth || 600;
 
     const opts: uPlot.Options = {

@@ -393,7 +393,7 @@ export function renderDigestHtml(digest: Digest, opts: RenderOpts): string {
     // brand bar
     `<div style="padding:16px 22px;border-bottom:1px solid #1a2130">`,
     `<span style="font:700 15px/1 'JetBrains Mono',ui-monospace,monospace;color:#eef1f7;letter-spacing:-.3px">ShipASO</span>`,
-    `<span style="font:12px/1 -apple-system,Segoe UI,Roboto,sans-serif;color:#626c83;margin-left:8px">weekly rank report · ${appName}</span>`,
+    `<span style="font:12px/1 -apple-system,Segoe UI,Roboto,sans-serif;color:#828ca3;margin-left:8px">weekly rank report · ${appName}</span>`,
     `</div>`,
     // hero
     `<div style="padding:24px 22px 8px">${hero}${movesList}</div>`,
@@ -403,10 +403,10 @@ export function renderDigestHtml(digest: Digest, opts: RenderOpts): string {
     `<a href="${url}" style="display:inline-block;background:${SIGNAL};color:#04140d;text-decoration:none;font:600 14px/1 -apple-system,Segoe UI,Roboto,sans-serif;padding:12px 20px;border-radius:10px">${ctaText}</a>`,
     `</div>`,
     `</div>`,
-    `<div style="max-width:520px;margin:14px auto 0;font:12px/1.5 -apple-system,Segoe UI,Roboto,sans-serif;color:#626c83;text-align:center">ShipASO ran the loop on real rank data — we never hold your store credentials.</div>`,
+    `<div style="max-width:520px;margin:14px auto 0;font:12px/1.5 -apple-system,Segoe UI,Roboto,sans-serif;color:#828ca3;text-align:center">ShipASO ran the loop on real rank data — we never hold your store credentials.</div>`,
     ...(opts.unsubscribeUrl
       ? [
-          `<div style="max-width:520px;margin:8px auto 0;font:12px/1.5 -apple-system,Segoe UI,Roboto,sans-serif;color:#626c83;text-align:center"><a href="${escapeHtml(opts.unsubscribeUrl)}" style="color:#626c83;text-decoration:underline">Stop this weekly digest</a> — ShipASO keeps working either way.</div>`,
+          `<div style="max-width:520px;margin:8px auto 0;font:12px/1.5 -apple-system,Segoe UI,Roboto,sans-serif;color:#828ca3;text-align:center"><a href="${escapeHtml(opts.unsubscribeUrl)}" style="color:#828ca3;text-decoration:underline">Stop this weekly digest</a> — ShipASO keeps working either way.</div>`,
         ]
       : []),
     `</div>`,

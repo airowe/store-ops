@@ -96,7 +96,7 @@ export function renderShareCardSvg(win: ShareWin, opts: ShareCardOpts): string {
 
   // the before→after line: "#40 → #12" for a climb, just "#12" for a new entry
   const moveLine = prev
-    ? `<tspan fill="#626c83">${prev}</tspan><tspan fill="#626c83" dx="22" dy="0"> → </tspan><tspan fill="#34d399" dx="22">${cur}</tspan>`
+    ? `<tspan fill="#828ca3">${prev}</tspan><tspan fill="#828ca3" dx="22" dy="0"> → </tspan><tspan fill="#34d399" dx="22">${cur}</tspan>`
     : `<tspan fill="#34d399">${cur}</tspan>`;
 
   return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" font-family="${FONT}">
@@ -113,6 +113,6 @@ export function renderShareCardSvg(win: ShareWin, opts: ShareCardOpts): string {
   <text x="${cx}" y="${kwY}" text-anchor="middle" fill="#97a1b6" font-size="30" font-family="${MONO}">${kw} · ${app}</text>
   <text x="${cx}" y="${moveY}" text-anchor="middle" font-size="${opts.size === "wide" ? 132 : 150}" font-weight="800" font-family="${MONO}">${moveLine}</text>
   <text x="${cx}" y="${headY}" text-anchor="middle" fill="#34d399" font-size="40" font-weight="700">▲ ${headline(win)}</text>
-  <text x="${cx}" y="${footY}" text-anchor="middle" fill="#626c83" font-size="26" font-family="${MONO}">shipaso.com · real organic rank, proven</text>
+  <text x="${cx}" y="${footY}" text-anchor="middle" fill="#828ca3" font-size="26" font-family="${MONO}">shipaso.com · real organic rank, proven</text>
 </svg>`;
 }

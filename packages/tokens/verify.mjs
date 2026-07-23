@@ -70,8 +70,48 @@ if (lightBody) {
   }
 }
 
+// 3) CONTRAST — every text token must clear WCAG AA (4.5:1) against its theme
+// background, in BOTH themes. A muted color that's pretty but unreadable is a
+// bug (#318): --faint shipped at 3.5–3.8:1. Guard so no token can regress.
+// TEXT_TOKENS: palette keys used as foreground text color (not borders/surfaces).
+const TEXT_TOKENS = ["ink", "dim", "faint"];
+const AA_NORMAL = 4.5;
+
+function hexToRgb(hex) {
+  const h = hex.replace("#", "").trim();
+  return [0, 2, 4].map((i) => parseInt(h.slice(i, i + 2), 16));
+}
+function relLuminance([r, g, b]) {
+  const f = (c) => {
+    const s = c / 255;
+    return s <= 0.03928 ? s / 12.92 : Math.pow((s + 0.055) / 1.055, 2.4);
+  };
+  return 0.2126 * f(r) + 0.7152 * f(g) + 0.0722 * f(b);
+}
+function contrast(fgHex, bgHex) {
+  const L1 = relLuminance(hexToRgb(fgHex));
+  const L2 = relLuminance(hexToRgb(bgHex));
+  const [hi, lo] = L1 >= L2 ? [L1, L2] : [L2, L1];
+  return (hi + 0.05) / (lo + 0.05);
+}
+
+for (const themeName of ["dark", "light"]) {
+  const theme = tokens.themes[themeName];
+  const bg = theme.bg;
+  for (const key of TEXT_TOKENS) {
+    const fg = theme[key];
+    const ratio = contrast(fg, bg);
+    if (ratio < AA_NORMAL) {
+      console.error(
+        `  ✗ [contrast:${themeName}] --${key} ${fg} on bg ${bg} = ${ratio.toFixed(2)}:1 (need ${AA_NORMAL}:1)`,
+      );
+      failures++;
+    }
+  }
+}
+
 if (failures) {
-  console.error(`\n[tokens] DRIFT: ${failures} check(s) failed against cloud/public/styles.css`);
+  console.error(`\n[tokens] ${failures} check(s) failed against cloud/public/styles.css / WCAG AA`);
   process.exit(1);
 }
 console.log(
