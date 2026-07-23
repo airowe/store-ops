@@ -15,7 +15,7 @@ import { useState, useRef } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { ApiClient } from "@shipaso/api";
 import { getCredentials, runAppWithAsc } from "@shipaso/api";
-import { parseKeyIdFromFilename, looksLikeEcPrivateKey, normalizeP8 } from "./ascKeyFile.js";
+import { parseKeyIdFromFilename, looksLikeEcPrivateKey, normalizeP8, parseKeyBundleJson } from "./ascKeyFile.js";
 import { readIssuerId, writeIssuerId } from "./issuerIdMemory.js";
 
 export function ConnectAscCard({
@@ -51,6 +51,24 @@ export function ConnectAscCard({
     e.target.value = ""; // allow re-picking the same file
     if (!file) return;
     const text = await file.text();
+
+    // Route by content, not extension: a JSON bundle starts with "{".
+    if (text.trimStart().startsWith("{")) {
+      const parsed = parseKeyBundleJson(text);
+      if (!parsed.ok) {
+        setFileError(
+          "That file isn't a valid API-key JSON. Upload the .p8 or the JSON key file you exported.",
+        );
+        return;
+      }
+      setFileError("");
+      setP8(parsed.bundle.key);
+      setKeyId(parsed.bundle.keyId);
+      // Present issuer_id is authoritative; absent (individual key) leaves the field as-is.
+      if (parsed.bundle.issuerId) setIssuerId(parsed.bundle.issuerId);
+      return;
+    }
+
     if (!looksLikeEcPrivateKey(text)) {
       setFileError(
         "That doesn't look like a .p8 private key. Upload the file you downloaded from Apple.",
@@ -125,7 +143,7 @@ export function ConnectAscCard({
                 ref={fileInputRef}
                 data-testid="asc-p8-file"
                 type="file"
-                accept=".p8"
+                accept=".p8,.json"
                 style={{ display: "none" }}
                 onChange={onFilePicked}
               />
@@ -134,7 +152,7 @@ export function ConnectAscCard({
                 data-testid="asc-p8-upload"
                 onClick={() => fileInputRef.current?.click()}
               >
-                Upload .p8
+                Upload key file
               </button>
               {fileError ? (
                 <p className="micro" data-testid="asc-p8-file-error">
