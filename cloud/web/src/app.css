@@ -297,3 +297,14 @@ h2 { font-family: var(--display); font-weight: 600; font-size: 22px; letter-spac
 .ds-pill.warn { color: var(--warn, #fbbf24); border-color: var(--warn, #fbbf24); }
 .ds-pill.ok { color: var(--signal, #34d399); border-color: var(--signal-dim, #1f8f66); }
 .ds-pill.quiet { color: var(--faint); }
+
+.section-rail {
+  position: sticky; top: 24px; display: flex; flex-direction: column; gap: 2px;
+  font-family: var(--mono); font-size: 12px;
+}
+.rail-link {
+  color: var(--faint); text-decoration: none; padding: 4px 10px; border-left: 2px solid var(--line-soft);
+}
+.rail-link:hover { color: var(--dim); }
+.rail-link.active { color: var(--ink); border-left-color: var(--signal, #34d399); }
+@media (max-width: 900px) { .section-rail { display: none; } }
