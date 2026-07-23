@@ -239,12 +239,15 @@ export function rankOpportunities(input: RankOpportunityInput): Opportunity[] {
     );
 
     // The score is a real measurement only if SOME differentiating signal exists:
-    // a measured rank, competitor data for THIS term, or ≥2 snapshots of history.
-    // Absent all three, the drivers are pure defaults and the score is an artifact.
+    // a measured current rank, competitor data for THIS term, or a history that
+    // contains at least one real (non-null) rank. Row COUNT alone is NOT a signal
+    // (#317): ≥2 all-null snapshots leave momentum at its no-movement default (50),
+    // so the score is still the 42.5 artifact — present it as "not enough data".
     const hasCompetitorSignal = (input.competitorRanks ?? []).some((c) =>
       c.ranks.some((r) => r.keyword === keyword),
     );
-    const scored = rank !== null || hasCompetitorSignal || rows.length >= 2;
+    const hasRankedHistory = rows.some((r) => r.rank !== null);
+    const scored = rank !== null || hasCompetitorSignal || hasRankedHistory;
 
     const reachability = reachabilityFor(rank, drivers);
     out.push({

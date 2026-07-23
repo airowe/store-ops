@@ -184,6 +184,16 @@ describe("rankOpportunities — output contract", () => {
     // …but `scored:false` tells the UI to present it as "not enough data".
   });
 
+  it("flags MULTIPLE all-null snapshots as NOT scored — the same 42.5 artifact, not a measure (#317)", () => {
+    // The prod bug: ≥2 history rows that are ALL unranked carry no differentiating
+    // signal (momentum stays at its no-movement 50), so the score is still the 42.5
+    // artifact. Row COUNT alone must not qualify a keyword as scored.
+    const out = rankOpportunities({ ranks: history("ghost", null, null) });
+    const o = out.find((x) => x.keyword === "ghost");
+    expect(o?.scored).toBe(false);
+    expect(o?.opportunityScore).toBe(42.5);
+  });
+
   it("marks a keyword scored when ANY measured signal exists (rank, competitor, or history)", () => {
     const ranked = rankOpportunities({ ranks: [snap("ranked", 12)] });
     expect(ranked.find((o) => o.keyword === "ranked")?.scored).toBe(true);
@@ -194,7 +204,9 @@ describe("rankOpportunities — output contract", () => {
     });
     expect(withCompetitor.find((o) => o.keyword === "k")?.scored).toBe(true);
 
-    const withHistory = rankOpportunities({ ranks: history("h", null, null) });
+    // History qualifies as a signal only when it contains a real (non-null) rank —
+    // an all-null history is the #317 artifact, covered by its own test above.
+    const withHistory = rankOpportunities({ ranks: history("h", null, 40) });
     expect(withHistory.find((o) => o.keyword === "h")?.scored).toBe(true);
   });
 });
