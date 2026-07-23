@@ -287,3 +287,13 @@ h2 { font-family: var(--display); font-weight: 600; font-size: 22px; letter-spac
   .loc-row { grid-template-columns: 56px 1fr; }
   .loc-size, .loc-effort { display: none; }
 }
+
+.decision-summary { display: flex; flex-wrap: wrap; gap: 8px; margin: 10px 0 18px; }
+.ds-pill {
+  font-family: var(--mono); font-size: 12px; padding: 5px 11px; border-radius: 999px;
+  border: 1px solid var(--line); color: var(--dim);
+}
+.ds-pill .add { color: var(--signal, #34d399); } .ds-pill .rem { color: var(--bad, #f87171); }
+.ds-pill.warn { color: var(--warn, #fbbf24); border-color: var(--warn, #fbbf24); }
+.ds-pill.ok { color: var(--signal, #34d399); border-color: var(--signal-dim, #1f8f66); }
+.ds-pill.quiet { color: var(--faint); }
