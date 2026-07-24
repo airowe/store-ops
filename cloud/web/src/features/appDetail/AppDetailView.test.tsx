@@ -120,4 +120,25 @@ describe("<AppDetailView />", () => {
     renderView(makeClient({ engagement }));
     await waitFor(() => expect(screen.getByTestId("conversion-tile")).toHaveTextContent("4.2%"));
   });
+
+  it("shows a coverage gauge derived honestly from the tracked deltas", async () => {
+    const deltas = {
+      entries: [
+        { keyword: "a", previous: 20, current: 4, delta: 16, direction: "up" }, // top 10
+        { keyword: "b", previous: 9, current: 7, delta: 2, direction: "up" }, // top 10
+        { keyword: "c", previous: 30, current: 24, delta: 6, direction: "up" }, // not top 10
+      ],
+    };
+    renderView(makeClient({ deltas }));
+    const tile = await screen.findByTestId("coverage-tile");
+    expect(tile).toHaveTextContent("67%"); // 2 of 3 measured in top 10
+    expect(tile).toHaveTextContent("2 of 3");
+  });
+
+  it("coverage reads 'none measured yet' with no tracked deltas — never a fake 0%", async () => {
+    renderView(makeClient({ deltas: { entries: [] } }));
+    const tile = await screen.findByTestId("coverage-tile");
+    expect(tile).toHaveTextContent("—");
+    expect(tile).toHaveTextContent("none measured yet");
+  });
 });
