@@ -28,7 +28,7 @@ describe("<SectionRail />", () => {
   it("renders each item as a focusable button", () => {
     render(<SectionRail items={ITEMS} activeId="changes" onSelect={vi.fn()} />);
     const buttons = within(screen.getByTestId("section-rail")).getAllByRole("button");
-    expect(buttons.map((b) => b.textContent)).toEqual(["Changes", "Audit", "Metadata", "Screenshots"]);
+    expect(buttons.map((b) => b.textContent)).toEqual(["Audit", "Changes", "Metadata", "Screenshots"]);
   });
 
   it("marks the active item", () => {
@@ -47,5 +47,24 @@ describe("<SectionRail />", () => {
   it("renders nothing when given no items", () => {
     render(<SectionRail items={[]} activeId="" onSelect={vi.fn()} />);
     expect(screen.queryByTestId("section-rail")).toBeNull();
+  });
+
+  it("renders group headers in fixed order and clusters items correctly, regardless of input order", () => {
+    const outOfOrder: RailItem[] = [
+      { id: "screenshots", label: "Screenshots", group: "healthy" },
+      { id: "metadata", label: "Metadata", group: "fyi" },
+      { id: "changes", label: "Changes", group: "changes" },
+      { id: "audit", label: "Audit", group: "needs" },
+    ];
+    const { container } = render(
+      <SectionRail items={outOfOrder} activeId="changes" onSelect={vi.fn()} />,
+    );
+    const headers = Array.from(container.querySelectorAll(".rail-group-label")).map(
+      (el) => el.textContent,
+    );
+    expect(headers).toEqual(["Needs you", "Changes", "FYI", "Healthy"]);
+
+    const buttons = within(screen.getByTestId("section-rail")).getAllByRole("button");
+    expect(buttons.map((b) => b.textContent)).toEqual(["Audit", "Changes", "Metadata", "Screenshots"]);
   });
 });

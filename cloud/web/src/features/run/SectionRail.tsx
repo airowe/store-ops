@@ -25,42 +25,27 @@ export function SectionRail({
   onSelect: (id: string) => void;
 }) {
   if (items.length === 0) return null;
-
-  // Group label map for quick lookup
-  const groupLabels = new Map(GROUPS.map(({ key, label }) => [key, label]));
-
-  // Track which groups we've already rendered a header for
-  const renderedGroupHeaders = new Set<RailGroup>();
-
   return (
     <nav className="section-rail" data-testid="section-rail" aria-label="Run sections">
-      {items.flatMap((it) => {
-        const elements = [];
-
-        // If this is the first item in its group, render the group header
-        if (!renderedGroupHeaders.has(it.group)) {
-          renderedGroupHeaders.add(it.group);
-          elements.push(
-            <div key={`${it.group}-header`} className="rail-group-label">
-              {groupLabels.get(it.group)}
-            </div>,
-          );
-        }
-
-        // Render the item button
-        elements.push(
-          <button
-            key={it.id}
-            type="button"
-            className={"rail-link" + (activeId === it.id ? " active" : "")}
-            aria-current={activeId === it.id ? "true" : undefined}
-            onClick={() => onSelect(it.id)}
-          >
-            {it.label}
-          </button>,
+      {GROUPS.map(({ key, label }) => {
+        const groupItems = items.filter((it) => it.group === key);
+        if (groupItems.length === 0) return null;
+        return (
+          <div key={key} className="rail-group">
+            <div className="rail-group-label">{label}</div>
+            {groupItems.map((it) => (
+              <button
+                key={it.id}
+                type="button"
+                className={"rail-link" + (activeId === it.id ? " active" : "")}
+                aria-current={activeId === it.id ? "true" : undefined}
+                onClick={() => onSelect(it.id)}
+              >
+                {it.label}
+              </button>
+            ))}
+          </div>
         );
-
-        return elements;
       })}
     </nav>
   );
