@@ -324,4 +324,27 @@ describe("<RunView /> — run shell (pending)", () => {
     expect(screen.getByTestId("approve")).toBeInTheDocument();
     expect(screen.getByTestId("reject")).toBeInTheDocument();
   });
+
+  // Regression: a pending run carrying a PPO treatment brief must still surface
+  // the card. Pre-shell it rendered ungated; the shell must re-home it into the
+  // rail, not drop it.
+  it("keeps the PPO treatment card reachable on a pending run", async () => {
+    const { client } = makeClient({
+      extra: {
+        ppoTreatment: {
+          headline: "Test a benefit-led first screenshot",
+          steps: ["Draft a variant", "Run a 50/50 PPO"],
+          evidence: "conversion lift observed on peers",
+          guidance: "keep the control live for two weeks",
+        },
+      },
+    });
+    renderView(client);
+    await waitFor(() => expect(screen.getByTestId("section-rail")).toBeInTheDocument());
+    // not on the default "changes" section
+    expect(screen.queryByTestId("ppo-treatment-card")).toBeNull();
+    // reachable via its rail button
+    fireEvent.click(screen.getByRole("button", { name: "PPO test" }));
+    expect(screen.getByTestId("ppo-treatment-card")).toBeInTheDocument();
+  });
 });

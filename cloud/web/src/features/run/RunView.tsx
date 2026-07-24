@@ -95,6 +95,7 @@ export function RunView({
   const hasKeywords = Boolean(rMaybe?.opportunities?.length);
   const hasMarkets = Boolean(rMaybe?.localizationExpansion?.length);
   const hasScreenshots = Boolean(rMaybe?.audit?.screenshots);
+  const hasPpo = Boolean(rMaybe?.ppoTreatment);
 
   // Master-detail selection — "changes" is always present, so it's the safe
   // default. Declared alongside the other hooks, ABOVE the early returns, to
@@ -122,9 +123,10 @@ export function RunView({
       ...(hasMetadata ? [{ id: "metadata", label: "Metadata", group: "fyi" as RailGroup }] : []),
       ...(hasKeywords ? [{ id: "keywords", label: "Keywords", group: "fyi" as RailGroup }] : []),
       ...(hasMarkets ? [{ id: "markets", label: "Markets", group: "fyi" as RailGroup }] : []),
+      ...(hasPpo ? [{ id: "ppo", label: "PPO test", group: "fyi" as RailGroup }] : []),
       ...(hasScreenshots ? [{ id: "screenshots", label: "Screenshots", group: screenshotsGroup }] : []),
     ];
-  }, [hasAudit, hasMetadata, hasKeywords, hasMarkets, hasScreenshots, auditNeedsYou, screenshotGrade]);
+  }, [hasAudit, hasMetadata, hasKeywords, hasMarkets, hasPpo, hasScreenshots, auditNeedsYou, screenshotGrade]);
 
   if (runQ.isLoading) return <p className="muted">Loading run…</p>;
   if (runQ.isError || !runQ.data || !runQ.data.result)
@@ -170,6 +172,7 @@ export function RunView({
     ...(hasMarkets
       ? { markets: <LocalizationExpansionCard recommendations={r.localizationExpansion!} /> }
       : {}),
+    ...(hasPpo ? { ppo: <PpoTreatmentCard plan={r.ppoTreatment!} /> } : {}),
     ...(hasScreenshots
       ? {
           screenshots: (
