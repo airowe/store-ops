@@ -34,3 +34,24 @@ export function pageTitle(pathname: string): string {
   for (const [re, title] of DYNAMIC) if (re.test(p)) return title;
   return SITE;
 }
+
+/**
+ * Short in-app heading for the railed topbar — the human word the redesign shows
+ * in Fraunces at the top of the main column ("Overview", "Apps", "Settings").
+ * Distinct from pageTitle (the tab/SEO title). Dynamic app/run headings ("Cal
+ * AI") aren't known from the path alone, so they fall back to a stable noun the
+ * detail views can visually supersede with the real name.
+ */
+const RAIL_HEADINGS: Record<string, string> = {
+  "/dashboard": "Overview",
+  "/settings": "Settings",
+};
+
+export function railHeading(pathname: string): string {
+  const p = pathname.length > 1 ? pathname.replace(/\/+$/, "") : pathname;
+  if (p in RAIL_HEADINGS) return RAIL_HEADINGS[p]!;
+  if (/^\/apps\/[^/]+\/war-room$/.test(p)) return "War room";
+  if (/^\/apps\/[^/]+$/.test(p)) return "App";
+  if (/^\/runs\/[^/]+$/.test(p)) return "Run";
+  return SITE;
+}

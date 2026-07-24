@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { pageTitle, SITE } from "./pageTitle.js";
+import { pageTitle, railHeading, SITE } from "./pageTitle.js";
 
 describe("pageTitle (per-route document.title)", () => {
   it("gives the public landing page a marketing title — NOT 'dashboard'", () => {
@@ -36,5 +36,26 @@ describe("pageTitle (per-route document.title)", () => {
 
   it("normalizes a trailing slash", () => {
     expect(pageTitle("/dashboard/")).toBe(`${SITE} · dashboard`);
+  });
+});
+
+describe("railHeading (in-app topbar heading)", () => {
+  it.each([
+    ["/dashboard", "Overview"],
+    ["/settings", "Settings"],
+    ["/apps/6787632160", "App"],
+    ["/apps/6787632160/war-room", "War room"],
+    ["/runs/run_abc", "Run"],
+  ])("headings %s as %s", (path, expected) => {
+    expect(railHeading(path)).toBe(expected);
+  });
+
+  it("is distinct from the tab title — a short human word, not the site-prefixed form", () => {
+    expect(railHeading("/dashboard")).toBe("Overview");
+    expect(railHeading("/dashboard")).not.toContain(SITE);
+  });
+
+  it("normalizes a trailing slash", () => {
+    expect(railHeading("/settings/")).toBe("Settings");
   });
 });

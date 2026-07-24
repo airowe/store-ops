@@ -1,14 +1,19 @@
 /**
- * Dashboard — the app grid + connect flow. Ported from the legacy viewDashboard
- * and mobile (app)/index. Honest empty + unmeasured states. Client injected for
- * testability; `onOpen` handles cross-surface navigation (an un-migrated app
- * page is served by legacy via a real navigation).
+ * Dashboard — the portfolio command center (redesign of the flat app grid). Its
+ * #1 job is surfacing runs awaiting approval and letting the user act. Success
+ * body: editorial greeting → KPI strip → hero decision card → tracked-app rows,
+ * all derived from the real getApps list via the pure `dashboardModel` (honest:
+ * an unmeasured KPI is "—", never a fabricated number). Signed-out / loading /
+ * error / empty / approve-all / connect behavior is preserved verbatim from the
+ * ported dashboard — the redesign changes presentation, not the data contract.
  */
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import type { ApiClient, Candidate } from "@shipaso/api";
+import type { ApiClient, AppListItem, Candidate } from "@shipaso/api";
 import { ApiError, approveAllRuns, connectApp, getApps, resolveApps } from "@shipaso/api";
-import { AppCard } from "./AppCard.js";
+import { formatRank } from "@shipaso/honesty";
+import { runStatusLabel } from "../../lib/status.js";
+import { greeting, kpis, heroApp, pendingCount } from "./dashboardModel.js";
 
 export function DashboardView({ client, onOpen }: { client: ApiClient; onOpen: (id: string) => void }) {
   const qc = useQueryClient();
@@ -16,8 +21,7 @@ export function DashboardView({ client, onOpen }: { client: ApiClient; onOpen: (
     queryKey: ["apps"],
     queryFn: () => getApps(client),
     // Never retry an auth failure — a 401 will 401 again, and each pointless
-    // retry only delays the signed-out state below. Other failures keep the
-    // library default of 3 attempts.
+    // retry only delays the signed-out state below.
     retry: (count, err) => !(err instanceof ApiError && err.status === 401) && count < 3,
   });
   const approveAll = useMutation({
@@ -25,16 +29,10 @@ export function DashboardView({ client, onOpen }: { client: ApiClient; onOpen: (
     onSuccess: () => void qc.invalidateQueries({ queryKey: ["apps"] }),
   });
 
-  // isPending, NOT isLoading. In TanStack v5 `isLoading === isPending && isFetching`,
-  // so it goes FALSE during a retry backoff — leaving a window where the query has
-  // no data and no error yet, and the component falls straight through to the
-  // success render. That's how a logged-out visitor was shown "No apps connected
-  // yet" (a lie) instead of the signed-out state below.
+  // isPending, NOT isLoading — see the ported note: isLoading goes false during a
+  // retry backoff, which would flash "no apps" (a lie) at a logged-out visitor.
   if (appsQ.isPending) return <p className="muted">Loading your apps…</p>;
 
-  // A logged-out visitor gets 401 from /apps. Telling them "couldn't load your
-  // apps, try again" is both untrue and useless — retrying fails identically
-  // forever. Say what's actually wrong and offer the action that fixes it.
   if (appsQ.error instanceof ApiError && appsQ.error.status === 401) {
     return (
       <section data-testid="signed-out">
@@ -50,28 +48,76 @@ export function DashboardView({ client, onOpen }: { client: ApiClient; onOpen: (
   }
 
   if (appsQ.isError) return <p className="muted">Couldn’t load your apps. Try again.</p>;
+
   const apps = appsQ.data?.apps ?? [];
-  const pendingCount = apps.filter((a) => a.latest_run?.status === "awaiting_approval").length;
+  const pending = pendingCount(apps);
+
+  if (apps.length === 0) {
+    return (
+      <section>
+        <ConnectCard client={client} onConnected={onOpen} />
+        <div className="empty" data-testid="empty">
+          <div className="big">🛰️</div>
+          <div>No apps connected yet.</div>
+          <div className="faint">
+            Connect one above — the agent audits it, ranks it on real iTunes data, and drafts optimized copy.
+          </div>
+        </div>
+      </section>
+    );
+  }
+
+  const g = greeting(apps);
+  const hero = heroApp(apps);
 
   return (
-    <section>
-      <h1>Your apps</h1>
-      <ConnectCard client={client} onConnected={onOpen} />
+    <section className="dash" data-testid="dashboard">
+      {/* editorial greeting */}
+      <header className="dash-greeting">
+        <div className={"dash-eyebrow" + (g.urgent ? " urgent" : "")}>{g.eyebrow}</div>
+        <h1 className="dash-headline">{g.headline}</h1>
+      </header>
 
-      {pendingCount > 1 ? (
+      {/* KPI strip: awaiting-you card + derived metrics */}
+      <div className="kpi-strip">
+        <div className={"kpi-card awaiting" + (pending > 0 ? " live" : "")} data-testid="kpi-awaiting">
+          <div className="kpi-awaiting-head">
+            {pending > 0 ? <span className="pulse-dot" aria-hidden="true" /> : null}
+            <span className="kpi-eyebrow">Awaiting you</span>
+          </div>
+          <div className="kpi-value">{pending}</div>
+          <div className="kpi-sub">{pending === 1 ? "run ready to review" : "runs ready to review"}</div>
+          {pending > 0 && hero ? (
+            <button type="button" className="kpi-cta" data-testid="kpi-review" onClick={() => onOpen(hero.id)}>
+              Review runs →
+            </button>
+          ) : null}
+        </div>
+        {kpis(apps).map((k) => (
+          <div className="kpi-card" key={k.label} data-testid={`kpi-${k.label.replace(/\s+/g, "-").toLowerCase()}`}>
+            <div className="kpi-eyebrow">{k.label}</div>
+            <div className={"kpi-value" + (k.tone === "signal" ? " signal" : "")}>{k.value}</div>
+            {k.sub ? <div className="kpi-sub">{k.sub}</div> : null}
+          </div>
+        ))}
+      </div>
+
+      {/* approve-all (unchanged behavior; restyled) */}
+      {pending > 1 ? (
         <div className="card" data-testid="approve-all-card">
-          <b>{pendingCount} runs awaiting approval</b>
+          <b>{pending} runs awaiting approval</b>
           <p className="micro">
             Approve every pending run at once. Approval only reveals each run’s push handoff —
             it never ships anything.
           </p>
-          <button type="button"
+          <button
+            type="button"
             className="btn primary"
             data-testid="approve-all"
             disabled={approveAll.isPending}
             onClick={() => approveAll.mutate()}
           >
-            {approveAll.isPending ? "Approving…" : `Approve all ${pendingCount}`}
+            {approveAll.isPending ? "Approving…" : `Approve all ${pending}`}
           </button>
           {approveAll.data ? (
             <p className="micro" data-testid="approve-all-result">
@@ -80,22 +126,117 @@ export function DashboardView({ client, onOpen }: { client: ApiClient; onOpen: (
           ) : null}
         </div>
       ) : null}
-      {apps.length === 0 ? (
-        <div className="empty" data-testid="empty">
-          <div className="big">🛰️</div>
-          <div>No apps connected yet.</div>
-          <div className="faint">
-            Connect one above — the agent audits it, ranks it on real iTunes data, and drafts optimized copy.
-          </div>
-        </div>
-      ) : (
-        <div className="grid">
-          {apps.map((a) => (
-            <AppCard key={a.id} app={a} onOpen={onOpen} />
-          ))}
-        </div>
-      )}
+
+      {/* hero decision card */}
+      {hero ? <HeroCard app={hero} onOpen={onOpen} /> : null}
+
+      {/* tracked apps */}
+      <div className="dash-section-head">
+        <span className="dash-section-label">Tracked apps</span>
+        <span className="dash-section-note">lead keyword · rank</span>
+      </div>
+      <div className="tracked-list">
+        {apps.map((a) => (
+          <TrackedRow key={a.id} app={a} onOpen={onOpen} />
+        ))}
+      </div>
+
+      <div className="dash-connect">
+        <ConnectCard client={client} onConnected={onOpen} />
+      </div>
     </section>
+  );
+}
+
+function initialOf(name: string): string {
+  return (name.trim()[0] ?? "·").toUpperCase();
+}
+
+function HeroCard({ app, onOpen }: { app: AppListItem; onOpen: (id: string) => void }) {
+  const rank = app.rank_summary;
+  const awaiting = app.latest_run?.status === "awaiting_approval";
+  return (
+    <div className="hero-card" data-testid="hero-card">
+      <div className="hero-left">
+        <div className="hero-id">
+          <span className="app-chip signal">{initialOf(app.name)}</span>
+          <div>
+            <div className="hero-name">{app.name}</div>
+            <div className="hero-bundle mono">{app.bundle_id}</div>
+          </div>
+          {app.latest_run ? (
+            <span className={"badge " + app.latest_run.status} style={{ marginLeft: "auto" }}>
+              {runStatusLabel(app.latest_run.status)}
+            </span>
+          ) : null}
+        </div>
+        <p className="hero-copy">
+          {awaiting
+            ? "A run is waiting on your call. Approving reveals the push commands — nothing ships until you run them."
+            : "Open this app to see its audit, rank trend, and the next optimization."}
+        </p>
+        <div className="hero-actions">
+          <button type="button" className="btn primary" data-testid="hero-review" onClick={() => onOpen(app.id)}>
+            {awaiting ? "Review & approve" : "Open app"}
+          </button>
+          <button type="button" className="btn ghost" data-testid="hero-audit" onClick={() => onOpen(app.id)}>
+            View audit
+          </button>
+        </div>
+      </div>
+      <div className="hero-right">
+        <div className="hero-metric-label">Lead keyword rank</div>
+        <div className="hero-metric">
+          <span className="hero-rank">{rank?.lead_rank != null ? `#${rank.lead_rank}` : "—"}</span>
+        </div>
+        <div className="hero-metric-sub">
+          {rank?.lead_keyword ? `“${rank.lead_keyword}”` : "no lead keyword measured yet"}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function TrackedRow({ app, onOpen }: { app: AppListItem; onOpen: (id: string) => void }) {
+  const rank = app.rank_summary;
+  const awaiting = app.latest_run?.status === "awaiting_approval";
+  return (
+    <div
+      className="tracked-row"
+      data-testid={`app-card-${app.id}`}
+      role="button"
+      tabIndex={0}
+      onClick={() => onOpen(app.id)}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") onOpen(app.id);
+      }}
+    >
+      <span className="app-chip neutral">{initialOf(app.name)}</span>
+      <div className="tracked-id">
+        <div className="tracked-name">{app.name}</div>
+        <div className="tracked-bundle mono">{app.bundle_id}</div>
+      </div>
+      <div className="tracked-rank">
+        {rank ? (
+          <>
+            <div className="tracked-kw">{rank.lead_keyword}</div>
+            <div className="tracked-rank-val mono" data-testid="rank">
+              <b className={rank.lead_rank != null ? "good" : "none"}>{formatRank(rank.lead_rank)}</b>
+            </div>
+          </>
+        ) : (
+          <div className="tracked-kw micro">no ranks checked yet</div>
+        )}
+      </div>
+      <div className="tracked-status">
+        {app.latest_run ? (
+          <span className={"badge " + app.latest_run.status}>{runStatusLabel(app.latest_run.status)}</span>
+        ) : null}
+      </div>
+      <div className="tracked-cta">
+        <span className={"btn " + (awaiting ? "primary" : "ghost")}>{awaiting ? "Review →" : "Open"}</span>
+      </div>
+    </div>
   );
 }
 
@@ -126,7 +267,8 @@ function ConnectCard({ client, onConnected }: { client: ApiClient; onConnected: 
           placeholder="App name or bundle id"
           onChange={(e) => setQuery(e.target.value)}
         />
-        <button type="button"
+        <button
+          type="button"
           className="btn"
           data-testid="connect-search"
           disabled={!query.trim() || resolveMut.isPending}

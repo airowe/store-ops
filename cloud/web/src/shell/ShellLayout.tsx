@@ -1,7 +1,11 @@
 /**
- * The app shell — topbar + centered content column, wrapping every route via the
- * router's <Outlet />. Session comes from GET /auth/me over the shared client
- * (React Query), disabled in the no-API demo path so the shell renders offline.
+ * The app shell. Two chromes over the same routed <Outlet />:
+ *  • "railed" — the authed command center: a 236px nav rail + a main column
+ *    with its own sticky topbar (dashboard, apps, runs, settings).
+ *  • "plain"  — the public/marketing centered column (landing, login, preview…).
+ * `chromeFor(pathname)` (pure, tested) picks; the rail never shows to a
+ * signed-out marketing visitor. Session comes from GET /auth/me over the shared
+ * client, disabled in the no-API demo path so the shell renders offline.
  */
 import { useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
@@ -9,8 +13,11 @@ import { Outlet, useRouterState } from "@tanstack/react-router";
 import { client } from "../api.js";
 import { API_BASE, hasApiBase } from "../config.js";
 import { Topbar } from "./Topbar.js";
-import type { Session } from "./headerState.js";
+import { RailTopbar } from "./RailTopbar.js";
+import { NavRail } from "./NavRail.js";
+import { headerState, type Session } from "./headerState.js";
 import { pageTitle } from "./pageTitle.js";
+import { chromeFor, activeNav } from "./shellChrome.js";
 
 export function ShellLayout() {
   const { data } = useQuery({
@@ -21,13 +28,27 @@ export function ShellLayout() {
   });
   const session: Session = data ?? null;
 
-  // Per-route <title>: index.html ships a single static "· dashboard" title, so
-  // without this the public landing page (and every other route) showed
-  // "dashboard" in the tab / SEO / share card. Set it on each navigation.
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   useEffect(() => {
     document.title = pageTitle(pathname);
   }, [pathname]);
+
+  if (chromeFor(pathname) === "railed") {
+    const hs = headerState({ hasApiBase, session });
+    const operator = hs.email ?? (hs.mode === "demoStub" ? "demo" : null);
+    return (
+      <div className="app-shell" data-testid="app-shell">
+        <NavRail active={activeNav(pathname)} operator={operator} />
+        <div className="app-main">
+          <RailTopbar pathname={pathname} />
+          <main className="app-content">
+            <Outlet />
+          </main>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <>
       <Topbar apiBase={hasApiBase ? API_BASE : null} session={session} />
