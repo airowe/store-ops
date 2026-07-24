@@ -182,6 +182,28 @@ describe("<RunView /> — the money screen", () => {
     expect(result).toHaveTextContent("no editable version found");
   });
 
+  it("a PARTIAL push (some fields landed, some refused) reads as NOT a clean success", async () => {
+    const { client } = makeClient({
+      credentials: [ASC_CRED],
+      pushResult: {
+        ok: true,
+        versionId: "v1",
+        localizationId: "l1",
+        fieldsPushed: ["keywords", "description"],
+        partialFailure: "update name/subtitle failed (409)",
+      },
+    });
+    renderView(client);
+    await waitFor(() => screen.getByTestId("approve"));
+    fireEvent.click(screen.getByTestId("approve"));
+    await waitFor(() => screen.getByTestId("asc-push"));
+    fireEvent.click(screen.getByTestId("asc-push"));
+    const result = await screen.findByTestId("push-result");
+    expect(result).toHaveTextContent(/Partly staged: keywords, description/);
+    expect(result).toHaveTextContent(/refused the rest/);
+    expect(result).toHaveClass("bad"); // visually flagged, not a clean success
+  });
+
   it("a refused push offers Create-draft-version (no curl) and reports Apple's result", async () => {
     const { client, post } = makeClient({
       credentials: [ASC_CRED],

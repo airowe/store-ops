@@ -442,6 +442,27 @@ describe("applyAscMetadata — version → localization → PATCH", () => {
     expect(patches[0]?.url).toContain("/appInfoLocalizations/AIL_US");
   });
 
+  it("SAFETY: never PATCHes name/subtitle to a NEARBY locale — exact match or throw (no es-MX→es-ES overwrite)", async () => {
+    // Push targets es-MX; the app only has an es-ES appInfo localization. The old
+    // base-language fallback would have overwritten SPAIN's name/subtitle. Now it
+    // must throw and PATCH nothing to appInfo.
+    const { fetchFn, calls } = makeFetch({
+      versions: [{ id: "V_EDIT", attributes: { appStoreState: "PREPARE_FOR_SUBMISSION" } }],
+      locales: [{ id: "L_MX", attributes: { locale: "es-MX" } }],
+      appInfoLocales: [{ id: "AIL_ES", locale: "es-ES" }], // NOT es-MX
+    });
+    await expect(
+      applyAscMetadata(fetchFn, {
+        token: "JWT",
+        appId: "APP1",
+        copy: { name: "Nombre MX", subtitle: "Sub MX", keywords: "" },
+        locale: "es-MX",
+      }),
+    ).rejects.toThrow(/es-MX.*app-info localization/);
+    // and crucially: NO appInfoLocalizations PATCH was ever issued
+    expect(calls.some((c) => c.method === "PATCH" && c.url.includes("/appInfoLocalizations/"))).toBe(false);
+  });
+
   it("version PATCH ok + appInfo PATCH 409 → partial success, reports what landed, token never leaked", async () => {
     const { fetchFn } = makeFetch({
       versions: [{ id: "V_EDIT", attributes: { appStoreState: "PREPARE_FOR_SUBMISSION" } }],

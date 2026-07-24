@@ -339,7 +339,10 @@ export function RunView({
             {push.isPending ? "Pushing…" : "Push to App Store Connect"}
           </button>
           {pushResult ? (
-            <p className="micro" data-testid="push-result">
+            <p
+              className={"micro" + (!pushResult.ok || pushResult.partialFailure ? " bad" : "")}
+              data-testid="push-result"
+            >
               {pushResult.ok
                 ? pushResult.partialFailure
                   ? `Partly staged: ${pushResult.fieldsPushed.join(", ")}. App Store Connect refused the rest: ${pushResult.partialFailure}`

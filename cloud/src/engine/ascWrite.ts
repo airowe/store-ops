@@ -293,20 +293,24 @@ export async function applyAscMetadata(
     (opts.copy.name !== undefined && opts.copy.name.trim() !== "") ||
     (opts.copy.subtitle !== undefined && opts.copy.subtitle.trim() !== "");
 
-  // Resolve the appInfoLocalization id for this locale (same fallback the read
-  // path uses: exact → base language → first). Skipped entirely when there's no
-  // name/subtitle to push, so a keywords-only push never needs appInfo access.
+  // Resolve the appInfoLocalization id for this EXACT locale. Skipped entirely
+  // when there's no name/subtitle to push, so a keywords-only push never needs
+  // appInfo access.
   let appInfoPatch: AppInfoLocalizationPatch | undefined;
   if (wantsAppInfo) {
     const info = await readAscAppInfo(fetchFn, { token: opts.token, appId: opts.appId });
-    const loc =
-      info.locales.find((l) => l.locale === opts.locale) ??
-      info.locales.find((l) => l.locale.split("-")[0] === opts.locale.split("-")[0]) ??
-      info.locales[0];
+    // EXACT locale match only — NEVER a base-language or first-locale fallback.
+    // This is a live WRITE: a "nearby" match (es-MX → es-ES, or → the primary
+    // locale via locales[0]) would silently overwrite a DIFFERENT market's real
+    // name/subtitle and report success. The version-localization PATCH already
+    // refuses to guess (pickLocalization is exact-or-throw); the appInfo PATCH
+    // must match that posture. (The READ path tolerates a fallback because it
+    // only shows a baseline a human reviews; a write must not.)
+    const loc = info.locales.find((l) => l.locale === opts.locale);
     if (!loc || !loc.id) {
       throw new AscWriteError(
-        `No "${opts.locale}" app-info localization found for name/subtitle. ` +
-          "Add it in App Store Connect first.",
+        `No "${opts.locale}" app-info localization to push name/subtitle to. ` +
+          "Add that locale in App Store Connect first.",
       );
     }
     const built = buildAppInfoLocalizationPatch(loc.id, opts.copy);
