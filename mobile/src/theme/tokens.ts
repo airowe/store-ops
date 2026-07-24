@@ -26,6 +26,9 @@ export const palette = {
   /** secondary. */
   brand: "#5b8cff",
   warn: "#fbbf24",
+  /** The "awaiting you" pair — a soft wash + muted border for amber surfaces. */
+  warnGlow: "rgba(251, 191, 36, 0.12)",
+  warnBorder: "rgba(251, 191, 36, 0.40)",
   bad: "#f87171",
 } as const;
 
@@ -55,6 +58,8 @@ export const lightPalette: Palette = {
   signalGlow: "rgba(15, 157, 99, 0.14)",
   brand: "#3563e0",
   warn: "#b7791f",
+  warnGlow: "rgba(183, 121, 31, 0.10)",
+  warnBorder: "rgba(183, 121, 31, 0.35)",
   bad: "#dc4a41",
 };
 

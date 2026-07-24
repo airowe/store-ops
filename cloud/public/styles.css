@@ -18,6 +18,8 @@
   --signal-glow: rgba(52, 211, 153, 0.18);
   --brand: #5b8cff;         /* secondary */
   --warn: #fbbf24;
+  --warn-glow: rgba(251, 191, 36, 0.12);   /* "awaiting you" wash */
+  --warn-border: rgba(251, 191, 36, 0.40);
   --bad: #f87171;
 
   /* ── fonts ─────────────────────────────────────────────────── */
@@ -76,6 +78,8 @@
   --signal-glow: rgba(15, 157, 99, 0.14);
   --brand: #3563e0;
   --warn: #b7791f;
+  --warn-glow: rgba(183, 121, 31, 0.10);
+  --warn-border: rgba(183, 121, 31, 0.35);
   --bad: #dc4a41;
 
   --raise:   rgba(17, 22, 33, 0.028);
