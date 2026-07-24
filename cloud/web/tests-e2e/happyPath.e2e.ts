@@ -61,6 +61,22 @@ test("run detail: the master-detail shell reaches the diff + every measured card
   await expect(page.getByTestId("ppo-treatment-card")).toContainText("free A/B test");
 });
 
+test("the sticky decision bar clears the nav rail (never renders under it)", async ({ page }) => {
+  // Regression: the bar was `left: 0` while the railed shell puts a 236px nav
+  // rail on the left, so the decision — the one irreversible action — rendered
+  // underneath the rail with its buttons pushed out of view.
+  await page.setViewportSize({ width: 1400, height: 1000 });
+  await page.goto("/runs/run1");
+  const bar = await page.getByTestId("decision-bar").boundingBox();
+  const rail = await page.getByTestId("nav-rail").boundingBox();
+  expect(bar, "decision bar should render").toBeTruthy();
+  expect(rail, "nav rail should render").toBeTruthy();
+  expect(bar!.x).toBeGreaterThanOrEqual(rail!.x + rail!.width);
+  // and both decision buttons are actually visible
+  await expect(page.getByTestId("approve")).toBeVisible();
+  await expect(page.getByTestId("reject")).toBeVisible();
+});
+
 test("approving a run reveals the handoff without shipping", async ({ page }) => {
   // approve returns the slim decision; the app merges it and shows 'ready to push'.
   // Path-matched (host-agnostic) + registered after the general mock so it wins.
