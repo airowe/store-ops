@@ -747,3 +747,89 @@ h2 { font-family: var(--display); font-weight: 600; font-size: 22px; letter-spac
 
 .onb-foot { display: flex; align-items: center; gap: 12px; margin-top: 6px; }
 .onb-promise { font-size: 12px; color: var(--faint); margin-right: auto; }
+
+/* ── Public landing hero (Public Audit.dc.html) ────────────────────────────
+   The live audit IS the hero: pitch + field on the left, the real result card
+   on the right, over a soft radial glow. Token-driven so both themes work. */
+.landing {
+  background:
+    radial-gradient(1100px 620px at 78% -8%, var(--signal-glow), transparent 60%),
+    radial-gradient(900px 500px at 8% 4%, var(--brand-glow), transparent 55%);
+  margin: -24px -18px 0; padding: 24px 18px 0;
+}
+.landing-hero {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 48px; align-items: center;
+  padding: 40px 0 24px;
+}
+.free-pill {
+  display: inline-flex; align-items: center; gap: 8px;
+  font-family: var(--mono); font-size: 12px; letter-spacing: .04em; color: var(--signal);
+  background: var(--signal-glow); border: 1px solid var(--signal-dim);
+  padding: 5px 12px; border-radius: 999px;
+}
+.free-dot { width: 6px; height: 6px; border-radius: 999px; background: var(--signal); }
+.hero-headline {
+  font-family: var(--display); font-weight: 500; font-size: 48px; line-height: 1.05;
+  letter-spacing: -1.6px; color: var(--ink); margin: 20px 0 0;
+}
+.hero-headline-accent { color: var(--signal); }
+.hero-sub { font-size: 17px; line-height: 1.6; color: var(--dim); margin: 20px 0 26px; max-width: 44ch; }
+
+.audit-input-block { max-width: 460px; }
+.audit-input-row { display: flex; gap: 10px; }
+.audit-field {
+  flex: 1; min-width: 0; background: var(--panel); border: 1px solid var(--line); color: var(--ink);
+  border-radius: 12px; padding: 14px 16px; font: inherit; font-size: 15px;
+}
+.audit-field:focus { outline: none; border-color: var(--signal-dim); box-shadow: 0 0 0 3px var(--signal-glow); }
+.audit-cta { padding: 0 22px; border-radius: 12px; font-size: 15px; white-space: nowrap; }
+.audit-microcopy { font-size: 13px; color: var(--faint); margin-top: 12px; }
+
+.steps-strip { display: flex; gap: 10px; margin-top: 36px; }
+.step-card { flex: 1; background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 14px 16px; }
+.step-n { font-size: 11px; color: var(--signal); font-weight: 700; }
+.step-title { font-size: 14px; font-weight: 600; color: var(--ink); margin-top: 6px; }
+.step-body { font-size: 12px; color: var(--faint); margin-top: 3px; line-height: 1.4; }
+
+.audit-card {
+  background: var(--panel); border: 1px solid var(--line); border-radius: 20px;
+  box-shadow: var(--shadow); overflow: hidden;
+}
+.audit-card-head {
+  display: flex; align-items: center; gap: 8px; padding: 12px 18px;
+  border-bottom: 1px solid var(--line-soft); font-family: var(--mono); font-size: 12px; color: var(--faint);
+}
+.live-dot { width: 9px; height: 9px; border-radius: 999px; background: var(--signal); flex: none; }
+.audit-card-body { padding: 24px 26px; }
+.audit-card-empty { display: grid; place-items: center; min-height: 220px; }
+.audit-empty-copy { font-size: 14px; line-height: 1.6; color: var(--faint); margin: 0; text-align: center; max-width: 34ch; }
+.audit-app-row { display: flex; align-items: center; gap: 13px; }
+.audit-app-chip { width: 46px; height: 46px; font-size: 19px; border-radius: 12px; }
+.audit-app-id { flex: 1; min-width: 0; }
+.audit-app-name { font-family: var(--display); font-size: 20px; font-weight: 600; color: var(--ink); }
+.audit-grade-block { text-align: right; }
+.audit-grade-label { font-size: 10px; letter-spacing: .06em; text-transform: uppercase; color: var(--faint); }
+.audit-grade-value { font-family: var(--display); font-size: 30px; font-weight: 600; color: var(--signal); line-height: 1; }
+.audit-summary { font-size: 14px; line-height: 1.55; color: var(--dim); margin: 18px 0 14px; }
+.audit-summary b { color: var(--ink); }
+.audit-sample { display: flex; flex-direction: column; border-top: 1px solid var(--line-soft); }
+.audit-sample-row {
+  display: grid; grid-template-columns: 1fr auto; gap: 12px; align-items: center;
+  padding: 10px 0; border-bottom: 1px solid var(--line-soft);
+}
+.audit-sample-kw { font-size: 13.5px; color: var(--ink); overflow-wrap: anywhere; }
+.audit-sample-rank { font-size: 13px; font-weight: 700; color: var(--dim); }
+.audit-sample-rank.good { color: var(--signal); }
+.audit-signin {
+  margin-top: 18px; background: var(--signal-glow); border: 1px dashed var(--signal-dim);
+  border-radius: 12px; padding: 16px;
+}
+.audit-signin-title { font-size: 14px; font-weight: 600; color: var(--ink); }
+.audit-signin-note { font-size: 12.5px; color: var(--dim); margin: 4px 0 12px; line-height: 1.5; }
+.audit-signin .btn { padding: 10px 18px; border-radius: 10px; font-size: 13.5px; }
+
+@media (max-width: 860px) {
+  .landing-hero { grid-template-columns: 1fr; gap: 32px; padding-top: 24px; }
+  .hero-headline { font-size: 36px; letter-spacing: -1px; }
+  .steps-strip { flex-direction: column; }
+}
