@@ -27,24 +27,62 @@ function isHealthy(f: Finding): boolean {
 }
 
 function FindingRow({ f }: { f: Finding }) {
+  const [expanded, setExpanded] = useState(false);
+  const hasDetail = Boolean(f.detail || f.fix || f.evidence);
+
   return (
     <div
       className={"finding-row sev-" + f.severity}
       data-testid={`finding-${f.id}`}
       data-severity={f.severity}
+      style={{ marginBottom: 6 }}
     >
-      <p style={{ margin: 0 }}>
+      <div
+        onClick={() => hasDetail && setExpanded((prev) => !prev)}
+        style={{
+          display: "flex",
+          alignItems: "center",
+          cursor: hasDetail ? "pointer" : "default",
+          gap: 6,
+          userSelect: "none",
+        }}
+      >
         <span
           className="sev-chip"
-          style={{ color: SEVERITY_COLOR[f.severity], fontSize: 12, marginRight: 8 }}
+          style={{ color: SEVERITY_COLOR[f.severity], fontSize: 12, fontWeight: "bold" }}
         >
           {f.severity}
         </span>
-        <b>{f.title}</b>
-      </p>
-      <p className="micro" style={{ margin: "2px 0 0" }}>{f.detail}</p>
-      {f.fix ? <p className="micro" style={{ margin: "2px 0 0" }}>→ {f.fix}</p> : null}
-      {f.evidence ? <p className="micro muted" style={{ margin: "2px 0 0" }}>{f.evidence}</p> : null}
+        <b style={{ fontSize: 13 }}>{f.title}</b>
+        {hasDetail && !expanded && f.detail ? (
+          <span
+            className="micro muted"
+            style={{
+              marginLeft: 6,
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+              whiteSpace: "nowrap",
+              flex: 1,
+              opacity: 0.8,
+            }}
+          >
+            — {f.detail}
+          </span>
+        ) : <span style={{ flex: 1 }} />}
+        {hasDetail ? (
+          <span className="micro muted" style={{ fontSize: 10, paddingLeft: 4 }}>
+            {expanded ? "▾" : "▸"}
+          </span>
+        ) : null}
+      </div>
+
+      {expanded ? (
+        <div style={{ marginTop: 4, paddingLeft: 12, borderLeft: `2px solid ${SEVERITY_COLOR[f.severity]}` }}>
+          {f.detail ? <p className="micro" style={{ margin: "2px 0 0" }}>{f.detail}</p> : null}
+          {f.fix ? <p className="micro" style={{ margin: "2px 0 0", color: "var(--signal, #2f855a)" }}>→ {f.fix}</p> : null}
+          {f.evidence ? <p className="micro muted" style={{ margin: "2px 0 0" }}>{f.evidence}</p> : null}
+        </div>
+      ) : null}
     </div>
   );
 }

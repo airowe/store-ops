@@ -50,6 +50,8 @@ describe("<FindingsCard />", () => {
     );
     expect(screen.getByText("1 fix available · 1 critical")).toBeInTheDocument();
     expect(screen.getByText("No subtitle")).toBeInTheDocument();
+    // Expand row to view fix detail
+    fireEvent.click(screen.getByText("No subtitle"));
     expect(screen.getByText(/Add a 30-char subtitle/)).toBeInTheDocument();
     expect(screen.getByTestId("finding-subtitle_missing")).toHaveTextContent("critical");
   });
