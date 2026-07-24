@@ -234,9 +234,13 @@ export type LocalizedDraft = {
 /** POST /runs/:id/localize/approve · DELETE …/:locale — the approved-locale set. */
 export type LocalizeResult = { approved: string[] };
 
-/** POST /runs/:id/asc/push — Apple's verdict, verbatim; never a silent failure. */
+/** POST /runs/:id/asc/push — Apple's verdict, verbatim; never a silent failure.
+ *  name/subtitle and keywords/description live on DIFFERENT ASC resources, so a
+ *  push can land one and be refused on the other: `partialFailure` carries the
+ *  refusal for the fields that did NOT land, while `fieldsPushed` lists those
+ *  that did. Honesty invariant: a refused field is never reported as pushed. */
 export type AscPushResult =
-  | { ok: true; versionId: string; localizationId: string; fieldsPushed: string[] }
+  | { ok: true; versionId: string; localizationId: string; fieldsPushed: string[]; partialFailure?: string }
   | { ok: false; reason: string };
 /** POST /apps/:id/run-asc — the keyed (Mode-A) run. */
 export type RunAscResult = { id: string; status: string; digest: string; ascRead: boolean };
