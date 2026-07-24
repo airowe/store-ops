@@ -29,15 +29,33 @@ test("app detail renders the rank trend + tool cards + run history", async ({ pa
   await expect(page.getByTestId("run-run1")).toBeVisible();
 });
 
-test("run detail renders the proposal diff, findings, and measured cards", async ({ page }) => {
+test("run detail: the master-detail shell reaches the diff + every measured card", async ({ page }) => {
   await page.goto("/runs/run1");
+  // The pending shell: heading + status bar + the sticky decision, always present.
   await expect(page.getByRole("heading", { name: "Proposed changes" })).toBeVisible();
-  await expect(page.getByTestId("findings-card")).toContainText("Subtitle underuses");
-  await expect(page.getByTestId("opportunities-card")).toContainText("hourly forecast");
-  await expect(page.getByTestId("coverage-card")).toContainText("72");
-  await expect(page.getByTestId("localization-expansion-card")).toContainText("es-MX");
-  await expect(page.getByTestId("ppo-treatment-card")).toContainText("free A/B test");
+  await expect(page.getByTestId("status-bar")).toContainText("Weatherly");
   await expect(page.getByTestId("approve")).toBeVisible();
+
+  // Master-detail: exactly one section shows at a time. The default is the diff;
+  // each measured card is reachable by selecting its rail item. Assert one-at-a-
+  // time by checking the prior card is gone after each switch.
+  await expect(page.getByTestId("diff-name")).toBeVisible();
+
+  await page.getByRole("button", { name: "Audit" }).click();
+  await expect(page.getByTestId("findings-card")).toContainText("Subtitle underuses");
+  await expect(page.getByTestId("diff-name")).toHaveCount(0);
+
+  await page.getByRole("button", { name: "Keywords" }).click();
+  await expect(page.getByTestId("opportunities-card")).toContainText("hourly forecast");
+
+  await page.getByRole("button", { name: "Metadata" }).click();
+  await expect(page.getByTestId("coverage-card")).toContainText("72");
+
+  await page.getByRole("button", { name: "Markets" }).click();
+  await expect(page.getByTestId("localization-expansion-card")).toContainText("es-MX");
+
+  await page.getByRole("button", { name: "PPO test" }).click();
+  await expect(page.getByTestId("ppo-treatment-card")).toContainText("free A/B test");
 });
 
 test("approving a run reveals the handoff without shipping", async ({ page }) => {

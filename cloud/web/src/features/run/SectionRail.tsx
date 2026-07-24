@@ -1,44 +1,52 @@
 /**
- * SectionRail — a slim sticky index of the run's sections, so a long report is
- * navigable instead of a linear wall. Jump links to each section anchor; the
- * active one highlights on scroll (IntersectionObserver, guarded for SSR/jsdom).
- * Hidden on narrow viewports via CSS (the sticky action bar carries the decision
- * there). Pure presentational; the caller passes only the sections present.
+ * SectionRail — a grouped, selectable index of the run's sections. Controlled:
+ * the caller owns `activeId` and gets `onSelect` on click. Selecting a section
+ * swaps the single detail pane (master-detail) — this is the text-heavy fix
+ * (#325): one section on screen at a time, not a stacked wall. Only non-empty
+ * groups render a header. Pure presentational; items are buttons for keyboard
+ * reach. Hidden-narrow handling lives in CSS.
  */
-import { useEffect, useState } from "react";
+export type RailGroup = "needs" | "changes" | "fyi" | "healthy";
+export type RailItem = { id: string; label: string; group: RailGroup };
 
-export type RailItem = { id: string; label: string };
+/** Fixed display order + human labels for the groups. */
+const GROUPS: { key: RailGroup; label: string }[] = [
+  { key: "needs", label: "Needs you" },
+  { key: "changes", label: "Changes" },
+  { key: "fyi", label: "FYI" },
+  { key: "healthy", label: "Healthy" },
+];
 
-export function SectionRail({ items }: { items: RailItem[] }) {
-  const [active, setActive] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (typeof IntersectionObserver === "undefined" || items.length === 0) return;
-    const obs = new IntersectionObserver(
-      (entries) => {
-        for (const e of entries) if (e.isIntersecting) setActive(e.target.id);
-      },
-      { rootMargin: "-40% 0px -55% 0px" },
-    );
-    for (const it of items) {
-      const el = document.getElementById(it.id);
-      if (el) obs.observe(el);
-    }
-    return () => obs.disconnect();
-  }, [items]);
-
+export function SectionRail({
+  items, activeId, onSelect,
+}: {
+  items: RailItem[];
+  activeId: string;
+  onSelect: (id: string) => void;
+}) {
   if (items.length === 0) return null;
   return (
     <nav className="section-rail" data-testid="section-rail" aria-label="Run sections">
-      {items.map((it) => (
-        <a
-          key={it.id}
-          href={`#${it.id}`}
-          className={"rail-link" + (active === it.id ? " active" : "")}
-        >
-          {it.label}
-        </a>
-      ))}
+      {GROUPS.map(({ key, label }) => {
+        const groupItems = items.filter((it) => it.group === key);
+        if (groupItems.length === 0) return null;
+        return (
+          <div key={key} className="rail-group">
+            <div className="rail-group-label">{label}</div>
+            {groupItems.map((it) => (
+              <button
+                key={it.id}
+                type="button"
+                className={"rail-link" + (activeId === it.id ? " active" : "")}
+                aria-current={activeId === it.id ? "true" : undefined}
+                onClick={() => onSelect(it.id)}
+              >
+                {it.label}
+              </button>
+            ))}
+          </div>
+        );
+      })}
     </nav>
   );
 }

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeAll } from "vitest";
-import { render, screen, waitFor, fireEvent } from "@testing-library/react";
+import { render, screen, waitFor, fireEvent, within } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import type { ApiClient } from "@shipaso/api";
 import { RunView } from "./RunView.js";
@@ -145,7 +145,10 @@ describe("<RunView /> — the money screen", () => {
       },
     });
     renderView(client);
-    await waitFor(() => expect(screen.getByTestId("findings-card")).toBeInTheDocument());
+    // under master-detail, "changes" is the default section — select Audit first.
+    await waitFor(() => expect(screen.getByTestId("section-rail")).toBeInTheDocument());
+    fireEvent.click(screen.getByRole("button", { name: "Audit" }));
+    expect(screen.getByTestId("findings-card")).toBeInTheDocument();
     expect(screen.getByText("No subtitle")).toBeInTheDocument();
     // one connect CTA, not a per-surface wall of "we can't see …" sentences
     expect(screen.getByTestId("asc-unlock-cta")).toHaveTextContent("Unlock your full audit");
@@ -252,24 +255,96 @@ describe("<RunView /> — the money screen", () => {
     expect(screen.getByTestId("section-rail")).toBeInTheDocument();
   });
 
-  it("LAYOUT: only a pending (railed) run gets the 2-column grid class — a terminal run stays single-column, not crushed into the rail track", async () => {
-    // Terminal run: no rail is rendered, so .run-layout must NOT carry the
-    // railed modifier — otherwise the CSS grid still reserves a 160px first
-    // track and the sole child (run-main) gets crushed into it on desktop.
+  it("LAYOUT: a terminal run stays single-column (no run-shell), a pending run gets the master-detail shell", async () => {
+    // Terminal run: no shell is rendered — the linear render stays as-is.
     const { client: approvedClient } = makeClient({ status: "approved" });
     const { container: approvedContainer } = renderView(approvedClient);
     await waitFor(() => expect(screen.getByTestId("run-status")).toBeInTheDocument());
-    const approvedLayout = approvedContainer.querySelector(".run-layout");
-    expect(approvedLayout).not.toBeNull();
-    expect(approvedLayout?.className).not.toMatch(/railed/);
+    expect(approvedContainer.querySelector(".run-shell")).toBeNull();
 
-    // Pending run: the rail is rendered alongside run-main, so the modifier
-    // class must be present to opt into the 2-column grid.
+    // Pending run: the rail + detail pane render inside .run-shell.
     const { client: pendingClient } = makeClient();
     const { container: pendingContainer } = renderView(pendingClient);
     await waitFor(() => expect(screen.getByTestId("approve")).toBeInTheDocument());
-    const pendingLayout = pendingContainer.querySelector(".run-layout");
-    expect(pendingLayout).not.toBeNull();
-    expect(pendingLayout?.className).toMatch(/\brun-layout--railed\b/);
+    expect(pendingContainer.querySelector(".run-shell")).not.toBeNull();
+  });
+});
+
+describe("<RunView /> — run shell (pending)", () => {
+  it("renders the status bar with the live app name", async () => {
+    const { client } = makeClient({
+      extra: { audit: { liveName: "Heathen" }, coverage: { coverageScore: 95.6, fieldFill: [], distinctTerms: 0, waste: [] } },
+    });
+    renderView(client);
+    await waitFor(() => expect(screen.getByTestId("status-bar")).toBeInTheDocument());
+    expect(screen.getByTestId("status-bar")).toHaveTextContent("Heathen");
+    expect(screen.getByTestId("sb-coverage")).toHaveTextContent("95.6");
+  });
+
+  it("groups a critical/warn finding's Audit item under Needs you", async () => {
+    const { client } = makeClient({
+      extra: {
+        findings: [
+          { id: "f1", surface: "screenshots", severity: "warn", impact: "conversion",
+            title: "Only 3 screenshots", detail: "d", fix: "add more" },
+        ],
+      },
+    });
+    renderView(client);
+    await waitFor(() => expect(screen.getByTestId("section-rail")).toBeInTheDocument());
+    const rail = screen.getByTestId("section-rail");
+    expect(rail).toHaveTextContent("Needs you");
+    expect(within(rail).getByRole("button", { name: "Audit" })).toBeInTheDocument();
+  });
+
+  it("shows only the selected section, and swaps on rail click", async () => {
+    const { client } = makeClient({
+      extra: {
+        coverage: { coverageScore: 90, fieldFill: [], distinctTerms: 0, waste: [] },
+        findings: [
+          { id: "f1", surface: "screenshots", severity: "warn", impact: "conversion",
+            title: "Only 3 screenshots", detail: "d", fix: "add more" },
+        ],
+      },
+    });
+    renderView(client);
+    // default section is "changes" — the diff is visible, the coverage card is not
+    await waitFor(() => expect(screen.getByTestId("diff-name")).toBeInTheDocument());
+    expect(screen.queryByTestId("coverage-card")).toBeNull();
+    // click Metadata → coverage shows, diff hides
+    fireEvent.click(screen.getByRole("button", { name: "Metadata" }));
+    expect(screen.getByTestId("coverage-card")).toBeInTheDocument();
+    expect(screen.queryByTestId("diff-name")).toBeNull();
+  });
+
+  it("still renders the decision bar and Approve/Reject on a pending run", async () => {
+    const { client } = makeClient();
+    renderView(client);
+    await waitFor(() => expect(screen.getByTestId("decision-bar")).toBeInTheDocument());
+    expect(screen.getByTestId("approve")).toBeInTheDocument();
+    expect(screen.getByTestId("reject")).toBeInTheDocument();
+  });
+
+  // Regression: a pending run carrying a PPO treatment brief must still surface
+  // the card. Pre-shell it rendered ungated; the shell must re-home it into the
+  // rail, not drop it.
+  it("keeps the PPO treatment card reachable on a pending run", async () => {
+    const { client } = makeClient({
+      extra: {
+        ppoTreatment: {
+          headline: "Test a benefit-led first screenshot",
+          steps: ["Draft a variant", "Run a 50/50 PPO"],
+          evidence: "conversion lift observed on peers",
+          guidance: "keep the control live for two weeks",
+        },
+      },
+    });
+    renderView(client);
+    await waitFor(() => expect(screen.getByTestId("section-rail")).toBeInTheDocument());
+    // not on the default "changes" section
+    expect(screen.queryByTestId("ppo-treatment-card")).toBeNull();
+    // reachable via its rail button
+    fireEvent.click(screen.getByRole("button", { name: "PPO test" }));
+    expect(screen.getByTestId("ppo-treatment-card")).toBeInTheDocument();
   });
 });
