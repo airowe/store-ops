@@ -26,18 +26,29 @@ export function AppCard({
     <Pressable accessibilityRole="button" testID={`app-card-${app.id}`} onPress={() => onPress(app.id)}>
       <Card>
         <View style={styles.headerRow}>
-          <AppText kind="lead" numberOfLines={1}>{app.name}</AppText>
+          <View style={styles.iconChip} testID={`app-chip-${app.id}`}>
+            <AppText kind="lead" style={{ color: palette.signal, fontWeight: "700" }}>
+              {(app.name.trim()[0] ?? "·").toUpperCase()}
+            </AppText>
+          </View>
+          <View style={styles.identity}>
+            <AppText kind="lead" numberOfLines={1}>{app.name}</AppText>
+            <AppText kind="dim" numberOfLines={1}>{app.bundle_id}</AppText>
+          </View>
           {app.latest_run ? <StatusBadge status={app.latest_run.status} /> : null}
         </View>
-        <AppText kind="dim" numberOfLines={1}>{app.bundle_id}</AppText>
 
-        <View style={styles.metaRow}>
+        {/* divider row — the keyword and its rank, the two facts worth a glance */}
+        <View style={styles.rankRow}>
           {rank ? (
-            <AppText kind="mono">
-              {rank.lead_keyword}: <AppText kind="mono" style={{ color: palette.signal }}>{formatRank(rank.lead_rank)}</AppText>
-            </AppText>
+            <>
+              <AppText kind="dim" numberOfLines={1} style={{ flex: 1 }}>{rank.lead_keyword}</AppText>
+              <AppText kind="mono" style={{ color: palette.signal, fontWeight: "700" }}>
+                {formatRank(rank.lead_rank)}
+              </AppText>
+            </>
           ) : (
-            <AppText kind="micro">no ranks checked yet</AppText>
+            <AppText kind="micro" style={{ flex: 1 }}>no ranks checked yet</AppText>
           )}
           {app.latest_run ? (
             <AppText kind="micro">{timeAgo(app.latest_run.created_at, now)}</AppText>
@@ -66,8 +77,16 @@ function StatusBadge({ status }: { status: string }) {
 }
 
 const styles = StyleSheet.create({
-  headerRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: spacing.sm },
-  metaRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: spacing.sm, marginTop: spacing.xs },
+  headerRow: { flexDirection: "row", alignItems: "center", gap: spacing.md },
+  identity: { flex: 1, minWidth: 0 },
+  iconChip: {
+    width: 42, height: 42, borderRadius: 11, alignItems: "center", justifyContent: "center",
+    backgroundColor: palette.signalGlow, borderColor: palette.signalDim, borderWidth: 1,
+  },
+  rankRow: {
+    flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: spacing.sm,
+    marginTop: spacing.sm, paddingTop: spacing.sm, borderTopWidth: 1, borderTopColor: palette.lineSoft,
+  },
   badge: { paddingHorizontal: spacing.sm, paddingVertical: 2, borderRadius: radius.base, maxWidth: 160 },
   badgeWarn: { backgroundColor: palette.warn },
   badgeDim: { backgroundColor: palette.panel2, borderColor: palette.line, borderWidth: 1 },
