@@ -107,6 +107,43 @@ describe("<DashboardView />", () => {
     expect(screen.queryByTestId("approve-all-card")).toBeNull();
   });
 
+  it("greets by pending-run count and surfaces the awaiting-you KPI", async () => {
+    const waiting = (id: string) => ({ ...app, id, latest_run: { status: "awaiting_approval", created_at: "2026-07-01T00:00:00Z" } });
+    const { c } = client([waiting("a1"), waiting("a2")]);
+    renderView(c);
+    await waitFor(() => expect(screen.getByTestId("dashboard")).toBeInTheDocument());
+    expect(screen.getByText(/2 runs need your approval/i)).toBeInTheDocument();
+    expect(screen.getByTestId("kpi-awaiting")).toHaveTextContent("2");
+  });
+
+  it("clicking the awaiting-you KPI opens the hero app's run", async () => {
+    const waiting = { ...app, id: "a1", latest_run: { status: "awaiting_approval", created_at: "2026-07-01T00:00:00Z" } };
+    const { c } = client([waiting]);
+    const onOpen = vi.fn();
+    renderView(c, onOpen);
+    await waitFor(() => screen.getByTestId("kpi-review"));
+    fireEvent.click(screen.getByTestId("kpi-review"));
+    expect(onOpen).toHaveBeenCalledWith("a1");
+  });
+
+  it("hero card shows the top app; its 'Review & approve' opens it", async () => {
+    const waiting = { ...app, id: "a1", name: "Cal AI", latest_run: { status: "awaiting_approval", created_at: "2026-07-01T00:00:00Z" } };
+    const { c } = client([waiting]);
+    const onOpen = vi.fn();
+    renderView(c, onOpen);
+    await waitFor(() => expect(screen.getByTestId("hero-card")).toHaveTextContent("Cal AI"));
+    fireEvent.click(screen.getByTestId("hero-review"));
+    expect(onOpen).toHaveBeenCalledWith("a1");
+  });
+
+  it("renders an unmeasured lead rank as '—', never a fabricated number", async () => {
+    const { c } = client([{ ...app, rank_summary: null }]);
+    renderView(c);
+    await waitFor(() => screen.getByTestId("hero-card"));
+    // best-lead-rank KPI and the hero metric both fall back to the em dash
+    expect(screen.getByTestId("kpi-best-lead-rank")).toHaveTextContent("—");
+  });
+
   it("connect search resolves candidates; clicking one connects and opens it", async () => {
     const post = vi.fn(async (path: string, body: any) => {
       if (path === "/resolve") return { candidates: [{ bundle_id: "com.x.y", name: "XY" }] };

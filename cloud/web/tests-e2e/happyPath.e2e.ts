@@ -14,7 +14,10 @@ test.beforeEach(async ({ page }) => {
 
 test("dashboard lists connected apps", async ({ page }) => {
   await page.goto("/dashboard");
-  await expect(page.getByRole("heading", { name: "Your apps" })).toBeVisible();
+  // The redesign leads with an editorial greeting, not a "Your apps" heading;
+  // the one awaiting app surfaces in the command center + its tracked row.
+  await expect(page.getByTestId("dashboard")).toBeVisible();
+  await expect(page.getByTestId("hero-card")).toContainText("Weatherly");
   await expect(page.getByTestId("app-card-app1")).toContainText("Weatherly");
   await expect(page.getByTestId("app-card-app1").getByTestId("rank")).toContainText("12");
 });
@@ -103,6 +106,6 @@ test("the landing page at / renders the hero and audits inline", async ({ page }
 
 test("the dashboard is reachable at /dashboard", async ({ page }) => {
   await page.goto("/dashboard");
-  await expect(page.getByRole("heading", { name: "Your apps" })).toBeVisible();
+  await expect(page.getByTestId("dashboard")).toBeVisible();
   await expect(page).toHaveTitle("ShipASO · dashboard");
 });
