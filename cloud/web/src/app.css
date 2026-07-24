@@ -325,4 +325,51 @@ h2 { font-family: var(--display); font-weight: 600; font-size: 22px; letter-spac
   .decision-bar { animation: db-in .18s ease-out; }
   @keyframes db-in { from { transform: translateY(100%); } to { transform: none; } }
 }
-@media (max-width: 900px) { .section-rail { display: none; } }
+
+/* ── Run shell (three-zone layout) ─────────────────────────────────────── */
+.run-status-bar {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 14px;
+  padding: 10px 14px; margin-bottom: 16px;
+  background: var(--panel); border: 1px solid var(--line); border-radius: 10px;
+  font-family: var(--mono); font-size: 12px; font-variant-numeric: tabular-nums;
+}
+.run-status-bar .sb-app {
+  font-family: var(--sans); font-weight: 600; font-size: 14px; color: var(--ink);
+  margin-right: auto;
+}
+.run-status-bar .sb-cell { color: var(--dim); }
+.run-status-bar .sb-cell.faint { color: var(--faint); }
+.run-status-bar .sb-status { color: var(--ink); }
+.run-status-bar .sb-cta {
+  font-family: var(--mono); font-size: 12px; color: var(--brand);
+  background: none; border: none; padding: 0; cursor: pointer; text-decoration: none;
+}
+.run-status-bar .sb-cta:hover { text-decoration: underline; }
+
+.run-shell { display: grid; grid-template-columns: 1fr; gap: 20px; align-items: start; padding-bottom: 88px; }
+@media (min-width: 900px) {
+  .run-shell { grid-template-columns: 200px minmax(0, 1fr); }
+}
+.rail-group { display: flex; flex-direction: column; gap: 2px; margin-bottom: 12px; }
+.rail-group-label {
+  font-family: var(--mono); font-size: 10px; letter-spacing: 0.08em;
+  text-transform: uppercase; color: var(--faint); padding: 4px 10px 2px;
+}
+/* the rail buttons reuse .rail-link; reset button chrome so they match the old anchors */
+.section-rail .rail-link {
+  display: block; width: 100%; text-align: left; background: none; cursor: pointer;
+  font-family: var(--mono); font-size: 12px;
+}
+.run-detail-pane { min-width: 0; }
+
+/* Below the rail breakpoint, the rail lays out as a horizontal wrap of the same
+   buttons (no <select>) so the keyboard model and tests are identical. */
+@media (max-width: 899px) {
+  .section-rail { flex-direction: row; flex-wrap: wrap; position: static; }
+  .rail-group { flex-direction: row; flex-wrap: wrap; align-items: center; margin-bottom: 6px; }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .run-detail-pane { animation: pane-in .16s ease-out; }
+  @keyframes pane-in { from { opacity: 0; } to { opacity: 1; } }
+}
