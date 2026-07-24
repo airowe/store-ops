@@ -82,4 +82,42 @@ describe("<AppDetailView />", () => {
     await waitFor(() => screen.getByText("Acme"));
     expect(screen.queryByTestId("conversion")).toBeNull();
   });
+
+  it("renders store tabs with App Store active and Google Play behind a connect chip", async () => {
+    renderView(makeClient());
+    await waitFor(() => screen.getByText("Acme"));
+    const tabs = screen.getByTestId("store-tabs");
+    expect(tabs).toHaveTextContent("App Store");
+    expect(tabs).toHaveTextContent("Google Play");
+    expect(tabs).toHaveTextContent("connect");
+  });
+
+  it("metric band shows the strongest measured lead rank from deltas, honestly", async () => {
+    const deltas = {
+      entries: [
+        { keyword: "weather", previous: 20, current: 8, delta: 12, direction: "up" },
+        { keyword: "forecast", previous: 6, current: 4, delta: 2, direction: "up" }, // strongest current
+      ],
+    };
+    renderView(makeClient({ deltas }));
+    await waitFor(() => screen.getByText("Acme"));
+    // scope to the lead-rank tile — "#4" also appears in the rank-movement rows below
+    const leadTile = screen.getByTestId("lead-rank-tile");
+    expect(leadTile).toHaveTextContent("#4"); // forecast (#4) beats weather (#8)
+    expect(leadTile).toHaveTextContent("↑2");
+    expect(leadTile).toHaveTextContent("forecast");
+  });
+
+  it("renders an unmeasured lead rank as '—', never a fabricated number", async () => {
+    // no deltas → nothing measured → the tile must show the em dash
+    renderView(makeClient({ deltas: { entries: [] } }));
+    await waitFor(() => screen.getByText("Acme"));
+    expect(screen.getByText("no keyword measured yet")).toBeInTheDocument();
+  });
+
+  it("shows the measured conversion rate in the metric band when analytics exist", async () => {
+    const engagement = { state: "measured", latestConversion: { date: "2026-07-02", rate: 0.042 }, movements: [], days: 2 };
+    renderView(makeClient({ engagement }));
+    await waitFor(() => expect(screen.getByTestId("conversion-tile")).toHaveTextContent("4.2%"));
+  });
 });
