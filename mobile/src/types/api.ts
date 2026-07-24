@@ -434,7 +434,7 @@ export type AscCredentialBody = {
 // ── Push to App Store Connect (#270) — Apple's verdict, verbatim ───────────────
 /** POST /runs/:id/asc/push — staged fields, or Apple's refusal verbatim. */
 export type AscPushResult =
-  | { ok: true; versionId: string; localizationId: string; fieldsPushed: string[] }
+  | { ok: true; versionId: string; localizationId: string; fieldsPushed: string[]; partialFailure?: string }
   | { ok: false; reason: string };
 /** POST /runs/:id/asc/create-version (#34) — the created draft, or Apple's refusal verbatim. */
 export type AscCreateVersionResult =

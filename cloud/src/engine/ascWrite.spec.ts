@@ -7,6 +7,7 @@ import {
   pickEditableVersion,
   pickReadableVersion,
   buildLocalizationPatch,
+  buildAppInfoLocalizationPatch,
   pickLocalization,
   applyAscMetadata,
   readAscLocalization,
@@ -262,31 +263,65 @@ describe("buildLocalizationPatch", () => {
     expect(body.data.id).toBe("LOC123");
   });
 
-  it("maps copy fields to the ASC attribute names", () => {
+  it("maps the VERSION-localization fields to the ASC attribute names", () => {
     const a = buildLocalizationPatch("LOC123", copy).data.attributes;
-    expect(a.name).toBe(copy.name);
-    expect(a.subtitle).toBe(copy.subtitle);
     expect(a.keywords).toBe(copy.keywords);
     expect(a.promotionalText).toBe(copy.promo); // promo → promotionalText
     expect(a.description).toBe(copy.description);
     expect(a.whatsNew).toBe(copy.whatsNew); // release notes (#46)
   });
 
+  it("NEVER puts name/subtitle on the version localization — ASC 409s them here (they live on appInfoLocalizations)", () => {
+    const a = buildLocalizationPatch("LOC123", copy).data.attributes;
+    expect("name" in a).toBe(false);
+    expect("subtitle" in a).toBe(false);
+  });
+
   it("omits attributes that are absent in the copy (never sends empty over the real value)", () => {
-    const minimal: CopyFields = { name: "X", subtitle: "Y", keywords: "z" };
+    const minimal: CopyFields = { name: "", subtitle: "", keywords: "z" };
     const a = buildLocalizationPatch("LOC123", minimal).data.attributes;
-    expect(a.name).toBe("X");
+    expect(a.keywords).toBe("z");
     expect("promotionalText" in a).toBe(false);
     expect("description" in a).toBe(false);
     expect("whatsNew" in a).toBe(false); // release notes omitted when absent (#46)
   });
 
   it("omits empty-string fields too (don't wipe a live field with a blank)", () => {
-    const withBlanks: CopyFields = { name: "X", subtitle: "", keywords: "" };
+    const withBlanks: CopyFields = { name: "", subtitle: "", keywords: "meditation", promo: "", description: "" };
     const a = buildLocalizationPatch("LOC123", withBlanks).data.attributes;
-    expect(a.name).toBe("X");
-    expect("subtitle" in a).toBe(false);
+    expect(a.keywords).toBe("meditation");
+    expect("promotionalText" in a).toBe(false);
+    expect("description" in a).toBe(false);
+  });
+});
+
+// ── buildAppInfoLocalizationPatch: name/subtitle → the CORRECT ASC resource ──
+describe("buildAppInfoLocalizationPatch", () => {
+  it("targets the appInfoLocalizations resource with the given id", () => {
+    const body = buildAppInfoLocalizationPatch("AIL1", { name: "Calm", subtitle: "Sleep", keywords: "" });
+    expect(body.data.type).toBe("appInfoLocalizations");
+    expect(body.data.id).toBe("AIL1");
+  });
+
+  it("carries ONLY name + subtitle (never version-level fields)", () => {
+    const a = buildAppInfoLocalizationPatch("AIL1", {
+      name: "Calm",
+      subtitle: "Sleep & focus",
+      keywords: "meditation,sleep",
+      description: "desc",
+      whatsNew: "notes",
+    }).data.attributes;
+    expect(a.name).toBe("Calm");
+    expect(a.subtitle).toBe("Sleep & focus");
     expect("keywords" in a).toBe(false);
+    expect("description" in a).toBe(false);
+    expect("whatsNew" in a).toBe(false);
+  });
+
+  it("omits blank/absent name & subtitle (never wipes a live field)", () => {
+    const a = buildAppInfoLocalizationPatch("AIL1", { name: "Calm", subtitle: "", keywords: "" }).data.attributes;
+    expect(a.name).toBe("Calm");
+    expect("subtitle" in a).toBe(false);
   });
 });
 
@@ -302,39 +337,123 @@ describe("applyAscMetadata — version → localization → PATCH", () => {
   function makeFetch(opts: {
     versions: { id: string; attributes: { appStoreState: string } }[];
     locales: { id: string; attributes: { locale: string } }[];
+    /** appInfoLocalizations the appInfos read returns (for name/subtitle). */
+    appInfoLocales?: { id: string; locale: string }[];
     patchStatus?: number;
+    /** status for the /appInfoLocalizations/{id} PATCH (defaults to patchStatus/200). */
+    appInfoPatchStatus?: number;
   }) {
     const calls: { url: string; method: string; body?: string }[] = [];
+    const appInfoLocales = opts.appInfoLocales ?? [{ id: "AIL_US", locale: "en-US" }];
     const fetchFn = async (url: string, init?: RequestInit) => {
+      const method = init?.method ?? "GET";
       const reqBody = init?.body as string | undefined;
-      calls.push(reqBody === undefined ? { url, method: init?.method ?? "GET" } : { url, method: init?.method ?? "GET", body: reqBody });
+      calls.push(reqBody === undefined ? { url, method } : { url, method, body: reqBody });
       if (url.includes("/appStoreVersions?")) return json({ data: opts.versions });
       if (url.includes("/appStoreVersionLocalizations?")) return json({ data: opts.locales });
       if (url.includes("/appStoreVersionLocalizations/")) {
         return json({ data: {} }, opts.patchStatus ?? 200);
+      }
+      // appInfos read (?include=appInfoLocalizations…): resolve name/subtitle target.
+      if (url.includes("/appInfos?")) {
+        return json({
+          data: [
+            {
+              id: "AI1",
+              relationships: {
+                appInfoLocalizations: { data: appInfoLocales.map((l) => ({ type: "appInfoLocalizations", id: l.id })) },
+              },
+            },
+          ],
+          included: appInfoLocales.map((l) => ({
+            type: "appInfoLocalizations",
+            id: l.id,
+            attributes: { locale: l.locale },
+          })),
+        });
+      }
+      if (url.includes("/appInfoLocalizations/")) {
+        return json({ data: {} }, opts.appInfoPatchStatus ?? opts.patchStatus ?? 200);
       }
       return json({}, 404);
     };
     return { fetchFn, calls };
   }
 
-  it("walks versions → localizations → PATCH and reports pushed fields", async () => {
+  it("PATCHes BOTH resources — keywords/desc to the version, name/subtitle to appInfo — and reports both", async () => {
     const { fetchFn, calls } = makeFetch({
       versions: [
         { id: "V_LIVE", attributes: { appStoreState: "READY_FOR_SALE" } },
         { id: "V_EDIT", attributes: { appStoreState: "PREPARE_FOR_SUBMISSION" } },
       ],
       locales: [{ id: "L_US", attributes: { locale: "en-US" } }],
+      appInfoLocales: [{ id: "AIL_US", locale: "en-US" }],
     });
     const r = await applyAscMetadata(fetchFn, { token: "JWT", appId: "APP1", copy, locale: "en-US" });
     expect(r.ok).toBe(true);
     expect(r.versionId).toBe("V_EDIT");
     expect(r.localizationId).toBe("L_US");
-    expect(r.fieldsPushed).toContain("name");
-    // the PATCH was the final call, method PATCH, targeting the localization
-    const patch = calls.find((c) => c.method === "PATCH");
-    expect(patch?.url).toContain("/appStoreVersionLocalizations/L_US");
-    expect(patch?.body).toContain('"name":"Calm"');
+    // both resources' fields land
+    expect(r.fieldsPushed).toEqual(expect.arrayContaining(["keywords", "description", "name", "subtitle"]));
+
+    const patches = calls.filter((c) => c.method === "PATCH");
+    const versionPatch = patches.find((c) => c.url.includes("/appStoreVersionLocalizations/L_US"));
+    const appInfoPatch = patches.find((c) => c.url.includes("/appInfoLocalizations/AIL_US"));
+    // the version PATCH carries keywords, NOT name (the 409 the bug caused)
+    expect(versionPatch?.body).toContain('"keywords"');
+    expect(versionPatch?.body).not.toContain('"name"');
+    // name/subtitle go to the appInfo resource
+    expect(appInfoPatch?.body).toContain('"name":"Calm"');
+    expect(appInfoPatch?.body).toContain('"subtitle":"Sleep & focus"');
+  });
+
+  it("REPRODUCTION: a name change no longer 409s on the version localization", async () => {
+    // The failing case from the field: version localization PATCH would 409 if it
+    // carried `name`. Assert it doesn't carry name, so ASC won't reject it.
+    const { fetchFn, calls } = makeFetch({
+      versions: [{ id: "V_EDIT", attributes: { appStoreState: "PREPARE_FOR_SUBMISSION" } }],
+      locales: [{ id: "L_US", attributes: { locale: "en-US" } }],
+    });
+    await applyAscMetadata(fetchFn, { token: "JWT", appId: "APP1", copy: { name: "New Name", subtitle: "", keywords: "a,b" }, locale: "en-US" });
+    const versionPatch = calls.find((c) => c.method === "PATCH" && c.url.includes("/appStoreVersionLocalizations/"));
+    expect(versionPatch?.body).not.toContain('"name"');
+  });
+
+  it("keywords-only change → ONLY the version PATCH (no appInfo access at all)", async () => {
+    const { fetchFn, calls } = makeFetch({
+      versions: [{ id: "V_EDIT", attributes: { appStoreState: "PREPARE_FOR_SUBMISSION" } }],
+      locales: [{ id: "L_US", attributes: { locale: "en-US" } }],
+    });
+    const r = await applyAscMetadata(fetchFn, { token: "JWT", appId: "APP1", copy: { name: "", subtitle: "", keywords: "a,b,c" }, locale: "en-US" });
+    expect(r.fieldsPushed).toEqual(["keywords"]);
+    expect(calls.some((c) => c.url.includes("/appInfos?"))).toBe(false); // never touched appInfo
+    expect(calls.filter((c) => c.method === "PATCH")).toHaveLength(1);
+  });
+
+  it("name-only change → ONLY the appInfo PATCH", async () => {
+    const { fetchFn, calls } = makeFetch({
+      versions: [{ id: "V_EDIT", attributes: { appStoreState: "PREPARE_FOR_SUBMISSION" } }],
+      locales: [{ id: "L_US", attributes: { locale: "en-US" } }],
+    });
+    const r = await applyAscMetadata(fetchFn, { token: "JWT", appId: "APP1", copy: { name: "Only Name", subtitle: "", keywords: "" }, locale: "en-US" });
+    expect(r.fieldsPushed).toEqual(["name"]);
+    const patches = calls.filter((c) => c.method === "PATCH");
+    expect(patches).toHaveLength(1);
+    expect(patches[0]?.url).toContain("/appInfoLocalizations/AIL_US");
+  });
+
+  it("version PATCH ok + appInfo PATCH 409 → partial success, reports what landed, token never leaked", async () => {
+    const { fetchFn } = makeFetch({
+      versions: [{ id: "V_EDIT", attributes: { appStoreState: "PREPARE_FOR_SUBMISSION" } }],
+      locales: [{ id: "L_US", attributes: { locale: "en-US" } }],
+      appInfoPatchStatus: 409,
+    });
+    const r = await applyAscMetadata(fetchFn, { token: "SECRET_JWT", appId: "APP1", copy, locale: "en-US" });
+    expect(r.ok).toBe(true);
+    expect(r.fieldsPushed).toEqual(expect.arrayContaining(["keywords", "description"]));
+    expect(r.fieldsPushed).not.toContain("name"); // name/subtitle did NOT land
+    expect(r.partialFailure).toBeDefined();
+    expect(r.partialFailure).not.toContain("SECRET_JWT");
   });
 
   it("dryRun runs every lookup but sends NO PATCH, and returns the exact body", async () => {
@@ -357,12 +476,15 @@ describe("applyAscMetadata — version → localization → PATCH", () => {
     expect(r.dryRun).toBe(true);
     expect(r.versionId).toBe("V_EDIT");
     expect(r.localizationId).toBe("L_US");
-    expect(r.fieldsPushed).toContain("keywords");
-    // ...and the exact body we WOULD send is handed back for inspection.
-    expect((r.patchBody as { data: { attributes: Record<string, string> } }).data.attributes).toMatchObject({
-      name: "Calm",
-      keywords: "meditation,sleep",
-    });
+    expect(r.fieldsPushed).toEqual(expect.arrayContaining(["keywords", "name", "subtitle"]));
+    // ...and the exact bodies we WOULD send (both resources) are handed back.
+    const body = r.patchBody as {
+      versionPatch?: { data: { attributes: Record<string, string> } };
+      appInfoPatch?: { data: { attributes: Record<string, string> } };
+    };
+    expect(body.versionPatch?.data.attributes).toMatchObject({ keywords: "meditation,sleep" });
+    expect(body.versionPatch?.data.attributes).not.toHaveProperty("name");
+    expect(body.appInfoPatch?.data.attributes).toMatchObject({ name: "Calm", subtitle: "Sleep & focus" });
     // The one guarantee that matters: NOTHING was PATCHed.
     expect(calls.find((c) => c.method === "PATCH")).toBeUndefined();
   });

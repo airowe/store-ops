@@ -341,7 +341,9 @@ export function RunView({
           {pushResult ? (
             <p className="micro" data-testid="push-result">
               {pushResult.ok
-                ? `Staged on your editable version: ${pushResult.fieldsPushed.join(", ")}.`
+                ? pushResult.partialFailure
+                  ? `Partly staged: ${pushResult.fieldsPushed.join(", ")}. App Store Connect refused the rest: ${pushResult.partialFailure}`
+                  : `Staged on your editable version: ${pushResult.fieldsPushed.join(", ")}.`
                 : `App Store Connect refused the push: ${pushResult.reason}`}
             </p>
           ) : null}

@@ -24,6 +24,7 @@ function richSnapshot(): AscSnapshot {
     appInfo: {
       locales: [
         {
+          id: "AIL_US",
           locale: "en-US",
           name: "Weatherly",
           subtitle: "Hyperlocal forecasts",

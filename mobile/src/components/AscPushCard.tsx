@@ -86,10 +86,15 @@ export function AscPushCard({
         <AppText
           kind="micro"
           testID="push-result"
-          style={{ color: result.ok ? palette.signal : palette.bad, marginTop: spacing.sm }}
+          style={{
+            color: result.ok && !result.partialFailure ? palette.signal : palette.bad,
+            marginTop: spacing.sm,
+          }}
         >
           {result.ok
-            ? `Staged on your editable version: ${result.fieldsPushed.join(", ")}.`
+            ? result.partialFailure
+              ? `Partly staged: ${result.fieldsPushed.join(", ")}. App Store Connect refused the rest: ${result.partialFailure}`
+              : `Staged on your editable version: ${result.fieldsPushed.join(", ")}.`
             : `App Store Connect refused the push: ${result.reason}`}
         </AppText>
       ) : null}

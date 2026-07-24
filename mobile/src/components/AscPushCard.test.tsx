@@ -58,6 +58,25 @@ describe("AscPushCard", () => {
     expect(screen.getByTestId("push-result")).not.toHaveTextContent(/Staged|success/i);
   });
 
+  it("surfaces a PARTIAL push honestly — landed fields AND the refused rest, never a clean 'Staged'", async () => {
+    // keywords/description landed on the version localization; name/subtitle were
+    // refused on appInfoLocalizations. The card must not read as a clean success.
+    const { client } = fakeClient({
+      push: {
+        ok: true,
+        versionId: "V1",
+        localizationId: "L1",
+        fieldsPushed: ["keywords", "description"],
+        partialFailure: "update name/subtitle failed (409)",
+      },
+    });
+    render(<AscPushCard client={client} runId="r1" approved={true} storedKeyId="KID" />);
+    fireEvent.press(screen.getByTestId("asc-push"));
+    await waitFor(() => expect(screen.getByTestId("push-result")).toHaveTextContent(/Partly staged/));
+    expect(screen.getByTestId("push-result")).toHaveTextContent(/keywords, description/);
+    expect(screen.getByTestId("push-result")).toHaveTextContent(/refused the rest/);
+  });
+
   it("offers create-version recovery on a refused push, then lets you push again", async () => {
     const { client, bodies } = fakeClient({ push: { ok: false, reason: "no editable version" } });
     render(<AscPushCard client={client} runId="r1" approved={true} storedKeyId="KID" />);
