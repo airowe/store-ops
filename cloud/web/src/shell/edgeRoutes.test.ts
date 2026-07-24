@@ -58,4 +58,8 @@ describe("resolveSurface (strangler edge map)", () => {
   it("owns /broadcast (owner-only composer)", () => {
     expect(resolveSurface("/broadcast", OWNED_PATHS)).toBe("web");
   });
+
+  it("owns /onboarding (guided setup stepper)", () => {
+    expect(resolveSurface("/onboarding", OWNED_PATHS)).toBe("web");
+  });
 });
