@@ -11,6 +11,7 @@ import { SettingsRoute } from "./routes/settings.js";
 import { AppDetailRoute } from "./routes/appDetail.js";
 import { WarRoomRoute } from "./routes/warRoom.js";
 import { RunRoute } from "./routes/run.js";
+import { OnboardingRoute } from "./routes/onboarding.js";
 import { LandingRoute, LoginRoute, PreviewRoute, ProofRoute, BroadcastRoute, PrivacyRoute } from "./routes/public.js";
 
 const rootRoute = createRootRoute({ component: ShellLayout });
@@ -22,6 +23,7 @@ const settingsRoute = createRoute({ getParentRoute: () => rootRoute, path: "/set
 const appDetailRoute = createRoute({ getParentRoute: () => rootRoute, path: "/apps/$id", component: AppDetailRoute });
 const warRoomRoute = createRoute({ getParentRoute: () => rootRoute, path: "/apps/$id/war-room", component: WarRoomRoute });
 const runRoute = createRoute({ getParentRoute: () => rootRoute, path: "/runs/$id", component: RunRoute });
+const onboardingRoute = createRoute({ getParentRoute: () => rootRoute, path: "/onboarding", component: OnboardingRoute });
 const loginRoute = createRoute({ getParentRoute: () => rootRoute, path: "/login", component: LoginRoute });
 const previewRoute = createRoute({ getParentRoute: () => rootRoute, path: "/preview", component: PreviewRoute });
 const proofRoute = createRoute({ getParentRoute: () => rootRoute, path: "/proof", component: ProofRoute });
@@ -36,6 +38,7 @@ const routeTree = rootRoute.addChildren([
   appDetailRoute,
   warRoomRoute,
   runRoute,
+  onboardingRoute,
   loginRoute,
   previewRoute,
   proofRoute,
