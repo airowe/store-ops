@@ -217,7 +217,8 @@ export function RunView({
   if (pending) {
     return (
       <div className="run-layout">
-        <h1>Proposed changes</h1>
+        {/* Status first, then the verdict heading — you should know WHICH run and
+            what state it's in before reading the diff. */}
         <RunStatusBar
           appName={r.audit?.liveName ?? r.currentCopy.name ?? "—"}
           grade={r.audit?.screenshots?.grade ?? null}
@@ -225,6 +226,11 @@ export function RunView({
           status={run.status}
           {...(onConnect ? { onConnectAnalytics: onConnect } : {})}
         />
+        <h1 className="run-title">Proposed changes</h1>
+        <p className="run-lede">
+          Review the diff below. Approving reveals the push commands — ShipASO never ships to a live
+          store; you run them yourself.
+        </p>
         <DecisionSummary current={r.currentCopy} proposed={r.proposedCopy} findings={r.findings ?? []} />
         <div className="run-shell">
           <SectionRail items={railItems} activeId={activeId} onSelect={setActiveId} />
@@ -232,19 +238,18 @@ export function RunView({
         </div>
         {!tierLimited ? (
           <div className="decision-bar" data-testid="decision-bar">
-            <span className="db-summary micro muted">
-              {(() => {
-                const added = (r.proposedCopy.keywords ?? "").split(",").map((s) => s.trim()).filter(Boolean).length;
-                const needsYou = r.findings?.filter((f) => !f.context && (f.severity === "critical" || f.severity === "warn")).length ?? 0;
-                return `${needsYou} to review · ${added} keywords`;
-              })()}
+            <span className="db-summary">
+              <span className="db-title">Approve this run?</span>
+              <span className="db-note">
+                Approval only reveals the push handoff — it never ships anything.
+              </span>
             </span>
             <span className="db-actions">
               <button type="button" className="btn ghost" data-testid="reject" disabled={decide.isPending} onClick={() => decide.mutate("reject")}>
                 Reject
               </button>
               <button type="button" className="btn primary" data-testid="approve" disabled={decide.isPending} onClick={() => decide.mutate("approve")}>
-                {decide.isPending ? "Approving…" : "Approve changes"}
+                {decide.isPending ? "Approving…" : "Approve & reveal push"}
               </button>
             </span>
           </div>
