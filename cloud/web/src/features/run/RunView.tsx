@@ -217,6 +217,7 @@ export function RunView({
   if (pending) {
     return (
       <div className="run-layout">
+        <h1>Proposed changes</h1>
         <RunStatusBar
           appName={r.audit?.liveName ?? r.currentCopy.name ?? "—"}
           grade={r.audit?.screenshots?.grade ?? null}
