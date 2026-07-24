@@ -54,6 +54,8 @@ describe("theme tokens", () => {
     ["signal-dim", "signalDim"],
     ["brand", "brand"],
     ["warn", "warn"],
+    ["warn-glow", "warnGlow"],
+    ["warn-border", "warnBorder"],
     ["bad", "bad"],
   ] as const)("--%s matches palette.%s", (cssName, key) => {
     const fromCss = cssVar(cssName);
@@ -78,6 +80,8 @@ describe("theme tokens", () => {
     ["signal-dim", "signalDim"],
     ["brand", "brand"],
     ["warn", "warn"],
+    ["warn-glow", "warnGlow"],
+    ["warn-border", "warnBorder"],
     ["bad", "bad"],
   ] as const)("light --%s matches lightPalette.%s", (cssName, key) => {
     const fromCss = lightVar(cssName);

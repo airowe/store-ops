@@ -23,11 +23,8 @@ export function AwaitingBanner({ count, onReview }: { count: number; onReview: (
           flexDirection: "row",
           alignItems: "center",
           gap: spacing.md,
-          // The palette has no warn-glow/border pair (they're web-shell-scoped),
-          // so tint from `warn` itself — the panel keeps the surface legible in
-          // both themes while the amber border carries the "needs you" signal.
-          backgroundColor: palette.panel,
-          borderColor: palette.warn,
+          backgroundColor: palette.warnGlow,
+          borderColor: palette.warnBorder,
           borderWidth: 1,
           borderRadius: radius.base,
           padding: spacing.lg,
