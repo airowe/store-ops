@@ -18,6 +18,7 @@ import type { CSSProperties } from "react";
 import { runStatusLabel } from "../../lib/status.js";
 import { annotationKey } from "../../lib/annotationKey.js";
 import { RankChart } from "../charts/RankChart.js";
+import { Gauge, coverage } from "../charts/Gauge.js";
 import { RankMovementRow } from "./RankMovementRow.js";
 import { ConversionCard } from "./ConversionCard.js";
 import { AnalyticsCard } from "./AnalyticsCard.js";
@@ -62,6 +63,9 @@ export function AppDetailView({
     ? measured.reduce((best, e) => ((e.current as number) < (best.current as number) ? e : best))
     : null;
   const awaiting = runs.some((r) => r.status === "awaiting_approval");
+
+  // Keyword coverage from the tracked deltas — N of the measured terms in top 10.
+  const cov = coverage(entries.map((e) => e.current));
 
   // Honest conversion for the metric tile: the measured latest rate, or null → "—".
   const engagement = engagementQ.data;
@@ -130,6 +134,23 @@ export function AppDetailView({
           </div>
           <div className="metric-sub">
             {conversionRate != null ? "downloads ÷ page views" : "no analytics ingested yet"}
+          </div>
+        </div>
+        <div className="metric-tile metric-tile--gauge" data-testid="coverage-tile">
+          <Gauge fraction={cov.fraction} label={cov.label} />
+          <div>
+            <div className="metric-label mono">Coverage</div>
+            <div className="metric-sub">
+              {cov.measured ? (
+                <>
+                  {cov.inTop10} of {cov.measured}
+                  <br />
+                  in top 10
+                </>
+              ) : (
+                "none measured yet"
+              )}
+            </div>
           </div>
         </div>
       </div>

@@ -8,12 +8,15 @@
  * ported dashboard — the redesign changes presentation, not the data contract.
  */
 import { useState } from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { ApiClient, AppListItem, Candidate } from "@shipaso/api";
-import { ApiError, approveAllRuns, connectApp, getApps, resolveApps } from "@shipaso/api";
+import { ApiError, approveAllRuns, connectApp, getApps, getDeltas, getRanks, resolveApps } from "@shipaso/api";
 import { formatRank } from "@shipaso/honesty";
 import { runStatusLabel } from "../../lib/status.js";
+import { Sparkline } from "../charts/Sparkline.js";
+import { MultiLineChart, SERIES_COLORS } from "../charts/MultiLineChart.js";
 import { greeting, kpis, heroApp, pendingCount } from "./dashboardModel.js";
+import { movers, series, type FleetDeltas, type FleetRanks } from "./fleetModel.js";
 
 export function DashboardView({ client, onOpen }: { client: ApiClient; onOpen: (id: string) => void }) {
   const qc = useQueryClient();
@@ -128,7 +131,10 @@ export function DashboardView({ client, onOpen }: { client: ApiClient; onOpen: (
       ) : null}
 
       {/* hero decision card */}
-      {hero ? <HeroCard app={hero} onOpen={onOpen} /> : null}
+      {hero ? <HeroCard client={client} app={hero} onOpen={onOpen} /> : null}
+
+      {/* portfolio rank trend + keyword movers (fleet-wide, honest) */}
+      <PortfolioSection client={client} apps={apps} />
 
       {/* tracked apps */}
       <div className="dash-section-head">
@@ -152,9 +158,92 @@ function initialOf(name: string): string {
   return (name.trim()[0] ?? "·").toUpperCase();
 }
 
-function HeroCard({ app, onOpen }: { app: AppListItem; onOpen: (id: string) => void }) {
+/**
+ * Portfolio rank trend + keyword movers — fleet-wide, from per-app getRanks /
+ * getDeltas. Bounded to the first few apps so a large fleet doesn't fan out
+ * unboundedly. Honest: the chart only draws apps with a real trend, the movers
+ * list only shows measured moves, and each panel hides itself when it has
+ * nothing real to show (never an empty axis or a fabricated row).
+ */
+function PortfolioSection({ client, apps }: { client: ApiClient; apps: AppListItem[] }) {
+  const fleet = apps.slice(0, 4); // cap the fan-out; the chart legend stays legible
+  const rankQs = useQueries({
+    queries: fleet.map((a) => ({
+      queryKey: ["ranks", a.id],
+      queryFn: () => getRanks(client, a.id),
+      retry: false,
+    })),
+  });
+  const deltaQs = useQueries({
+    queries: fleet.map((a) => ({
+      queryKey: ["deltas", a.id],
+      queryFn: () => getDeltas(client, a.id),
+      retry: false,
+    })),
+  });
+
+  const fleetRanks: FleetRanks = fleet.map((app, i) => ({ app, points: rankQs[i]?.data?.points ?? [] }));
+  const fleetDeltas: FleetDeltas = fleet.map((app, i) => ({ app, entries: deltaQs[i]?.data?.entries ?? [] }));
+
+  const chartSeries = series(fleetRanks).map((s, i) => ({ ...s, color: SERIES_COLORS[i % SERIES_COLORS.length]! }));
+  const topMovers = movers(fleetDeltas);
+
+  const hasChart = chartSeries.some((s) => s.points.filter((r) => typeof r === "number").length >= 2);
+  const hasMovers = topMovers.length > 0;
+  if (!hasChart && !hasMovers) return null;
+
+  return (
+    <div className="portfolio-grid" data-testid="portfolio-section">
+      {hasChart ? (
+        <div className="panel">
+          <div className="panel-title">Portfolio rank trend</div>
+          <p className="micro" style={{ marginBottom: 12 }}>Avg organic rank across tracked keywords · lower is better</p>
+          <MultiLineChart series={chartSeries} />
+          <div className="portfolio-legend">
+            {chartSeries.map((s) => (
+              <span key={s.label} className="legend-item">
+                <span className="legend-swatch" style={{ background: s.color }} />
+                {s.label}
+              </span>
+            ))}
+          </div>
+        </div>
+      ) : null}
+      {hasMovers ? (
+        <div className="panel">
+          <div className="panel-title">Keyword movers</div>
+          <p className="micro" style={{ marginBottom: 12 }}>Biggest measured moves across your fleet</p>
+          <div className="movers-list">
+            {topMovers.map((m) => (
+              <div key={`${m.app}-${m.keyword}`} className="mover-row" data-testid={`mover-${m.keyword}`}>
+                <div className="mover-id">
+                  <div className="mover-kw">{m.keyword}</div>
+                  <div className="mover-app mono">{m.app}</div>
+                </div>
+                <div className="mover-bar-track">
+                  <div
+                    className={"mover-bar " + (m.delta > 0 ? "up" : "down")}
+                    style={{ width: `${Math.round(m.magnitude * 100)}%` }}
+                  />
+                </div>
+                <span className={"mover-delta mono " + (m.delta > 0 ? "up" : "down")}>
+                  {m.delta > 0 ? `↑${m.delta}` : `↓${Math.abs(m.delta)}`}
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function HeroCard({ client, app, onOpen }: { client: ApiClient; app: AppListItem; onOpen: (id: string) => void }) {
   const rank = app.rank_summary;
   const awaiting = app.latest_run?.status === "awaiting_approval";
+  // The hero's own rank trend — best-effort; a failure just hides the sparkline.
+  const ranksQ = useQuery({ queryKey: ["ranks", app.id], queryFn: () => getRanks(client, app.id), retry: false });
+  const sparkPoints = (ranksQ.data?.points ?? []).map((p) => ({ rank: p.rank }));
   return (
     <div className="hero-card" data-testid="hero-card">
       <div className="hero-left">
@@ -191,6 +280,9 @@ function HeroCard({ app, onOpen }: { app: AppListItem; onOpen: (id: string) => v
         </div>
         <div className="hero-metric-sub">
           {rank?.lead_keyword ? `“${rank.lead_keyword}”` : "no lead keyword measured yet"}
+        </div>
+        <div className="hero-spark">
+          <Sparkline points={sparkPoints} width={200} height={44} />
         </div>
       </div>
     </div>
