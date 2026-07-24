@@ -10,6 +10,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "../../src/auth/AuthProvider.js";
 import { connectApp, listApps } from "../../src/api/endpoints.js";
 import { AppCard } from "../../src/components/AppCard.js";
+import { AwaitingBanner } from "../../src/components/AwaitingBanner.js";
 import { ConnectPicker } from "../../src/components/ConnectPicker.js";
 import { EmptyState } from "../../src/components/EmptyState.js";
 import { Grid } from "../../src/components/Grid.js";
@@ -50,6 +51,15 @@ export default function Dashboard() {
         </View>
       </View>
       {me?.email ? <AppText kind="micro">{me.email}{me.via === "demo" ? " · demo" : ""}</AppText> : null}
+
+      {/* The #1 job: surface runs waiting on the user, above everything else. */}
+      <AwaitingBanner
+        count={(apps.data?.apps ?? []).filter((a) => a.latest_run?.status === "awaiting_approval").length}
+        onReview={() => {
+          const first = (apps.data?.apps ?? []).find((a) => a.latest_run?.status === "awaiting_approval");
+          if (first) router.push(`/(app)/apps/${first.id}`);
+        }}
+      />
 
       <ConnectPicker client={client} onConnect={(c) => connect.mutate(c)} />
       {connect.isPending ? <AppText kind="dim">Connecting…</AppText> : null}
