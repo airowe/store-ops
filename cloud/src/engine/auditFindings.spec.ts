@@ -1303,3 +1303,94 @@ describe("Studio grade projection (#26)", () => {
     expect(got).not.toContain("studio_grade_projection");
   });
 });
+
+// ── #324 Tier 1: findings deep-link into ASC for THIS app ────────────────────
+//
+// "→ do X in App Store Connect" is an instruction, not an action. Every such
+// finding should carry a link to the app's own ASC area. The honesty constraint
+// is the interesting half: where we have no VERIFIED route, we fall back to the
+// generic console link rather than inventing a plausible sub-path.
+describe("#324 — finding actions (Tier 1 deep links)", () => {
+  const withTrackId = (over: Partial<AuditFindingsInput> = {}) =>
+    input({ audit: { ...audit(), trackId: "6741457652" }, ...over });
+
+  it("an ASC-instruction finding carries an app-scoped deep link when the trackId is known", () => {
+    const snap = healthySnapshot();
+    snap.appInfo = { ...snap.appInfo!, secondaryCategory: undefined };
+    const f = byId(auditFindings(withTrackId({ snapshot: snap })), "secondary_category_missing");
+    expect(f?.action?.url).toBe("https://appstoreconnect.apple.com/apps/6741457652/appstore");
+  });
+
+  it("the action carries a label so the UI never has to invent link text", () => {
+    const snap = healthySnapshot();
+    snap.appInfo = { ...snap.appInfo!, secondaryCategory: undefined };
+    const f = byId(auditFindings(withTrackId({ snapshot: snap })), "secondary_category_missing");
+    expect(f?.action?.label).toBeTruthy();
+  });
+
+  it("falls back to the generic console link (never a fabricated route) with no trackId", () => {
+    const snap = healthySnapshot();
+    snap.appInfo = { ...snap.appInfo!, secondaryCategory: undefined };
+    const f = byId(auditFindings(input({ snapshot: snap })), "secondary_category_missing");
+    expect(f?.action?.url).toBe("https://appstoreconnect.apple.com");
+  });
+
+  it("marks whether the link is app-scoped, so the UI can be honest about precision", () => {
+    const snap = healthySnapshot();
+    snap.appInfo = { ...snap.appInfo!, secondaryCategory: undefined };
+    const scoped = byId(auditFindings(withTrackId({ snapshot: snap })), "secondary_category_missing");
+    const generic = byId(auditFindings(input({ snapshot: snap })), "secondary_category_missing");
+    expect(scoped?.action?.appScoped).toBe(true);
+    expect(generic?.action?.appScoped).toBe(false);
+  });
+
+  it("never attaches an action to a finding with no fix (healthy checks stay clean)", () => {
+    for (const f of auditFindings(withTrackId())) {
+      if (f.fix.trim() === "") expect(f.action).toBeUndefined();
+    }
+  });
+
+  it("every emitted action URL is https on Apple's console host — never anywhere else", () => {
+    const snap = healthySnapshot();
+    snap.appInfo = { ...snap.appInfo!, secondaryCategory: undefined };
+    snap.pricing = {
+      iaps: [{ id: "i", name: "Pro", productId: "p", state: "ACTIVE", promoted: false } as never],
+      pricing: { priceTier: "0.00 USD", baseTerritoryPrice: 0, baseTerritory: "USA" },
+    };
+    for (const f of auditFindings(withTrackId({ snapshot: snap }))) {
+      if (!f.action) continue;
+      expect(f.action.url.startsWith("https://appstoreconnect.apple.com")).toBe(true);
+    }
+  });
+
+  it("is deterministic — the same input yields deep-equal actions", () => {
+    expect(auditFindings(withTrackId())).toEqual(auditFindings(withTrackId()));
+  });
+});
+
+// ── #324 Tier 2: hand off to an existing ShipASO tool ────────────────────────
+describe("#324 — finding actions (Tier 2 in-product handoff)", () => {
+  const withTrackId = (over: Partial<AuditFindingsInput> = {}) =>
+    input({ audit: { ...audit(), trackId: "6741457652" }, ...over });
+
+  it("the PPO finding hands off to the in-product screenshot planner, not just ASC", () => {
+    const snap = healthySnapshot();
+    snap.experiments = { read: true, experiments: [] } as never;
+    const f = byId(auditFindings(withTrackId({ snapshot: snap })), "ppo_never_tested");
+    expect(f?.action?.tool).toBe("screenshots");
+  });
+
+  it("the CPP finding hands off to the in-product CPP set generator", () => {
+    const snap = healthySnapshot();
+    snap.customProductPages = { pages: [] };
+    const f = byId(auditFindings(withTrackId({ snapshot: snap })), "cpp_none");
+    expect(f?.action?.tool).toBe("cpp");
+  });
+
+  it("a finding with no in-product tool carries no tool — absence, never a wrong handoff", () => {
+    const snap = healthySnapshot();
+    snap.appInfo = { ...snap.appInfo!, secondaryCategory: undefined };
+    const f = byId(auditFindings(withTrackId({ snapshot: snap })), "secondary_category_missing");
+    expect(f?.action?.tool).toBeUndefined();
+  });
+});

@@ -135,3 +135,150 @@ describe("<FindingsCard />", () => {
     expect(screen.getByText("Healthy one")).toBeInTheDocument();
   });
 });
+
+// ── #324: a finding's fix must be an ACTION, not homework ───────────────────
+//
+// "→ do X in App Store Connect" leaves the customer to find the section
+// themselves. The engine now attaches an action; these pin that it renders as a
+// real link with real semantics, and that we never overstate its precision.
+describe("<FindingsCard /> — #324 finding actions", () => {
+  const withAction = (action: Finding["action"]): Finding => ({
+    id: "secondary_category_missing",
+    surface: "category",
+    severity: "warn",
+    impact: "ranking",
+    title: "No secondary category",
+    detail: "A secondary category opens another browse surface.",
+    fix: "Pick your most relevant secondary category in App Store Connect.",
+    ...(action ? { action } : {}),
+  });
+
+  it("renders the ASC action as a real anchor (native semantics, not a fake button)", () => {
+    render(
+      <FindingsCard
+        findings={[
+          withAction({
+            url: "https://appstoreconnect.apple.com/apps/12345/appstore",
+            label: "Open in App Store Connect →",
+            appScoped: true,
+          }),
+        ]}
+      />,
+    );
+    const link = screen.getByTestId("finding-action-secondary_category_missing");
+    expect(link.tagName).toBe("A");
+    expect(link).toHaveAttribute("href", "https://appstoreconnect.apple.com/apps/12345/appstore");
+  });
+
+  it("uses the server-authored label so the UI never invents the claim", () => {
+    render(
+      <FindingsCard
+        findings={[
+          withAction({
+            url: "https://appstoreconnect.apple.com/apps/12345/appstore",
+            label: "Open in App Store Connect →",
+            appScoped: true,
+          }),
+        ]}
+      />,
+    );
+    expect(screen.getByTestId("finding-action-secondary_category_missing")).toHaveTextContent(
+      "Open in App Store Connect",
+    );
+  });
+
+  it("opens externally without leaking the referrer", () => {
+    render(
+      <FindingsCard
+        findings={[
+          withAction({
+            url: "https://appstoreconnect.apple.com/apps/12345/appstore",
+            label: "Open in App Store Connect →",
+            appScoped: true,
+          }),
+        ]}
+      />,
+    );
+    const link = screen.getByTestId("finding-action-secondary_category_missing");
+    expect(link).toHaveAttribute("target", "_blank");
+    expect(link.getAttribute("rel")).toContain("noreferrer");
+  });
+
+  it("says so when the link is only the generic console — never implies app precision", () => {
+    render(
+      <FindingsCard
+        findings={[
+          withAction({
+            url: "https://appstoreconnect.apple.com",
+            label: "Go to App Store Connect →",
+            appScoped: false,
+          }),
+        ]}
+      />,
+    );
+    expect(screen.getByTestId("finding-action-note-secondary_category_missing")).toBeInTheDocument();
+  });
+
+  it("adds no such note when the link IS app-scoped", () => {
+    render(
+      <FindingsCard
+        findings={[
+          withAction({
+            url: "https://appstoreconnect.apple.com/apps/12345/appstore",
+            label: "Open in App Store Connect →",
+            appScoped: true,
+          }),
+        ]}
+      />,
+    );
+    expect(screen.queryByTestId("finding-action-note-secondary_category_missing")).not.toBeInTheDocument();
+  });
+
+  it("offers the in-product handoff when the finding has a tool, as a real button", () => {
+    const onTool = vi.fn();
+    render(
+      <FindingsCard
+        onTool={onTool}
+        findings={[
+          {
+            ...withAction({
+              url: "https://appstoreconnect.apple.com/apps/12345/distribution",
+              label: "Open in App Store Connect →",
+              appScoped: true,
+              tool: "screenshots",
+            }),
+            id: "ppo_never_tested",
+          },
+        ]}
+      />,
+    );
+    const btn = screen.getByTestId("finding-tool-ppo_never_tested");
+    expect(btn.tagName).toBe("BUTTON");
+    fireEvent.click(btn);
+    expect(onTool).toHaveBeenCalledWith("screenshots");
+  });
+
+  it("renders no tool handoff when the finding carries no tool", () => {
+    render(
+      <FindingsCard
+        onTool={vi.fn()}
+        findings={[
+          withAction({
+            url: "https://appstoreconnect.apple.com/apps/12345/appstore",
+            label: "Open in App Store Connect →",
+            appScoped: true,
+          }),
+        ]}
+      />,
+    );
+    expect(screen.queryByTestId("finding-tool-secondary_category_missing")).not.toBeInTheDocument();
+  });
+
+  it("renders a legacy finding with no action at all, unchanged", () => {
+    render(<FindingsCard findings={[withAction(undefined)]} />);
+    expect(screen.getByTestId("finding-secondary_category_missing")).toHaveTextContent(
+      "Pick your most relevant secondary category",
+    );
+    expect(screen.queryByTestId("finding-action-secondary_category_missing")).not.toBeInTheDocument();
+  });
+});

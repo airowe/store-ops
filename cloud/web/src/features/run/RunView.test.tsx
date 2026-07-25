@@ -369,4 +369,40 @@ describe("<RunView /> — run shell (pending)", () => {
     fireEvent.click(screen.getByRole("button", { name: "PPO test" }));
     expect(screen.getByTestId("ppo-treatment-card")).toBeInTheDocument();
   });
+
+  // #324 Tier 2: a finding that has an in-product builder should HAND OFF to it,
+  // not just point at App Store Connect. Clicking the handoff moves the run view
+  // to that builder's section — "you should test" → "here's the treatment".
+  it("jumps to the screenshot builder when a finding hands off to it", async () => {
+    const { client } = makeClient({
+      extra: {
+        audit: {
+          liveName: "Heathen",
+          screenshots: { grade: "C", score: 60, findings: [], iphoneCount: 3, ipadCount: 0 },
+        },
+        findings: [
+          {
+            id: "ppo_never_tested",
+            surface: "experiments",
+            severity: "info",
+            impact: "conversion",
+            title: "You've never run a product page test — and it's free",
+            detail: "d",
+            fix: "Set up a Product Page Optimization test in App Store Connect.",
+            action: {
+              url: "https://appstoreconnect.apple.com/apps/12345/distribution",
+              label: "Open in App Store Connect →",
+              appScoped: true,
+              tool: "screenshots",
+            },
+          },
+        ],
+      },
+    });
+    renderView(client);
+    await waitFor(() => expect(screen.getByTestId("section-rail")).toBeInTheDocument());
+    fireEvent.click(screen.getByRole("button", { name: "Audit" }));
+    fireEvent.click(screen.getByTestId("finding-tool-ppo_never_tested"));
+    expect(screen.getByTestId("screenshot-plan-card")).toBeInTheDocument();
+  });
 });

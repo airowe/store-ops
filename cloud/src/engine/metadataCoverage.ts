@@ -26,6 +26,9 @@
 import { CHAR_LIMITS } from "./constants.js";
 import { scoreKeyword } from "./keywords.js";
 
+/** The three ranking fields, in their canonical order. */
+export type CoverageField = "name" | "subtitle" | "keywords";
+
 /** A single itemized unit of wasted budget. */
 export type CoverageWaste = {
   kind: "duplicate" | "brand_repeat" | "filler" | "unused";
@@ -33,6 +36,41 @@ export type CoverageWaste = {
   detail: string;
   /** the wasted character count attributed to this item. */
   chars: number;
+  /**
+   * #322: WHICH field(s) this waste actually lives in, in name → subtitle →
+   * keywords order. The customer's first question about a flagged term is
+   * "where is it?" — the analysis already knows (it tokenizes per field), so we
+   * report it rather than making them go hunting. Always a MEASURED list: a term
+   * is listed for a field only because it was tokenized out of that field.
+   */
+  fields: CoverageField[];
+  /**
+   * #322: is removing this safe to do automatically? True ONLY for filler that
+   * lives exclusively in the KEYWORD field — Apple ignores prepositions/articles
+   * there for ranking, so stripping them is pure reclaimed chars with no
+   * readability cost. Filler in the name/subtitle is a READABILITY tradeoff that
+   * belongs to the human, so it stays false, as do duplicates and brand repeats
+   * (consolidating those is a judgement call about which field keeps the term).
+   */
+  safeToStrip: boolean;
+};
+
+/**
+ * #322: the safe, reversible keyword-field tightening — the exact before/after
+ * so the change is SHOWN (like the auto-fixed duplicate in the copy diff), never
+ * applied silently. Present only when the keyword field was READ and actually
+ * carries strippable filler; absent means there was nothing safe to reclaim (or
+ * the field was never read — unseen is not empty).
+ */
+export type KeywordFieldStrip = {
+  /** the keyword field exactly as read. */
+  before: string;
+  /** the same field with keyword-only filler terms removed, order preserved. */
+  after: string;
+  /** the filler terms removed, in the order they appeared. */
+  removed: string[];
+  /** chars reclaimed — before.length − after.length. */
+  reclaimedChars: number;
 };
 
 /**
@@ -71,6 +109,11 @@ export type CoverageReport = {
   distinctTerms: number;
   /** itemized waste — empty when the listing is clean. */
   waste: CoverageWaste[];
+  /**
+   * #322: the safe keyword-field tightening (before/after/removed), when there
+   * is one. Omitted when nothing is safely strippable — never an empty no-op.
+   */
+  keywordFieldStrip?: KeywordFieldStrip | undefined;
   /** a high-value term that would fit (feeds #01 gap finder). Deferred → omitted. */
   topMissingValue?: string | undefined;
 };
@@ -133,6 +176,27 @@ function pushWaste(out: CoverageWaste[], item: CoverageWaste): void {
   if (item.chars > 0) out.push(item);
 }
 
+/** Canonical field order — every `fields` list is reported in this order. */
+const FIELD_ORDER: readonly CoverageField[] = ["name", "subtitle", "keywords"] as const;
+
+/** Human label for a field list, e.g. "the name and keyword fields". */
+function fieldPhrase(fields: CoverageField[]): string {
+  const label = (f: CoverageField) => (f === "keywords" ? "keyword field" : `${f} field`);
+  if (fields.length === 0) return "your listing"; // unreachable in practice
+  if (fields.length === 1) return `your ${label(fields[0]!)}`;
+  const names = fields.map(label);
+  return `your ${names.slice(0, -1).join(", ")} and ${names[names.length - 1]!}`;
+}
+
+/**
+ * Split a keyword field into its comma-separated entries, keeping each entry's
+ * ORIGINAL text (including surrounding whitespace) so a rebuild preserves the
+ * author's spacing style ("rain, thunder" stays spaced, "rain,thunder" doesn't).
+ */
+function splitKeywordEntries(keywords: string): string[] {
+  return keywords.split(",");
+}
+
 /**
  * Compute the coverage report for a listing's copy. Pure + deterministic.
  *
@@ -184,40 +248,116 @@ export function metadataCoverage(
           `Your brand name "${brandTok}" repeats in the subtitle — ${brandTok.length} chars Apple already ` +
           `indexes from the title. Move them to a fresh keyword (double-check variant spellings yourself).`,
         chars: brandTok.length,
+        // By construction this rule only fires on the subtitle.
+        fields: ["subtitle"],
+        // Which field keeps the brand word is a judgement call, not an auto-fix.
+        safeToStrip: false,
       });
     }
   }
 
   // ── duplicate: a non-brand term appearing in 2+ fields (counted once) ───────
-  const fieldSets = [new Set(nameTokens), new Set(subtitleTokens), new Set(keywordTokens)];
+  // #322: the per-field sets are no longer discarded — they ARE the answer to
+  // "which field is this in?", the question the customer hits first.
+  const fieldSets: Record<CoverageField, Set<string>> = {
+    name: new Set(nameTokens),
+    subtitle: new Set(subtitleTokens),
+    keywords: new Set(keywordTokens),
+  };
+  /** The fields a term was actually tokenized out of, in canonical order. */
+  const fieldsFor = (term: string): CoverageField[] =>
+    FIELD_ORDER.filter((f) => fieldSets[f].has(term));
+
   const allNonBrand = new Set<string>([...nameTokens, ...subtitleTokens, ...keywordTokens]);
   for (const term of allNonBrand) {
-    const inFields = fieldSets.filter((s) => s.has(term)).length;
-    if (inFields >= 2) {
+    const fields = fieldsFor(term);
+    if (fields.length >= 2) {
       pushWaste(waste, {
         kind: "duplicate",
         detail:
-          `'${term}' repeats across ${inFields} fields — Apple counts it once, so ${term.length} chars ` +
-          `are doing nothing. Consolidate to one field and reclaim the space.`,
+          `'${term}' repeats across ${fields.length} fields (${fields.join(", ")}) — Apple counts it once, ` +
+          `so ${term.length} chars are doing nothing. Consolidate to one field and reclaim the space.`,
         chars: term.length,
+        fields,
+        // Which field should KEEP the term is the human's call, not ours.
+        safeToStrip: false,
       });
     }
   }
 
   // ── filler: low-relevance terms (low scoreKeyword) — advisory, not a command ─
   // Dedup so a term flagged in two fields isn't counted twice as filler.
+  //
+  // #322 splits filler into two honestly different cases:
+  //   • KEYWORD-FIELD-ONLY filler — Apple ignores prepositions/articles there for
+  //     ranking, so removing it is pure reclaimed chars. Safe to strip, and we
+  //     say what it costs instead of punting with "your call".
+  //   • filler that appears in the NAME or SUBTITLE — that's customer-facing copy,
+  //     so it's a READABILITY tradeoff. We surface the field and the text, but we
+  //     do NOT invent a replacement keyword we have no winnability signal for;
+  //     "your call" stays, which the issue explicitly allows.
   const seenFiller = new Set<string>();
   for (const term of allNonBrand) {
     if (seenFiller.has(term)) continue;
     seenFiller.add(term);
-    if (termScore(term) < FILLER_SCORE_FLOOR) {
-      pushWaste(waste, {
-        kind: "filler",
-        detail:
-          `'${term}' is a low-relevance filler term (low keyword value) — ${term.length} chars that ` +
-          `likely aren't pulling ranking weight. Consider a higher-value keyword; your call.`,
-        chars: term.length,
-      });
+    if (termScore(term) >= FILLER_SCORE_FLOOR) continue;
+
+    const fields = fieldsFor(term);
+    const keywordOnly = fields.length === 1 && fields[0] === "keywords";
+    const detail = keywordOnly
+      ? `'${term}' is a low-relevance filler term sitting in your keyword field — ${term.length} chars ` +
+        `Apple ignores for ranking there. Safe to strip: it reclaims the space with no change to what ` +
+        `customers read.`
+      : `'${term}' is a low-relevance filler term (low keyword value) in ${fieldPhrase(fields)} — ` +
+        `${term.length} chars that likely aren't pulling ranking weight. That's customer-facing copy, so ` +
+        `tightening it is a readability tradeoff; your call.`;
+
+    pushWaste(waste, {
+      kind: "filler",
+      detail,
+      chars: term.length,
+      fields,
+      safeToStrip: keywordOnly,
+    });
+  }
+
+  // ── #322: the safe, reversible keyword-field tightening ────────────────────
+  // Drop the keyword-field entries that are pure low-value filler, preserving
+  // the author's original order and spacing. This is computed and SHOWN, never
+  // applied — the caller renders before/after so the change is reviewable (the
+  // same treatment the auto-fixed duplicate gets in the copy diff).
+  //
+  // A filler term that ALSO appears in the name/subtitle is still stripped HERE
+  // (Apple ignores it in the keyword field regardless), but its waste item stays
+  // safeToStrip:false, because the copy-side occurrence is the human's call.
+  let keywordFieldStrip: KeywordFieldStrip | undefined;
+  if (copy.keywords !== undefined) {
+    const entries = splitKeywordEntries(copy.keywords);
+    const removed: string[] = [];
+    const kept: string[] = [];
+    for (const entry of entries) {
+      const token = entry.trim().toLowerCase();
+      // Only single-token, non-brand, sub-floor entries are strippable. A
+      // multi-word phrase is left alone — we don't rewrite phrases.
+      const isStrippable =
+        token !== "" &&
+        !brandTokens.has(token) &&
+        /^[a-z0-9]+$/.test(token) &&
+        termScore(token) < FILLER_SCORE_FLOOR;
+      if (isStrippable) removed.push(token);
+      else kept.push(entry);
+    }
+    if (removed.length > 0) {
+      // Rebuild from the KEPT entries verbatim, then normalise the seam: the
+      // leading separator of the first kept entry is dropped so a removed head
+      // term doesn't leave stray leading whitespace.
+      const after = kept.join(",").replace(/^\s+/, "");
+      keywordFieldStrip = {
+        before: copy.keywords,
+        after,
+        removed,
+        reclaimedChars: copy.keywords.length - after.length,
+      };
     }
   }
 
@@ -241,6 +381,9 @@ export function metadataCoverage(
     fieldFill,
     distinctTerms,
     waste,
+    // Omitted entirely when nothing is safely strippable (exactOptional) — an
+    // absent strip means "nothing to reclaim", never an empty no-op change.
+    ...(keywordFieldStrip !== undefined ? { keywordFieldStrip } : {}),
     // topMissingValue deferred to the gap finder (#01) — omitted (exactOptional).
   };
 }

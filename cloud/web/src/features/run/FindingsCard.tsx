@@ -11,7 +11,8 @@
  * Pure presentational; data arrives from the run detail response.
  */
 import { useState } from "react";
-import type { Finding, FindingsSummary, SurfaceLock } from "@shipaso/api";
+import type { Finding, FindingTool, FindingsSummary, SurfaceLock } from "@shipaso/api";
+import { FindingActionRow } from "./FindingActionRow.js";
 
 const SEVERITY_COLOR: Record<Finding["severity"], string> = {
   critical: "var(--danger, #c0392b)",
@@ -26,7 +27,7 @@ function isHealthy(f: Finding): boolean {
   return f.severity === "good" || (f.severity === "info" && f.fix.trim() === "");
 }
 
-function FindingRow({ f }: { f: Finding }) {
+function FindingRow({ f, onTool }: { f: Finding; onTool?: ((tool: FindingTool) => void) | undefined }) {
   return (
     <div
       className={"finding-row sev-" + f.severity}
@@ -44,6 +45,8 @@ function FindingRow({ f }: { f: Finding }) {
       </p>
       <p className="micro" style={{ margin: "2px 0 0" }}>{f.detail}</p>
       {f.fix ? <p className="micro" style={{ margin: "2px 0 0" }}>→ {f.fix}</p> : null}
+      {/* #324: where to actually DO it — ASC deep link + any in-product handoff. */}
+      <FindingActionRow finding={f} onTool={onTool} />
       {f.evidence ? <p className="micro muted" style={{ margin: "2px 0 0" }}>{f.evidence}</p> : null}
     </div>
   );
@@ -54,11 +57,14 @@ export function FindingsCard({
   locks = [],
   summary,
   onConnect,
+  onTool,
 }: {
   findings: Finding[];
   locks?: SurfaceLock[];
   summary?: FindingsSummary;
   onConnect?: () => void;
+  /** #324 Tier 2: jump to an existing ShipASO builder for a finding. */
+  onTool?: (tool: FindingTool) => void;
 }) {
   const unlock = findings.find((f) => f.id === "asc_unlock");
   const rest = findings.filter((f) => f.id !== "asc_unlock");
@@ -85,7 +91,7 @@ export function FindingsCard({
         {blockers.length === 0 && healthy.length === 0 ? (
           <p className="micro muted">No fixes found on the surfaces we could read.</p>
         ) : (
-          blockers.map((f) => <FindingRow key={f.id} f={f} />)
+          blockers.map((f) => <FindingRow key={f.id} f={f} onTool={onTool} />)
         )}
         {healthy.length > 0 ? (
           <div className="healthy-block" style={{ marginTop: 8 }}>
@@ -98,7 +104,7 @@ export function FindingsCard({
             >
               {showHealthy ? "▾" : "▸"} {healthy.length} healthy check{healthy.length === 1 ? "" : "s"}
             </button>
-            {showHealthy ? healthy.map((f) => <FindingRow key={f.id} f={f} />) : null}
+            {showHealthy ? healthy.map((f) => <FindingRow key={f.id} f={f} onTool={onTool} />) : null}
           </div>
         ) : null}
       </div>
