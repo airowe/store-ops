@@ -21,9 +21,9 @@ const REACH_LABEL: Record<Reachability, string> = {
   longshot: "longshot",
 };
 const REACH_COLOR: Record<Reachability, string> = {
-  now: "var(--signal, #2f855a)",
-  soon: "var(--warn, #b7791f)",
-  longshot: "var(--muted, #718096)",
+  now: "var(--signal)",
+  soon: "var(--warn)",
+  longshot: "var(--dim)",
 };
 
 export function OpportunitiesCard({ opportunities }: { opportunities: Opportunity[] }) {
