@@ -17,10 +17,11 @@ import { Grid } from "../../src/components/Grid.js";
 import { Screen, AppText, Button, Centered } from "../../src/components/primitives.js";
 import { ActivityIndicator } from "react-native";
 import { useLayout } from "../../src/theme/responsive.js";
-import { palette } from "../../src/theme/index.js";
+import { usePalette } from "../../src/theme/index.js";
 import type { AppCandidate } from "../../src/types/api.js";
 
 export default function Dashboard() {
+  const palette = usePalette();
   const { client, me } = useAuth();
   const router = useRouter();
   const qc = useQueryClient();

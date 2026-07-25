@@ -7,6 +7,12 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react-native";
 import * as SecureStore from "expo-secure-store";
 import type { ApiClient } from "../api/client.js";
+import { useColorScheme } from "react-native";
+import { ThemeProvider, lightPalette, palette } from "../theme/index.js";
+
+jest.mock("react-native/Libraries/Utilities/useColorScheme");
+const mockColorScheme = useColorScheme as unknown as jest.Mock;
+beforeEach(() => mockColorScheme.mockReturnValue("dark"));
 import { PlayDataSafetyCard } from "./PlayDataSafetyCard.js";
 
 function fakeClient(): { client: ApiClient; bodies: unknown[] } {
@@ -57,5 +63,25 @@ describe("PlayDataSafetyCard", () => {
     });
     expect(SecureStore.setItemAsync).not.toHaveBeenCalled(); // never persisted
     await waitFor(() => expect(screen.getByTestId("pds-success")).toBeTruthy());
+  });
+});
+
+describe("PlayDataSafetyCard theming", () => {
+  it("renders the success line in the LIGHT signal inside a light provider", async () => {
+    mockColorScheme.mockReturnValue("light");
+    const { client } = fakeClient();
+    render(
+      <ThemeProvider>
+        <PlayDataSafetyCard client={client} appId="app-1" />
+      </ThemeProvider>,
+    );
+    fireEvent.changeText(screen.getByTestId("pds-package"), "com.acme.app");
+    fireEvent.changeText(screen.getByTestId("pds-csv"), "Location,Approximate location");
+    fireEvent.changeText(screen.getByTestId("pds-sa"), '{"type":"service_account"}');
+    fireEvent.press(screen.getByTestId("pds-confirm"));
+    fireEvent.press(screen.getByTestId("pds-push"));
+    await waitFor(() => expect(screen.getByTestId("pds-success")).toBeTruthy());
+    expect(screen.getByTestId("pds-success")).toHaveStyle({ color: lightPalette.signal });
+    expect(lightPalette.signal).not.toBe(palette.signal);
   });
 });

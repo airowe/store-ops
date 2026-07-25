@@ -25,11 +25,12 @@ import { EmptyState } from "../../../src/components/EmptyState.js";
 import { Screen, AppText, Button, Card, Centered } from "../../../src/components/primitives.js";
 import { humanizeStatus, timeAgo } from "../../../src/lib/format.js";
 import { shareWin } from "../../../src/lib/shareCard.js";
-import { palette, spacing } from "../../../src/theme/index.js";
+import { spacing, usePalette } from "../../../src/theme/index.js";
 import { annotationKey } from "../../../src/lib/rankSeries.js";
 import type { PlayAudit } from "../../../src/types/api.js";
 
 export default function AppDetail() {
+  const palette = usePalette();
   const { id } = useLocalSearchParams<{ id: string }>();
   const { client } = useAuth();
   const router = useRouter();

@@ -4,15 +4,17 @@
  * still honest about unmeasured fields. Play has NO keyword field, so it's simply
  * absent — never shown as an empty 0/100.
  */
-import React from "react";
+import React, { useMemo } from "react";
 import { StyleSheet, View } from "react-native";
-import { palette, spacing } from "../theme/index.js";
+import { spacing, usePalette, type Palette } from "../theme/index.js";
 import { formatScore } from "../lib/format.js";
 import type { PlayAudit } from "../types/api.js";
 import { FindingCard } from "./FindingCard.js";
 import { AppText, Card } from "./primitives.js";
 
 export function PlayAuditView({ audit }: { audit: PlayAudit }) {
+  const palette = usePalette();
+  const styles = useMemo(() => makeStyles(palette), [palette]);
   const s = audit.screenshots;
   const listing = audit.listing;
   return (
@@ -53,6 +55,8 @@ export function PlayAuditView({ audit }: { audit: PlayAudit }) {
 }
 
 function FieldLine({ label, value }: { label: string; value: string | null }) {
+  const palette = usePalette();
+  const styles = useMemo(() => makeStyles(palette), [palette]);
   return (
     <View style={styles.field}>
       <AppText kind="micro">{label}</AppText>
@@ -67,7 +71,8 @@ function FieldLine({ label, value }: { label: string; value: string | null }) {
   );
 }
 
-const styles = StyleSheet.create({
-  headerRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
-  field: { gap: 2, marginTop: spacing.xs },
-});
+const makeStyles = (p: Palette) =>
+  StyleSheet.create({
+    headerRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
+    field: { gap: 2, marginTop: spacing.xs },
+  });

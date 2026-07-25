@@ -1,3 +1,4 @@
+import { useMemo } from "react";
 /**
  * LocalizationExpansionCard (PRD 04) — ROI-sorted locales to add next. Read-only:
  * a static, PII-safe heuristic ranks storefronts the app doesn't yet target. The
@@ -6,7 +7,7 @@
  * renders (never a fabricated market).
  */
 import { StyleSheet, View } from "react-native";
-import { palette, spacing } from "../theme/index.js";
+import { spacing, usePalette, type Palette } from "../theme/index.js";
 import type { LocaleRecommendation } from "../types/api.js";
 import { AppText, Card } from "./primitives.js";
 
@@ -20,6 +21,8 @@ export function LocalizationExpansionCard({
 }: {
   recommendations: LocaleRecommendation[] | undefined;
 }) {
+  const palette = usePalette();
+  const styles = useMemo(() => makeStyles(palette), [palette]);
   if (!recommendations || recommendations.length === 0) return null;
   return (
     <Card>
@@ -45,6 +48,7 @@ export function LocalizationExpansionCard({
   );
 }
 
-const styles = StyleSheet.create({
-  row: { flexDirection: "row", alignItems: "center", gap: spacing.sm, paddingVertical: spacing.xs },
-});
+const makeStyles = (p: Palette) =>
+  StyleSheet.create({
+    row: { flexDirection: "row", alignItems: "center", gap: spacing.sm, paddingVertical: spacing.xs },
+  });

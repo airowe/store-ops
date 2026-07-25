@@ -12,7 +12,7 @@ import { View } from "react-native";
 import type { ApiClient } from "../api/client.js";
 import { connectGithub, getGithubStatus } from "../api/endpoints.js";
 import type { GithubStatus } from "../types/api.js";
-import { palette, spacing } from "../theme/index.js";
+import { spacing, usePalette } from "../theme/index.js";
 import { AppText, Button, Card } from "./primitives.js";
 import { TextField } from "./TextField.js";
 
@@ -20,6 +20,7 @@ import { TextField } from "./TextField.js";
 const REPO_RE = /^[^/\s]+\/[^/\s]+$/;
 
 export function GithubCard({ client }: { client: ApiClient }) {
+  const palette = usePalette();
   const [status, setStatus] = useState<GithubStatus | null>(null);
   const [installationId, setInstallationId] = useState("");
   const [repo, setRepo] = useState("");

@@ -12,6 +12,21 @@ import { LocalizationCard } from "./LocalizationCard.js";
 import type { ApiClient } from "../api/client.js";
 import type { LocalizedDraft } from "../types/api.js";
 
+import { useColorScheme } from "react-native";
+import { ThemeProvider } from "../theme/index.js";
+import { lightPalette, palette } from "../theme/tokens.js";
+
+jest.mock("react-native/Libraries/Utilities/useColorScheme");
+const mockColorScheme = useColorScheme as unknown as jest.Mock;
+
+/** Flatten RN's style prop (array | object) into one resolved object. */
+function flatStyle(node: { props: { style?: unknown } }): Record<string, unknown> {
+  const flatten = (s: unknown): Record<string, unknown> =>
+    Array.isArray(s) ? Object.assign({}, ...s.map(flatten)) : ((s ?? {}) as Record<string, unknown>);
+  return flatten(node.props.style);
+}
+
+
 const CAVEAT = "draft — machine-translated, review before shipping";
 
 function fakeClient(opts: {
@@ -49,6 +64,8 @@ function fakeClient(opts: {
   } as unknown as ApiClient;
   return { client, calls };
 }
+
+beforeEach(() => mockColorScheme.mockReturnValue("dark")); // every other test in this file assumes the dark default
 
 describe("LocalizationCard", () => {
   it("is inert until the run is approved (localization is a post-approval handoff step)", () => {
@@ -108,5 +125,21 @@ describe("LocalizationCard", () => {
     // the DELETE fires (deterministic), then the row clears from the server's set.
     await waitFor(() => expect(calls).toContain("DELETE /runs/run-1/localize/fr-FR"));
     await waitFor(() => expect(screen.queryByTestId("loc-approved-fr-FR")).toBeNull());
+  });
+
+  it("paints the machine-translation caveat from the LIVE palette (light provider → light warn)", async () => {
+    mockColorScheme.mockReturnValue("light");
+    const { client } = fakeClient();
+    render(
+      <ThemeProvider>
+        <LocalizationCard client={client} runId="run-1" status="approved" initialLocales={[]} />
+      </ThemeProvider>,
+    );
+    fireEvent.press(screen.getByTestId("loc-chip-de-DE"));
+    fireEvent.press(screen.getByTestId("loc-generate"));
+    await waitFor(() => expect(screen.getByTestId("loc-caveat")).toBeTruthy());
+
+    expect(flatStyle(screen.getByTestId("loc-caveat")).color).toBe(lightPalette.warn);
+    expect(lightPalette.warn).not.toBe(palette.warn);
   });
 });

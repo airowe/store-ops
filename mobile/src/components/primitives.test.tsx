@@ -1,6 +1,19 @@
 import React from "react";
+import { View, useColorScheme } from "react-native";
 import { render, screen, fireEvent } from "@testing-library/react-native";
-import { Button, AppText } from "./primitives.js";
+import { ThemeProvider } from "../theme/index.js";
+import { lightPalette, palette } from "../theme/tokens.js";
+import { Button, AppText, Card } from "./primitives.js";
+
+jest.mock("react-native/Libraries/Utilities/useColorScheme");
+const mockColorScheme = useColorScheme as unknown as jest.Mock;
+
+/** Flatten RN's style prop (array | object) into one resolved object. */
+function flatStyle(node: { props: { style?: unknown } }): Record<string, unknown> {
+  const flatten = (s: unknown): Record<string, unknown> =>
+    Array.isArray(s) ? Object.assign({}, ...s.map(flatten)) : ((s ?? {}) as Record<string, unknown>);
+  return flatten(node.props.style);
+}
 
 describe("primitives", () => {
   it("AppText renders its children", () => {
@@ -25,5 +38,49 @@ describe("primitives", () => {
   it("Button shows a spinner (no label) while loading", () => {
     render(<Button label="Go" onPress={() => {}} loading />);
     expect(screen.queryByText("Go")).toBeNull();
+  });
+});
+
+describe("primitives track the live palette", () => {
+  beforeEach(() => mockColorScheme.mockReturnValue("light"));
+
+  const renderLight = (ui: React.ReactElement) => render(<ThemeProvider>{ui}</ThemeProvider>);
+
+  it.each([
+    ["display", "ink"],
+    ["title", "ink"],
+    ["lead", "ink"],
+    ["body", "ink"],
+    ["dim", "dim"],
+    ["mono", "ink"],
+    ["micro", "faint"],
+  ] as const)("AppText kind=%s uses the LIGHT palette's %s", (kind, token) => {
+    renderLight(<AppText kind={kind}>Hi</AppText>);
+    expect(flatStyle(screen.getByText("Hi")).color).toBe(lightPalette[token]);
+    // the migration is only meaningful because the two schemes differ here
+    expect(lightPalette[token]).not.toBe(palette[token]);
+  });
+
+  it("Card uses the LIGHT panel + line", () => {
+    const { UNSAFE_getByType } = renderLight(
+      <Card>
+        <AppText>inside</AppText>
+      </Card>,
+    );
+    const style = flatStyle(UNSAFE_getByType(View) as never);
+    expect(style.backgroundColor).toBe(lightPalette.panel);
+    expect(style.borderColor).toBe(lightPalette.line);
+  });
+
+  it("primary Button fills with the LIGHT signal and labels with the LIGHT bg", () => {
+    renderLight(<Button label="Go" onPress={() => {}} testID="btn" />);
+    expect(flatStyle(screen.getByTestId("btn")).backgroundColor).toBe(lightPalette.signal);
+    expect(flatStyle(screen.getByText("Go")).color).toBe(lightPalette.bg);
+  });
+
+  it("ghost Button borders with the LIGHT line and labels with the LIGHT signal", () => {
+    renderLight(<Button label="Go" variant="ghost" onPress={() => {}} testID="btn" />);
+    expect(flatStyle(screen.getByTestId("btn")).borderColor).toBe(lightPalette.line);
+    expect(flatStyle(screen.getByText("Go")).color).toBe(lightPalette.signal);
   });
 });

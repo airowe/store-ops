@@ -3,6 +3,20 @@ import { render, screen, fireEvent, waitFor } from "@testing-library/react-nativ
 import type { ApiClient } from "../api/client.js";
 import type { AppCandidate, ResolveResult } from "../types/api.js";
 import { ConnectPicker } from "./ConnectPicker.js";
+import { useColorScheme } from "react-native";
+import { ThemeProvider } from "../theme/index.js";
+import { lightPalette, palette } from "../theme/tokens.js";
+
+jest.mock("react-native/Libraries/Utilities/useColorScheme");
+const mockColorScheme = useColorScheme as unknown as jest.Mock;
+
+/** Flatten RN's style prop (array | object) into one resolved object. */
+function flatStyle(node: { props: { style?: unknown } }): Record<string, unknown> {
+  const flatten = (s: unknown): Record<string, unknown> =>
+    Array.isArray(s) ? Object.assign({}, ...s.map(flatten)) : ((s ?? {}) as Record<string, unknown>);
+  return flatten(node.props.style);
+}
+
 
 function cand(name: string, bundleId: string): AppCandidate {
   return { name, bundleId, publisher: "Acme", genres: [], trackId: null, iconUrl: null };
@@ -26,6 +40,7 @@ function fakeClient(queue: ResolveResult[]): ApiClient {
 }
 
 describe("ConnectPicker", () => {
+  beforeEach(() => mockColorScheme.mockReturnValue("dark"));
   it("an exact resolve connects immediately", async () => {
     const onConnect = jest.fn();
     const client = fakeClient([
@@ -107,5 +122,28 @@ describe("ConnectPicker", () => {
     expect(screen.getByText("W1")).toBeTruthy(); // appended, not replaced
     expect(screen.queryByTestId("show-more")).toBeNull();
     expect(screen.getByText("End of results")).toBeTruthy();
+  });
+});
+
+describe("ConnectPicker theming", () => {
+  beforeEach(() => mockColorScheme.mockReturnValue("light"));
+
+  it("uses the LIGHT palette for the search input inside a light provider", () => {
+    const client = fakeClient([]);
+    render(
+      <ThemeProvider>
+        <ConnectPicker client={client} onConnect={() => {}} />
+      </ThemeProvider>,
+    );
+    const input = screen.getByTestId("connect-input");
+    const style = flatStyle(input as never);
+    expect(style.color).toBe(lightPalette.ink);
+    expect(style.backgroundColor).toBe(lightPalette.bg2);
+    expect(style.borderColor).toBe(lightPalette.line);
+    expect(input.props.placeholderTextColor).toBe(lightPalette.faint);
+
+    expect(lightPalette.ink).not.toBe(palette.ink);
+    expect(lightPalette.bg2).not.toBe(palette.bg2);
+    expect(lightPalette.faint).not.toBe(palette.faint);
   });
 });

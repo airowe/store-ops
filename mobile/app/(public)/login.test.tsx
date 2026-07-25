@@ -1,9 +1,22 @@
 import React from "react";
+import { useColorScheme } from "react-native";
 import { render, screen, fireEvent, waitFor } from "@testing-library/react-native";
 import type { ApiClient } from "../../src/api/client.js";
 import { AuthProvider } from "../../src/auth/AuthProvider.js";
 import { clearToken } from "../../src/auth/session.js";
+import { ThemeProvider } from "../../src/theme/index.js";
+import { lightPalette } from "../../src/theme/tokens.js";
 import Login from "./login.js";
+
+jest.mock("react-native/Libraries/Utilities/useColorScheme");
+const mockColorScheme = useColorScheme as unknown as jest.Mock;
+
+/** Flatten RN's style prop (array | object) into one resolved object. */
+function flatStyle(node: { props: { style?: unknown } }): Record<string, unknown> {
+  const flatten = (s: unknown): Record<string, unknown> =>
+    Array.isArray(s) ? Object.assign({}, ...s.map(flatten)) : ((s ?? {}) as Record<string, unknown>);
+  return flatten(node.props.style);
+}
 
 // Login redirects with expo-router's <Redirect> once auth completes in place;
 // surface the target href so the test can assert on it.
@@ -24,6 +37,7 @@ function fakeClient(onPost: (path: string, body: unknown) => void): ApiClient {
 }
 
 beforeEach(async () => {
+  mockColorScheme.mockReturnValue("dark");
   await clearToken();
 });
 
@@ -70,6 +84,31 @@ describe("Login screen", () => {
     fireEvent.press(screen.getByText("Continue"));
 
     await waitFor(() => expect(screen.getByTestId("redirect-target").props.children).toBe("/(app)"));
+  });
+
+  it("renders the request error in the LIGHT palette's bad, not a hardcoded hex", async () => {
+    mockColorScheme.mockReturnValue("light");
+    const client = {
+      post: async () => {
+        throw new Error("could not send the link");
+      },
+      get: async <T,>() => ({ authed: false }) as T,
+      request: async <T,>() => ({}) as T,
+    } as unknown as ApiClient;
+
+    render(
+      <ThemeProvider>
+        <AuthProvider clientOverride={client}>
+          <Login />
+        </AuthProvider>
+      </ThemeProvider>,
+    );
+
+    fireEvent.changeText(screen.getByTestId("email-input"), "user@example.com");
+    fireEvent.press(screen.getByTestId("send-link"));
+
+    const err = await screen.findByText("could not send the link");
+    expect(flatStyle(err).color).toBe(lightPalette.bad);
   });
 
   it("offers the free audit without signing in (reviewer + logged-out path)", () => {

@@ -8,17 +8,19 @@
  *   • the levers panel is absent for the "?" set AND for an A-grade set (no
  *     headroom) — we never over-sell a finished or unknown listing.
  */
-import React from "react";
+import React, { useMemo } from "react";
 import { ScrollView, StyleSheet, View } from "react-native";
 // expo-image, not react-native's: RN's Image has no cache, so the same App Store
 // screenshots re-download on every visit to a run. Drop-in apart from
 // contentFit (was resizeMode).
 import { Image } from "expo-image";
-import { palette, radius, spacing } from "../theme/index.js";
+import { radius, spacing, usePalette, type Palette } from "../theme/index.js";
 import type { Lever, ShotScore } from "../types/api.js";
 import { AppText, Card } from "./primitives.js";
 
 export function ScreenshotGallery({ shots }: { shots: ShotScore | null | undefined }) {
+  const palette = usePalette();
+  const styles = useMemo(() => makeStyles(palette), [palette]);
   // No score / "?" grade → unreadable/unknown. Honest empty state, no gallery.
   if (!shots || shots.score == null || shots.grade === "?") {
     return (
@@ -67,6 +69,8 @@ export function ScreenshotGallery({ shots }: { shots: ShotScore | null | undefin
 
 /** Levers — hidden for an A grade (no headroom) and when empty. */
 function LeverList({ levers, grade }: { levers: Lever[] | undefined; grade: string }) {
+  const palette = usePalette();
+  const styles = useMemo(() => makeStyles(palette), [palette]);
   if (grade === "A" || grade === "?" || !levers || levers.length === 0) return null;
   return (
     <View style={{ gap: spacing.xs, marginTop: spacing.sm }}>
@@ -82,6 +86,8 @@ function LeverList({ levers, grade }: { levers: Lever[] | undefined; grade: stri
 }
 
 function GradePill({ grade, score }: { grade: string; score: number }) {
+  const palette = usePalette();
+  const styles = useMemo(() => makeStyles(palette), [palette]);
   return (
     <View style={styles.pill}>
       <AppText kind="mono" style={{ color: palette.signal }}>{grade} · {score}</AppText>
@@ -89,10 +95,11 @@ function GradePill({ grade, score }: { grade: string; score: number }) {
   );
 }
 
-const styles = StyleSheet.create({
-  headerRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
-  strip: { gap: spacing.sm, paddingVertical: spacing.sm },
-  shot: { width: 120, height: 240, borderRadius: radius.base, backgroundColor: palette.panel2, borderColor: palette.line, borderWidth: 1 },
-  pill: { backgroundColor: palette.panel2, borderColor: palette.line, borderWidth: 1, borderRadius: radius.base, paddingHorizontal: spacing.sm, paddingVertical: 2 },
-  lever: { flexDirection: "row", alignItems: "center", gap: spacing.sm, paddingVertical: 2 },
-});
+const makeStyles = (p: Palette) =>
+  StyleSheet.create({
+    headerRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
+    strip: { gap: spacing.sm, paddingVertical: spacing.sm },
+    shot: { width: 120, height: 240, borderRadius: radius.base, backgroundColor: p.panel2, borderColor: p.line, borderWidth: 1 },
+    pill: { backgroundColor: p.panel2, borderColor: p.line, borderWidth: 1, borderRadius: radius.base, paddingHorizontal: spacing.sm, paddingVertical: 2 },
+    lever: { flexDirection: "row", alignItems: "center", gap: spacing.sm, paddingVertical: 2 },
+  });

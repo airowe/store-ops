@@ -3,13 +3,15 @@
  * per-field fill, and itemized waste. Honesty: an UNSEEN field (`seen:false`)
  * reads "UNKNOWN", never a false 0/limit — the same discipline as the engine.
  */
-import React from "react";
+import React, { useMemo } from "react";
 import { StyleSheet, View } from "react-native";
-import { palette, radius, spacing } from "../theme/index.js";
+import { radius, spacing, usePalette, type Palette } from "../theme/index.js";
 import type { CoverageReport } from "../types/api.js";
 import { AppText, Card } from "./primitives.js";
 
 export function CoverageGauge({ coverage }: { coverage: CoverageReport }) {
+  const palette = usePalette();
+  const styles = useMemo(() => makeStyles(palette), [palette]);
   return (
     <Card>
       <View style={styles.headerRow}>
@@ -50,9 +52,10 @@ export function CoverageGauge({ coverage }: { coverage: CoverageReport }) {
   );
 }
 
-const styles = StyleSheet.create({
-  headerRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
-  fieldRow: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
-  track: { flex: 1, height: 8, borderRadius: 4, backgroundColor: palette.panel2, borderColor: palette.line, borderWidth: 1, overflow: "hidden" },
-  fill: { height: "100%", backgroundColor: palette.signal, borderRadius: 4 },
-});
+const makeStyles = (p: Palette) =>
+  StyleSheet.create({
+    headerRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
+    fieldRow: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
+    track: { flex: 1, height: 8, borderRadius: 4, backgroundColor: p.panel2, borderColor: p.line, borderWidth: 1, overflow: "hidden" },
+    fill: { height: "100%", backgroundColor: p.signal, borderRadius: 4 },
+  });

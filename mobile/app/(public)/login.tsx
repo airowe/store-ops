@@ -11,9 +11,11 @@ import { Redirect, useRouter } from "expo-router";
 import { useAuth } from "../../src/auth/AuthProvider.js";
 import { Screen, AppText, Button, Card } from "../../src/components/primitives.js";
 import { TextField } from "../../src/components/TextField.js";
+import { usePalette } from "../../src/theme/index.js";
 
 export default function Login() {
   const { status, requestLink, completeMagicLink } = useAuth();
+  const palette = usePalette();
   const router = useRouter();
   const [email, setEmail] = useState("");
   const [sent, setSent] = useState(false);
@@ -78,7 +80,7 @@ export default function Login() {
               autoCorrect={false}
               onSubmitEditing={() => void send()}
             />
-            {error ? <AppText kind="dim" style={{ color: "#f87171" }}>{error}</AppText> : null}
+            {error ? <AppText kind="dim" style={{ color: palette.bad }}>{error}</AppText> : null}
             <Button label="Send magic link" onPress={() => void send()} loading={busy} disabled={!valid} testID="send-link" />
           </>
         )}

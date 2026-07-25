@@ -24,9 +24,10 @@ import { ScreenshotGallery } from "../../../src/components/ScreenshotGallery.js"
 import { EmptyState } from "../../../src/components/EmptyState.js";
 import { Screen, AppText, Button, Centered } from "../../../src/components/primitives.js";
 import { downloadAndShareFastlane } from "../../../src/lib/fastlane.js";
-import { palette, spacing } from "../../../src/theme/index.js";
+import { spacing, usePalette } from "../../../src/theme/index.js";
 
 export default function RunDetail() {
+  const palette = usePalette();
   const { id } = useLocalSearchParams<{ id: string }>();
   const { client } = useAuth();
   const qc = useQueryClient();

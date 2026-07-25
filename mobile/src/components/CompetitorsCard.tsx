@@ -17,9 +17,10 @@ import {
 import type { Competitor } from "../types/api.js";
 import { AppText, Button, Card } from "./primitives.js";
 import { TextField } from "./TextField.js";
-import { palette, spacing } from "../theme/index.js";
+import { spacing, usePalette } from "../theme/index.js";
 
 export function CompetitorsCard({ client, appId }: { client: ApiClient; appId: string }) {
+  const palette = usePalette();
   const [rows, setRows] = useState<Competitor[] | null>(null);
   const [note, setNote] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);

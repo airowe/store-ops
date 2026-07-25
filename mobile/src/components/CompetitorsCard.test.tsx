@@ -10,6 +10,21 @@ import { CompetitorsCard } from "./CompetitorsCard.js";
 import type { ApiClient } from "../api/client.js";
 import type { Competitor } from "../types/api.js";
 
+import { useColorScheme } from "react-native";
+import { ThemeProvider } from "../theme/index.js";
+import { lightPalette, palette } from "../theme/tokens.js";
+
+jest.mock("react-native/Libraries/Utilities/useColorScheme");
+const mockColorScheme = useColorScheme as unknown as jest.Mock;
+
+/** Flatten RN's style prop (array | object) into one resolved object. */
+function flatStyle(node: { props: { style?: unknown } }): Record<string, unknown> {
+  const flatten = (s: unknown): Record<string, unknown> =>
+    Array.isArray(s) ? Object.assign({}, ...s.map(flatten)) : ((s ?? {}) as Record<string, unknown>);
+  return flatten(node.props.style);
+}
+
+
 function fakeClient(initial: Competitor[]): { client: ApiClient; calls: string[] } {
   let rows = [...initial];
   const calls: string[] = [];
@@ -41,6 +56,8 @@ function fakeClient(initial: Competitor[]): { client: ApiClient; calls: string[]
   } as unknown as ApiClient;
   return { client, calls };
 }
+
+beforeEach(() => mockColorScheme.mockReturnValue("dark")); // every other test in this file assumes the dark default
 
 describe("CompetitorsCard", () => {
   it("renders the honest empty state, then discovery adds a SUGGESTED (not watched) row", async () => {
@@ -77,5 +94,19 @@ describe("CompetitorsCard", () => {
     fireEvent.press(screen.getByTestId("add-competitor"));
     await waitFor(() => expect(screen.getByText("Paprika")).toBeTruthy());
     expect(screen.getByText("watched")).toBeTruthy();
+  });
+
+  it("paints a watched row's label from the LIVE palette (light provider → light signal)", async () => {
+    mockColorScheme.mockReturnValue("light");
+    const { client } = fakeClient([{ key: "acme", name: "Acme", status: "confirmed" } as Competitor]);
+    render(
+      <ThemeProvider>
+        <CompetitorsCard client={client} appId="app-1" />
+      </ThemeProvider>,
+    );
+    await waitFor(() => expect(screen.getByText("watched")).toBeTruthy());
+
+    expect(flatStyle(screen.getByText("watched")).color).toBe(lightPalette.signal);
+    expect(lightPalette.signal).not.toBe(palette.signal);
   });
 });

@@ -10,6 +10,21 @@ import { LocaleKeywordsCard } from "./LocaleKeywordsCard.js";
 import type { ApiClient } from "../api/client.js";
 import type { LocaleKeywordsResult } from "../types/api.js";
 
+import { useColorScheme } from "react-native";
+import { ThemeProvider } from "../theme/index.js";
+import { lightPalette, palette } from "../theme/tokens.js";
+
+jest.mock("react-native/Libraries/Utilities/useColorScheme");
+const mockColorScheme = useColorScheme as unknown as jest.Mock;
+
+/** Flatten RN's style prop (array | object) into one resolved object. */
+function flatStyle(node: { props: { style?: unknown } }): Record<string, unknown> {
+  const flatten = (s: unknown): Record<string, unknown> =>
+    Array.isArray(s) ? Object.assign({}, ...s.map(flatten)) : ((s ?? {}) as Record<string, unknown>);
+  return flatten(node.props.style);
+}
+
+
 function fakeClient(result: LocaleKeywordsResult): { client: ApiClient; bodies: unknown[] } {
   const bodies: unknown[] = [];
   const client = {
@@ -23,6 +38,17 @@ function fakeClient(result: LocaleKeywordsResult): { client: ApiClient; bodies: 
   return { client, bodies };
 }
 
+/** A client whose POST throws — the only path to the card's error line. */
+function errClient(): ApiClient {
+  return {
+    get: async () => ({}),
+    post: async () => {
+      throw new Error("the market is temporarily unavailable");
+    },
+    request: async () => ({}),
+  } as unknown as ApiClient;
+}
+
 const CANDIDATES: LocaleKeywordsResult = {
   market: "de-DE",
   candidates: [
@@ -30,6 +56,8 @@ const CANDIDATES: LocaleKeywordsResult = {
     { term: "vorhersage", market: "de-DE", usedByCount: 3, usedBy: ["c"] },
   ],
 };
+
+beforeEach(() => mockColorScheme.mockReturnValue("dark")); // every other test in this file assumes the dark default
 
 describe("LocaleKeywordsCard", () => {
   it("requires a market before fetching (the fetch button is disabled until one is picked)", () => {
@@ -77,5 +105,20 @@ describe("LocaleKeywordsCard", () => {
     await waitFor(() =>
       expect(screen.getByText(/No tracked keywords and no seeds/)).toBeTruthy(),
     );
+  });
+
+  it("paints the error line from the LIVE palette (light provider → light bad)", async () => {
+    mockColorScheme.mockReturnValue("light");
+    render(
+      <ThemeProvider>
+        <LocaleKeywordsCard client={errClient()} appId="app-1" />
+      </ThemeProvider>,
+    );
+    fireEvent.press(screen.getByTestId("market-chip-de-DE"));
+    fireEvent.press(screen.getByTestId("locale-keywords-fetch"));
+    await waitFor(() => expect(screen.getByTestId("locale-keywords-error")).toBeTruthy());
+
+    expect(flatStyle(screen.getByTestId("locale-keywords-error")).color).toBe(lightPalette.bad);
+    expect(lightPalette.bad).not.toBe(palette.bad);
   });
 });

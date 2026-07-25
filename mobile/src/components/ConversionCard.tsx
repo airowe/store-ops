@@ -9,12 +9,13 @@
  */
 import { View } from "react-native";
 import type { EngagementSurface } from "../types/api.js";
-import { palette, spacing } from "../theme/index.js";
+import { spacing, usePalette } from "../theme/index.js";
 import { AppText, Card } from "./primitives.js";
 
 const pct = (rate: number): string => `${(rate * 100).toFixed(1)}%`;
 
 export function ConversionCard({ data }: { data: EngagementSurface | undefined }) {
+  const palette = usePalette();
   // No card until there's measured data — never an empty/zero conversion.
   if (!data || data.state !== "measured") return null;
   const { latestConversion, movements } = data;
