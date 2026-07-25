@@ -37,6 +37,7 @@ type LocaleRow = AscSnapshot["locales"] extends ReadonlyArray<infer T> | undefin
 // ones used internally and RE-EXPORT the public surface so every existing
 // importer (index.ts, agent.ts, api, mcp, the spec) keeps importing them here.
 import { mk, sortFindings } from "./findings/core.js";
+import { withActions } from "./findingActions.js";
 import type { Finding, SurfaceLock } from "./findings/core.js";
 import type { CopyFields } from "./optimize.js";
 import { reviewRiskFindings } from "./reviewRisk.js";
@@ -1126,7 +1127,12 @@ export function auditFindings(input: AuditFindingsInput): Finding[] {
     ...ppoResultFindings(input.snapshot?.ppoResults?.results ?? []),
   ];
 
-  return sortFindings(findings);
+  // #324: attach the action (ASC deep link + any in-product tool handoff) at the
+  // single funnel, so every rule above stays focused on DIAGNOSIS and no rule
+  // has to remember to link. `audit.trackId` is the app's App Store id when the
+  // lookup returned one; absent → the action falls back to the generic console
+  // link rather than a fabricated app-scoped URL.
+  return withActions(sortFindings(findings), input.audit.trackId);
 }
 
 // ── Locked-field upgrade surface (#61) ───────────────────────────────────────

@@ -184,6 +184,25 @@ h2 { font-family: var(--display); font-weight: 600; font-size: 22px; letter-spac
 .kwchip.removed { color: var(--bad, #f87171); border-color: var(--bad, #f87171); text-decoration: line-through; }
 .kwchip.added { color: var(--signal, #34d399); border-color: var(--signal-dim, #1f8f66); }
 .kwchip.kept { color: var(--faint); }
+
+/* #322 — wasted-budget items carry the FIELD they live in, so a flagged term is
+   something the customer can act on rather than go hunting for. Tokens only:
+   an earlier bug in this repo came from layering inline `opacity` over token
+   colours, which silently broke the WCAG contrast guard. Use the token colours
+   at full strength and let the border carry the visual weight. */
+.waste-item { margin-top: 6px; }
+.waste-fields { display: inline-flex; flex-wrap: wrap; gap: 6px; margin-right: 6px; }
+.waste-field-chip {
+  font-family: var(--mono); font-size: 11px; padding: 2px 8px; border-radius: 999px;
+  border: 1px solid var(--line); color: var(--dim);
+}
+/* Keyword-field filler only — Apple ignores it for ranking there, so removing it
+   is pure reclaimed chars. Name/subtitle filler never gets this chip. */
+.waste-safe {
+  font-size: 11px; padding: 2px 8px; border-radius: 999px;
+  border: 1px solid var(--signal-dim); color: var(--signal); background: var(--signal-glow);
+}
+.keyword-strip { border-top: 1px solid var(--line-soft); padding-top: 10px; }
 /* The decision landing — the product's money moment. Enters from 0.96, never
    from nothing. @starting-style animates the mount with no JS. */
 .run-status {
@@ -268,6 +287,17 @@ h2 { font-family: var(--display); font-weight: 600; font-size: 22px; letter-spac
   font: inherit; font-size: 13px; color: var(--dim);
 }
 .healthy-toggle:hover { color: var(--ink); }
+
+/* #324 — the action row under a finding's fix. The ASC link is a real <a> and
+   the in-product handoff is a real <button> (native Enter/Space semantics, no
+   hand-rolled onKeyDown), so the button only needs its browser chrome stripped
+   to sit inline with the link — same approach as .healthy-toggle above. */
+.finding-action { display: flex; flex-wrap: wrap; align-items: baseline; gap: 10px; }
+.finding-tool {
+  appearance: none; background: transparent; border: 0; cursor: pointer; padding: 0;
+  font: inherit; font-size: 12px; color: var(--signal);
+}
+.finding-tool:hover { color: var(--ink); }
 
 .winbar {
   display: inline-block; vertical-align: middle; width: 64px; height: 5px; margin-left: 8px;

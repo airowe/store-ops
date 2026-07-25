@@ -17,7 +17,7 @@ import { useMemo, useState } from "react";
 import type { ReactNode } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ApiError, ascCreateVersion, ascPush, decideRun, getCredentials, getGithubStatus, getRun, githubPr } from "@shipaso/api";
-import type { AscPushResult, RunDetail } from "@shipaso/api";
+import type { AscPushResult, FindingTool, RunDetail } from "@shipaso/api";
 import { CopyDiff } from "./CopyDiff.js";
 import { FindingsCard } from "./FindingsCard.js";
 import { OpportunitiesCard } from "./OpportunitiesCard.js";
@@ -102,6 +102,14 @@ export function RunView({
   // keep hook order stable (Rules of Hooks).
   const [activeId, setActiveId] = useState("changes");
 
+  /**
+   * #324 Tier 2 — hand a finding off to the ShipASO builder that continues it,
+   * instead of stopping at "do X in App Store Connect". Both the screenshot-set
+   * planner and the CPP set generator live in the "screenshots" section, so both
+   * tools resolve there; this is a client-side jump, never a write.
+   */
+  const goToTool = (_tool: FindingTool) => setActiveId("screenshots");
+
   // Derived grouping inputs, read defensively so the memo below stays hook-safe.
   const auditNeedsYou = Boolean(
     rMaybe?.findings?.some((f) => !f.context && (f.severity === "critical" || f.severity === "warn")),
@@ -163,6 +171,7 @@ export function RunView({
               {...(r.locks !== undefined ? { locks: r.locks } : {})}
               {...(r.findingsSummary !== undefined ? { summary: r.findingsSummary } : {})}
               {...(onConnect ? { onConnect } : {})}
+              onTool={goToTool}
             />
           ),
         }

@@ -101,6 +101,30 @@ export type Finding = {
   evidence?: string;
   /** true = status/context fact (rendered apart), absent = actionable fix. */
   context?: true;
+  /**
+   * #324: where to actually DO this. Absent on findings with no fix, and on
+   * runs persisted before #324.
+   */
+  action?: FindingAction;
+};
+
+/** an existing ShipASO builder a finding can hand off to (#324 Tier 2). */
+export type FindingTool = "screenshots" | "cpp";
+/**
+ * #324: the action attached to a finding that would otherwise read as
+ * "→ do X in App Store Connect".
+ *
+ * `url` is always on Apple's console host but is not always precise: Apple does
+ * not document the console's route structure, so `appScoped` says whether we
+ * reached THIS app's page or only the generic console. The UI states which,
+ * rather than implying a precision we don't have. `tool` is present only where a
+ * real in-product builder continues the finding — never a guessed handoff.
+ */
+export type FindingAction = {
+  url: string;
+  label: string;
+  appScoped: boolean;
+  tool?: FindingTool;
 };
 /** A surface the run could NOT read — an honest 🔒 "unlock to see + improve". */
 export type SurfaceLock = { surface: string; label: string; unlockCopy: string };
@@ -154,11 +178,37 @@ export type FieldFill = {
   /** false = the field was unseen (a 0 here is UNKNOWN, never "empty"). */
   seen: boolean;
 };
+/** the three ranking fields, in canonical order. */
+export type CoverageField = "name" | "subtitle" | "keywords";
 /** one itemized source of wasted metadata budget. */
 export type CoverageWaste = {
   kind: "duplicate" | "brand_repeat" | "filler" | "unused";
   detail: string;
   chars: number;
+  /**
+   * #322: WHICH field(s) the waste lives in, name → subtitle → keywords. Always
+   * measured (the term was tokenized out of that field), never inferred.
+   * Optional so runs persisted before #322 still render.
+   */
+  fields?: CoverageField[];
+  /**
+   * #322: true only for filler confined to the KEYWORD field, where Apple
+   * ignores it for ranking — removing it reclaims chars with no readability
+   * cost. Name/subtitle filler, duplicates and brand repeats are all false:
+   * those are human judgement calls.
+   */
+  safeToStrip?: boolean;
+};
+/**
+ * #322: the safe, reversible keyword-field tightening — before/after so the
+ * change is SHOWN and reviewable, never applied silently. Absent when nothing
+ * is safely strippable or the keyword field was never read.
+ */
+export type KeywordFieldStrip = {
+  before: string;
+  after: string;
+  removed: string[];
+  reclaimedChars: number;
 };
 /**
  * Metadata coverage report (PRD 03) — how hard the 30/30/100 char budget is
@@ -169,6 +219,8 @@ export type CoverageReport = {
   fieldFill: FieldFill[];
   distinctTerms: number;
   waste: CoverageWaste[];
+  /** #322: the safe keyword-field tightening, when there is one to show. */
+  keywordFieldStrip?: KeywordFieldStrip;
   topMissingValue?: string;
 };
 
