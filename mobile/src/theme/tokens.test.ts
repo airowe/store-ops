@@ -57,6 +57,9 @@ describe("theme tokens", () => {
     ["warn-glow", "warnGlow"],
     ["warn-border", "warnBorder"],
     ["bad", "bad"],
+    ["bad-glow", "badGlow"],
+    ["nav-active", "navActive"],
+    ["on-accent", "onAccent"],
   ] as const)("--%s matches palette.%s", (cssName, key) => {
     const fromCss = cssVar(cssName);
     expect(fromCss).not.toBeNull(); // --${cssName} must exist in styles.css
@@ -83,6 +86,9 @@ describe("theme tokens", () => {
     ["warn-glow", "warnGlow"],
     ["warn-border", "warnBorder"],
     ["bad", "bad"],
+    ["bad-glow", "badGlow"],
+    ["nav-active", "navActive"],
+    ["on-accent", "onAccent"],
   ] as const)("light --%s matches lightPalette.%s", (cssName, key) => {
     const fromCss = lightVar(cssName);
     expect(fromCss).not.toBeNull(); // --${cssName} must exist in the light block

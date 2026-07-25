@@ -14,7 +14,12 @@ export const palette = {
   signalGlow: "rgba(52, 211, 153, 0.18)",
   brand: "#5b8cff",
   warn: "#fbbf24",
+  warnGlow: "rgba(251, 191, 36, 0.12)",
+  warnBorder: "rgba(251, 191, 36, 0.40)",
   bad: "#f87171",
+  badGlow: "rgba(248, 113, 113, 0.12)",
+  navActive: "#131b2e",
+  onAccent: "#05070c",
 } as const;
 export const lightPalette: Record<keyof typeof palette, string> = {
   bg: "#f6f7f9",
@@ -31,7 +36,12 @@ export const lightPalette: Record<keyof typeof palette, string> = {
   signalGlow: "rgba(15, 157, 99, 0.14)",
   brand: "#3563e0",
   warn: "#b7791f",
+  warnGlow: "rgba(183, 121, 31, 0.10)",
+  warnBorder: "rgba(183, 121, 31, 0.35)",
   bad: "#dc4a41",
+  badGlow: "rgba(220, 74, 65, 0.10)",
+  navActive: "#eef2f9",
+  onAccent: "#ffffff",
 };
 export type Palette = Record<keyof typeof palette, string>;
 export type Scheme = "light" | "dark";

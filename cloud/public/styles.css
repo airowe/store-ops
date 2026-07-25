@@ -21,6 +21,11 @@
   --warn-glow: rgba(251, 191, 36, 0.12);   /* "awaiting you" wash */
   --warn-border: rgba(251, 191, 36, 0.40);
   --bad: #f87171;
+  --bad-glow: rgba(248, 113, 113, 0.12);   /* failure wash, same recipe as --warn-glow */
+
+  /* ── chrome ────────────────────────────────────────────────── */
+  --nav-active: #131b2e;                   /* selected nav-rail item fill */
+  --on-accent: #05070c;                    /* text/icon ON a solid --brand fill */
 
   /* ── fonts ─────────────────────────────────────────────────── */
   --mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
@@ -81,6 +86,10 @@
   --warn-glow: rgba(183, 121, 31, 0.10);
   --warn-border: rgba(183, 121, 31, 0.35);
   --bad: #dc4a41;
+  --bad-glow: rgba(220, 74, 65, 0.10);
+
+  --nav-active: #eef2f9;
+  --on-accent: #ffffff;
 
   --raise:   rgba(17, 22, 33, 0.028);
   --raise-2: rgba(17, 22, 33, 0.022);
