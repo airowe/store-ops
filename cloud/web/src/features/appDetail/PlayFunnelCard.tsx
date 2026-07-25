@@ -112,14 +112,6 @@ export function PlayFunnelCard({ client, appId }: { client: ApiClient; appId: st
               onChange={(e) => setServiceAccount(e.target.value)}
             />
           ) : null}
-          <button
-            className="btn"
-            data-testid="pf-ingest"
-            disabled={ingest.isPending || !canIngest}
-            onClick={() => ingest.mutate()}
-          >
-            {ingest.isPending ? "Pulling…" : "Pull monthly funnel"}
-          </button>
           {ingest.isError ? (
             <p className="micro" data-testid="pf-error">
               {ingest.error instanceof Error ? ingest.error.message : "The funnel ingest failed."}
@@ -130,6 +122,18 @@ export function PlayFunnelCard({ client, appId }: { client: ApiClient; appId: st
               Pulled {ingest.data.ingested} row(s){ingest.data.periods.length ? ` for ${ingest.data.periods.join(", ")}` : ""}.
             </p>
           ) : null}
+          {/* Outside the field grid on purpose (#344) — a grid item stretches
+              to a full-bleed bar instead of reading as an inline action. */}
+          <div>
+            <button type="button"
+              className="btn primary"
+              data-testid="pf-ingest"
+              disabled={ingest.isPending || !canIngest}
+              onClick={() => ingest.mutate()}
+            >
+              {ingest.isPending ? "Pulling…" : "Pull monthly funnel"}
+            </button>
+          </div>
         </div>
       )}
     </div>

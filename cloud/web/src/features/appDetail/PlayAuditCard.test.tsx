@@ -34,6 +34,22 @@ function renderCard(client: ApiClient) {
 }
 
 describe("<PlayAuditCard />", () => {
+  // "Run Play audit" and "Run keyed audit" (ConnectAscCard) are the same intent
+  // one card apart, but this one stretched to a full-bleed bar purely because
+  // its parent was a grid and the button was a grid item (#344). The run action
+  // must not be a stretched child — it sits in its own row, inline like its twin.
+  it("renders the run action inline, not stretched by the field grid", async () => {
+    const { client } = makeClient();
+    renderCard(client);
+    const run = await screen.findByTestId("play-run");
+    const fields = screen.getByTestId("play-package").parentElement!;
+    expect(fields.style.display).toBe("grid");
+    // The button escaping the grid is the whole fix — inside it, a grid item
+    // stretches to the full column width regardless of its own styling.
+    expect(run.parentElement).not.toBe(fields);
+    expect(fields.contains(run)).toBe(false);
+  });
+
   it("no saved key: needs a package id + service account, then runs and renders findings", async () => {
     const { client, post } = makeClient();
     renderCard(client);

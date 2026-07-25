@@ -37,6 +37,24 @@ function renderCard(client: ApiClient) {
 }
 
 describe("<PlayFunnelCard />", () => {
+  // Same grid-stretch and flat-hierarchy pair as the sibling Play cards (#344).
+  // Here the grid wraps the whole card body rather than just the fields, so the
+  // button cannot leave it — it gets a plain block wrapper instead, which is the
+  // grid item, leaving the button itself inline inside that.
+  it("renders the ingest action inline and as the primary action", async () => {
+    const { client } = makeClient();
+    renderCard(client);
+    const ingest = await screen.findByTestId("pf-ingest");
+    const grid = screen.getByTestId("pf-package").parentElement!;
+    expect(grid.style.display).toBe("grid");
+    expect(ingest.parentElement).not.toBe(grid);
+    expect(ingest.parentElement!.parentElement).toBe(grid);
+    expect(ingest.className).toContain("primary");
+    // A bare <button> inside a card defaults to type="submit" — explicit here
+    // for the same reason every other action button on this page is.
+    expect(ingest.getAttribute("type")).toBe("button");
+  });
+
   it("renders the monthly series with an honest 'through' stamp and derived conversion", async () => {
     const { client } = makeClient();
     renderCard(client);

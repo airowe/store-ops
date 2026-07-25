@@ -46,6 +46,11 @@ export function PlayAuditCard({ client, appId }: { client: ApiClient; appId: str
         {!storedPlayKey ? (
           <textarea data-testid="play-sa" placeholder="Service account JSON" rows={4} value={serviceAccount} onChange={(e) => setServiceAccount(e.target.value)} />
         ) : null}
+      </div>
+      {/* Outside the field grid on purpose (#344): as a grid item this button
+          stretched to a full-bleed bar, while its twin "Run keyed audit" one
+          card above is an inline pill. Same intent reads as the same shape. */}
+      <div style={{ marginTop: 8 }}>
         <button type="button" className="btn primary" data-testid="play-run" disabled={audit.isPending || !canRun} onClick={() => audit.mutate()}>
           {audit.isPending ? "Auditing…" : "Run Play audit"}
         </button>
