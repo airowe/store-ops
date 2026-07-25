@@ -45,6 +45,17 @@ describe("<ApiKeysCard />", () => {
     await waitFor(() => expect(screen.getByTestId("ak-k1")).toHaveTextContent("shipaso_1a2b3c4d…"));
   });
 
+  it("the shown-once panel is an amber warn surface with a SHOWN ONCE eyebrow", async () => {
+    const { client } = makeClient();
+    renderCard(client);
+    expect(screen.queryByTestId("ak-fresh")).toBeNull();
+    fireEvent.click(screen.getByTestId("ak-create"));
+    const fresh = await screen.findByTestId("ak-fresh");
+    expect(fresh).toHaveClass("shown-once");
+    expect(screen.getByTestId("ak-fresh-eyebrow")).toHaveTextContent("SHOWN ONCE");
+    expect(fresh).toHaveTextContent(/Copy it now — we store only its hash\./i);
+  });
+
   it("revokes a key via DELETE", async () => {
     const { client, request } = makeClient();
     renderCard(client);

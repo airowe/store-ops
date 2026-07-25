@@ -84,10 +84,67 @@ describe("<SettingsView />", () => {
     const { client, post } = makeClient();
     renderView(client);
     await waitFor(() => expect(screen.getByTestId("pause-toggle")).toHaveTextContent("Active"));
-    expect(screen.getByText(/this changes what the agent does/i)).toBeInTheDocument();
+    // The send-vs-do claim now lives on the scope pill; the subline points at it.
+    expect(screen.getByTestId("autonomy-scope-pill")).toHaveTextContent(/changes what the agent does/i);
+    expect(screen.getByText(/Unlike everything above, this one is not about messages/i)).toBeInTheDocument();
     fireEvent.click(screen.getByTestId("pause-toggle"));
     await waitFor(() => expect(post).toHaveBeenCalledWith("/agent/pause"));
     await waitFor(() => expect(screen.getByTestId("pause-toggle")).toHaveTextContent("Paused"));
+  });
+
+  it("gives the send-vs-do distinction visual weight: neutral pill on Communications, amber on Autonomy", async () => {
+    const { client } = makeClient();
+    renderView(client);
+    await waitFor(() => screen.getByTestId("comms-scope-pill"));
+    // Communications changes what gets SENT — neutral.
+    const send = screen.getByTestId("comms-scope-pill");
+    expect(send).toHaveTextContent(/CHANGES WHAT WE SEND/i);
+    expect(send).toHaveClass("scope-pill");
+    expect(send).not.toHaveClass("warn");
+    // Autonomy changes what the AGENT DOES — amber, and the panel sits forward.
+    const does = screen.getByTestId("autonomy-scope-pill");
+    expect(does).toHaveTextContent(/CHANGES WHAT THE AGENT DOES/i);
+    expect(does).toHaveClass("scope-pill", "warn");
+    expect(screen.getByTestId("autonomy-panel")).toHaveClass("is-forward");
+  });
+
+  it("the on-this-page nav is real anchors and the autonomy dot tracks paused state", async () => {
+    const { client, post } = makeClient();
+    renderView(client);
+    await waitFor(() => screen.getByTestId("page-nav"));
+    const nav = screen.getByTestId("page-nav");
+    // Keyboard-operable by construction: real <a href="#…">, no hand-rolled handlers.
+    const hrefs = Array.from(nav.querySelectorAll("a")).map((a) => a.getAttribute("href"));
+    expect(hrefs).toEqual(["#comms", "#autonomy", "#connections", "#agent", "#keys", "#appearance", "#account"]);
+    // Active sweep → signal dot; paused → warn dot.
+    expect(screen.getByTestId("autonomy-nav-dot")).toHaveClass("is-active");
+    fireEvent.click(screen.getByTestId("pause-toggle"));
+    await waitFor(() => expect(post).toHaveBeenCalledWith("/agent/pause"));
+    await waitFor(() => expect(screen.getByTestId("autonomy-nav-dot")).toHaveClass("is-paused"));
+  });
+
+  it("the autonomy inset is state-driven and never claims ShipASO can push", async () => {
+    const { client, post } = makeClient();
+    renderView(client);
+    await waitFor(() => screen.getByTestId("autonomy-inset"));
+    expect(screen.getByTestId("autonomy-inset")).toHaveClass("is-active");
+    expect(screen.getByText(/It never pushes\. Every run ends at your approval\./i)).toBeInTheDocument();
+    fireEvent.click(screen.getByTestId("pause-toggle"));
+    await waitFor(() => expect(post).toHaveBeenCalledWith("/agent/pause"));
+    await waitFor(() => expect(screen.getByTestId("autonomy-inset")).toHaveClass("is-paused"));
+  });
+
+  it("theme is a segmented control whose active segment tracks the choice", async () => {
+    const { client } = makeClient();
+    renderView(client);
+    await waitFor(() => screen.getByTestId("theme-dark"));
+    fireEvent.click(screen.getByTestId("theme-light"));
+    expect(document.documentElement.getAttribute("data-theme")).toBe("light");
+    expect(screen.getByTestId("theme-light")).toHaveClass("is-on");
+    expect(screen.getByTestId("theme-dark")).not.toHaveClass("is-on");
+    fireEvent.click(screen.getByTestId("theme-dark"));
+    expect(document.documentElement.getAttribute("data-theme")).toBe("dark");
+    expect(screen.getByTestId("theme-dark")).toHaveClass("is-on");
   });
 
   it("sign out calls logout and notifies", async () => {

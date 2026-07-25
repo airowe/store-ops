@@ -19,15 +19,32 @@ function renderCard(client: ApiClient, hasAsaKey = false) {
 }
 
 describe("<AsaCard />", () => {
-  it("renders nothing once an ASA key is connected (Stored keys manages it)", () => {
+  it("shows a Verified connection row once an ASA key exists — metadata only, no form, no key material", () => {
     const { client } = makeClient();
-    const { container } = renderCard(client, true);
-    expect(container.firstChild).toBeNull();
+    renderCard(client, true);
+    // The connection stays visible rather than vanishing (delta #2).
+    expect(screen.getByTestId("asa-status-pill")).toHaveTextContent(/Verified/i);
+    expect(screen.getByTestId("asa-meta")).toHaveTextContent("Key verified · managed in Stored keys");
+    // Metadata only: the credential form is gone and no .p8 field/filename is rendered.
+    expect(screen.queryByTestId("asa-private-key")).toBeNull();
+    expect(screen.queryByTestId("asa-connect")).toBeNull();
+    expect(screen.getByTestId("asa-card").textContent).not.toMatch(/\.p8|BEGIN PRIVATE KEY/i);
+  });
+
+  it("not connected: shows an Optional pill and reveals the five fields behind Connect", () => {
+    const { client } = makeClient();
+    renderCard(client);
+    expect(screen.getByTestId("asa-status-pill")).toHaveTextContent(/Optional/i);
+    fireEvent.click(screen.getByTestId("asa-reveal"));
+    for (const id of ["asa-client-id", "asa-team-id", "asa-key-id", "asa-org-id", "asa-private-key"]) {
+      expect(screen.getByTestId(id)).toBeInTheDocument();
+    }
   });
 
   it("Connect is gated until all five fields are filled, then posts and shows Apple's note", async () => {
     const { client, post } = makeClient();
     renderCard(client);
+    fireEvent.click(screen.getByTestId("asa-reveal"));
     expect(screen.getByTestId("asa-connect")).toBeDisabled();
     fireEvent.change(screen.getByTestId("asa-client-id"), { target: { value: "SEARCHADS.abc" } });
     fireEvent.change(screen.getByTestId("asa-team-id"), { target: { value: "SEARCHADS.abc" } });
