@@ -70,6 +70,17 @@ describe("<CppSetsCard />", () => {
     expect(screen.getByTestId("cpp-review-weather-0")).toBeInTheDocument();
   });
 
+  // #350 — the marker was a hardcoded #d97706, an amber that exists nowhere in
+  // the palette and cannot follow the theme toggle. It means what --warn means.
+  it("paints the needs-review marker from the warn token, not a raw hex", async () => {
+    renderWith(okResult);
+    fireEvent.click(screen.getByTestId("cpp-sets-btn"));
+    await waitFor(() => expect(screen.getByTestId("cpp-review-weather-0")).toBeInTheDocument());
+    const color = screen.getByTestId("cpp-review-weather-0").style.color;
+    expect(color).toContain("var(--warn");
+    expect(color).not.toMatch(/#[0-9a-f]{3,8}/i);
+  });
+
   it("shows the sparse-data refusal when ok:false", async () => {
     renderWith({ ok: false, reason: "not enough measured keywords to propose CPPs — track more first." });
     fireEvent.click(screen.getByTestId("cpp-sets-btn"));

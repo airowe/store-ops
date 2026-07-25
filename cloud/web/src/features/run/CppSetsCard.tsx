@@ -76,7 +76,7 @@ export function CppSetsCard({ client, inputs }: { client: ApiClient; inputs: Cpp
                       <span
                         data-testid={`cpp-review-${set.intent.label}-${i}`}
                         className="micro"
-                        style={{ marginLeft: 6, color: "#d97706" }}
+                        style={{ marginLeft: 6, color: "var(--warn)" }}
                       >
                         ⚠ review
                       </span>
