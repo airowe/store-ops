@@ -50,7 +50,7 @@ export function CppSetsCard({ client, inputs }: { client: ApiClient; inputs: Cpp
             <div
               key={set.intent.label}
               data-testid={`cpp-set-${set.intent.label}`}
-              style={{ borderTop: "1px solid var(--line, #222a3b)", paddingTop: 8, marginTop: 8 }}
+              style={{ borderTop: "1px solid var(--line)", paddingTop: 8, marginTop: 8 }}
             >
               <b className="micro">Intent: {set.intent.label}</b>
               <p className="micro muted" style={{ margin: "2px 0 0" }}>{set.intent.keywords.join(", ")}</p>

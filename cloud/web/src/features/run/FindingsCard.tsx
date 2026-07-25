@@ -15,10 +15,10 @@ import type { Finding, FindingTool, FindingsSummary, SurfaceLock } from "@shipas
 import { FindingActionRow } from "./FindingActionRow.js";
 
 const SEVERITY_COLOR: Record<Finding["severity"], string> = {
-  critical: "var(--danger, #c0392b)",
-  warn: "var(--warn, #b7791f)",
-  good: "var(--signal, #2f855a)",
-  info: "var(--muted, #718096)",
+  critical: "var(--bad)",
+  warn: "var(--warn)",
+  good: "var(--signal)",
+  info: "var(--dim)",
 };
 
 const SEV_RANK: Record<Finding["severity"], number> = { critical: 0, warn: 1, info: 2, good: 3 };
