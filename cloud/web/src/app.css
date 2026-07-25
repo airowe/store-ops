@@ -395,17 +395,21 @@ h2 { font-family: var(--display); font-weight: 600; font-size: 22px; letter-spac
    @shipaso/tokens set. Scoped here (not the cross-platform token source) so
    mobile/other surfaces are untouched. Both themes defined. */
 :root {
-  --rail-bg: #090c13; --nav-active: #131b2e;
+  --rail-bg: #090c13;
   /* Mirrors cloud/public/styles.css (the canonical block the mobile token test
      pins against). Duplicated because the new app loads only app.css — keep the
      values byte-identical so the two can be diffed. */
+  --nav-active: #131b2e; --on-accent: #05070c;
   --warn-glow: rgba(251, 191, 36, 0.12); --warn-border: rgba(251, 191, 36, 0.40);
-  --brand-glow: rgba(91,140,255,.14); --on-accent: #05070c;
+  --bad-glow: rgba(248, 113, 113, 0.12);
+  --brand-glow: rgba(91,140,255,.14);
 }
 :root[data-theme="light"] {
-  --rail-bg: #ffffff; --nav-active: #eef2f9;
+  --rail-bg: #ffffff;
+  --nav-active: #eef2f9; --on-accent: #ffffff;
   --warn-glow: rgba(183, 121, 31, 0.10); --warn-border: rgba(183, 121, 31, 0.35);
-  --brand-glow: rgba(53,99,224,.1); --on-accent: #ffffff;
+  --bad-glow: rgba(220, 74, 65, 0.10);
+  --brand-glow: rgba(53,99,224,.1);
 }
 
 /* Primary CTA — the green "signal" action. .btn sets shape/type; primary paints. */

@@ -30,6 +30,12 @@ export const palette = {
   warnGlow: "rgba(251, 191, 36, 0.12)",
   warnBorder: "rgba(251, 191, 36, 0.40)",
   bad: "#f87171",
+  /** The failure wash — `bad` at the same wash alpha `warnGlow` uses. */
+  badGlow: "rgba(248, 113, 113, 0.12)",
+  /** Chrome: selected nav item fill. */
+  navActive: "#131b2e",
+  /** Text/icon ON a solid `brand` fill (the `onSignal` counterpart). */
+  onAccent: "#05070c",
 } as const;
 
 export type PaletteKey = keyof typeof palette;
@@ -61,6 +67,9 @@ export const lightPalette: Palette = {
   warnGlow: "rgba(183, 121, 31, 0.10)",
   warnBorder: "rgba(183, 121, 31, 0.35)",
   bad: "#dc4a41",
+  badGlow: "rgba(220, 74, 65, 0.10)",
+  navActive: "#eef2f9",
+  onAccent: "#ffffff",
 };
 
 /** The two schemes, keyed by resolved color scheme. */
