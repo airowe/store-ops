@@ -16,6 +16,10 @@ import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
+// Read from disk rather than importing `./app.css?raw`: vitest stubs CSS
+// imports, so ?raw resolves to an empty string and every assertion below would
+// pass vacuously. `node:*` needs @types/node on the typecheck path — see the
+// tsconfig `types` entry added alongside this file.
 const css = readFileSync(
   join(dirname(fileURLToPath(import.meta.url)), "app.css"),
   "utf8",
