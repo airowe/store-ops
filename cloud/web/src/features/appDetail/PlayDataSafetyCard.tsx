@@ -82,6 +82,10 @@ export function PlayDataSafetyCard({ client, appId }: { client: ApiClient; appId
           />
           <span>I confirm this is my own declaration and it is accurate. It will replace my live Play data-safety form.</span>
         </label>
+      </div>
+      {/* Outside the field grid on purpose (#344) — a grid item stretches to a
+          full-bleed bar, which is not how any other primary action here reads. */}
+      <div style={{ marginTop: 8 }}>
         <button type="button"
           className="btn primary"
           data-testid="pds-push"
