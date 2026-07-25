@@ -224,6 +224,9 @@ export function RunView({
           grade={r.audit?.screenshots?.grade ?? null}
           coverageScore={r.coverage?.coverageScore ?? null}
           status={run.status}
+          {...(r.audit?.liveVersion !== undefined ? { version: r.audit.liveVersion } : {})}
+          {...(r.audit?.rating !== undefined ? { rating: r.audit.rating } : {})}
+          {...(r.audit?.categoryRank !== undefined ? { categoryRank: r.audit.categoryRank } : {})}
           {...(onConnect ? { onConnectAnalytics: onConnect } : {})}
         />
         <h1 className="run-title">Proposed changes</h1>

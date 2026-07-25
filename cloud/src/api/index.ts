@@ -118,7 +118,7 @@ import { fetchStorefrontListing } from "../engine/storefrontListing.js";
 import { asResponse, buildUrl, fetchJson, ItunesError } from "../engine/itunes.js";
 import { ITUNES_LOOKUP_URL } from "../engine/constants.js";
 import { detectPortfolio } from "../engine/portfolio.js";
-import { fetchChartRank } from "../engine/chartRank.js";
+import { categoryRankFrom, fetchChartRank } from "../engine/chartRank.js";
 import { buildRankAnnotations } from "../engine/rankAnnotations.js";
 import { deriveBrandTokens, localizeCopy, LocalizeError, validateLocalizedSubmission } from "../engine/localizeCopy.js";
 import { readLocaleKeywords } from "../engine/localeKeywords.js";
@@ -483,6 +483,10 @@ async function attachCaptionFindings(env: Env, result: AgentResult): Promise<voi
  * effort and keyless: reads the app's primary-genre chart from the free RSS feed
  * and locates the app. Absent trackId/genre or an unreadable feed leaves
  * `chartRank` undefined (unknown) — never a false "not charting".
+ *
+ * #326: the SAME measured read is also narrowed onto the audit as
+ * `categoryRank` so the run status bar renders one field. Both the keyed and
+ * the public run paths call this, so both get a measured rank or none at all.
  */
 async function attachChartRank(env: Env, app: AppRow, result: AgentResult): Promise<void> {
   const { trackId, primaryGenreId, primaryGenreName } = result.audit;
@@ -494,6 +498,8 @@ async function attachChartRank(env: Env, app: AppRow, result: AgentResult): Prom
     country: app.country?.toLowerCase() || "us",
   });
   if (cr) result.chartRank = cr;
+  const categoryRank = categoryRankFrom(cr);
+  if (categoryRank) result.audit.categoryRank = categoryRank;
 }
 
 /**

@@ -190,6 +190,32 @@ export type RunAudit = {
   app?: string;
   bundleId?: string;
   liveName?: string;
+  /**
+   * The live version string, when the run's listing read returned one (#326).
+   * Absent = unread. The status bar shows "v—", never a plausible "1.0".
+   */
+  liveVersion?: string;
+  /**
+   * The measured star rating (#326). Each half is independently measured, so a
+   * read average with an unread count is `{ average, count: null }` — never a
+   * fabricated count. Absent when neither half was readable; an unrated app is
+   * absent, never a 0-star app.
+   *
+   * `source` names the App Store surface the pair was read from: the lookup API
+   * wins whenever it read either half, and the public listing page backs up a
+   * lookup that carried no rating at all. The surfaces can disagree, so halves
+   * are never merged across them — a pair always describes ONE surface.
+   */
+  rating?: { average: number | null; count: number | null; source: "lookup" | "storefront" };
+  /**
+   * The app's CATEGORY chart position (#326). `rank: null` means the chart WAS
+   * read and the app is not in it; the field is absent when the chart was never
+   * read (unknown), so the bar falls back to its "#—" placeholder.
+   *
+   * `category` is optional: a genre id we cannot name is NOT a category name,
+   * so it is omitted and the bar renders a bare "#42" rather than "#42 in 6013".
+   */
+  categoryRank?: { rank: number | null; category?: string };
   /** null = couldn't read screenshots (unmeasured, never "zero"). */
   screenshots?: {
     grade: string;
