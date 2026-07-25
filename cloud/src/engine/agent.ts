@@ -40,8 +40,15 @@ import type { CoverageReport } from "./metadataCoverage.js";
 import type { LocaleRecommendation } from "./localizationExpansion.js";
 import type { PpoTreatmentPlan } from "./ppoTreatment.js";
 import type { LanguageCoverage } from "./languageCoverage.js";
-import type { ChartRank } from "./chartRank.js";
+import type { CategoryRank, ChartRank } from "./chartRank.js";
 import type { ReviewSentiment } from "./reviewSentiment.js";
+
+/**
+ * Which App Store surface a rating was read from (#326). The lookup API and the
+ * public listing page can report different numbers, so the audit records the
+ * surface rather than presenting one anonymous "the rating".
+ */
+export type RatingSource = "lookup" | "storefront";
 
 /** Everything the agent needs to run one app's loop. Pure data in. */
 export type AppInput = {
@@ -90,6 +97,29 @@ export type Audit = {
    *  single fetch. Absent when the page was unreadable or carried none of these —
    *  unknown, never an empty object. */
   storefront?: StorefrontIntel;
+  /** The live version string, when the lookup returns one (#326). Absent when
+   *  the lookup was unreadable or carried no version — unknown, never "1.0". */
+  liveVersion?: string;
+  /**
+   * The live star rating (#326), read from one of the two surfaces the audit
+   * already fetches. Each half is independently measured: a read average with
+   * an unread count is `{ average, count: null }`, never a fabricated count.
+   * The whole field is absent when neither half was readable. A rating is a
+   * MEASUREMENT, so an unrated app reads as absent, never as a 0-star app.
+   *
+   * `source` names the surface the pair was read from. The lookup wins when it
+   * read EITHER half; the storefront page is a fallback only for a lookup that
+   * carried no rating at all. The two surfaces can disagree, so halves are
+   * never merged across them — a pair always describes one surface.
+   */
+  rating?: { average: number | null; count: number | null; source: RatingSource };
+  /**
+   * The app's CATEGORY chart position (#326), narrowed from the run's measured
+   * `chartRank` so the status bar reads one field. `rank: null` means we read
+   * the chart and the app was NOT in it; the whole field is absent when the
+   * chart was never read (unknown) — the bar then shows its honest placeholder.
+   */
+  categoryRank?: CategoryRank;
   /** App Store trackId (from lookup) — the id to find in a chart feed. */
   trackId?: string;
   /** Primary genre id + name (from lookup) — the CATEGORY chart to check. */
@@ -221,6 +251,8 @@ async function audit(fetchFn: FetchFn, input: AppInput): Promise<Audit> {
   let trackId: string | undefined;
   let primaryGenreId: string | undefined;
   let primaryGenreName: string | undefined;
+  let liveVersion: string | undefined;
+  let rating: { average: number | null; count: number | null; source: RatingSource } | undefined;
   try {
     const url = buildUrl(ITUNES_LOOKUP_URL, { bundleId: input.bundleId, country });
     const data = asResponse(await fetchJson(fetchFn, url));
@@ -232,11 +264,35 @@ async function audit(fetchFn: FetchFn, input: AppInput): Promise<Audit> {
       if (r.primaryGenreName) primaryGenreName = r.primaryGenreName;
       const desc = r.description?.trim();
       if (desc) liveDescription = desc;
+      // #326 — status-bar stats off the read we already did. Each field is
+      // independently measured; an absent one stays absent (unknown), and a
+      // half-read rating carries `null` for the half we could not measure.
+      const version = r.version?.trim();
+      if (version) liveVersion = version;
+      const average = typeof r.averageUserRating === "number" && Number.isFinite(r.averageUserRating)
+        ? Math.round(r.averageUserRating * 10) / 10
+        : null;
+      const count = typeof r.userRatingCount === "number" && Number.isFinite(r.userRatingCount)
+        ? r.userRatingCount
+        : null;
+      if (average !== null || count !== null) rating = { average, count, source: "lookup" };
       // The public storefront page carries what the lookup API doesn't: the
       // subtitle always, and the screenshot set the lookup frequently omits
       // (#41). One best-effort fetch enriches both; never fails the audit.
       const page = r.trackViewUrl ? await fetchStorefrontListing(fetchFn, r.trackViewUrl) : null;
       if (page?.subtitle) liveSubtitle = page.subtitle;
+      // The storefront page's ratings shelf backs up a lookup that carried no
+      // rating at all. The lookup WINS whenever it read either half — a
+      // half-read lookup is still a real measurement of that surface, and the
+      // two surfaces can disagree, so we never splice halves across them: a
+      // {average, count} pair always describes ONE surface, named by `source`.
+      if (rating === undefined && page?.ratings) {
+        rating = {
+          average: page.ratings.average,
+          count: page.ratings.count,
+          source: "storefront",
+        };
+      }
       // Thread the REST of the page through ONCE (#feature-work never edits
       // audit() again): everything but the subtitle + shots consumed below.
       // Absent when nothing remains — unknown, never an empty object.
@@ -268,6 +324,8 @@ async function audit(fetchFn: FetchFn, input: AppInput): Promise<Audit> {
     ...(liveDescription !== undefined ? { liveDescription } : {}),
     ...(liveSubtitle !== undefined ? { liveSubtitle } : {}),
     ...(storefront !== undefined ? { storefront } : {}),
+    ...(liveVersion !== undefined ? { liveVersion } : {}),
+    ...(rating !== undefined ? { rating } : {}),
     ...(trackId !== undefined ? { trackId } : {}),
     ...(primaryGenreId !== undefined ? { primaryGenreId } : {}),
     ...(primaryGenreName !== undefined ? { primaryGenreName } : {}),

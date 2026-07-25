@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import {
+  categoryRankFrom,
   chartRankFromEntries,
   fetchChartRank,
   parseChartFeed,
@@ -111,5 +112,110 @@ describe("fetchChartRank", () => {
     const { genreId: _omit, ...noGenre } = opts;
     const r = await fetchChartRank(okFeed(["200"]), noGenre);
     expect(r).toBeNull();
+  });
+});
+
+/**
+ * #326 — the status bar's category-rank cell. `categoryRankFrom` narrows a
+ * ChartRank into the audit-shaped `{ rank, category }` the bar renders. The
+ * three states stay distinct: measured-and-charting is a number; measured-and-
+ * NOT-charting is `rank:null` (we read the chart, the app wasn't in it); an
+ * unread chart is undefined (unknown) and never reaches the bar as a number.
+ */
+describe("categoryRankFrom — #326 audit shaping", () => {
+  it("carries the measured position and the genre name", () => {
+    const r = categoryRankFrom({
+      genreId: "6013",
+      genreName: "Health & Fitness",
+      chart: "top-free",
+      country: "us",
+      outOf: 100,
+      ranked: true,
+      position: 42,
+    });
+    expect(r).toEqual({ rank: 42, category: "Health & Fitness" });
+  });
+
+  it("reports rank:null when the chart was read and the app is NOT charting", () => {
+    const r = categoryRankFrom({
+      genreId: "6013",
+      genreName: "Health & Fitness",
+      chart: "top-free",
+      country: "us",
+      outOf: 100,
+      ranked: false,
+    });
+    expect(r).toEqual({ rank: null, category: "Health & Fitness" });
+  });
+
+  it("resolves a known genre id to its display name when the feed carried no name", () => {
+    const r = categoryRankFrom({
+      genreId: "6013",
+      chart: "top-free",
+      country: "us",
+      outOf: 100,
+      ranked: true,
+      position: 7,
+    });
+    expect(r).toEqual({ rank: 7, category: "Health & Fitness" });
+  });
+
+  it("resolves a Games sub-genre id through the map", () => {
+    const r = categoryRankFrom({
+      genreId: "7014",
+      chart: "top-free",
+      country: "us",
+      outOf: 100,
+      ranked: true,
+      position: 3,
+    });
+    expect(r).toEqual({ rank: 3, category: "Roleplaying" });
+  });
+
+  it("prefers the feed's own genreName over the map", () => {
+    const r = categoryRankFrom({
+      genreId: "6013",
+      genreName: "Fitness & Wellbeing",
+      chart: "top-free",
+      country: "us",
+      outOf: 100,
+      ranked: true,
+      position: 7,
+    });
+    expect(r).toEqual({ rank: 7, category: "Fitness & Wellbeing" });
+  });
+
+  /**
+   * The raw id is NOT a category name. Rendering "#42 in 6013" reads as a bug
+   * and asserts a label we never measured, so an unresolvable id yields a
+   * CategoryRank with NO category clause — the bar renders a bare "#42".
+   */
+  it("omits category entirely when the genre id is not in the map", () => {
+    const r = categoryRankFrom({
+      genreId: "999999",
+      chart: "top-free",
+      country: "us",
+      outOf: 100,
+      ranked: true,
+      position: 42,
+    });
+    expect(r).toEqual({ rank: 42 });
+    expect(r).not.toHaveProperty("category");
+  });
+
+  it("never surfaces a raw numeric id as the category", () => {
+    const r = categoryRankFrom({
+      genreId: "6013",
+      chart: "top-free",
+      country: "us",
+      outOf: 100,
+      ranked: false,
+    });
+    expect(r?.category).not.toMatch(/^\d+$/);
+  });
+
+  it("is undefined (UNKNOWN) when the chart was never read", () => {
+    expect(categoryRankFrom(null)).toBeUndefined();
+    expect(categoryRankFrom(undefined)).toBeUndefined();
   });
 });
