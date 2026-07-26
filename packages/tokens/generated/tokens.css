@@ -41,6 +41,8 @@
   --grain: 0.025;
   --shadow: 0 24px 60px rgba(0, 0, 0, 0.5);
   --color-scheme: dark;
+  --brand-glow: rgba(91, 140, 255, 0.14);
+  --rail-bg: #090c13;
 }
 
 :root[data-theme="light"] {
@@ -85,4 +87,6 @@
   --grain: 0;
   --shadow: 0 24px 60px rgba(28, 40, 66, 0.14);
   --color-scheme: light;
+  --brand-glow: rgba(53, 99, 224, 0.10);
+  --rail-bg: #ffffff;
 }
