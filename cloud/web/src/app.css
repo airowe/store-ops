@@ -1555,3 +1555,33 @@ h2 { font-family: var(--display); font-weight: 600; font-size: 22px; letter-spac
   .pcomp { padding: 24px 20px 56px; }
   .pcomp-suggested { grid-template-columns: minmax(0, 1fr); }
 }
+
+/* ── 404 (#356 Phase 3) ─────────────────────────────────────────────────────
+   Unknown paths used to fall through to the legacy dashboard; this is the new
+   app's own answer. Plain centered column (chromeFor gives an unknown path
+   "plain"), styled as the house empty state rather than as an error page —
+   nothing has gone wrong, the address simply isn't ours. */
+.notfound {
+  border: 1px dashed var(--line); border-radius: 14px; padding: 40px 32px;
+  background: var(--raise); max-width: 60ch; margin: 48px auto;
+}
+.notfound-eyebrow {
+  font-family: var(--mono); font-size: 11px; letter-spacing: .12em;
+  text-transform: uppercase; color: var(--faint); margin-bottom: 10px;
+}
+.notfound-title {
+  font-family: var(--display); font-size: 22px; font-weight: 600;
+  margin: 0 0 8px; letter-spacing: -.3px;
+}
+.notfound-body { font-size: 14.5px; color: var(--dim); line-height: 1.55; margin: 0 0 18px; }
+.notfound-actions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.notfound-btn {
+  padding: 10px 18px; border-radius: 11px; font-size: 14px; font-weight: 600;
+  text-decoration: none; white-space: nowrap;
+}
+.notfound-btn.is-primary { background: var(--signal); color: var(--on-signal); font-weight: 700; }
+.notfound-btn.is-ghost { border: 1px solid var(--line); color: var(--ink); }
+
+@media (max-width: 640px) {
+  .notfound { margin: 24px 16px; padding: 28px 20px; }
+}
