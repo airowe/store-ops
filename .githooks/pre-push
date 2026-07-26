@@ -77,7 +77,9 @@ else
       range="$remote_sha..$local_sha"
     fi
     changed="$(git diff --name-only $range 2>/dev/null || true)"
-    if printf '%s\n' "$changed" | grep -qE '^cloud/(public/|tests/e2e/)'; then
+    # UI = the new app's source or its e2e. (Was cloud/public/** + cloud/tests/
+    # e2e/**; both were the legacy dashboard and were deleted in #356 Phase 3.)
+    if printf '%s\n' "$changed" | grep -qE '^cloud/web/(src/|tests-e2e/|index\.html|public/)'; then
       needs_e2e=1
     fi
   done <<< "$STDIN_REFS"
@@ -105,14 +107,19 @@ run "unit tests (vitest run)"         npm test
 
 if [ "$needs_e2e" = "1" ]; then
   # Free Playwright's static-server port so a stale listener can't break e2e.
+  # (:8794 — cloud/web/playwright.config.ts. The legacy suite's :8793 server
+  # went with cloud/public in #356 Phase 3.)
   if command -v lsof >/dev/null 2>&1; then
-    lsof -ti :8793 2>/dev/null | xargs -r kill -9 2>/dev/null || true
+    lsof -ti :8794 2>/dev/null | xargs -r kill -9 2>/dev/null || true
   fi
-  # e2e runs SERIAL (--workers=1) on purpose: a few specs (picker pagination)
-  # are flaky under Playwright's default parallelism + the shared :8793 static
-  # server — they pass deterministically serially. A local gate should never
-  # false-block a push, so we trade ~20s of wall-clock for a reliable verdict.
+  # The e2e suite now belongs to the new app, so it runs from cloud/web and
+  # needs a built dist/ (its config serves dist/ via tests-e2e/serve.mjs).
+  # Serial on purpose: a local gate should never false-block a push on
+  # parallelism flake, so we trade wall-clock for a reliable verdict.
+  cd "$REPO_ROOT/cloud/web"
+  run "build (vite)"                    npm run build
   run "e2e tests (playwright, serial)"  ./node_modules/.bin/playwright test --workers=1
+  cd "$CLOUD_DIR"
   echo ""
   echo "✓ pre-push gate passed (typecheck + unit + e2e). Pushing."
 else

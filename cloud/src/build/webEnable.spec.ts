@@ -52,6 +52,44 @@ describe("isNavigationRequest", () => {
 describe("serveDecision", () => {
   const resolve = owns(["/", "/settings", "/login"]);
 
+  /**
+   * #356 Phase 3: static pages that are NOT the SPA must survive the "every
+   * navigation goes to the app" rule, or relocating them into the app's
+   * public/ silently breaks them:
+   *
+   *  • /auth/m is the magic-link sign-in landing. It is deliberately framework-
+   *    free (it runs before any bundle, from an email client, on an unknown
+   *    device) and must NOT auto-redirect — that would consume the magic link
+   *    before the app could hand off. Serving it the SPA shell breaks sign-in.
+   *  • /.well-known/apple-app-site-association is extensionless, so it looks
+   *    exactly like a page path — and Apple's CDN fetches it with no Accept
+   *    header or `*​/*`, both of which pass the navigation sniff. Serving it
+   *    HTML breaks iOS universal links.
+   */
+  it("never hijacks the static pages that are not the SPA", () => {
+    for (const accept of ["text/html", "*/*", ""]) {
+      expect(serveDecision({ method: "GET", pathname: "/auth/m", accept }, resolve)).toBe(
+        "passthrough",
+      );
+      expect(
+        serveDecision(
+          { method: "GET", pathname: "/.well-known/apple-app-site-association", accept },
+          resolve,
+        ),
+      ).toBe("passthrough");
+    }
+  });
+
+  it("does not over-reach: /authorize and /auth-something are still the SPA's", () => {
+    // The exclusion must match real paths, not any path merely starting "/auth".
+    expect(serveDecision({ method: "GET", pathname: "/authorize", accept: "text/html" }, resolve)).toBe(
+      "rewrite-web",
+    );
+    expect(
+      serveDecision({ method: "GET", pathname: "/auth-something", accept: "text/html" }, resolve),
+    ).toBe("rewrite-web");
+  });
+
   it("rewrites an owned navigation path to the new app entry", () => {
     expect(serveDecision({ method: "GET", pathname: "/settings", accept: "text/html" }, resolve)).toBe(
       "rewrite-web",

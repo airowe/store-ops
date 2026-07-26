@@ -2,9 +2,21 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { fontSize, fonts, lightPalette, palette, paletteFor, theme } from "./tokens.js";
 
-/** The web's canonical design system — the single source of truth. */
+/**
+ * The canonical design system — the single source of truth for BOTH surfaces.
+ *
+ * This used to read `cloud/public/styles.css`, the legacy dashboard's
+ * hand-maintained stylesheet, which was deleted in #356 Phase 3. It now reads
+ * the GENERATED palette that `packages/tokens/build.mjs` emits from
+ * tokens.json, which is what the web actually loads.
+ *
+ * The check keeps its full force here, unlike in verify.mjs: mobile's palette
+ * (tokens.ts) is hand-written and is NOT generated from tokens.json, so this is
+ * still two independent artifacts having to agree — real cross-surface drift
+ * detection, not a comparison of a file with a copy of itself.
+ */
 const stylesCss = readFileSync(
-  resolve(__dirname, "../../../cloud/public/styles.css"),
+  resolve(__dirname, "../../../packages/tokens/generated/tokens.css"),
   "utf8",
 );
 

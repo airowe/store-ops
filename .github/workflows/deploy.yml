@@ -60,17 +60,28 @@ jobs:
       - name: Test
         run: npm test
 
-      - name: Install Playwright browser
-        run: ./node_modules/.bin/playwright install --with-deps chromium
+      # E2E now belongs to the app (the dashboard suite drove cloud/public,
+      # deleted in #356 Phase 3). It runs from cloud/web against the built dist
+      # + a Playwright-routed mock backend — no live Worker/D1/network. This is
+      # a DEPLOY gate, so it must stay: a failure here stops the deploy.
+      - name: Install web deps
+        working-directory: cloud/web
+        run: npm ci
 
-      - name: E2E (dashboard funnel vs mock backend)
-        # Serial + 1 retry: a few specs (the picker "Show more" pagination) race
-        # the result-list re-render under Playwright's default parallelism + the
-        # shared :8793 static server, detaching the button mid-click. They pass
-        # deterministically serially — this matches the local pre-push gate
-        # (.githooks/pre-push also runs --workers=1). The retry absorbs any
-        # residual one-off flake without masking a real failure.
-        run: ./node_modules/.bin/playwright test --workers=1 --retries=1
+      - name: Build web app
+        working-directory: cloud/web
+        run: npm run build
+
+      - name: Install Playwright browser
+        working-directory: cloud/web
+        run: npx playwright install --with-deps chromium
+
+      - name: E2E (redesign happy path vs mock backend)
+        # Serial + 1 retry, matching ci.yml and the local pre-push gate: a local
+        # or CI gate should never false-block on parallelism flake, and the retry
+        # absorbs residual one-offs without masking a real failure.
+        working-directory: cloud/web
+        run: npm run test:e2e -- --workers=1 --retries=1
 
       # ── deploy gate: only deploy when the Cloudflare secrets are configured.
       # Keeps the workflow green (gates still run) before one-time secret setup,
@@ -113,16 +124,17 @@ jobs:
           workingDirectory: cloud
           command: deploy
 
-      # ── build the COMBINED bundle: legacy dashboard + the new TanStack app ──
-      # UI redesign cutover (DEPLOY.md "Promote to production", option 1): main
-      # now ships the combined bundle to store-ops-dashboard instead of legacy
-      # only. build:combined runs build:dashboard (stamps public/ → dist/ with
-      # name.<hash>.ext cache-busting filenames + rewritten index.html — a stale
-      # cached app.js once audited the WRONG app), then builds the new app into
-      # dist/_web.html + dist/assets, then emits the advanced-mode _worker.js that
-      # serves the redesign for every OWNED_PATHS route and proxies the rest to
-      # legacy. public/ stays un-hashed for local dev + Playwright E2E.
-      - name: Build combined bundle (legacy + redesign, cache-bust assets)
+      # ── build the Pages bundle: the app IS the site (#356 Phase 3) ──
+      # build:combined = build:web (vite → cloud/web/dist, content-hashed
+      # assets + public/ copied verbatim) then web-enable.mjs, which makes that
+      # build the deploy root and emits the advanced-mode _worker.js.
+      #
+      # It used to stitch the app INTO the legacy stamped dashboard: dist/ was
+      # legacy, index.html was legacy, and the app lived at _web.html for owned
+      # paths only. Legacy is gone, so the nesting is inverted — the app is the
+      # root, unknown paths get its 404, and public/ carries _headers,
+      # config.js, /auth/m and .well-known/* across.
+      - name: Build Pages bundle (app + edge worker)
         if: steps.creds.outputs.configured == 'true'
         run: npm run build:combined
 
