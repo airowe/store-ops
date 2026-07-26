@@ -33,6 +33,13 @@ export const OWNED_PATHS: readonly OwnedPattern[] = [
   /^\/apps\/[^/]+\/war-room$/,
   // Run detail / money screen (PRD 07) — /runs/:id.
   /^\/runs\/[^/]+$/,
+  // Portfolio index screens (#356) — the fleet-wide siblings of the per-app
+  // views. These are RegExps, not strings, on purpose: the string arm of
+  // resolveSurface is a PREFIX match, so a bare "/runs" would also claim
+  // /runs/:id/asc/push and every other API path nested under it.
+  /^\/runs$/,
+  /^\/keywords$/,
+  /^\/competitors$/,
 ];
 
 /** Decide which surface should serve a pathname. */

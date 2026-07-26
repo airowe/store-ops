@@ -35,6 +35,24 @@ describe("resolveSurface (strangler edge map)", () => {
     expect(resolveSurface("/runs/xyz", OWNED_PATHS)).toBe("web");
     expect(resolveSurface("/runs/xyz/extra", OWNED_PATHS)).toBe("legacy");
   });
+
+  it("owns the three portfolio index screens (#356)", () => {
+    for (const p of ["/runs", "/keywords", "/competitors"]) {
+      expect(resolveSurface(p, OWNED_PATHS)).toBe("web");
+    }
+  });
+
+  /**
+   * The string arm of resolveSurface is a PREFIX match, so listing these as
+   * plain strings would hand every nested API path to the SPA — /runs/:id/asc/
+   * push, /runs/approve-all and the rest would render HTML instead of calling
+   * the Worker. They are RegExps for exactly this reason; this pins it.
+   */
+  it("the index paths never swallow their nested API routes", () => {
+    for (const p of ["/runs/xyz/asc/push", "/keywords/anything", "/competitors/x"]) {
+      expect(resolveSurface(p, OWNED_PATHS)).toBe("legacy");
+    }
+  });
   it("owning '/' does not accidentally own deep paths", () => {
     // "/" matches only the exact root, never /apps/* etc.
     expect(resolveSurface("/apps/abc", ["/"])).toBe("legacy");

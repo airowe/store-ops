@@ -16,10 +16,11 @@ export type NavItem = { key: NavKey; label: string; href: string; icon: string }
 
 export const NAV_ITEMS: readonly NavItem[] = [
   { key: "overview", label: "Overview", href: "/dashboard", icon: "◱" },
+  // Apps has no fleet index of its own — the dashboard IS the app list.
   { key: "apps", label: "Apps", href: "/dashboard", icon: "▦" },
-  { key: "keywords", label: "Keywords", href: "/dashboard", icon: "⌗" },
-  { key: "competitors", label: "Competitors", href: "/dashboard", icon: "⚔" },
-  { key: "runs", label: "Runs", href: "/dashboard", icon: "◈" },
+  { key: "keywords", label: "Keywords", href: "/keywords", icon: "⌗" },
+  { key: "competitors", label: "Competitors", href: "/competitors", icon: "⚔" },
+  { key: "runs", label: "Runs", href: "/runs", icon: "◈" },
   { key: "settings", label: "Settings", href: "/settings", icon: "⚙" },
 ];
 
@@ -31,8 +32,11 @@ export const NAV_ITEMS: readonly NavItem[] = [
 const RAILED: readonly (string | RegExp)[] = [
   "/dashboard",
   "/settings",
+  "/keywords",
+  "/competitors",
+  // "/runs" as a bare string also covers "/runs/:id" via the startsWith arm.
+  "/runs",
   /^\/apps\/[^/]+(\/war-room)?$/,
-  /^\/runs\/[^/]+$/,
 ];
 
 /** The chrome for a pathname. Trailing slashes are normalized. */
@@ -47,7 +51,10 @@ export function activeNav(pathname: string): NavKey | null {
   const p = pathname.length > 1 ? pathname.replace(/\/+$/, "") : pathname;
   if (p === "/dashboard") return "overview";
   if (p === "/settings") return "settings";
-  if (/^\/runs\//.test(p)) return "runs";
+  if (p === "/keywords") return "keywords";
+  if (p === "/competitors") return "competitors";
+  // the index and a run detail both highlight Runs.
+  if (p === "/runs" || /^\/runs\//.test(p)) return "runs";
   if (/^\/apps\//.test(p)) return "apps";
   return null;
 }
