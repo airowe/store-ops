@@ -3,14 +3,16 @@
  * Honest: an unmeasured rank is "—" (never a guessed number); reachability is
  * labeled, not hidden, so a longshot reads as a longshot.
  */
-import React from "react";
+import React, { useMemo } from "react";
 import { StyleSheet, View } from "react-native";
-import { palette, spacing } from "../theme/index.js";
+import { spacing, usePalette, type Palette } from "../theme/index.js";
 import { formatRank } from "../lib/format.js";
 import type { KeywordGap, Opportunity } from "../types/api.js";
 import { AppText, Card } from "./primitives.js";
 
 export function KeywordGapList({ gaps }: { gaps: KeywordGap[] | undefined }) {
+  const palette = usePalette();
+  const styles = useMemo(() => makeStyles(palette), [palette]);
   if (!gaps || gaps.length === 0) return null;
   return (
     <Card>
@@ -32,6 +34,8 @@ export function KeywordGapList({ gaps }: { gaps: KeywordGap[] | undefined }) {
 }
 
 export function OpportunityList({ opportunities }: { opportunities: Opportunity[] | undefined }) {
+  const palette = usePalette();
+  const styles = useMemo(() => makeStyles(palette), [palette]);
   if (!opportunities || opportunities.length === 0) return null;
   return (
     <Card>
@@ -49,6 +53,7 @@ export function OpportunityList({ opportunities }: { opportunities: Opportunity[
   );
 }
 
-const styles = StyleSheet.create({
-  row: { flexDirection: "row", alignItems: "center", gap: spacing.sm, paddingVertical: spacing.xs },
-});
+const makeStyles = (p: Palette) =>
+  StyleSheet.create({
+    row: { flexDirection: "row", alignItems: "center", gap: spacing.sm, paddingVertical: spacing.xs },
+  });

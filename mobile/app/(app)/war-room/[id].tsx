@@ -13,9 +13,10 @@ import { WarRoomGrid } from "../../../src/components/WarRoomGrid.js";
 import { EmptyState } from "../../../src/components/EmptyState.js";
 import { Screen, AppText, Centered } from "../../../src/components/primitives.js";
 import { ApiError } from "../../../src/api/errors.js";
-import { palette } from "../../../src/theme/index.js";
+import { usePalette } from "../../../src/theme/index.js";
 
 export default function WarRoomScreen() {
+  const palette = usePalette();
   const { id } = useLocalSearchParams<{ id: string }>();
   const { client } = useAuth();
 

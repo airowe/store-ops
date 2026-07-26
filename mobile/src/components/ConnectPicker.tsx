@@ -5,9 +5,9 @@
  * more") and an honest not-found nudge. The actual connect + navigation is the
  * caller's job (passed via `onConnect`); this component owns the search UX.
  */
-import React, { useCallback, useState } from "react";
+import React, { useCallback, useMemo, useState } from "react";
 import { ActivityIndicator, FlatList, Pressable, StyleSheet, TextInput, View } from "react-native";
-import { fontSize, palette, radius, spacing } from "../theme/index.js";
+import { fontSize, radius, spacing, usePalette, type Palette } from "../theme/index.js";
 import type { ApiClient } from "../api/client.js";
 import { resolve as resolveEndpoint } from "../api/endpoints.js";
 import type { AppCandidate, ResolveResult } from "../types/api.js";
@@ -19,7 +19,11 @@ import { AppText, Button, Card } from "./primitives.js";
  * reconcile against the wrong app.
  */
 const keyExtractor = (c: AppCandidate) => c.bundleId;
-const Separator = () => <View style={styles.sep} />;
+const Separator = () => {
+  const palette = usePalette();
+  const styles = useMemo(() => makeStyles(palette), [palette]);
+  return <View style={styles.sep} />;
+};
 
 export function ConnectPicker({
   client,
@@ -28,6 +32,8 @@ export function ConnectPicker({
   client: ApiClient;
   onConnect: (candidate: AppCandidate) => void;
 }) {
+  const palette = usePalette();
+  const styles = useMemo(() => makeStyles(palette), [palette]);
   const [query, setQuery] = useState("");
   const [result, setResult] = useState<ResolveResult | null>(null);
   const [candidates, setCandidates] = useState<AppCandidate[]>([]);
@@ -130,6 +136,8 @@ const CandidateRow = React.memo(function CandidateRow({
   candidate: AppCandidate;
   onConnect: (candidate: AppCandidate) => void;
 }) {
+  const palette = usePalette();
+  const styles = useMemo(() => makeStyles(palette), [palette]);
   const onPress = useCallback(() => onConnect(candidate), [onConnect, candidate]);
   return (
     <Pressable accessibilityRole="button" testID={`candidate-${candidate.bundleId}`} onPress={onPress} style={styles.row}>
@@ -144,20 +152,21 @@ const CandidateRow = React.memo(function CandidateRow({
   );
 });
 
-const styles = StyleSheet.create({
-  searchRow: { marginTop: spacing.xs },
-  input: {
-    color: palette.ink,
-    backgroundColor: palette.bg2,
-    borderColor: palette.line,
-    borderWidth: 1,
-    borderRadius: radius.base,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.md,
-    fontSize: fontSize.body,
-  },
-  row: { flexDirection: "row", alignItems: "center", gap: spacing.sm, paddingVertical: spacing.sm },
-  sep: { height: 1, backgroundColor: palette.lineSoft },
-  showMore: { paddingVertical: spacing.md, alignItems: "center" },
-  endNote: { textAlign: "center", paddingTop: spacing.sm },
-});
+const makeStyles = (p: Palette) =>
+  StyleSheet.create({
+    searchRow: { marginTop: spacing.xs },
+    input: {
+      color: p.ink,
+      backgroundColor: p.bg2,
+      borderColor: p.line,
+      borderWidth: 1,
+      borderRadius: radius.base,
+      paddingHorizontal: spacing.md,
+      paddingVertical: spacing.md,
+      fontSize: fontSize.body,
+    },
+    row: { flexDirection: "row", alignItems: "center", gap: spacing.sm, paddingVertical: spacing.sm },
+    sep: { height: 1, backgroundColor: p.lineSoft },
+    showMore: { paddingVertical: spacing.md, alignItems: "center" },
+    endNote: { textAlign: "center", paddingTop: spacing.sm },
+  });

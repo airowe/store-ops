@@ -20,12 +20,13 @@ import { Screen, AppText, Button, Card } from "../../src/components/primitives.j
 import { TextField } from "../../src/components/TextField.js";
 import { RankBar } from "../../src/components/RankBar.js";
 import { TopTenRing } from "../../src/components/TopTenRing.js";
-import { palette, spacing } from "../../src/theme/index.js";
+import { spacing, usePalette } from "../../src/theme/index.js";
 
 type Teaser = NonNullable<PreviewResult["preview"]>;
 
 /** `client` is injectable so tests can drive the screen without an AuthProvider. */
 export default function Preview({ client: injected }: { client?: ApiClient } = {}) {
+  const palette = usePalette();
   const auth = useOptionalAuth();
   const client = injected ?? auth?.client;
   const router = useRouter();

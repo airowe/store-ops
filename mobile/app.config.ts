@@ -27,7 +27,17 @@ const config: ExpoConfig = {
   // "default" lets the iPad rotate to landscape (the responsive layout uses the
   // extra width for multi-column card grids); phones still read fine either way.
   orientation: "default",
-  userInterfaceStyle: "dark",
+  // "automatic" so iOS reports the real device scheme to `useColorScheme()`,
+  // which is what ThemeProvider resolves `mode: "system"` against. Forcing
+  // "dark" here was protective while components hardcoded the dark palette
+  // (#353) — honouring the system setting then would have produced a light
+  // shell full of dark colours. Now that every component reads the live
+  // palette, this is the only thing left preventing light mode.
+  //
+  // `ios/` is checked in, so this does NOT regenerate Info.plist: the native
+  // UIUserInterfaceStyle key must be changed in lockstep or the binary keeps
+  // forcing dark regardless of what this says.
+  userInterfaceStyle: "automatic",
   backgroundColor: "#07090e",
   // The ship mark mirrors the web favicon (cloud/public/index.html).
   icon: "./assets/icon.png",

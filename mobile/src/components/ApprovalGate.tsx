@@ -5,9 +5,9 @@
  * privacy boundary (pushCommands is `[]` until approval) and the product rule:
  * no auto-push to a live store.
  */
-import React from "react";
+import React, { useMemo } from "react";
 import { StyleSheet, View } from "react-native";
-import { palette, radius, spacing } from "../theme/index.js";
+import { radius, spacing, usePalette, type Palette } from "../theme/index.js";
 import type { CopyFields, PushCommand } from "../types/api.js";
 import { AppText, Button, Card } from "./primitives.js";
 
@@ -28,6 +28,8 @@ export function ApprovalGate({
   onReject: () => void;
   deciding?: boolean;
 }) {
+  const palette = usePalette();
+  const styles = useMemo(() => makeStyles(palette), [palette]);
   const approved = status === "approved" || status === "shipped";
   const rejected = status === "rejected";
   // A superseded run (a newer run replaced it) is a dead iteration — never
@@ -71,6 +73,8 @@ export function ApprovalGate({
 const COPY_FIELDS: Array<keyof CopyFields> = ["name", "subtitle", "keywords", "promo"];
 
 function CopyDiff({ current, proposed }: { current: CopyFields; proposed: CopyFields }) {
+  const palette = usePalette();
+  const styles = useMemo(() => makeStyles(palette), [palette]);
   return (
     <View style={{ gap: spacing.sm, marginVertical: spacing.sm }}>
       {COPY_FIELDS.map((f) => {
@@ -94,10 +98,11 @@ function CopyDiff({ current, proposed }: { current: CopyFields; proposed: CopyFi
   );
 }
 
-const styles = StyleSheet.create({
-  actions: { flexDirection: "row", gap: spacing.sm, marginTop: spacing.sm },
-  handoff: { marginTop: spacing.md, gap: spacing.sm, borderTopColor: palette.line, borderTopWidth: 1, paddingTop: spacing.md },
-  cmd: { gap: 2, backgroundColor: palette.bg2, borderColor: palette.line, borderWidth: 1, borderRadius: radius.base, padding: spacing.sm },
-  diff: { gap: 2 },
-  before: { color: palette.faint, textDecorationLine: "line-through" },
-});
+const makeStyles = (p: Palette) =>
+  StyleSheet.create({
+    actions: { flexDirection: "row", gap: spacing.sm, marginTop: spacing.sm },
+    handoff: { marginTop: spacing.md, gap: spacing.sm, borderTopColor: p.line, borderTopWidth: 1, paddingTop: spacing.md },
+    cmd: { gap: 2, backgroundColor: p.bg2, borderColor: p.line, borderWidth: 1, borderRadius: radius.base, padding: spacing.sm },
+    diff: { gap: 2 },
+    before: { color: p.faint, textDecorationLine: "line-through" },
+  });

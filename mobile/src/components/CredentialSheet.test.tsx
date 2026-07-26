@@ -3,6 +3,21 @@ import { render, screen, fireEvent, waitFor } from "@testing-library/react-nativ
 import * as SecureStore from "expo-secure-store";
 import { CredentialSheet, type AscSubmit, type PlaySubmit } from "./CredentialSheet.js";
 
+import { useColorScheme } from "react-native";
+import { ThemeProvider } from "../theme/index.js";
+import { lightPalette, palette } from "../theme/tokens.js";
+
+jest.mock("react-native/Libraries/Utilities/useColorScheme");
+const mockColorScheme = useColorScheme as unknown as jest.Mock;
+
+/** Flatten RN's style prop (array | object) into one resolved object. */
+function flatStyle(node: { props: { style?: unknown } }): Record<string, unknown> {
+  const flatten = (s: unknown): Record<string, unknown> =>
+    Array.isArray(s) ? Object.assign({}, ...s.map(flatten)) : ((s ?? {}) as Record<string, unknown>);
+  return flatten(node.props.style);
+}
+
+
 const P8 = "-----BEGIN PRIVATE KEY-----\nabc\n-----END PRIVATE KEY-----";
 const SA = JSON.stringify({
   type: "service_account",
@@ -11,7 +26,10 @@ const SA = JSON.stringify({
   token_uri: "https://oauth2.googleapis.com/token",
 });
 
-beforeEach(() => jest.clearAllMocks());
+beforeEach(() => {
+  jest.clearAllMocks();
+  mockColorScheme.mockReturnValue("dark"); // every other test in this file assumes the dark default
+});
 
 describe("CredentialSheet — asc", () => {
   it("blocks submit until p8 + key + issuer are valid, then emits the credential", () => {
@@ -108,5 +126,20 @@ describe("CredentialSheet — play", () => {
     fireEvent.press(screen.getByTestId("play-submit"));
     expect(onSubmit).toHaveBeenCalledWith({ kind: "play", serviceAccount: SA });
     expect(SecureStore.setItemAsync).not.toHaveBeenCalled(); // never persisted
+  });
+
+  it("paints the validation error from the LIVE palette (light provider → light bad)", () => {
+    mockColorScheme.mockReturnValue("light");
+    render(
+      <ThemeProvider>
+        <CredentialSheet variant="play" onSubmit={() => {}} />
+      </ThemeProvider>,
+    );
+    fireEvent.changeText(screen.getByTestId("play-json"), "{}");
+    fireEvent.press(screen.getByTestId("play-submit"));
+
+    const err = screen.getByTestId("play-error");
+    expect(flatStyle(err).color).toBe(lightPalette.bad);
+    expect(lightPalette.bad).not.toBe(palette.bad);
   });
 });

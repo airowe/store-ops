@@ -14,7 +14,7 @@ import { View } from "react-native";
 import type { ApiClient } from "../api/client.js";
 import { enableAnalytics, ingestAnalytics } from "../api/endpoints.js";
 import type { AnalyticsState, AnalyticsIngestResult } from "../types/api.js";
-import { palette, spacing } from "../theme/index.js";
+import { spacing, usePalette } from "../theme/index.js";
 import { AppText, Button, Card } from "./primitives.js";
 import { TextField } from "./TextField.js";
 
@@ -26,6 +26,7 @@ function ingestLine(r: AnalyticsIngestResult): string {
 }
 
 export function AnalyticsCard({ client, appId }: { client: ApiClient; appId: string }) {
+  const palette = usePalette();
   const [keyId, setKeyId] = useState("");
   const [issuerId, setIssuerId] = useState("");
   const [p8, setP8] = useState("");

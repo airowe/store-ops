@@ -18,7 +18,7 @@ import { View } from "react-native";
 import type { ApiClient } from "../api/client.js";
 import { ascCreateVersion, ascPush } from "../api/endpoints.js";
 import type { AscPushResult, AscCreateVersionResult } from "../types/api.js";
-import { palette, spacing } from "../theme/index.js";
+import { spacing, usePalette } from "../theme/index.js";
 import { AppText, Button, Card } from "./primitives.js";
 import { TextField } from "./TextField.js";
 
@@ -33,6 +33,7 @@ export function AscPushCard({
   approved: boolean;
   storedKeyId: string | null;
 }) {
+  const palette = usePalette();
   const [result, setResult] = useState<AscPushResult | null>(null);
   const [versionString, setVersionString] = useState("");
   const [cvResult, setCvResult] = useState<AscCreateVersionResult | null>(null);

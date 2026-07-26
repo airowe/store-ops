@@ -7,14 +7,16 @@
  * (Animated count-up lives in lib/motion; this row renders the honest final
  * state, which is also what Reduce-Motion shows.)
  */
-import React from "react";
+import React, { useMemo } from "react";
 import { StyleSheet, View } from "react-native";
-import { palette, spacing } from "../theme/index.js";
+import { spacing, usePalette, type Palette } from "../theme/index.js";
 import { formatRank } from "../lib/format.js";
 import type { DeltaEntry } from "../types/api.js";
 import { AppText } from "./primitives.js";
 
 export function RankMovementRow({ entry }: { entry: DeltaEntry }) {
+  const palette = usePalette();
+  const styles = useMemo(() => makeStyles(palette), [palette]);
   const hasPrev = entry.previous != null;
   const cur = entry.current;
   const up = entry.direction === "up";
@@ -38,6 +40,7 @@ export function RankMovementRow({ entry }: { entry: DeltaEntry }) {
   );
 }
 
-const styles = StyleSheet.create({
-  row: { flexDirection: "row", alignItems: "center", gap: spacing.sm, paddingVertical: 2 },
-});
+const makeStyles = (p: Palette) =>
+  StyleSheet.create({
+    row: { flexDirection: "row", alignItems: "center", gap: spacing.sm, paddingVertical: 2 },
+  });

@@ -11,6 +11,21 @@ import { AgentTriggersCard } from "./AgentTriggersCard.js";
 import type { ApiClient } from "../api/client.js";
 import type { SweepSchedule, ThresholdConfig } from "../types/api.js";
 
+import { useColorScheme } from "react-native";
+import { ThemeProvider } from "../theme/index.js";
+import { lightPalette, palette } from "../theme/tokens.js";
+
+jest.mock("react-native/Libraries/Utilities/useColorScheme");
+const mockColorScheme = useColorScheme as unknown as jest.Mock;
+
+/** Flatten RN's style prop (array | object) into one resolved object. */
+function flatStyle(node: { props: { style?: unknown } }): Record<string, unknown> {
+  const flatten = (s: unknown): Record<string, unknown> =>
+    Array.isArray(s) ? Object.assign({}, ...s.map(flatten)) : ((s ?? {}) as Record<string, unknown>);
+  return flatten(node.props.style);
+}
+
+
 const DEFAULT_T: ThresholdConfig = {
   unranked: true,
   competitorChanges: true,
@@ -44,6 +59,8 @@ function fakeClient(opts: { failSave?: string } = {}) {
   } as unknown as ApiClient;
   return { client, posts };
 }
+
+beforeEach(() => mockColorScheme.mockReturnValue("dark")); // every other test in this file assumes the dark default
 
 describe("AgentTriggersCard", () => {
   it("loads server values and saves a patch, reconciling from the answer", async () => {
@@ -91,5 +108,18 @@ describe("AgentTriggersCard", () => {
     await waitFor(() => expect(screen.getByText(/sweeps this app on that slot/)).toBeTruthy());
     const sent = posts.find((p) => p.path.endsWith("/schedule"))!.body as SweepSchedule;
     expect(sent).toEqual({ cadence: "daily", day: 1, hourUtc: 6 });
+  });
+
+  it("paints the schedule divider from the LIVE palette (light provider → light line)", async () => {
+    mockColorScheme.mockReturnValue("light");
+    const { client } = fakeClient();
+    render(
+      <ThemeProvider>
+        <AgentTriggersCard client={client} appId="app-1" />
+      </ThemeProvider>,
+    );
+    await waitFor(() => expect(screen.getByTestId("th-schedule-divider")).toBeTruthy());
+    expect(flatStyle(screen.getByTestId("th-schedule-divider")).borderTopColor).toBe(lightPalette.line);
+    expect(lightPalette.line).not.toBe(palette.line);
   });
 });

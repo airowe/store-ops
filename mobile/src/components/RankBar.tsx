@@ -5,10 +5,11 @@
  */
 import React from "react";
 import { View } from "react-native";
-import { palette } from "../theme/index.js";
+import { usePalette } from "../theme/index.js";
 import { rankFill } from "../lib/rankBar.js";
 
 export function RankBar({ rank }: { rank: number | null }) {
+  const palette = usePalette();
   if (rank == null) return null;
   const pct = `${Math.round(rankFill(rank) * 100)}%` as const;
   return (

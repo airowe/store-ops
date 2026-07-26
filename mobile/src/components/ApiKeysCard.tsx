@@ -14,11 +14,12 @@ import { View } from "react-native";
 import type { ApiClient } from "../api/client.js";
 import { createApiKey, listApiKeys, revokeApiKey } from "../api/endpoints.js";
 import type { ApiKeyMeta } from "../types/api.js";
-import { palette, radius, spacing } from "../theme/index.js";
+import { radius, spacing, usePalette } from "../theme/index.js";
 import { AppText, Button, Card } from "./primitives.js";
 import { TextField } from "./TextField.js";
 
 export function ApiKeysCard({ client }: { client: ApiClient }) {
+  const palette = usePalette();
   const [keys, setKeys] = useState<ApiKeyMeta[] | null>(null);
   const [label, setLabel] = useState("");
   const [freshKey, setFreshKey] = useState<string | null>(null);

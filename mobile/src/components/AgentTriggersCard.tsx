@@ -12,7 +12,7 @@ import { getSchedule, getThresholds, setSchedule, setThresholds } from "../api/e
 import type { SweepSchedule, ThresholdConfig } from "../types/api.js";
 import { AppText, Button, Card } from "./primitives.js";
 import { TextField } from "./TextField.js";
-import { palette, spacing } from "../theme/index.js";
+import { spacing, usePalette } from "../theme/index.js";
 
 const DAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"] as const;
 const CADENCES: Array<{ value: SweepSchedule["cadence"]; label: string }> = [
@@ -26,6 +26,7 @@ const toggle = (testID: string, value: boolean, onPress: () => void) => (
 );
 
 export function AgentTriggersCard({ client, appId }: { client: ApiClient; appId: string }) {
+  const palette = usePalette();
   const [unranked, setUnranked] = useState(true);
   const [compChanges, setCompChanges] = useState(true);
   const [notifyOnly, setNotifyOnly] = useState(false);
@@ -120,7 +121,7 @@ export function AgentTriggersCard({ client, appId }: { client: ApiClient; appId:
       </View>
       <Button testID="th-save" label="Save triggers" variant="ghost" loading={busy === "triggers"} onPress={() => void saveTriggers()} />
 
-      <View style={{ borderTopWidth: 1, borderTopColor: palette.line, marginTop: spacing.md, paddingTop: spacing.sm, gap: spacing.xs }}>
+      <View testID="th-schedule-divider" style={{ borderTopWidth: 1, borderTopColor: palette.line, marginTop: spacing.md, paddingTop: spacing.sm, gap: spacing.xs }}>
         <AppText kind="body">Sweep schedule</AppText>
         <AppText kind="micro">When the autonomous sweep runs for this app. Default: weekly, Monday 09:00 UTC.</AppText>
         <View style={{ flexDirection: "row", gap: spacing.xs, flexWrap: "wrap" }}>

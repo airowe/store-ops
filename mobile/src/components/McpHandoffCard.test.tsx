@@ -5,7 +5,13 @@
  *   • draft-only framing: the agent can audit + propose but never push.
  */
 import { render, screen } from "@testing-library/react-native";
+import { useColorScheme } from "react-native";
+import { ThemeProvider, lightPalette, palette } from "../theme/index.js";
 import { McpHandoffCard } from "./McpHandoffCard.js";
+
+jest.mock("react-native/Libraries/Utilities/useColorScheme");
+const mockColorScheme = useColorScheme as unknown as jest.Mock;
+beforeEach(() => mockColorScheme.mockReturnValue("dark"));
 
 // apiBase() reads expo-constants; the config module has a default fallback, so
 // the card renders a concrete https URL under test.
@@ -23,5 +29,22 @@ describe("McpHandoffCard", () => {
   it("frames it as draft-only — the agent can't push", () => {
     render(<McpHandoffCard />);
     expect(screen.getByTestId("mcp-handoff")).toHaveTextContent(/can[’']?t push|never push|approving/i);
+  });
+});
+
+describe("McpHandoffCard theming", () => {
+  it("uses the LIGHT palette border inside a light provider", () => {
+    mockColorScheme.mockReturnValue("light");
+    render(
+      <ThemeProvider>
+        <McpHandoffCard />
+      </ThemeProvider>,
+    );
+    const borders = screen
+      .getByTestId("mcp-handoff")
+      .findAll((n) => typeof n.props?.style?.borderColor === "string")
+      .map((n) => n.props.style.borderColor as string);
+    expect(borders).toContain(lightPalette.line);
+    expect(lightPalette.line).not.toBe(palette.line);
   });
 });

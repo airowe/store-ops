@@ -4,9 +4,9 @@
  * is "—" (never a guessed number), and the findings badge only appears when the
  * server actually returned a summary.
  */
-import React from "react";
+import React, { useMemo } from "react";
 import { Pressable, StyleSheet, View } from "react-native";
-import { palette, radius, spacing } from "../theme/index.js";
+import { radius, spacing, usePalette, type Palette } from "../theme/index.js";
 import { formatRank, humanizeStatus, timeAgo } from "../lib/format.js";
 import type { AppListItem } from "../types/api.js";
 import { AppText, Card } from "./primitives.js";
@@ -20,6 +20,8 @@ export function AppCard({
   now: number;
   onPress: (id: string) => void;
 }) {
+  const palette = usePalette();
+  const styles = useMemo(() => makeStyles(palette), [palette]);
   const rank = app.rank_summary;
   const findings = app.findings_summary;
   return (
@@ -66,6 +68,8 @@ export function AppCard({
 }
 
 function StatusBadge({ status }: { status: string }) {
+  const palette = usePalette();
+  const styles = useMemo(() => makeStyles(palette), [palette]);
   const awaiting = status === "awaiting_approval";
   return (
     <View style={[styles.badge, awaiting ? styles.badgeWarn : styles.badgeDim]}>
@@ -76,18 +80,19 @@ function StatusBadge({ status }: { status: string }) {
   );
 }
 
-const styles = StyleSheet.create({
-  headerRow: { flexDirection: "row", alignItems: "center", gap: spacing.md },
-  identity: { flex: 1, minWidth: 0 },
-  iconChip: {
-    width: 42, height: 42, borderRadius: 11, alignItems: "center", justifyContent: "center",
-    backgroundColor: palette.signalGlow, borderColor: palette.signalDim, borderWidth: 1,
-  },
-  rankRow: {
-    flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: spacing.sm,
-    marginTop: spacing.sm, paddingTop: spacing.sm, borderTopWidth: 1, borderTopColor: palette.lineSoft,
-  },
-  badge: { paddingHorizontal: spacing.sm, paddingVertical: 2, borderRadius: radius.base, maxWidth: 160 },
-  badgeWarn: { backgroundColor: palette.warn },
-  badgeDim: { backgroundColor: palette.panel2, borderColor: palette.line, borderWidth: 1 },
-});
+const makeStyles = (p: Palette) =>
+  StyleSheet.create({
+    headerRow: { flexDirection: "row", alignItems: "center", gap: spacing.md },
+    identity: { flex: 1, minWidth: 0 },
+    iconChip: {
+      width: 42, height: 42, borderRadius: 11, alignItems: "center", justifyContent: "center",
+      backgroundColor: p.signalGlow, borderColor: p.signalDim, borderWidth: 1,
+    },
+    rankRow: {
+      flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: spacing.sm,
+      marginTop: spacing.sm, paddingTop: spacing.sm, borderTopWidth: 1, borderTopColor: p.lineSoft,
+    },
+    badge: { paddingHorizontal: spacing.sm, paddingVertical: 2, borderRadius: radius.base, maxWidth: 160 },
+    badgeWarn: { backgroundColor: p.warn },
+    badgeDim: { backgroundColor: p.panel2, borderColor: p.line, borderWidth: 1 },
+  });

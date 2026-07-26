@@ -4,14 +4,16 @@
  * win is tinted with the signal accent. Your rank shows its final value (the
  * count-up animation is a motion concern; this renders the honest end state).
  */
-import React from "react";
+import React, { useMemo } from "react";
 import { ScrollView, StyleSheet, View } from "react-native";
-import { palette, spacing } from "../theme/index.js";
+import { spacing, usePalette, type Palette } from "../theme/index.js";
 import { formatRank } from "../lib/format.js";
 import type { HeadToHead } from "../types/api.js";
 import { AppText, Card } from "./primitives.js";
 
 export function WarRoomGrid({ rows, competitors }: { rows: HeadToHead[]; competitors: string[] }) {
+  const palette = usePalette();
+  const styles = useMemo(() => makeStyles(palette), [palette]);
   if (rows.length === 0) {
     return (
       <Card>
@@ -54,9 +56,10 @@ export function WarRoomGrid({ rows, competitors }: { rows: HeadToHead[]; competi
   );
 }
 
-const styles = StyleSheet.create({
-  row: { flexDirection: "row", alignItems: "center", paddingVertical: spacing.xs, gap: spacing.sm },
-  headerRow: { borderBottomColor: palette.line, borderBottomWidth: 1 },
-  kwCol: { width: 120 },
-  cell: { width: 84, textAlign: "right" },
-});
+const makeStyles = (p: Palette) =>
+  StyleSheet.create({
+    row: { flexDirection: "row", alignItems: "center", paddingVertical: spacing.xs, gap: spacing.sm },
+    headerRow: { borderBottomColor: p.line, borderBottomWidth: 1 },
+    kwCol: { width: 120 },
+    cell: { width: 84, textAlign: "right" },
+  });
