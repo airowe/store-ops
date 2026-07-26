@@ -433,26 +433,22 @@ h2 { font-family: var(--display); font-weight: 600; font-size: 22px; letter-spac
 }
 
 /* ── Redesign chrome tokens ────────────────────────────────────────────────
-   Web-shell-specific surfaces the command center needs beyond the shared
-   @shipaso/tokens set. Scoped here (not the cross-platform token source) so
-   mobile/other surfaces are untouched. Both themes defined. */
-:root {
-  --rail-bg: #090c13;
-  /* Mirrors cloud/public/styles.css (the canonical block the mobile token test
-     pins against). Duplicated because the new app loads only app.css — keep the
-     values byte-identical so the two can be diffed. */
-  --nav-active: #131b2e; --on-accent: #05070c;
-  --warn-glow: rgba(251, 191, 36, 0.12); --warn-border: rgba(251, 191, 36, 0.40);
-  --bad-glow: rgba(248, 113, 113, 0.12);
-  --brand-glow: rgba(91,140,255,.14);
-}
-:root[data-theme="light"] {
-  --rail-bg: #ffffff;
-  --nav-active: #eef2f9; --on-accent: #ffffff;
-  --warn-glow: rgba(183, 121, 31, 0.10); --warn-border: rgba(183, 121, 31, 0.35);
-  --bad-glow: rgba(220, 74, 65, 0.10);
-  --brand-glow: rgba(53,99,224,.1);
-}
+   DELETED (#339). This block re-declared seven tokens — --rail-bg,
+   --nav-active, --on-accent, --warn-glow, --warn-border, --bad-glow and
+   --brand-glow — that `@shipaso/tokens` already defines in both themes, with a
+   comment asking the reader to keep them "byte-identical" to a second file by
+   hand.
+
+   They were identical, so nothing looked wrong. That is precisely why it
+   survived: main.tsx imports the generated tokens BEFORE app.css, so these
+   copies SHADOWED the canonical values, and the failure mode only appears when
+   someone edits tokens.json and the app silently keeps rendering the old
+   colour. Verified all 14 values (7 tokens x 2 themes) matched before deleting,
+   so removing them is a no-op at runtime.
+
+   app.css may still DEFINE a token the canonical set lacks — that is how a
+   web-only surface is introduced. It may not REDEFINE one that exists upstream;
+   `tokenSourceOfTruth.test.ts` pins that. */
 
 /* Primary CTA — the green "signal" action. .btn sets shape/type; primary paints. */
 .btn.primary {
