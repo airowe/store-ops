@@ -61,10 +61,22 @@ describe("serveDecision", () => {
     );
   });
 
-  it("passes through a legacy navigation path (not owned)", () => {
+  /**
+   * #356 Phase 3: an UNOWNED navigation now reaches the new app too, which
+   * renders its 404. It used to pass through to dist/index.html — the legacy
+   * dashboard — so a typo or a stale bookmark rendered a whole dashboard shell
+   * as though the navigation had worked.
+   *
+   * Retiring cloud/public/ removes that fallback entirely, so the new app has
+   * to answer for these paths or nothing does.
+   */
+  it("sends an unowned navigation path to the new app, which 404s it", () => {
     expect(serveDecision({ method: "GET", pathname: "/apps", accept: "text/html" }, resolve)).toBe(
-      "passthrough",
+      "rewrite-web",
     );
+    expect(
+      serveDecision({ method: "GET", pathname: "/old-bookmark", accept: "text/html" }, resolve),
+    ).toBe("rewrite-web");
   });
 
   it("passes through the new app's OWN assets (owned prefix, but an asset request)", () => {

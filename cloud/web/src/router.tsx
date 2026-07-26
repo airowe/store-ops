@@ -15,6 +15,7 @@ import { PortfolioRunsRoute } from "./routes/portfolioRuns.js";
 import { PortfolioKeywordsRoute } from "./routes/portfolioKeywords.js";
 import { PortfolioCompetitorsRoute } from "./routes/portfolioCompetitors.js";
 import { OnboardingRoute } from "./routes/onboarding.js";
+import { NotFoundRoute } from "./routes/notFound.js";
 import { LandingRoute, LoginRoute, PreviewRoute, ProofRoute, BroadcastRoute, PrivacyRoute } from "./routes/public.js";
 
 const rootRoute = createRootRoute({ component: ShellLayout });
@@ -58,7 +59,13 @@ const routeTree = rootRoute.addChildren([
   broadcastRoute,
 ]);
 
-export const router = createRouter({ routeTree });
+/**
+ * Unknown paths render the 404 (#356 Phase 3) instead of falling through the
+ * strangler edge to the legacy dashboard. It renders INSIDE the shell, so it
+ * gets the same chrome decision as any other route — `chromeFor()` gives an
+ * unknown path the plain centered column rather than the authed nav rail.
+ */
+export const router = createRouter({ routeTree, defaultNotFoundComponent: NotFoundRoute });
 
 declare module "@tanstack/react-router" {
   interface Register {

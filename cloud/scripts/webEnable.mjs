@@ -120,12 +120,26 @@ export function isNavigationRequest(method, pathname, accept = "") {
 
 /**
  * The middleware decision, pure and dependency-free.
+ *
+ * EVERY navigation goes to the new app (#356 Phase 3): owned routes render
+ * themselves, and anything else renders the app's 404. Previously an unowned
+ * navigation passed through to `dist/index.html` — the LEGACY dashboard — so a
+ * typo or a stale bookmark rendered a whole dashboard shell as though the
+ * navigation had worked. Retiring `cloud/public/` removes that fallback, so the
+ * new app has to answer for these paths or nothing does.
+ *
+ * Only NAVIGATIONS are affected: `isNavigationRequest` already excludes
+ * /assets/*, anything with a file extension, non-GET/HEAD, and non-HTML Accept
+ * headers — so real asset requests still reach the store, and a genuinely
+ * missing FILE still 404s as a file rather than being handed an HTML shell. The
+ * REST API is a separate origin (api.shipaso.com), so nothing here shadows it.
+ *
  * @param req {{method:string, pathname:string, accept?:string}}
- * @param resolveSurface (pathname) => "web" | "legacy"
+ * @param _resolveSurface unused since #356 Phase 3; kept so the generated
+ *        middleware and the callers keep a stable signature.
  * @returns {"rewrite-web"|"passthrough"} rewrite-web ⇒ serve NEW_APP_ENTRY;
- *          passthrough ⇒ let Pages serve the static asset (legacy or /assets/*).
+ *          passthrough ⇒ let Pages serve the static asset (/assets/*, files).
  */
-export function serveDecision(req, resolveSurface) {
-  if (!isNavigationRequest(req.method, req.pathname, req.accept)) return "passthrough";
-  return resolveSurface(req.pathname) === "web" ? "rewrite-web" : "passthrough";
+export function serveDecision(req, _resolveSurface) {
+  return isNavigationRequest(req.method, req.pathname, req.accept) ? "rewrite-web" : "passthrough";
 }
