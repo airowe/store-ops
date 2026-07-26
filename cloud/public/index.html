@@ -4,14 +4,27 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="color-scheme" content="dark light" />
-    <!-- Apply the saved theme BEFORE the stylesheet paints, so a light-mode user
-         never sees a dark flash on load. No explicit choice → the CSS follows the
-         OS via prefers-color-scheme. Kept tiny + inline on purpose. -->
+    <!-- Apply the theme BEFORE the stylesheet paints, so a light-mode user never
+         sees a dark flash on load. The stylesheet has no prefers-color-scheme
+         rule (the earlier claim here that it did was wrong) — this script is the
+         only thing that reads the OS, which is why it resolves the preference
+         rather than just echoing the stored key. Kept tiny + inline on purpose. -->
     <script>
       (function () {
+        // Mirrors cloud/web/index.html and shell/theme.ts (#362): an absent or
+        // unrecognised preference means "follow the OS", not dark. Kept in step
+        // with the new app so the shared `store-ops:theme` key means the same
+        // thing on both surfaces.
         try {
           var t = localStorage.getItem("store-ops:theme");
-          if (t === "light" || t === "dark") document.documentElement.setAttribute("data-theme", t);
+          var mode = t === "light" || t === "dark" || t === "system" ? t : "system";
+          var scheme =
+            mode === "system"
+              ? window.matchMedia && window.matchMedia("(prefers-color-scheme: light)").matches
+                ? "light"
+                : "dark"
+              : mode;
+          document.documentElement.setAttribute("data-theme", scheme);
         } catch (e) {}
       })();
     </script>

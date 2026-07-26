@@ -147,6 +147,33 @@ describe("<SettingsView />", () => {
     expect(screen.getByTestId("theme-dark")).toHaveClass("is-on");
   });
 
+  /**
+   * #362: "System" is the default, and choosing it hands control back to the
+   * OS. Without this segment there is no way to undo an explicit choice — the
+   * stored key would stay "light"/"dark" forever.
+   */
+  it("offers a System segment that stores 'system' and follows the OS", async () => {
+    const { client } = makeClient();
+    // jsdom reports no match for any query by default; make the OS say light.
+    vi.stubGlobal("matchMedia", (q: string) => ({
+      matches: q.includes("light"),
+      addEventListener: () => {},
+      removeEventListener: () => {},
+    }));
+    renderView(client);
+    await waitFor(() => screen.getByTestId("theme-system"));
+
+    fireEvent.click(screen.getByTestId("theme-dark"));
+    expect(localStorage.getItem("store-ops:theme")).toBe("dark");
+
+    fireEvent.click(screen.getByTestId("theme-system"));
+    expect(localStorage.getItem("store-ops:theme")).toBe("system");
+    expect(screen.getByTestId("theme-system")).toHaveClass("is-on");
+    // …and the OS's light preference now wins.
+    expect(document.documentElement.getAttribute("data-theme")).toBe("light");
+    vi.unstubAllGlobals();
+  });
+
   it("sign out calls logout and notifies", async () => {
     const { client, post } = makeClient();
     const onSignedOut = vi.fn();

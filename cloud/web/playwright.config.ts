@@ -25,6 +25,9 @@ export default defineConfig({
       name: "chromium",
       use: {
         ...devices["Desktop Chrome"],
+        // Pin the theme: since #362 an unset preference follows the OS, so
+        // without this the suite renders whichever theme the host prefers.
+        colorScheme: "dark",
         // In CI, Playwright uses its own managed browser. In a sandbox where the
         // pinned build isn't downloaded, point PW_EXECUTABLE_PATH at a
         // pre-installed Chromium (e.g. /opt/pw-browsers/chromium-*/chrome-linux/chrome).

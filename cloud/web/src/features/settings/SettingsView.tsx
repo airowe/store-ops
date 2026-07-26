@@ -19,9 +19,9 @@ import { deleteCredential, getCredentials, logout, me, pauseAgent, resumeAgent, 
 import { GithubCard } from "./GithubCard.js";
 import { AsaCard } from "./AsaCard.js";
 import { ApiKeysCard } from "./ApiKeysCard.js";
+import { applyTheme, storedMode, storeMode, type ThemeMode } from "../../shell/theme.js";
 
 type Prefs = { push: boolean; digest: boolean; cadence: RankCadence; paused: boolean };
-type Theme = "light" | "dark";
 
 const SECTIONS = [
   { id: "comms", label: "Communications" },
@@ -33,17 +33,15 @@ const SECTIONS = [
   { id: "account", label: "Account" },
 ] as const;
 
-function readTheme(): Theme {
-  return document.documentElement.getAttribute("data-theme") === "light" ? "light" : "dark";
-}
-
-function setTheme(next: Theme) {
-  document.documentElement.setAttribute("data-theme", next);
-  try {
-    localStorage.setItem("store-ops:theme", next);
-  } catch {
-    /* ignore */
-  }
+/**
+ * Theme state lives in `shell/theme.ts` (#362) — three modes, `system` by
+ * default, resolved against the OS. This view reads and writes the PREFERENCE;
+ * it no longer derives the mode from the painted attribute, which could not
+ * distinguish "chose dark" from "system, and the OS is dark".
+ */
+function setTheme(next: ThemeMode) {
+  storeMode(next);
+  applyTheme(next);
 }
 
 export function SettingsView({ client, onSignedOut }: { client: ApiClient; onSignedOut?: () => void }) {
@@ -51,7 +49,9 @@ export function SettingsView({ client, onSignedOut }: { client: ApiClient; onSig
   const credsQ = useQuery({ queryKey: ["account", "credentials"], queryFn: () => getCredentials(client) });
 
   const [prefs, setPrefs] = useState<Prefs | null>(null);
-  const [theme, setThemeState] = useState<Theme>(readTheme);
+  // The stored PREFERENCE, not the painted scheme: "system" must stay
+  // distinguishable from an explicit choice that happens to match the OS.
+  const [theme, setThemeState] = useState<ThemeMode>(storedMode);
   useEffect(() => {
     if (meQ.data && !prefs) {
       setPrefs({
@@ -93,7 +93,7 @@ export function SettingsView({ client, onSignedOut }: { client: ApiClient; onSig
   if (!prefs) return <p className="muted">Loading settings…</p>;
   const creds = credsQ.data?.credentials ?? [];
 
-  const applyTheme = (next: Theme) => {
+  const pickTheme = (next: ThemeMode) => {
     setTheme(next);
     setThemeState(next);
   };
@@ -267,7 +267,7 @@ export function SettingsView({ client, onSignedOut }: { client: ApiClient; onSig
         <Panel
           id="appearance"
           title="Appearance"
-          sub="Theme for this browser. Light is opt-in; dark is the default."
+          sub="Theme for this browser. System follows your OS setting and changes with it."
         >
           <div className="pref-row">
             <div className="pref-row-main">
@@ -276,9 +276,17 @@ export function SettingsView({ client, onSignedOut }: { client: ApiClient; onSig
             <span className="segmented">
               <button
                 type="button"
+                className={theme === "system" ? "is-on" : ""}
+                data-testid="theme-system"
+                onClick={() => pickTheme("system")}
+              >
+                System
+              </button>
+              <button
+                type="button"
                 className={theme === "dark" ? "is-on" : ""}
                 data-testid="theme-dark"
-                onClick={() => applyTheme("dark")}
+                onClick={() => pickTheme("dark")}
               >
                 Dark
               </button>
@@ -286,7 +294,7 @@ export function SettingsView({ client, onSignedOut }: { client: ApiClient; onSig
                 type="button"
                 className={theme === "light" ? "is-on" : ""}
                 data-testid="theme-light"
-                onClick={() => applyTheme("light")}
+                onClick={() => pickTheme("light")}
               >
                 Light
               </button>
