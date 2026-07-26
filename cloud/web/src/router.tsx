@@ -11,6 +11,9 @@ import { SettingsRoute } from "./routes/settings.js";
 import { AppDetailRoute } from "./routes/appDetail.js";
 import { WarRoomRoute } from "./routes/warRoom.js";
 import { RunRoute } from "./routes/run.js";
+import { PortfolioRunsRoute } from "./routes/portfolioRuns.js";
+import { PortfolioKeywordsRoute } from "./routes/portfolioKeywords.js";
+import { PortfolioCompetitorsRoute } from "./routes/portfolioCompetitors.js";
 import { OnboardingRoute } from "./routes/onboarding.js";
 import { LandingRoute, LoginRoute, PreviewRoute, ProofRoute, BroadcastRoute, PrivacyRoute } from "./routes/public.js";
 
@@ -23,6 +26,12 @@ const settingsRoute = createRoute({ getParentRoute: () => rootRoute, path: "/set
 const appDetailRoute = createRoute({ getParentRoute: () => rootRoute, path: "/apps/$id", component: AppDetailRoute });
 const warRoomRoute = createRoute({ getParentRoute: () => rootRoute, path: "/apps/$id/war-room", component: WarRoomRoute });
 const runRoute = createRoute({ getParentRoute: () => rootRoute, path: "/runs/$id", component: RunRoute });
+// Portfolio index screens (#356). "/runs" is declared BEFORE "/runs/$id" is
+// irrelevant to TanStack (it matches on specificity, not order), but the two are
+// distinct paths: the index lists every run, the detail is one run.
+const portfolioRunsRoute = createRoute({ getParentRoute: () => rootRoute, path: "/runs", component: PortfolioRunsRoute });
+const portfolioKeywordsRoute = createRoute({ getParentRoute: () => rootRoute, path: "/keywords", component: PortfolioKeywordsRoute });
+const portfolioCompetitorsRoute = createRoute({ getParentRoute: () => rootRoute, path: "/competitors", component: PortfolioCompetitorsRoute });
 const onboardingRoute = createRoute({ getParentRoute: () => rootRoute, path: "/onboarding", component: OnboardingRoute });
 const loginRoute = createRoute({ getParentRoute: () => rootRoute, path: "/login", component: LoginRoute });
 const previewRoute = createRoute({ getParentRoute: () => rootRoute, path: "/preview", component: PreviewRoute });
@@ -38,6 +47,9 @@ const routeTree = rootRoute.addChildren([
   appDetailRoute,
   warRoomRoute,
   runRoute,
+  portfolioRunsRoute,
+  portfolioKeywordsRoute,
+  portfolioCompetitorsRoute,
   onboardingRoute,
   loginRoute,
   previewRoute,

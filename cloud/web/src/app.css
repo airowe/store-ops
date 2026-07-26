@@ -1067,3 +1067,475 @@ h2 { font-family: var(--display); font-weight: 600; font-size: 22px; letter-spac
   .settings-nav { position: static; flex-direction: row; flex-wrap: wrap; }
   .conn-form-grid { grid-template-columns: minmax(0, 1fr); }
 }
+
+/* ── Portfolio Runs · /runs (Runs.dc.html) ─────────────────────────────────── */
+/* Every class here is prefixed `pruns-`. Translated from the comp's inline
+   styles; colours come only from palette tokens. */
+
+.pruns-page { padding: 28px 32px 80px; max-width: 1080px; width: 100%; }
+.pruns-title {
+  font-family: var(--display); font-weight: 600; font-size: 34px;
+  letter-spacing: -.8px; margin: 0 0 6px;
+}
+.pruns-intro {
+  font-size: 15px; color: var(--dim); margin: 0 0 26px; max-width: 62ch; line-height: 1.5;
+}
+.pruns-error { font-size: 14.5px; color: var(--dim); }
+.pruns-eyebrow {
+  font-family: var(--mono); font-size: 11px; letter-spacing: .12em;
+  text-transform: uppercase; color: var(--faint);
+}
+.pruns-foot {
+  font-family: var(--mono); font-size: 11.5px; color: var(--faint);
+  margin: 14px 0 0; padding: 12px 16px;
+}
+.pruns-caret { color: var(--faint); font-size: 15px; }
+.pruns-dot-sep { color: var(--faint); }
+
+/* Buttons — the comp's two affordances, as classes. */
+.pruns-btn {
+  display: inline-block; padding: 10px 18px; border-radius: 11px;
+  font-size: 14px; font-weight: 700; font-family: inherit; cursor: pointer;
+  white-space: nowrap; border: 1px solid transparent; text-decoration: none;
+}
+.pruns-btn.is-primary { background: var(--signal); color: var(--on-signal); border: none; }
+.pruns-btn.is-primary:disabled { opacity: .6; cursor: default; }
+.pruns-btn.is-ghost { border-color: var(--line); color: var(--ink); font-weight: 600; }
+
+/* Loading */
+.pruns-skeletons { display: flex; flex-direction: column; gap: 10px; }
+.pruns-skeleton {
+  height: 68px; border-radius: 12px; background: var(--panel);
+  border: 1px solid var(--line-soft);
+}
+
+/* Empty */
+.pruns-empty {
+  border: 1px dashed var(--line); border-radius: 14px; padding: 40px 32px;
+  background: var(--raise); text-align: left; max-width: 60ch;
+}
+.pruns-empty .pruns-eyebrow { display: block; margin-bottom: 10px; }
+.pruns-empty-title {
+  font-family: var(--display); font-size: 22px; font-weight: 600; margin-bottom: 8px;
+}
+.pruns-empty-body { font-size: 14.5px; color: var(--dim); line-height: 1.55; margin: 0 0 18px; }
+.pruns-empty-actions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+
+/* Action queue — the core loop, forward on a warn border. */
+.pruns-queue {
+  border: 1px solid var(--warn-border); background: var(--warn-glow); border-radius: 15px;
+  padding: 18px 18px 14px; margin-bottom: 34px; box-shadow: var(--shadow);
+}
+.pruns-queue-head {
+  display: flex; align-items: flex-end; gap: 14px; flex-wrap: wrap; margin-bottom: 14px;
+}
+.pruns-queue-headline-wrap { min-width: 0; flex: 1; }
+.pruns-queue-eyebrow {
+  display: flex; align-items: center; gap: 8px; font-family: var(--mono); font-size: 11px;
+  letter-spacing: .12em; text-transform: uppercase; color: var(--warn); margin-bottom: 5px;
+}
+.pruns-queue-pip { width: 7px; height: 7px; border-radius: 999px; background: var(--warn); }
+.pruns-queue-count { color: var(--faint); letter-spacing: 0; }
+.pruns-queue-headline {
+  font-family: var(--display); font-size: 21px; font-weight: 600; line-height: 1.2;
+}
+.pruns-queue-action { text-align: right; }
+.pruns-approve-note {
+  font-family: var(--mono); font-size: 10.5px; color: var(--faint);
+  margin-top: 6px; max-width: 30ch; margin-left: auto;
+}
+.pruns-queue-rows { display: flex; flex-direction: column; gap: 9px; }
+.pruns-queue-row {
+  display: grid; grid-template-columns: 34px minmax(0, 1fr) auto; align-items: center;
+  gap: 14px; padding: 13px 15px; border-radius: 12px; background: var(--panel);
+  border: 1px solid var(--line); color: var(--ink); text-decoration: none;
+}
+.pruns-avatar {
+  width: 34px; height: 34px; border-radius: 10px; display: grid; place-items: center;
+  background: var(--signal-glow); border: 1px solid var(--signal-dim); color: var(--signal);
+  font-family: var(--mono); font-weight: 700; font-size: 14px;
+}
+.pruns-queue-main { min-width: 0; }
+.pruns-queue-app { display: flex; align-items: baseline; gap: 9px; flex-wrap: wrap; }
+.pruns-queue-app-name { font-size: 15px; font-weight: 600; }
+.pruns-queue-meta {
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-top: 5px;
+  font-family: var(--mono); font-size: 12px; color: var(--dim);
+}
+.pruns-queue-status { color: var(--warn); font-weight: 600; }
+/* Rendered only when a summary was measured — never a zero. */
+.pruns-findings-chip {
+  font-family: var(--mono); font-size: 11px; padding: 2px 8px; border-radius: 999px;
+  background: var(--bad-glow); color: var(--bad); border: 1px solid var(--bad);
+}
+.pruns-queue-cta { display: flex; align-items: center; gap: 12px; }
+.pruns-review {
+  font-family: var(--mono); font-size: 12.5px; font-weight: 600;
+  color: var(--brand); white-space: nowrap;
+}
+
+/* History */
+.pruns-history-head {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 14px;
+}
+.pruns-rule { flex: 1; height: 1px; background: var(--line-soft); min-width: 20px; }
+.pruns-filters { display: flex; gap: 6px; flex-wrap: wrap; }
+.pruns-chip {
+  font-family: var(--mono); font-size: 11.5px; padding: 4px 11px; border-radius: 999px;
+  cursor: pointer; background: var(--bg-2); border: 1px solid var(--line); color: var(--dim);
+}
+.pruns-chip.is-on { background: var(--nav-active); border-color: var(--brand); color: var(--ink); }
+.pruns-history {
+  border: 1px solid var(--line-soft); border-radius: 14px; overflow: hidden; background: var(--panel);
+}
+.pruns-history .pruns-foot { margin: 0; }
+.pruns-day {
+  display: flex; align-items: center; gap: 10px; padding: 9px 16px; background: var(--bg-2);
+  border-bottom: 1px solid var(--line-soft); font-family: var(--mono); font-size: 11px;
+  letter-spacing: .08em; text-transform: uppercase; color: var(--faint);
+}
+.pruns-day-sep { opacity: .5; }
+.pruns-history-row {
+  display: grid; grid-template-columns: 10px minmax(0, 180px) minmax(0, 1fr) auto 14px;
+  align-items: center; gap: 14px; padding: 12px 16px;
+  border-bottom: 1px solid var(--line-soft); color: var(--ink); text-decoration: none;
+}
+.pruns-status-dot { width: 8px; height: 8px; border-radius: 999px; background: var(--faint); }
+.pruns-history-app {
+  font-size: 14.5px; font-weight: 600; overflow: hidden;
+  text-overflow: ellipsis; white-space: nowrap;
+}
+.pruns-history-status { font-family: var(--mono); font-size: 12.5px; color: var(--dim); }
+.pruns-history-age {
+  font-family: var(--mono); font-size: 12px; color: var(--faint); white-space: nowrap;
+}
+
+/* Status tones, shared by the history dot and its label. */
+.pruns-status-dot.is-dim, .pruns-history-status.is-dim { color: var(--dim); background: var(--dim); }
+.pruns-status-dot.is-brand, .pruns-history-status.is-brand { color: var(--brand); background: var(--brand); }
+.pruns-status-dot.is-warn, .pruns-history-status.is-warn { color: var(--warn); background: var(--warn); }
+.pruns-status-dot.is-signal, .pruns-history-status.is-signal { color: var(--signal); background: var(--signal); }
+.pruns-status-dot.is-bad, .pruns-history-status.is-bad { color: var(--bad); background: var(--bad); }
+.pruns-status-dot.is-faint, .pruns-history-status.is-faint { color: var(--faint); background: var(--faint); }
+.pruns-history-status { background: none; }
+
+@media (max-width: 899px) {
+  .pruns-page { padding: 24px 20px 56px; }
+  .pruns-queue-action { text-align: left; }
+  .pruns-approve-note { margin-left: 0; }
+  .pruns-history-row { grid-template-columns: 10px minmax(0, 1fr) auto; }
+  .pruns-history-age { display: none; }
+}
+
+/* ── Portfolio Keywords · /keywords (Keywords.dc.html) ─────────────────────── */
+
+.pkw-page { padding: 28px 32px 80px; max-width: 1080px; width: 100%; }
+.pkw-title {
+  font-family: var(--display); font-weight: 600; font-size: 34px;
+  letter-spacing: -.8px; margin: 0 0 6px;
+}
+.pkw-lede {
+  font-size: 15px; color: var(--dim); margin: 0 0 24px; max-width: 66ch; line-height: 1.5;
+}
+.pkw-lede b { color: var(--ink); font-weight: 600; }
+
+/* Loading — the same soft pulse the rest of the app uses for pending reads. */
+.pkw-skeletons { display: flex; flex-direction: column; gap: 8px; }
+.pkw-skeleton {
+  height: 44px; border-radius: 10px; background: var(--panel);
+  border: 1px solid var(--line-soft); animation: softpulse 1.6s ease-in-out infinite;
+}
+.pkw-skeleton:nth-child(2) { animation-delay: .1s; }
+.pkw-skeleton:nth-child(3) { animation-delay: .2s; }
+.pkw-skeleton:nth-child(4) { animation-delay: .3s; }
+.pkw-skeleton:nth-child(5) { animation-delay: .4s; }
+.pkw-skeleton:nth-child(6) { animation-delay: .5s; }
+.pkw-skeleton:nth-child(7) { animation-delay: .6s; }
+.pkw-skeleton:nth-child(8) { animation-delay: .7s; }
+.pkw-loading-note {
+  font-family: var(--mono); font-size: 12px; color: var(--faint); margin: 14px 0 0;
+}
+
+/* Empty — states that tracking begins at an app's first run. */
+.pkw-empty {
+  border: 1px dashed var(--line); border-radius: 14px; padding: 40px 32px;
+  background: var(--raise); max-width: 62ch;
+}
+.pkw-empty-eyebrow {
+  font-family: var(--mono); font-size: 11px; letter-spacing: .12em;
+  text-transform: uppercase; color: var(--faint); margin-bottom: 10px;
+}
+.pkw-empty-title {
+  font-family: var(--display); font-size: 22px; font-weight: 600; margin-bottom: 8px;
+}
+.pkw-empty-body { font-size: 14.5px; color: var(--dim); line-height: 1.55; margin: 0 0 18px; }
+.pkw-empty-cta {
+  display: inline-block; background: var(--signal); color: var(--on-signal);
+  padding: 10px 18px; border-radius: 11px; font-size: 14px; font-weight: 700;
+}
+
+/* Header tiles — every value counted from the entries the query returned. */
+.pkw-tiles {
+  display: grid; grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px; margin-bottom: 22px;
+}
+.pkw-tile {
+  background: var(--panel); border: 1px solid var(--line-soft);
+  border-radius: 13px; padding: 14px 15px;
+}
+.pkw-tile-label {
+  font-family: var(--mono); font-size: 10.5px; letter-spacing: .1em;
+  text-transform: uppercase; color: var(--faint); margin-bottom: 8px;
+}
+.pkw-tile-value {
+  font-family: var(--display); font-size: 26px; font-weight: 600;
+  letter-spacing: -.5px; color: var(--ink);
+}
+.pkw-tile-value-signal { color: var(--signal); }
+.pkw-tile-sub { font-size: 12.5px; color: var(--dim); margin-top: 4px; line-height: 1.4; }
+
+.pkw-controls {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 14px;
+}
+.pkw-filter-input {
+  width: 220px; padding: 9px 13px; border-radius: 10px; background: var(--panel);
+  border: 1px solid var(--line); color: var(--ink); font-family: var(--mono); font-size: 12.5px;
+}
+.pkw-chips { display: flex; gap: 6px; flex-wrap: wrap; }
+.pkw-chip {
+  font-family: var(--mono); font-size: 11.5px; padding: 5px 11px; border-radius: 999px;
+  cursor: pointer; background: var(--panel); border: 1px solid var(--line); color: var(--dim);
+}
+.pkw-chip-on { background: var(--nav-active); border-color: var(--brand); color: var(--ink); }
+/* Not a button: the ordering is fixed, so it must not look clickable. */
+.pkw-sort-note {
+  margin-left: auto; font-family: var(--mono); font-size: 11.5px;
+  color: var(--faint); white-space: nowrap;
+}
+
+.pkw-table {
+  border: 1px solid var(--line-soft); border-radius: 14px;
+  background: var(--panel); overflow: hidden;
+}
+.pkw-head, .pkw-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 150px 62px 60px 74px 14px;
+  gap: 14px; align-items: center; padding: 11px 16px;
+}
+.pkw-head {
+  padding: 10px 16px; background: var(--bg-2); border-bottom: 1px solid var(--line-soft);
+  font-family: var(--mono); font-size: 10.5px; letter-spacing: .1em;
+  text-transform: uppercase; color: var(--faint);
+}
+.pkw-num { text-align: right; }
+
+.pkw-row { border-bottom: 1px solid var(--line-soft); color: var(--ink); }
+/* A continuation row: same term, another app. Recessed, never re-stating the term. */
+.pkw-row-cont { background: var(--raise-2); }
+.pkw-row-unmeasured { color: var(--dim); }
+
+.pkw-term-cell { min-width: 0; display: flex; align-items: center; gap: 8px; }
+.pkw-prefix { color: var(--faint); font-family: var(--mono); font-size: 12px; width: 10px; }
+.pkw-term {
+  font-size: 13.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.pkw-app {
+  font-size: 13px; color: var(--dim); overflow: hidden;
+  text-overflow: ellipsis; white-space: nowrap;
+}
+.pkw-row-unmeasured .pkw-app { color: var(--faint); }
+.pkw-rank {
+  font-family: var(--mono); font-size: 13px; text-align: right;
+  color: var(--ink); font-variant-numeric: tabular-nums;
+}
+.pkw-rank-top { color: var(--signal); }
+.pkw-row-unmeasured .pkw-rank { color: var(--faint); }
+.pkw-delta {
+  font-family: var(--mono); font-size: 12px; text-align: right; white-space: nowrap;
+}
+.pkw-delta-up { color: var(--signal); }
+.pkw-delta-down { color: var(--bad); }
+.pkw-delta-new { color: var(--signal); }
+.pkw-delta-flat { color: var(--faint); }
+.pkw-store {
+  font-family: var(--mono); font-size: 11px; text-align: right;
+  color: var(--faint); white-space: nowrap;
+}
+.pkw-chev { color: var(--faint); font-size: 14px; }
+
+/* Unmeasured section — explicit, with the reason stated, never folded in above. */
+.pkw-unmeasured-head {
+  display: flex; align-items: center; gap: 12px; padding: 11px 16px;
+  background: var(--bg-2); border-bottom: 1px solid var(--line-soft);
+}
+.pkw-unmeasured-label {
+  font-family: var(--mono); font-size: 10.5px; letter-spacing: .1em;
+  text-transform: uppercase; color: var(--faint); white-space: nowrap;
+}
+.pkw-rule { flex: 1; height: 1px; background: var(--line-soft); min-width: 10px; }
+.pkw-unmeasured-why { font-size: 12.5px; color: var(--dim); }
+
+.pkw-footnote {
+  padding: 12px 16px; font-family: var(--mono); font-size: 11.5px;
+  color: var(--faint); line-height: 1.6;
+}
+
+@media (max-width: 899px) {
+  .pkw-page { padding: 24px 20px 56px; }
+  .pkw-tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  /* The app column stays: a rank belongs to one app, so dropping it would leave
+     a rank with no owner. The chevron goes instead. */
+  .pkw-head, .pkw-row { grid-template-columns: minmax(0, 1fr) 92px 52px 52px 40px; gap: 10px; }
+  .pkw-head span:nth-child(6), .pkw-row .pkw-chev { display: none; }
+  .pkw-sort-note { margin-left: 0; }
+}
+
+/* ── Portfolio competitors · /competitors (Competitors.dc.html) ─────────────
+   Grouped by rival; watching stays per (app, rival) pair. Every class is
+   `pcomp-` prefixed. There is no shared-term count in the API, so no chip here
+   reserves space for one. */
+.pcomp { padding: 28px 32px 80px; max-width: 1080px; width: 100%; }
+.pcomp-title {
+  font-family: var(--display); font-weight: 600; font-size: 34px;
+  letter-spacing: -.8px; margin: 0 0 6px;
+}
+.pcomp-lede {
+  font-size: 15px; color: var(--dim); margin: 0 0 24px; max-width: 68ch; line-height: 1.5;
+}
+.pcomp-lede b { color: var(--ink); font-weight: 600; }
+
+/* Loading */
+.pcomp-skeletons { display: flex; flex-direction: column; gap: 12px; }
+.pcomp-skeleton {
+  height: 96px; border-radius: 14px; background: var(--panel);
+  border: 1px solid var(--line-soft); animation: pcomp-shimmer 1.6s ease-in-out infinite;
+}
+.pcomp-skeleton:nth-child(2) { animation-delay: .12s; }
+.pcomp-skeleton:nth-child(3) { animation-delay: .24s; }
+.pcomp-skeleton:nth-child(4) { animation-delay: .36s; }
+.pcomp-loading-note {
+  font-family: var(--mono); font-size: 12px; color: var(--faint); margin: 14px 0 0;
+}
+@keyframes pcomp-shimmer { 0%, 100% { opacity: 1; } 50% { opacity: .55; } }
+@media (prefers-reduced-motion: reduce) { .pcomp-skeleton { animation: none; } }
+
+/* Empty */
+.pcomp-empty {
+  border: 1px dashed var(--line); border-radius: 14px; padding: 40px 32px;
+  background: var(--raise); max-width: 62ch;
+}
+.pcomp-eyebrow {
+  font-family: var(--mono); font-size: 11px; letter-spacing: .12em;
+  text-transform: uppercase; color: var(--faint); margin-bottom: 10px;
+}
+.pcomp-empty-title {
+  font-family: var(--display); font-size: 22px; font-weight: 600; margin-bottom: 8px;
+}
+.pcomp-empty-body { font-size: 14.5px; color: var(--dim); line-height: 1.55; margin: 0; }
+
+/* Toolbar — the app target is explicit because both endpoints are per app. */
+.pcomp-toolbar {
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  padding: 12px 14px; background: var(--panel); border: 1px solid var(--line-soft);
+  border-radius: 13px; margin-bottom: 26px;
+}
+.pcomp-add-input {
+  flex: 1; min-width: 180px; padding: 9px 12px; border-radius: 10px;
+  background: var(--bg-2); border: 1px solid var(--line); color: var(--ink);
+  font-family: var(--mono); font-size: 12.5px;
+}
+.pcomp-for {
+  font-family: var(--mono); font-size: 11.5px; color: var(--faint); white-space: nowrap;
+}
+.pcomp-target {
+  background: var(--bg-2); border: 1px solid var(--line); color: var(--ink);
+  padding: 9px 13px; border-radius: 10px; font-family: var(--mono);
+  font-size: 12.5px; cursor: pointer; max-width: 220px;
+}
+.pcomp-btn {
+  background: transparent; border: 1px solid var(--line); color: var(--ink);
+  padding: 9px 16px; border-radius: 10px; font-size: 13px; font-weight: 600;
+  font-family: inherit; cursor: pointer; white-space: nowrap;
+}
+.pcomp-btn.is-primary {
+  background: var(--signal); color: var(--on-signal); border-color: transparent; font-weight: 700;
+}
+.pcomp-btn.is-small { padding: 7px 14px; font-size: 12.5px; }
+.pcomp-btn:disabled { opacity: .5; cursor: default; }
+
+/* Section heads */
+.pcomp-section-head { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }
+.pcomp-section-label {
+  display: flex; align-items: center; gap: 8px; font-family: var(--mono); font-size: 11px;
+  letter-spacing: .12em; text-transform: uppercase; color: var(--faint); white-space: nowrap;
+}
+.pcomp-section-label.is-live { color: var(--signal); }
+.pcomp-section-dot {
+  width: 7px; height: 7px; border-radius: 999px; border: 1px solid var(--line);
+}
+.pcomp-section-label.is-live .pcomp-section-dot { background: var(--signal); border-color: transparent; }
+.pcomp-section-rule { flex: 1; height: 1px; background: var(--line-soft); min-width: 10px; }
+.pcomp-section-note {
+  font-family: var(--mono); font-size: 11.5px; color: var(--faint); white-space: nowrap;
+}
+
+/* Watched: one card per rival, one chip per app pair */
+.pcomp-watched { display: flex; flex-direction: column; gap: 12px; margin-bottom: 34px; }
+.pcomp-card {
+  background: var(--panel); border: 1px solid var(--line-soft);
+  border-radius: 14px; padding: 15px 17px;
+}
+.pcomp-card-head {
+  display: grid; grid-template-columns: 36px minmax(0, 1fr); align-items: center;
+  gap: 13px; margin-bottom: 13px;
+}
+.pcomp-avatar {
+  width: 36px; height: 36px; border-radius: 11px; display: grid; place-items: center;
+  background: var(--bg-2); border: 1px solid var(--line); color: var(--dim);
+  font-family: var(--mono); font-weight: 700; font-size: 14px;
+}
+.pcomp-card-ident { min-width: 0; }
+.pcomp-card-name {
+  display: block; font-size: 15.5px; font-weight: 600;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.pcomp-card-meta {
+  display: block; font-family: var(--mono); font-size: 11.5px;
+  color: var(--faint); margin-top: 3px;
+}
+.pcomp-pairs { display: flex; gap: 8px; flex-wrap: wrap; }
+.pcomp-pair {
+  display: inline-flex; align-items: center; gap: 8px; padding: 6px 11px;
+  border-radius: 999px; background: transparent; border: 1px solid var(--line);
+}
+.pcomp-pair.is-confirmed { background: var(--signal-glow); border-color: var(--signal-dim); }
+.pcomp-pair-dot { width: 6px; height: 6px; border-radius: 999px; background: transparent; }
+.pcomp-pair.is-confirmed .pcomp-pair-dot { background: var(--signal); }
+.pcomp-pair-app { font-size: 12.5px; color: var(--ink); white-space: nowrap; }
+.pcomp-pair-action {
+  background: transparent; border: none; padding: 0; cursor: pointer;
+  font-family: var(--mono); font-size: 11px; color: var(--faint);
+}
+.pcomp-pair-action.is-confirm { color: var(--brand); }
+.pcomp-pair-action:disabled { opacity: .5; cursor: default; }
+
+/* Suggested: flat per rival x app — you confirm a suggestion for ONE app. */
+.pcomp-suggested { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.pcomp-suggestion {
+  background: var(--raise-2); border: 1px dashed var(--line); border-radius: 13px;
+  padding: 14px 15px; display: flex; flex-direction: column; gap: 11px;
+}
+.pcomp-suggestion-ident { min-width: 0; }
+.pcomp-suggestion-name {
+  font-size: 14.5px; font-weight: 600;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.pcomp-suggestion-meta {
+  font-family: var(--mono); font-size: 11.5px; color: var(--faint); margin-top: 4px;
+}
+.pcomp-suggestion-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+
+@media (max-width: 899px) {
+  .pcomp { padding: 24px 20px 56px; }
+  .pcomp-suggested { grid-template-columns: minmax(0, 1fr); }
+}

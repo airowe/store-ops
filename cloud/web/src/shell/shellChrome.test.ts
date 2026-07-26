@@ -9,6 +9,9 @@ describe("shellChrome", () => {
       ["/apps/abc", "railed"],
       ["/apps/abc/war-room", "railed"],
       ["/runs/xyz", "railed"],
+      ["/runs", "railed"],
+      ["/keywords", "railed"],
+      ["/competitors", "railed"],
     ] as const)("gives the app rail to authed route %s", (path, chrome) => {
       expect(chromeFor(path)).toBe(chrome);
     });
@@ -40,6 +43,9 @@ describe("shellChrome", () => {
       ["/settings", "settings"],
       ["/runs/xyz", "runs"],
       ["/apps/abc", "apps"],
+      ["/runs", "runs"],
+      ["/keywords", "keywords"],
+      ["/competitors", "competitors"],
     ] as const)("highlights %s → %s", (path, key) => {
       expect(activeNav(path)).toBe(key);
     });
@@ -50,7 +56,7 @@ describe("shellChrome", () => {
 
     it("every active key maps to a real nav item", () => {
       const keys = new Set(NAV_ITEMS.map((n) => n.key));
-      for (const p of ["/dashboard", "/settings", "/runs/x", "/apps/y"]) {
+      for (const p of ["/dashboard", "/settings", "/runs/x", "/apps/y", "/keywords", "/competitors"]) {
         const k = activeNav(p);
         expect(k && keys.has(k)).toBe(true);
       }
