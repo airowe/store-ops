@@ -250,6 +250,17 @@ export function SettingsView({ client, onSignedOut }: { client: ApiClient; onSig
                   <div className="pref-row-detail">
                     {`added ${k.createdAt.slice(0, 10)}${k.lastUsedAt ? ` · last used ${k.lastUsedAt.slice(0, 10)}` : ""}`}
                   </div>
+                  {/* #372: metadata listing never decrypts, so a key sealed
+                      under a replaced KEK looks healthy here. Say plainly that
+                      it can't be used, rather than letting the user discover it
+                      when a push fails. Delete stays available — removing the
+                      dead row is the first step of re-connecting. */}
+                  {k.readable === false ? (
+                    <div className="pref-row-detail bad" data-testid={`key-unreadable-${k.kind}`}>
+                      Can’t be read — it was encrypted with a key-encryption key this deployment
+                      no longer has. Delete it and re-connect to restore one-click push.
+                    </div>
+                  ) : null}
                 </div>
                 <button
                   type="button"

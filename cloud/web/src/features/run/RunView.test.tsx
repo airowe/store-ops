@@ -168,6 +168,43 @@ describe("<RunView /> — the money screen", () => {
     expect(result).toHaveTextContent(/staged/i);
   });
 
+  /**
+   * #372 — the prod incident, pinned. A stored key whose KEK was replaced is
+   * still listed by the API (metadata never decrypts), so the UI used to offer
+   * "Push to App Store Connect" for a key that cannot be read. Clicking it
+   * 500s. Advertising a capability the system does not have is exactly the kind
+   * of claim this product must never make.
+   *
+   * `readable: false` is the server's honest report; the card must respect it
+   * and say what to do instead of presenting a dead button.
+   */
+  it("an UNREADABLE stored key does not offer a push — it says to re-connect", async () => {
+    const { client } = makeClient({
+      credentials: [{ ...ASC_CRED, readable: false }],
+    });
+    renderView(client);
+    await waitFor(() => screen.getByTestId("approve"));
+    fireEvent.click(screen.getByTestId("approve"));
+
+    // the push affordance must be withheld entirely
+    await waitFor(() => expect(screen.getByTestId("handoff")).toBeInTheDocument());
+    expect(screen.queryByTestId("asc-push")).not.toBeInTheDocument();
+
+    // and the user is told, naming the key so it is actionable
+    const notice = screen.getByTestId("asc-key-unreadable");
+    expect(notice).toHaveTextContent(/KID123/);
+    expect(notice).toHaveTextContent(/re-connect/i);
+  });
+
+  it("a readable key still offers the push (the guard is not over-broad)", async () => {
+    const { client } = makeClient({ credentials: [{ ...ASC_CRED, readable: true }] });
+    renderView(client);
+    await waitFor(() => screen.getByTestId("approve"));
+    fireEvent.click(screen.getByTestId("approve"));
+    await waitFor(() => expect(screen.getByTestId("asc-push")).toBeInTheDocument());
+    expect(screen.queryByTestId("asc-key-unreadable")).not.toBeInTheDocument();
+  });
+
   it("push failure surfaces Apple's reason verbatim — never a silent failure", async () => {
     const { client } = makeClient({
       credentials: [ASC_CRED],

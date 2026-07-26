@@ -10,6 +10,7 @@ import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
 import { beforeEach, describe, expect, it } from "vitest";
 import {
+  CredentialUnreadableError,
   credentialsEnabled,
   deleteCredential,
   getCredentialMeta,
@@ -135,6 +136,79 @@ describe.skipIf(!sqliteAvailable)("stored credentials against the real schema (#
     expect(await deleteCredential(env, "u1", "app1", "asc")).toBe(true);
     expect(await getCredentialMeta(env, "u1", "app1", "asc")).toBeNull();
     expect(await deleteCredential(env, "u1", "app1", "asc")).toBe(false);
+  });
+
+  /**
+   * #372 — the KEK-replaced-in-place failure, reproduced.
+   *
+   * The vault's contract is that an unavailable credential is HONESTLY
+   * unavailable. That was only ever implemented for "no KEK configured".
+   * When a KEK is configured but is the WRONG one — the row was sealed under a
+   * previous CRED_KEK_V1 that got overwritten rather than rotated to V2 —
+   * AES-GCM throws a raw OperationError from deep inside openCredential.
+   *
+   * That is the exact prod incident: metadata still lists the key as healthy
+   * (listCredentialMeta never decrypts), so the UI offers a push that cannot
+   * possibly work, and cron/keyedSweep.ts calls useCredential OUTSIDE its try,
+   * so the throw aborts the app's whole sweep instead of degrading to keyless.
+   */
+  describe("#372: a row sealed under a REPLACED KEK", () => {
+    /** Seal a credential under one KEK, then hand back an env holding another. */
+    async function sealedUnderStaleKek() {
+      const OTHER_KEK = btoa(String.fromCharCode(...new Uint8Array(32).map((_, i) => i + 200)));
+      await saveCredential(envWith(db, KEK), {
+        userId: "u1", appId: "app1", kind: "asc", keyId: "NC235A8728", issuerId: "iss-1", plaintext: P8,
+      });
+      return envWith(db, OTHER_KEK);
+    }
+
+    it("fails as a typed, identifiable error — not a raw crypto OperationError", async () => {
+      const env = await sealedUnderStaleKek();
+      const err = await useCredential(env, "u1", "app1", "asc").catch((e: unknown) => e);
+      // Asserted via instanceof rather than rejects.toThrow(Class): if the class
+      // is ever absent/undefined, toThrow(undefined) matches ANY throw and the
+      // test passes vacuously against the very bug it exists to catch.
+      expect(CredentialUnreadableError).toBeTypeOf("function");
+      expect(err).toBeInstanceOf(CredentialUnreadableError);
+      expect((err as Error).name).toBe("CredentialUnreadableError");
+    });
+
+    it("the error names the key and says what to do, without leaking key material", async () => {
+      const env = await sealedUnderStaleKek();
+      const err = await useCredential(env, "u1", "app1", "asc").catch((e: unknown) => e);
+      expect(err).toBeInstanceOf(CredentialUnreadableError);
+      const e = err as CredentialUnreadableError;
+      // identifies WHICH key, so a user can act on it
+      expect(e.keyId).toBe("NC235A8728");
+      expect(e.kind).toBe("asc");
+      // and never carries ciphertext or plaintext
+      expect(e.message).not.toContain("PRIVATE KEY");
+      expect(e.message).not.toContain("MIISECRET");
+    });
+
+    /**
+     * The honesty half: metadata reads must not keep advertising a key that can
+     * no longer be used. `readable: false` lets Settings mark the row and
+     * RunView withhold the push card, instead of offering an action that 500s.
+     */
+    it("metadata reports the row as UNREADABLE rather than healthy", async () => {
+      const env = await sealedUnderStaleKek();
+      const list = await listCredentialMeta(env, "u1");
+      expect(list).toHaveLength(1);
+      expect(list[0]!.keyId).toBe("NC235A8728");
+      expect(list[0]!.readable).toBe(false);
+    });
+
+    it("a row under the CURRENT KEK is still reported readable", async () => {
+      const env = envWith(db, KEK);
+      await saveCredential(env, {
+        userId: "u1", appId: "app1", kind: "asc", keyId: "ABC123", issuerId: "iss-1", plaintext: P8,
+      });
+      const list = await listCredentialMeta(env, "u1");
+      expect(list[0]!.readable).toBe(true);
+      // and the happy path is untouched
+      expect((await useCredential(env, "u1", "app1", "asc"))?.plaintext).toBe(P8);
+    });
   });
 
   it("DEPLOY ORDER: a DB without the table degrades reads to empty/null", async () => {

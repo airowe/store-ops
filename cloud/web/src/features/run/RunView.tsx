@@ -153,9 +153,15 @@ export function RunView({
 
   // The stored ASC key for THIS app (or an account-level one) backs one-click
   // push. Absent → the CLI handoff is the only path, exactly as before.
-  const storedAscKey = (credsQ.data?.credentials ?? []).find(
+  const ascKeyRow = (credsQ.data?.credentials ?? []).find(
     (c) => c.kind === "asc" && (c.appId === run.app_id || c.appId === null),
   );
+  // #372: a key the server reports as unreadable cannot push. Offering the
+  // button anyway advertises a capability we don't have and fails at click
+  // time. `readable === false` is the only withholding signal — an omitted
+  // field (older API) still means readable.
+  const ascKeyUnreadable = ascKeyRow?.readable === false;
+  const storedAscKey = ascKeyUnreadable ? undefined : ascKeyRow;
   const pushResult: AscPushResult | undefined = push.data;
 
   // Section cards, keyed by rail id — identical JSX to what rendered inline
@@ -339,6 +345,21 @@ export function RunView({
             You’ve hit your plan’s run limit — upgrade to approve more.
           </p>
         ) : null}
+
+      {/* #372: the key is stored but can't be decrypted. Say so plainly and name
+          it, rather than silently dropping the push button and leaving the user
+          to wonder why the CLI is suddenly the only path. */}
+      {approved && ascKeyUnreadable ? (
+        <div className="card" data-testid="asc-key-unreadable">
+          <b>Your saved App Store Connect key can’t be read</b>
+          <p className="micro">
+            The stored key ({ascKeyRow?.keyId}) was encrypted with a key-encryption key this
+            deployment no longer has, so it can’t be used to push. Nothing was pushed and nothing
+            was lost on Apple’s side — re-connect the key in Settings to restore one-click push.
+            The commands below still work in the meantime.
+          </p>
+        </div>
+      ) : null}
 
       {approved && storedAscKey ? (
         <div className="card" data-testid="asc-push-card">
