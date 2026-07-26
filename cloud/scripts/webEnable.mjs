@@ -119,6 +119,30 @@ export function isNavigationRequest(method, pathname, accept = "") {
 }
 
 /**
+ * Paths that are STATIC PAGES shipped from the app's public/ directory, not SPA
+ * routes (#356 Phase 3). They are navigation-shaped, so without this the
+ * "every navigation goes to the app" rule would hand them the SPA shell.
+ *
+ *  • `/auth/m` — the magic-link sign-in landing. Deliberately framework-free:
+ *    it runs before any bundle, from an email client, on an unknown device, and
+ *    must NOT auto-redirect (that would consume the magic link before the app
+ *    could hand off). Serving it the SPA shell breaks sign-in by emailed link.
+ *  • `/.well-known/apple-app-site-association` — extensionless, so it looks
+ *    exactly like a page path, and Apple's CDN fetches it with no Accept header
+ *    (or `*​/*`), both of which pass the navigation sniff. Serving it HTML
+ *    breaks iOS universal links.
+ *
+ * Matched EXACTLY, not by prefix, so `/authorize` and `/auth-something` stay
+ * the SPA's.
+ */
+const STATIC_PAGES = new Set(["/auth/m", "/.well-known/apple-app-site-association"]);
+
+export function isStaticPage(pathname) {
+  const p = pathname.replace(/\/+$/, "") || "/";
+  return STATIC_PAGES.has(p);
+}
+
+/**
  * The middleware decision, pure and dependency-free.
  *
  * EVERY navigation goes to the new app (#356 Phase 3): owned routes render
@@ -141,5 +165,6 @@ export function isNavigationRequest(method, pathname, accept = "") {
  *          passthrough ⇒ let Pages serve the static asset (/assets/*, files).
  */
 export function serveDecision(req, _resolveSurface) {
+  if (isStaticPage(req.pathname)) return "passthrough";
   return isNavigationRequest(req.method, req.pathname, req.accept) ? "rewrite-web" : "passthrough";
 }

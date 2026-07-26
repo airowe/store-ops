@@ -71,16 +71,9 @@ jobs:
       - name: Test
         run: npm test
 
-      - name: Install Playwright browser
-        run: ./node_modules/.bin/playwright install --with-deps chromium
-
-      - name: E2E (dashboard funnel vs mock backend)
-        # Serial + 1 retry — matches deploy.yml and the local pre-push gate
-        # (.githooks/pre-push). A few picker-pagination specs race the result-list
-        # re-render under default parallelism on the shared :8793 static server;
-        # they pass deterministically serially. The retry absorbs residual flake
-        # without masking a real failure.
-        run: ./node_modules/.bin/playwright test --workers=1 --retries=1
+      # The dashboard E2E lived here and drove cloud/public via a static server.
+      # Both went with the legacy dashboard (#356 Phase 3); the app's own E2E
+      # runs in the `web` job below.
 
   # Shared spine (PRD 01): design-token source-of-truth parity, pure honesty
   # helpers, and the transport-agnostic API client types. Dependency-light + fast
