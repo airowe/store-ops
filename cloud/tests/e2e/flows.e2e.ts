@@ -480,10 +480,27 @@ test.describe("run page — Listing audit card (ASC findings, PRD 03)", () => {
 
     const crit = page.locator(".audit-card .finding.critical").first();
     await expect(crit).toBeVisible();
-    const color = await crit
-      .locator(".finding-ico")
-      .evaluate((node) => getComputedStyle(node).color);
-    // --bad is #f87171 → rgb(248, 113, 113).
+
+    // Pin the theme. Since #362 an unset preference follows the OS, so this
+    // assertion's expected value would otherwise depend on the machine running
+    // it — it failed on a light-mode host while the app behaved correctly.
+    // The claim under test is "critical wears --bad", not "--bad is #f87171",
+    // so read the token from the page and compare against that.
+    await page.evaluate(() => document.documentElement.setAttribute("data-theme", "dark"));
+
+    const [color, token] = await Promise.all([
+      crit.locator(".finding-ico").evaluate((node) => getComputedStyle(node).color),
+      page.evaluate(() => {
+        const el = document.createElement("span");
+        el.style.color = "var(--bad)";
+        document.body.appendChild(el);
+        const c = getComputedStyle(el).color;
+        el.remove();
+        return c;
+      }),
+    ]);
+    expect(color).toBe(token);
+    // …and in dark that token is #f87171, so the treatment is the intended one.
     expect(color).toBe("rgb(248, 113, 113)");
   });
 

@@ -20,7 +20,10 @@ export default defineConfig({
     baseURL: `http://127.0.0.1:${PORT}`,
     trace: "on-first-retry",
   },
-  projects: [{ name: "chromium", use: { ...devices["Desktop Chrome"] } }],
+  // colorScheme: since #362 an unset theme preference follows the OS, so without
+  // pinning this the suite's rendered theme depends on the host machine — a
+  // light-mode laptop and CI would disagree. Dark is the product's baseline.
+  projects: [{ name: "chromium", use: { ...devices["Desktop Chrome"], colorScheme: "dark" } }],
   webServer: {
     command: `python3 -m http.server ${PORT} --directory public`,
     url: `http://127.0.0.1:${PORT}/index.html`,
