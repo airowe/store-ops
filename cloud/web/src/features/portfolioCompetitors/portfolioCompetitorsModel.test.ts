@@ -41,7 +41,9 @@ describe("portfolioCompetitorsModel", () => {
 
   it.each([
     { pairs: [pair("A", "confirmed"), pair("B", "confirmed"), pair("C", "suggested")], meta: "overlaps 3 of your apps · watched on 2" },
-    { pairs: [pair("A", "confirmed")], meta: "overlaps 1 of your app · watched on 1" },
+    // "your apps" names the SET, so it stays plural at any count — "1 of your
+    // app" is not English.
+    { pairs: [pair("A", "confirmed")], meta: "overlaps 1 of your apps · watched on 1" },
     { pairs: [pair("A", "suggested"), pair("B", "suggested")], meta: "overlaps 2 of your apps · watched on 0" },
   ])("meta counts both numbers off the pairs: $meta", ({ pairs, meta }) => {
     expect(rivalMeta(rival("r", pairs))).toBe(meta);

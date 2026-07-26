@@ -1210,14 +1210,25 @@ h2 { font-family: var(--display); font-weight: 600; font-size: 22px; letter-spac
   font-family: var(--mono); font-size: 12px; color: var(--faint); white-space: nowrap;
 }
 
-/* Status tones, shared by the history dot and its label. */
-.pruns-status-dot.is-dim, .pruns-history-status.is-dim { color: var(--dim); background: var(--dim); }
-.pruns-status-dot.is-brand, .pruns-history-status.is-brand { color: var(--brand); background: var(--brand); }
-.pruns-status-dot.is-warn, .pruns-history-status.is-warn { color: var(--warn); background: var(--warn); }
-.pruns-status-dot.is-signal, .pruns-history-status.is-signal { color: var(--signal); background: var(--signal); }
-.pruns-status-dot.is-bad, .pruns-history-status.is-bad { color: var(--bad); background: var(--bad); }
-.pruns-status-dot.is-faint, .pruns-history-status.is-faint { color: var(--faint); background: var(--faint); }
-.pruns-history-status { background: none; }
+/* Status tones. The dot is a FILLED circle, so it takes the tone as a
+   background; the label is text and takes it as a colour. They were once a
+   shared selector list setting both, which painted the label's own tone behind
+   its text as a full-width bar — unreadable, and the reset that tried to undo
+   it (`.pruns-history-status { background: none }`) lost on specificity to
+   `.pruns-history-status.is-signal`. Keep these two lists separate. */
+.pruns-status-dot.is-dim { background: var(--dim); }
+.pruns-status-dot.is-brand { background: var(--brand); }
+.pruns-status-dot.is-warn { background: var(--warn); }
+.pruns-status-dot.is-signal { background: var(--signal); }
+.pruns-status-dot.is-bad { background: var(--bad); }
+.pruns-status-dot.is-faint { background: var(--faint); }
+
+.pruns-history-status.is-dim { color: var(--dim); }
+.pruns-history-status.is-brand { color: var(--brand); }
+.pruns-history-status.is-warn { color: var(--warn); }
+.pruns-history-status.is-signal { color: var(--signal); }
+.pruns-history-status.is-bad { color: var(--bad); }
+.pruns-history-status.is-faint { color: var(--faint); }
 
 @media (max-width: 899px) {
   .pruns-page { padding: 24px 20px 56px; }
