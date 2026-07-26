@@ -66,10 +66,15 @@
    flip. The accent green darkens (#0f9d63) to clear AA contrast on light
    surfaces; tints re-tune for the inverted background.
 
-   ShipASO is dark-FIRST by identity, so light is OPT-IN via the topbar toggle
-   (persisted to `data-theme`) — we deliberately do NOT auto-follow
-   prefers-color-scheme, so the default is always the canonical dark and pinned
-   dark treatments stay stable. The dark values in :root remain the baseline. */
+   ShipASO is dark-FIRST by identity, and light used to be OPT-IN only: we
+   deliberately did not follow prefers-color-scheme, so the default was always
+   the canonical dark. That was reversed in #362 — a machine set to Light got a
+   dark app until someone found the toggle, which reads as a bug however
+   intentional it was. The preference is now three-state (system | light |
+   dark) and defaults to `system`; an explicit choice still wins and still
+   persists to `data-theme`, so pinned dark treatments are unaffected whenever
+   someone has actually chosen. The dark values in :root remain the baseline
+   (and the fallback when the OS cannot tell us). */
 :root[data-theme="light"] {
   --bg: #f6f7f9;
   --bg-2: #eceff4;

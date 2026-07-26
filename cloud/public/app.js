@@ -3868,9 +3868,11 @@
   /* ════════════════════════ theme (dark ⇄ light) ═══════════════════════════
      The pre-paint inline script in index.html already applied any saved choice.
      Here we wire the toggle: flip the <html data-theme>, persist it, and let the
-     CSS custom properties do the rest. ShipASO is dark-first — light is opt-in
-     and the CSS does NOT auto-follow the OS — so an absent data-theme means the
-     UI is showing dark, and the first tap goes to light. */
+     CSS custom properties do the rest. Since #362 the DEFAULT follows the OS
+     (the inline script in index.html resolves it before paint), so data-theme is
+     always set by the time this runs and reflects what is on screen. Tapping is
+     an explicit choice and still wins over the OS; "follow my system again"
+     lives in the new app's Settings → Appearance, not here. */
   function currentTheme() {
     return document.documentElement.getAttribute("data-theme") === "light" ? "light" : "dark";
   }
@@ -3884,6 +3886,17 @@
     btn.addEventListener("click", function () {
       setTheme(currentTheme() === "light" ? "dark" : "light");
     });
+    // Follow the OS live while no explicit choice is stored (#362), so a machine
+    // that switches at sunset updates without a reload. An explicit choice is
+    // left alone — the stored key is what distinguishes the two.
+    try {
+      var mq = window.matchMedia("(prefers-color-scheme: light)");
+      mq.addEventListener("change", function (e) {
+        var t = localStorage.getItem("store-ops:theme");
+        if (t === "light" || t === "dark") return;
+        document.documentElement.setAttribute("data-theme", e.matches ? "light" : "dark");
+      });
+    } catch (e) {}
   }
 
   window.addEventListener("hashchange", route);
