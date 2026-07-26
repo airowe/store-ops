@@ -40,7 +40,14 @@ export type DeltaEntry = {
   previous: number | null;
   current: number | null;
   delta: number | null;
-  direction: "up" | "down" | "same" | "new" | "unmeasured";
+  /**
+   * "lost" means we measured and the term fell out of the results — a real,
+   * bad-news event. It is NOT "unmeasured", which means we have no current
+   * reading at all. The engine has always emitted "lost" (digest.ts) but the
+   * union omitted it, so the value shipped off-contract and the UI rendered it
+   * as neutral silence (#360).
+   */
+  direction: "up" | "down" | "same" | "new" | "lost" | "unmeasured";
 };
 export type DeltasResponse = { entries: DeltaEntry[] };
 

@@ -89,7 +89,9 @@ describe("buildTiles", () => {
     expect(by("tracked").value).toBe("4");
     expect(by("tracked").sub).toBe("across 2 apps · 4 pairs");
     expect(by("measured").value).toBe("3");
-    expect(by("measured").sub).toBe("1 outside the top 200");
+    // "not checked" — an unmeasured row means we did not read it, which is not
+    // the same claim as "outside the top 200" (that is `lost`, #360).
+    expect(by("measured").sub).toBe("1 not checked");
     expect(by("top").value).toBe("2");
     expect(by("top").sub).toBe("of 3 measured");
     expect(by("moved").value).toBe("2");
@@ -148,5 +150,40 @@ describe("filters", () => {
     expect(matchesTerm(e, "DOZ")).toBe(true);
     expect(matchesTerm(e, "  ")).toBe(true);
     expect(matchesTerm(e, "calorie")).toBe(false);
+  });
+});
+
+/**
+ * #360 — "fell out of the results" is not "we didn't check".
+ *
+ * A lost row has no current rank, so it cannot sit in the ranked table. But
+ * filing it under "Not measured this week" states something false: we DID
+ * measure, and the term was gone. It gets its own bucket so the screen can say
+ * which happened.
+ */
+describe("lost keywords are separated from unmeasured ones", () => {
+  const lost = entry({ keyword: "meal log", previous: 9, current: null, direction: "lost" });
+  const never = entry({ keyword: "diet tracker", previous: null, current: null, direction: "unmeasured" });
+  const ranked = entry({ keyword: "calorie counter", previous: 11, current: 9, delta: 2, direction: "up" });
+
+  it("partitions lost out of BOTH the measured table and the unmeasured list", () => {
+    const { measured, unmeasured, lost: fell } = partitionMeasured([ranked, lost, never]);
+    expect(measured.map((e) => e.keyword)).toEqual(["calorie counter"]);
+    expect(unmeasured.map((e) => e.keyword)).toEqual(["diet tracker"]);
+    expect(fell.map((e) => e.keyword)).toEqual(["meal log"]);
+  });
+
+  it("counts a lost term as measured in the tiles — we did read it", () => {
+    // The "Measured" tile answers "how many did we successfully check?", and a
+    // lost term WAS checked. Counting it as unmeasured would undercount our own
+    // coverage and hide a real signal.
+    const tiles = buildTiles([ranked, lost, never]);
+    const measured = tiles.find((t) => t.id === "measured");
+    expect(measured?.value).toBe("2");
+  });
+
+  it("a lost term is not 'moved' — there is no measurable move to report", () => {
+    expect(matchesFilter(lost, "moved")).toBe(false);
+    expect(buildFilters([ranked, lost, never]).find((f) => f.id === "moved")?.count).toBe(1);
   });
 });

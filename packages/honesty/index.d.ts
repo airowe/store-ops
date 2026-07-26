@@ -6,7 +6,9 @@ export function formatScore(score: number | null | undefined): string;
 export function timeAgo(iso: string, now: number): string;
 export function humanizeStatus(status: string): string;
 
-export type DeltaDirection = "up" | "down" | "same" | "new" | "unmeasured";
+/** "lost" = measured, and it fell out of the results. Distinct from
+ *  "unmeasured" = we have no current reading to compare (#360). */
+export type DeltaDirection = "up" | "down" | "same" | "new" | "lost" | "unmeasured";
 export function classifyDelta(entry: {
   previous: number | null | undefined;
   current: number | null | undefined;

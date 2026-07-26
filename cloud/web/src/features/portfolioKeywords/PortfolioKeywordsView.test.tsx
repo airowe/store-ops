@@ -81,7 +81,7 @@ describe("<PortfolioKeywordsView />", () => {
     await screen.findByTestId("pkw-tiles");
     expect(screen.getByTestId("pkw-tile-tracked")).toHaveTextContent("3");
     expect(screen.getByTestId("pkw-tile-tracked")).toHaveTextContent("across 2 apps · 3 pairs");
-    expect(screen.getByTestId("pkw-tile-measured")).toHaveTextContent("1 outside the top 200");
+    expect(screen.getByTestId("pkw-tile-measured")).toHaveTextContent("1 not checked");
     expect(screen.getByTestId("pkw-tile-top")).toHaveTextContent("of 2 measured");
     expect(screen.getByTestId("pkw-tile-moved")).toHaveTextContent("1 up · 1 down");
     // the comp's sample numbers must never appear as literals
@@ -116,14 +116,44 @@ describe("<PortfolioKeywordsView />", () => {
       ]),
     );
 
+    // The copy no longer hedges between two causes: since #360 "fell out of the
+    // results" has its own section, so this one can say plainly that we did not
+    // check these.
     const header = await screen.findByTestId("pkw-unmeasured-header");
-    expect(header).toHaveTextContent("Not measured this week · 2");
-    expect(header).toHaveTextContent(/Outside the top 200 results, or the check hasn't run yet\./);
+    expect(header).toHaveTextContent("Not checked this week · 2");
+    expect(header).toHaveTextContent(/The check hasn't run for these yet\./);
 
     const row = screen.getByTestId("pkw-row-gone one-a2-us");
     expect(within(row).getByTestId("pkw-rank")).toHaveTextContent("—");
     expect(within(row).getByTestId("pkw-delta")).toHaveTextContent("—");
     expect(row).not.toHaveTextContent("0");
+  });
+
+  /**
+   * #360 — a term that fell out of the results gets its own section, above
+   * "not checked". Both have no rank, but only one of them is news.
+   */
+  it("a term that fell out of the results is separated from the unchecked ones", async () => {
+    renderView(
+      clientFor([
+        moved({ keyword: "measured one" }),
+        entry({ keyword: "fell out", app_id: "a2", app_name: "Macro", previous: 9, direction: "lost" }),
+        entry({ keyword: "never checked", app_id: "a2", app_name: "Macro" }),
+      ]),
+    );
+
+    const lostHeader = await screen.findByTestId("pkw-lost-header");
+    expect(lostHeader).toHaveTextContent("Fell out of the results · 1");
+    expect(lostHeader).toHaveTextContent(/Ranked last time we checked/);
+
+    // It reads "lost", not the neutral "—", and carries no invented number.
+    const row = screen.getByTestId("pkw-row-fell out-a2-us");
+    expect(within(row).getByTestId("pkw-delta")).toHaveTextContent("lost");
+    expect(within(row).getByTestId("pkw-rank")).toHaveTextContent("—");
+    expect(row).not.toHaveTextContent("0");
+
+    // …and the unchecked term is still counted separately.
+    expect(screen.getByTestId("pkw-unmeasured-header")).toHaveTextContent("Not checked this week · 1");
   });
 
   it("omits the unmeasured section entirely when everything was measured", async () => {

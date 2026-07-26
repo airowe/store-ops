@@ -65,6 +65,15 @@ function DeltaCell({ entry }: { entry: PortfolioDeltaEntry }) {
       </span>
     );
   }
+  // Measured, and gone (#360) — not a neutral "—", and carrying no number
+  // because we do not know where it landed.
+  if (entry.direction === "lost") {
+    return (
+      <span className="pkw-delta pkw-delta-lost" data-testid="pkw-delta" title="Was ranked; no longer in the results">
+        lost
+      </span>
+    );
+  }
   return (
     <span className="pkw-delta pkw-delta-flat" data-testid="pkw-delta">
       —
@@ -91,13 +100,9 @@ function KeywordTableRow({ row, measured }: { row: KeywordRow; measured: boolean
       <span className={`pkw-rank${top ? " pkw-rank-top" : ""}`} data-testid="pkw-rank">
         {measured && entry.current != null ? `#${entry.current}` : "—"}
       </span>
-      {measured ? (
-        <DeltaCell entry={entry} />
-      ) : (
-        <span className="pkw-delta pkw-delta-flat" data-testid="pkw-delta">
-          —
-        </span>
-      )}
+      {/* DeltaCell handles every direction including "lost", so an unranked row
+          is not forced to "—" — that would re-flatten the #360 distinction. */}
+      <DeltaCell entry={entry} />
       <span className="pkw-store">{entry.country.toUpperCase()}</span>
       <span className="pkw-chev">›</span>
     </a>
@@ -147,10 +152,14 @@ export function PortfolioKeywordsView({ client }: { client: ApiClient }) {
   const filters = useMemo(() => buildFilters(entries ?? []), [entries]);
   const tiles = useMemo(() => buildTiles(entries ?? []), [entries]);
 
-  const { measuredRows, unmeasuredRows } = useMemo(() => {
+  const { measuredRows, lostRows, unmeasuredRows } = useMemo(() => {
     const visible = (entries ?? []).filter((e) => matchesFilter(e, filter) && matchesTerm(e, query));
-    const { measured, unmeasured } = partitionMeasured(visible);
-    return { measuredRows: groupByTerm(measured), unmeasuredRows: groupByTerm(unmeasured) };
+    const { measured, lost, unmeasured } = partitionMeasured(visible);
+    return {
+      measuredRows: groupByTerm(measured),
+      lostRows: groupByTerm(lost),
+      unmeasuredRows: groupByTerm(unmeasured),
+    };
   }, [entries, filter, query]);
 
   const isEmpty = entries != null && entries.length === 0;
@@ -223,15 +232,34 @@ export function PortfolioKeywordsView({ client }: { client: ApiClient }) {
               <KeywordTableRow key={row.id} row={row} measured />
             ))}
 
+            {/* Fell out (#360): measured, and gone. Distinct from "not checked",
+                and the more urgent of the two — so it leads. */}
+            {lostRows.length > 0 ? (
+              <>
+                <div className="pkw-unmeasured-head" data-testid="pkw-lost-header">
+                  <span className="pkw-lost-label">
+                    Fell out of the results · {lostRows.length}
+                  </span>
+                  <span className="pkw-rule" />
+                  <span className="pkw-unmeasured-why">
+                    Ranked last time we checked; no longer in the top 200.
+                  </span>
+                </div>
+                {lostRows.map((row) => (
+                  <KeywordTableRow key={row.id} row={row} measured={false} />
+                ))}
+              </>
+            ) : null}
+
             {unmeasuredRows.length > 0 ? (
               <>
                 <div className="pkw-unmeasured-head" data-testid="pkw-unmeasured-header">
                   <span className="pkw-unmeasured-label">
-                    Not measured this week · {unmeasuredRows.length}
+                    Not checked this week · {unmeasuredRows.length}
                   </span>
                   <span className="pkw-rule" />
                   <span className="pkw-unmeasured-why">
-                    Outside the top 200 results, or the check hasn't run yet.
+                    The check hasn't run for these yet.
                   </span>
                 </div>
                 {unmeasuredRows.map((row) => (
