@@ -5,9 +5,18 @@
  * small here to prove the client shape typechecks end to end.
  */
 
+/**
+ * Mirrors schema.sql's `runs.status` CHECK constraint and the server's
+ * `RUN_STATUSES` (cloud/src/engine/constants.ts) — the union must admit every
+ * status a real row can carry, or the client is typed against a lie.
+ *
+ * `superseded` is terminal: an older awaiting_approval run replaced by a newer
+ * one for the same app. It is written by `setRunStatus` and reaches the client
+ * on any run list, so it belongs here.
+ */
 export type RunStatus =
   | "detected" | "researching" | "awaiting_approval"
-  | "approved" | "rejected" | "shipped";
+  | "approved" | "rejected" | "shipped" | "superseded";
 
 export type RankSummary = { lead_keyword: string; lead_rank: number | null };
 export type FindingsSummary = { label: string; critical: number };
@@ -333,6 +342,62 @@ export type ApproveAllResult = { approved: string[]; approvedCount: number; skip
 /** A watched/suggested competitor. status: "confirmed" feeds runs; "suggested" waits. */
 export type Competitor = { key: string; name: string; source: string; status: string };
 export type CompetitorsResponse = { competitors: Competitor[]; discovered?: number; note?: string };
+
+// ── portfolio screens (#356) — the fleet-wide siblings of the per-app views ───
+
+/**
+ * GET /runs. A run, app-first: `app_name` is REQUIRED because a run id means
+ * nothing on a fleet screen without the app it belongs to.
+ *
+ * `findings_summary` is the same shape `AppListItem` carries. `null` = this run
+ * has no summary (an older trace, or a run path that never computed findings),
+ * and the UI renders NO chip. It is never 0 — a zero would claim "audited, and
+ * nothing was critical", which is a different and unearned statement.
+ *
+ * Ordering is server-side: runs at the human gate lead at ANY age, then
+ * created_at descending.
+ */
+export type PortfolioRunRow = RunRow & {
+  app_id: string;
+  app_name: string;
+  findings_summary: FindingsSummary | null;
+};
+export type PortfolioRunsResponse = { runs: PortfolioRunRow[] };
+
+/**
+ * GET /keywords. One row per keyword × app × STOREFRONT — a rank belongs to one
+ * app in one storefront, so a keyword-only row would have to pick or average,
+ * and either fabricates. `country` names the storefront the rank was read in.
+ */
+export type PortfolioDeltaEntry = DeltaEntry & {
+  app_id: string;
+  app_name: string;
+  /** the storefront the rank was read in (lowercased ISO, e.g. "us", "jp"). */
+  country: string;
+};
+export type PortfolioKeywordsResponse = { entries: PortfolioDeltaEntry[] };
+
+/**
+ * GET /competitors. Grouped by RIVAL, because one rival typically competes with
+ * several of your apps — but watching stays PER-PAIR: `status` and `source` are
+ * facts about (this app, this rival), so confirming a rival for one app never
+ * silently confirms it for another.
+ *
+ * There is deliberately NO `sharedTerms` count. Measuring "how many of this
+ * app's tracked keywords the rival also ranks for" would need rival-vs-our-
+ * keyword rank data that is never persisted (the war room live-fetches it per
+ * request), so the number could only be estimated — and an absent count is
+ * honest where a guessed one is not.
+ */
+export type PortfolioRivalPair = {
+  app_id: string;
+  app_name: string;
+  /** same values as `Competitor.status`. */
+  status: string;
+  source: string;
+};
+export type PortfolioRival = { key: string; name: string; pairs: PortfolioRivalPair[] };
+export type PortfolioCompetitorsResponse = { rivals: PortfolioRival[] };
 
 // ── locale-native keyword ideas (#180 Phase 3) ───────────────────────────────
 /** A keyword term measured from the top apps in a target storefront. */

@@ -46,6 +46,10 @@
  *   GET  /portfolio         Scale-tier roll-up: every app's grade / lead rank /
  *                           pending-approval + summary counts (402 below Scale).
  *   POST /runs/approve-all  bulk-approve every pending run across the user's apps.
+ *   GET  /runs              PORTFOLIO: every run across the user's apps, app-first
+ *                           (app_name required), gate-first then newest.
+ *   GET  /keywords          PORTFOLIO: rank movement per keyword × app × storefront.
+ *   GET  /competitors       PORTFOLIO: rivals grouped by rival; watching per-pair.
  *   POST /resolve           {query} → connectable candidates (name / App Store or
  *                           Play URL / numeric id / bundle id). No connect, no run.
  *                           kind: "resolved" | "candidates" | "not-found".
@@ -110,7 +114,7 @@ import {
   sortFindings,
   verifyPlayServiceAccount,
 } from "../engine/index.js";
-import type { ReasoningTrace, AppRow, FindingsSummary } from "../d1.js";
+import type { ReasoningTrace, AppRow, FindingsSummary, RankSnapshotRow } from "../d1.js";
 import { buildPreview } from "../engine/preview.js";
 import { discoverCompetitors, resolveNameToId } from "../engine/competitorWatch.js";
 import { resolveSimilarCompetitors } from "../engine/competitorDiscover.js";
@@ -161,6 +165,9 @@ import {
   listAllApps,
   listAppsForUser,
   listCompetitors,
+  listCompetitorsForUser,
+  listRankSnapshotsForUser,
+  listRunsForUser,
   listCompetitorSnapshots,
   getPlayFunnelSeries,
   listRunsForApp,
@@ -1362,6 +1369,156 @@ async function proofStats(env: Env, origin: string | null): Promise<Response> {
   );
   const agg = aggregateProof(winsByApp);
   return json(agg, 200, origin, env, { "cache-control": "public, max-age=3600" });
+}
+
+// ── portfolio screens (#356 Phase 1): /runs · /keywords · /competitors ────────
+// Fleet-wide siblings of the per-app routes. Each reads ONE cross-app statement
+// (see the listXForUser helpers in d1.ts) rather than looping the per-app helper,
+// so a 40-app account costs the same number of round trips as a 1-app account.
+// Ownership is enforced inside those queries by joining through apps.user_id.
+
+/**
+ * GET /runs — every run across the caller's apps, app-first.
+ *
+ * `app_name` is required: each row on this screen names the app before the run,
+ * because a run id means nothing without it. `findings_summary` comes from the
+ * run's persisted trace and is `null` when the run has none (older traces, or a
+ * run whose path never computed findings) — the screen then renders NO chip,
+ * which is the honest reading. A zero would claim "audited, nothing critical".
+ *
+ * Ordering is done in SQL (see listRunsForUser): runs at the human gate lead at
+ * any age, then newest first.
+ */
+async function portfolioRuns(env: Env, userId: string): Promise<unknown> {
+  const rows = await listRunsForUser(env.DB, userId);
+  return {
+    runs: rows.map((r) => ({
+      id: r.id,
+      app_id: r.app_id,
+      app_name: r.app_name,
+      status: r.status,
+      created_at: r.created_at,
+      findings_summary: findingsSummaryFromTrace(r.reasoning_json),
+    })),
+  };
+}
+
+/**
+ * The findings summary a run's persisted trace carries, or null. A trace that
+ * won't parse is treated as "no summary" rather than a 500: one corrupt blob
+ * must not take down the whole fleet view, and null is the honest answer
+ * (we do not know this run's findings) either way.
+ */
+function findingsSummaryFromTrace(reasoningJson: string): FindingsSummary | null {
+  try {
+    return (JSON.parse(reasoningJson) as ReasoningTrace).findingsSummary ?? null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * GET /keywords — rank movement for every tracked keyword across the fleet.
+ *
+ * A row is a keyword × app × STOREFRONT triple. A rank is only meaningful for
+ * one app in one storefront, so collapsing to a keyword-only row would have to
+ * either pick one app's number or average several — both fabricate. We therefore
+ * partition the snapshots on (app_id, country) and run the SAME `rankDeltasView`
+ * the per-app screen and the email digest use over each partition, so no two
+ * surfaces can disagree about a delta.
+ *
+ * Directions are the existing ones. The engine's `lost` (we read the storefront
+ * and the app was not in it, so `current` is null) maps onto the wire's
+ * `unmeasured` — the same fact, in the vocabulary the client type declares. No
+ * new honesty plumbing.
+ */
+async function portfolioKeywords(env: Env, userId: string): Promise<unknown> {
+  const rows = await listRankSnapshotsForUser(env.DB, userId);
+
+  // Partition preserving the query's checked_at ASC order, which rankDeltasView
+  // (via buildDigest) relies on to pick the last two DISTINCT snapshots.
+  const groups = new Map<
+    string,
+    { app_id: string; app_name: string; country: string; rows: RankSnapshotRow[] }
+  >();
+  for (const r of rows) {
+    const key = `${r.app_id} ${r.country}`;
+    let g = groups.get(key);
+    if (!g) {
+      g = { app_id: r.app_id, app_name: r.app_name, country: r.country, rows: [] };
+      groups.set(key, g);
+    }
+    g.rows.push({
+      id: r.id,
+      app_id: r.app_id,
+      keyword: r.keyword,
+      rank: r.rank,
+      total: r.total,
+      country: r.country,
+      checked_at: r.checked_at,
+    });
+  }
+
+  const entries: unknown[] = [];
+  for (const g of groups.values()) {
+    const view = rankDeltasView(g.rows, { appName: g.app_name });
+    for (const e of view.entries) {
+      entries.push({
+        keyword: e.keyword,
+        previous: e.previous,
+        current: e.current,
+        delta: e.delta,
+        direction: e.direction === "lost" ? "unmeasured" : e.direction,
+        app_id: g.app_id,
+        app_name: g.app_name,
+        country: g.country,
+      });
+    }
+  }
+  return { entries };
+}
+
+/**
+ * GET /competitors — the fleet's rivals, grouped by RIVAL rather than by app,
+ * because the same rival typically competes with several of your apps and the
+ * screen is about the rival.
+ *
+ * Watching stays PER-PAIR: `status` ("confirmed" / "suggested") and `source` are
+ * facts about (this app, this rival), not about the rival, so they live on the
+ * pair. Confirming a rival for one app must never silently confirm it for
+ * another.
+ *
+ * `sharedTerms` (how many of an app's tracked keywords the rival also ranks for)
+ * is DELIBERATELY ABSENT. We do not persist rival-vs-our-keyword ranks anywhere:
+ * `rank_snapshots` holds only the customer app's own ranks, and the war room
+ * live-fetches a rival's ranks per request rather than storing them.
+ * `corpus_snapshots` keys on bundle_id for corpus-mining seed terms, while a
+ * rival's `comp_key` is a stringified App Store trackId — the two do not join,
+ * and it is not scoped to an app's tracked set regardless. Producing the number
+ * would mean a live search per (rival × keyword) on every page load. So the
+ * field is omitted rather than estimated: the screen reads fine without it, and
+ * a missing count is honest where a guessed one is not.
+ */
+async function portfolioCompetitors(env: Env, userId: string): Promise<unknown> {
+  const rows = await listCompetitorsForUser(env.DB, userId);
+  const rivals = new Map<
+    string,
+    { key: string; name: string; pairs: Array<{ app_id: string; app_name: string; status: string; source: string }> }
+  >();
+  for (const r of rows) {
+    let rival = rivals.get(r.comp_key);
+    if (!rival) {
+      rival = { key: r.comp_key, name: r.name, pairs: [] };
+      rivals.set(r.comp_key, rival);
+    }
+    rival.pairs.push({
+      app_id: r.app_id,
+      app_name: r.app_name,
+      status: r.status,
+      source: r.source,
+    });
+  }
+  return { rivals: [...rivals.values()] };
 }
 
 /**
@@ -4427,6 +4584,19 @@ export async function handleApi(req: Request, env: Env, ctx?: ExecutionContext):
     // /portfolio — the Scale roll-up across all of the user's apps
     if (seg[0] === "portfolio" && seg.length === 1 && method === "GET") {
       return json(await portfolioView(env, user.id), 200, origin, env);
+    }
+
+    // The three fleet-wide portfolio screens (#356). Each is the cross-app
+    // sibling of a per-app route. GET /runs is length-1, so it can't collide
+    // with /runs/approve-all or /runs/:id (both length >= 2).
+    if (seg[0] === "runs" && seg.length === 1 && method === "GET") {
+      return json(await portfolioRuns(env, user.id), 200, origin, env);
+    }
+    if (seg[0] === "keywords" && seg.length === 1 && method === "GET") {
+      return json(await portfolioKeywords(env, user.id), 200, origin, env);
+    }
+    if (seg[0] === "competitors" && seg.length === 1 && method === "GET") {
+      return json(await portfolioCompetitors(env, user.id), 200, origin, env);
     }
 
     // /account/rlhf-optout — flip this user's RLHF capture opt-out (#39 Part 2)

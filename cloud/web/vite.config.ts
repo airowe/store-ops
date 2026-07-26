@@ -24,7 +24,7 @@ export default defineConfig({
     proxy: {
       // Every Worker route the spine calls. A regex rather than a list so a new
       // endpoint doesn't silently 404 through the proxy.
-      "^/(auth|apps|runs|preview|account|agent|billing|proof|github|resolve|rejection-assistant)(/|$)": {
+      "^/(auth|apps|runs|keywords|competitors|preview|account|agent|billing|proof|github|resolve|rejection-assistant)(/|$)": {
         target: "http://127.0.0.1:8787",
         changeOrigin: false,
       },

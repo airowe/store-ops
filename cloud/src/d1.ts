@@ -1042,6 +1042,131 @@ export async function listRunsForApp(
   return results ?? [];
 }
 
+// ── portfolio reads (#356): ACROSS a user's apps, one statement each ──────────
+// The three portfolio screens are fleet-wide, so the per-app helpers above would
+// mean a query per app (and, for runs, a query per RUN to reach its trace). Each
+// read below joins through `apps.user_id` instead: one statement, ownership
+// enforced in SQL rather than by a caller remembering to check.
+
+/**
+ * Every run across a user's apps, carrying its app's id + name and its raw
+ * reasoning trace (the caller extracts findingsSummary — reading the blob here
+ * is what avoids a per-run round trip).
+ *
+ * ORDER: runs still at the human gate lead at ANY age — an awaiting_approval run
+ * is the only row on this screen that needs a decision, so it must never be
+ * pushed below a newer decided run. Within each group, newest first; `id` breaks
+ * created_at ties so the order is stable across calls.
+ */
+export async function listRunsForUser(
+  db: D1Database,
+  userId: string,
+): Promise<
+  Array<{
+    id: string;
+    app_id: string;
+    app_name: string;
+    status: RunStatus;
+    created_at: string;
+    reasoning_json: string;
+  }>
+> {
+  const { results } = await db
+    .prepare(
+      `SELECT r.id, r.app_id, a.name AS app_name, r.status, r.created_at, r.reasoning_json
+       FROM runs r
+       JOIN apps a ON a.id = r.app_id
+       WHERE a.user_id = ?
+       ORDER BY (r.status = 'awaiting_approval') DESC, r.created_at DESC, r.id DESC`,
+    )
+    .bind(userId)
+    .all<{
+      id: string;
+      app_id: string;
+      app_name: string;
+      status: RunStatus;
+      created_at: string;
+      reasoning_json: string;
+    }>();
+  return results ?? [];
+}
+
+/**
+ * Every rank snapshot across a user's apps, oldest → newest, each carrying its
+ * app id/name and the storefront it was read in.
+ *
+ * A rank belongs to ONE app in ONE storefront, so the caller groups on
+ * (app_id, country, keyword) — collapsing any of those would mean picking or
+ * averaging, and both fabricate. Bounded so a large fleet can't unbound the read.
+ */
+export async function listRankSnapshotsForUser(
+  db: D1Database,
+  userId: string,
+  limit = 5000,
+): Promise<
+  Array<{
+    id: string;
+    app_id: string;
+    app_name: string;
+    keyword: string;
+    rank: number | null;
+    total: number;
+    country: string;
+    checked_at: string;
+  }>
+> {
+  const { results } = await db
+    .prepare(
+      `SELECT rs.id, rs.app_id, a.name AS app_name, rs.keyword, rs.rank, rs.total,
+              rs.country, rs.checked_at
+       FROM rank_snapshots rs
+       JOIN apps a ON a.id = rs.app_id
+       WHERE a.user_id = ?
+       ORDER BY rs.checked_at ASC, rs.id ASC
+       LIMIT ?`,
+    )
+    .bind(userId, limit)
+    .all<{
+      id: string;
+      app_id: string;
+      app_name: string;
+      keyword: string;
+      rank: number | null;
+      total: number;
+      country: string;
+      checked_at: string;
+    }>();
+  return results ?? [];
+}
+
+/**
+ * Every watched/suggested competitor across a user's apps, with the watching
+ * app's name. One row per (app, rival) — the pair, because `confirmed` is a
+ * per-pair fact: the same rival can be watched for one app and merely suggested
+ * for another. Missing-table tolerant, like the other app_competitors reads.
+ */
+export async function listCompetitorsForUser(
+  db: D1Database,
+  userId: string,
+): Promise<Array<CompetitorRow & { app_name: string }>> {
+  try {
+    const { results } = await db
+      .prepare(
+        `SELECT c.app_id, a.name AS app_name, c.comp_key, c.name, c.source, c.status
+         FROM app_competitors c
+         JOIN apps a ON a.id = c.app_id
+         WHERE a.user_id = ?
+         ORDER BY c.name ASC, a.name ASC`,
+      )
+      .bind(userId)
+      .all<CompetitorRow & { app_name: string }>();
+    return results ?? [];
+  } catch (e) {
+    if (isMissingTable(e)) return [];
+    throw e;
+  }
+}
+
 export async function getProposals(db: D1Database, runId: string): Promise<ProposalRow[]> {
   const { results } = await db
     .prepare(
