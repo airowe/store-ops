@@ -710,6 +710,41 @@ h2 { font-family: var(--display); font-weight: 600; font-size: 22px; letter-spac
 .audit-run-when { margin-left: auto; }
 .audit-run-chevron { color: var(--faint); }
 
+/* ── Audit v2 — section tabs: Monitor | Connections (Audit Page v2.dc.html) ──
+   Setup lives on Connections so the monitoring page stays monitoring. These are
+   real <button>s in a real tablist (native Enter/Space, no hand-rolled keydown —
+   same rule as button.card above); .active only ever mirrors aria-selected. */
+.audit-tabs {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  border-bottom: 1px solid var(--line-soft); margin-bottom: 22px;
+}
+.audit-tab {
+  display: flex; align-items: center; gap: 8px;
+  background: none; border: none; border-bottom: 2px solid transparent;
+  padding: 9px 2px 11px; margin-bottom: -1px;
+  font: inherit; font-size: 14.5px; font-weight: 600;
+  color: var(--faint); cursor: pointer; appearance: none;
+  transition: color var(--duration-hover) var(--ease-out);
+}
+.audit-tab.active { color: var(--ink); border-bottom-color: var(--signal); }
+@media (hover: hover) and (pointer: fine) { .audit-tab:not(.active):hover { color: var(--dim); } }
+.audit-tab-count {
+  font-size: 11px; font-weight: 600; color: var(--dim);
+  border: 1px solid var(--line); border-radius: 999px; padding: 2px 8px; white-space: nowrap;
+}
+.audit-panel { display: flex; flex-direction: column; }
+.audit-connections-intro {
+  font-size: 14.5px; color: var(--dim); line-height: 1.55; max-width: 66ch; margin: 0 0 20px;
+}
+/* The moved cards carry their own .card treatment; the grid only arranges them. */
+.audit-connections-grid { align-items: start; margin-bottom: 0; }
+.audit-connections-grid > .card { margin: 0; }
+.audit-connections-note {
+  display: block; margin: 18px 0 0; padding: 13px 16px; max-width: 72ch;
+  border: 1px solid var(--line-soft); background: var(--raise); border-radius: 12px;
+  font-size: 13.5px; color: var(--dim); line-height: 1.55;
+}
+
 @media (max-width: 860px) {
   .metric-band { grid-template-columns: 1fr 1fr; }
   .audit-grid-2 { grid-template-columns: 1fr; }

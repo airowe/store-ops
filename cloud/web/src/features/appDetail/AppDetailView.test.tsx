@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
-import { render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import type { ApiClient } from "@shipaso/api";
 
@@ -11,13 +11,22 @@ vi.mock("../charts/RankChart.js", () => ({
 
 import { AppDetailView } from "./AppDetailView.js";
 
-function makeClient(over: { ranks?: unknown; deltas?: unknown; runs?: unknown[]; engagement?: unknown } = {}) {
+function makeClient(
+  over: {
+    ranks?: unknown;
+    deltas?: unknown;
+    runs?: unknown[];
+    engagement?: unknown;
+    credentials?: unknown[];
+  } = {},
+) {
   const get = vi.fn(async (path: string) => {
     if (path.endsWith("/ranks")) return over.ranks ?? { points: [], annotations: [] };
     if (path.endsWith("/deltas")) return over.deltas ?? { entries: [] };
     if (path.endsWith("/analytics/engagement")) return over.engagement ?? { state: "no_data", message: "none" };
     if (path.endsWith("/competitors")) return { competitors: [] };
-    if (path === "/account/credentials") return { enabled: true, credentials: [] };
+    if (path.endsWith("/play/funnel")) return { state: "no_data", message: "none" };
+    if (path === "/account/credentials") return { enabled: true, credentials: over.credentials ?? [] };
     if (/\/apps\/[^/]+$/.test(path)) {
       return { app: { id: "a1", bundle_id: "com.acme", name: "Acme", country: "US" }, runs: over.runs ?? [] };
     }
@@ -65,8 +74,10 @@ describe("<AppDetailView />", () => {
     expect(screen.getByTestId("move-todo")).toBeInTheDocument();
   });
 
-  it("offers the App Store Connect connect card (#179 keyed loop entry point)", async () => {
+  it("offers the App Store Connect connect card (#179 keyed loop entry point) on the Connections tab", async () => {
     renderView(makeClient());
+    await waitFor(() => screen.getByText("Acme"));
+    fireEvent.click(screen.getByTestId("audit-tab-connections"));
     await waitFor(() => expect(screen.getByTestId("connect-asc")).toBeInTheDocument());
   });
 
@@ -140,5 +151,87 @@ describe("<AppDetailView />", () => {
     const tile = await screen.findByTestId("coverage-tile");
     expect(tile).toHaveTextContent("—");
     expect(tile).toHaveTextContent("none measured yet");
+  });
+
+  // ── v2 tab split (#344): Monitor stays monitoring; setup lives in Connections ──
+
+  const CREDENTIAL_CARDS = ["connect-asc", "play-audit-card", "play-data-safety-card", "play-funnel-card"];
+
+  it("defaults to Monitor, with the monitoring surfaces visible", async () => {
+    const deltas = { entries: [{ keyword: "todo", previous: 20, current: 8, delta: 12, direction: "up" }] };
+    renderView(makeClient({ deltas }));
+    await waitFor(() => screen.getByText("Acme"));
+    const monitor = screen.getByTestId("audit-tab-monitor");
+    expect(monitor).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByTestId("audit-tab-connections")).toHaveAttribute("aria-selected", "false");
+    expect(screen.getByTestId("rank-movement")).toBeInTheDocument();
+  });
+
+  it("keeps the four credential cards OFF the Monitor tab", async () => {
+    renderView(makeClient());
+    await waitFor(() => screen.getByText("Acme"));
+    for (const id of CREDENTIAL_CARDS) expect(screen.queryByTestId(id)).toBeNull();
+  });
+
+  it("reveals exactly the four credential cards on Connections, and hides monitoring", async () => {
+    const deltas = { entries: [{ keyword: "todo", previous: 20, current: 8, delta: 12, direction: "up" }] };
+    renderView(makeClient({ deltas }));
+    await waitFor(() => screen.getByText("Acme"));
+
+    fireEvent.click(screen.getByTestId("audit-tab-connections"));
+    for (const id of CREDENTIAL_CARDS) {
+      expect(await screen.findByTestId(id)).toBeInTheDocument();
+    }
+    expect(screen.queryByTestId("rank-movement")).toBeNull();
+    expect(screen.getByTestId("audit-tab-connections")).toHaveAttribute("aria-selected", "true");
+  });
+
+  it("wires the tabs to their panel with aria-controls (native button semantics)", async () => {
+    renderView(makeClient());
+    await waitFor(() => screen.getByText("Acme"));
+    const monitor = screen.getByTestId("audit-tab-monitor");
+    expect(monitor.tagName).toBe("BUTTON");
+    const panelId = monitor.getAttribute("aria-controls");
+    expect(panelId).toBeTruthy();
+    expect(document.getElementById(panelId!)).toBeTruthy();
+  });
+
+  it("counts BOTH surfaces as unconnected when no credentials are stored", async () => {
+    renderView(makeClient({ credentials: [] }));
+    await waitFor(() => screen.getByText("Acme"));
+    expect(screen.getByTestId("connections-unconnected")).toHaveTextContent("2 unconnected");
+  });
+
+  it("derives the count from real credential state — one stored key leaves one unconnected", async () => {
+    const credentials = [
+      { id: "c1", appId: null, kind: "asc", keyId: "K1", issuerId: "I1", createdAt: "2026-07-01T00:00:00Z", lastUsedAt: null, kekVersion: 1 },
+    ];
+    renderView(makeClient({ credentials }));
+    await waitFor(() => screen.getByText("Acme"));
+    expect(screen.getByTestId("connections-unconnected")).toHaveTextContent("1 unconnected");
+  });
+
+  it("renders NO count pill when every surface is connected — never a fabricated 0", async () => {
+    const credentials = [
+      { id: "c1", appId: null, kind: "asc", keyId: "K1", issuerId: "I1", createdAt: "2026-07-01T00:00:00Z", lastUsedAt: null, kekVersion: 1 },
+      { id: "c2", appId: "a1", kind: "play", keyId: "K2", issuerId: "I2", createdAt: "2026-07-01T00:00:00Z", lastUsedAt: null, kekVersion: 1 },
+    ];
+    renderView(makeClient({ credentials }));
+    await waitFor(() => screen.getByText("Acme"));
+    expect(screen.queryByTestId("connections-unconnected")).toBeNull();
+  });
+
+  it("renders NO count pill while credential state is still unknown — never a guess", async () => {
+    // A client whose /account/credentials never resolves: the count is unmeasured.
+    const client = makeClient();
+    const inner = client.get as unknown as ReturnType<typeof vi.fn>;
+    const orig = inner.getMockImplementation()!;
+    inner.mockImplementation(async (path: string) => {
+      if (path === "/account/credentials") return new Promise(() => {}) as never;
+      return orig(path);
+    });
+    renderView(client);
+    await waitFor(() => screen.getByText("Acme"));
+    expect(screen.queryByTestId("connections-unconnected")).toBeNull();
   });
 });
