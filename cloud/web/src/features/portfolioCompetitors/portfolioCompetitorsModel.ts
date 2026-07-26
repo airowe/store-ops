@@ -20,11 +20,16 @@ export const confirmedPairs = (r: PortfolioRival) => r.pairs.filter(isConfirmed)
 /** Watched = confirmed on at least one app. A rival confirmed nowhere is a suggestion. */
 export const isWatched = (r: PortfolioRival) => r.pairs.some(isConfirmed);
 
-/** "overlaps N of your apps · watched on M" — both counted, never estimated. */
+/**
+ * "overlaps N of your apps · watched on M" — both counted, never estimated.
+ *
+ * "apps" stays plural at every count: it names the SET being counted out of,
+ * not the count itself, so "1 of your app" would be wrong English.
+ */
 export function rivalMeta(r: PortfolioRival): string {
   const overlaps = r.pairs.length;
   const watched = confirmedPairs(r).length;
-  return `overlaps ${overlaps} of your ${overlaps === 1 ? "app" : "apps"} · watched on ${watched}`;
+  return `overlaps ${overlaps} of your apps · watched on ${watched}`;
 }
 
 /** "N rivals · M app pairs" for the watched section — confirmed pairs only. */

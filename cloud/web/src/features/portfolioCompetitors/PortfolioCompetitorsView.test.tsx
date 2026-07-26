@@ -138,7 +138,7 @@ describe("<PortfolioCompetitorsView />", () => {
       "overlaps 3 of your apps · watched on 2",
     );
     expect(screen.getByTestId("pcomp-meta-r-single")).toHaveTextContent(
-      "overlaps 1 of your app · watched on 1",
+      "overlaps 1 of your apps · watched on 1",
     );
   });
 
