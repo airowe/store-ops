@@ -57,6 +57,8 @@
   --overlay:   rgba(7, 9, 14, 0.74);       /* modal backdrop */
   --grain: 0.025;                          /* fractal-noise texture opacity */
   color-scheme: dark;
+  --brand-glow: rgba(91, 140, 255, 0.14);
+  --rail-bg: #090c13;
 }
 
 /* ── light theme ───────────────────────────────────────────────────────────
@@ -100,6 +102,8 @@
   --grain: 0;
   --shadow: 0 24px 60px rgba(28, 40, 66, 0.14);
   color-scheme: light;
+  --brand-glow: rgba(53, 99, 224, 0.10);
+  --rail-bg: #ffffff;
 }
 
 * { box-sizing: border-box; }

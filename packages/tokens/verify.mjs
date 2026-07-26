@@ -35,7 +35,33 @@ const norm = (v) => v.replace(/\s+/g, " ").trim().toLowerCase();
 const rootBody = block(":root");
 const lightBody = block(':root[data-theme="light"]');
 
+/**
+ * Theme entries that are NOT palette colours and so are exempt from the
+ * coverage check. `color-scheme` is a real CSS property (it tells the UA which
+ * form-control and scrollbar rendering to use), not a token anything reads.
+ */
+const NON_PALETTE = new Set(["color-scheme"]);
+
 let failures = 0;
+
+// 0) COVERAGE — `paletteKeys` drives every check below, so a theme entry missing
+// from that list is GENERATED and SHIPPED but never verified. That is not
+// hypothetical: #338 added --warn-glow/--warn-border to styles.css, app.css and
+// mobile without adding them here, and nothing failed. Assert the list covers
+// the themes so the next token cannot be silently unpinned.
+const themeKeys = Object.keys(tokens.themes.dark).filter((k) => !NON_PALETTE.has(k));
+const unlisted = themeKeys.filter((k) => !tokens.paletteKeys.includes(k));
+if (unlisted.length) {
+  console.error(
+    `  ✗ [coverage] ${unlisted.length} theme key(s) absent from paletteKeys, so unverified: ${unlisted.join(", ")}`,
+  );
+  failures += unlisted.length;
+}
+const orphaned = tokens.paletteKeys.filter((k) => !(k in tokens.themes.dark));
+if (orphaned.length) {
+  console.error(`  ✗ [coverage] paletteKeys names ${orphaned.length} key(s) no theme defines: ${orphaned.join(", ")}`);
+  failures += orphaned.length;
+}
 
 // 1) DARK parity — the hard proof: every palette key in tokens.json must match
 // the value shipping in styles.css :root today. This is a no-op or it's drift.
