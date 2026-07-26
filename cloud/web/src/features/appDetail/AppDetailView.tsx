@@ -6,13 +6,25 @@
  * hooks (getApp/getRanks/getDeltas/getEngagement); the redesign changes
  * presentation, not the data contract.
  *
+ * v2 (Audit Page v2.dc.html, #344) splits the page into two tabs. The four
+ * setup-shaped credential cards used to sit inline in the monitoring flow,
+ * which is both the column-rhythm complaint in #344 and a category error:
+ * "setup lives here so the monitoring page stays monitoring". Monitor is the
+ * default; Connections carries the four cards, unchanged internally — they are
+ * wired components with their own queries, mutations and tests, so this MOVES
+ * them rather than restyling them.
+ *
  * Honest throughout: unmeasured lead rank / conversion render "—", the rank
  * trend only draws with ≥2 points, and grade/coverage tiles that we can't
- * measure from this surface's data are simply not fabricated.
+ * measure from this surface's data are simply not fabricated. The Connections
+ * count pill obeys the same rule — it is derived from real stored-credential
+ * metadata, and renders NOT AT ALL while that state is unknown or when nothing
+ * is unconnected, rather than showing a guess or a hollow "0".
  */
+import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import type { ApiClient } from "@shipaso/api";
-import { getApp, getDeltas, getEngagement, getRanks } from "@shipaso/api";
+import { getApp, getCredentials, getDeltas, getEngagement, getRanks } from "@shipaso/api";
 import { timeAgo } from "@shipaso/honesty";
 import type { CSSProperties } from "react";
 import { runStatusLabel } from "../../lib/status.js";
@@ -47,6 +59,11 @@ export function AppDetailView({
   const ranksQ = useQuery({ queryKey: ["ranks", id], queryFn: () => getRanks(client, id) });
   const deltasQ = useQuery({ queryKey: ["deltas", id], queryFn: () => getDeltas(client, id) });
   const engagementQ = useQuery({ queryKey: ["engagement", id], queryFn: () => getEngagement(client, id), retry: false });
+  // Lifted so the Connections tab can label itself honestly. The four cards each
+  // run this same query under the same key, so this shares their cache entry
+  // rather than adding a request.
+  const credsQ = useQuery({ queryKey: ["credentials"], queryFn: () => getCredentials(client) });
+  const [tab, setTab] = useState<"monitor" | "connections">("monitor");
 
   if (appQ.isLoading) return <p className="muted">Loading…</p>;
   if (appQ.isError || !appQ.data) return <p className="muted">Couldn’t load this app. Try again.</p>;
@@ -71,6 +88,28 @@ export function AppDetailView({
   const engagement = engagementQ.data;
   const conversionRate =
     engagement?.state === "measured" ? (engagement.latestConversion?.rate ?? null) : null;
+
+  // Connections count, derived — the comp hardcodes "2 unconnected" because it is
+  // a static mock. The four cards cover exactly two credentialled surfaces: App
+  // Store Connect (ConnectAscCard, kind "asc") and Google Play (PlayAuditCard,
+  // PlayDataSafetyCard and PlayFunnelCard all key off kind "play"). A surface is
+  // connected when a stored credential of that kind is scoped to this app or is
+  // account-wide (appId === null) — the same predicate each card already uses to
+  // decide whether to show its paste box, so the pill can never disagree with the
+  // cards beneath it.
+  //
+  // While the query is pending we know nothing, so `unconnected` is null and no
+  // pill renders. Zero also renders no pill: "0 unconnected" is noise, and the
+  // absence of the pill is the honest signal that nothing is outstanding.
+  const credentials = credsQ.data?.credentials ?? [];
+  const hasKind = (kind: "asc" | "play") =>
+    credentials.some((c) => c.kind === kind && (c.appId === app.id || c.appId === null));
+  const unconnected = credsQ.isPending
+    ? null
+    : (hasKind("asc") ? 0 : 1) + (hasKind("play") ? 0 : 1);
+
+  const monitorPanelId = "audit-panel-monitor";
+  const connectionsPanelId = "audit-panel-connections";
 
   return (
     <section className="audit">
@@ -101,6 +140,44 @@ export function AppDetailView({
           <span className="store-connect mono">connect</span>
         </div>
       </div>
+
+      {/* section tabs (v2) — Monitor vs Connections. Real <button>s in a real
+          tablist: native Enter/Space and focus semantics, no hand-rolled
+          onKeyDown (same rule as button.card in app.css). */}
+      <div className="audit-tabs" role="tablist" aria-label="Audit sections" data-testid="audit-tabs">
+        <button
+          type="button"
+          role="tab"
+          id="audit-tab-monitor"
+          className={"audit-tab" + (tab === "monitor" ? " active" : "")}
+          data-testid="audit-tab-monitor"
+          aria-selected={tab === "monitor"}
+          aria-controls={monitorPanelId}
+          onClick={() => setTab("monitor")}
+        >
+          Monitor
+        </button>
+        <button
+          type="button"
+          role="tab"
+          id="audit-tab-connections"
+          className={"audit-tab" + (tab === "connections" ? " active" : "")}
+          data-testid="audit-tab-connections"
+          aria-selected={tab === "connections"}
+          aria-controls={connectionsPanelId}
+          onClick={() => setTab("connections")}
+        >
+          Connections
+          {unconnected ? (
+            <span className="audit-tab-count mono" data-testid="connections-unconnected">
+              {unconnected} unconnected
+            </span>
+          ) : null}
+        </button>
+      </div>
+
+      {tab === "monitor" ? (
+      <div id={monitorPanelId} role="tabpanel" aria-labelledby="audit-tab-monitor" className="audit-panel">
 
       {/* metric band — only real, measured numbers; nothing fabricated */}
       <div className="metric-band">
@@ -198,11 +275,9 @@ export function AppDetailView({
         <LocaleKeywordsCard client={client} appId={app.id} />
       </div>
 
-      {/* store-specific audit surfaces + the ASC keyed-loop entry point */}
-      <ConnectAscCard client={client} appId={app.id} onRunStarted={onOpenRun} />
-      <PlayAuditCard client={client} appId={app.id} />
-      <PlayDataSafetyCard client={client} appId={app.id} />
-      <PlayFunnelCard client={client} appId={app.id} />
+      {/* The four credential cards used to sit here; they now live on the
+          Connections tab below. RejectionAssistantCard stays — it is a
+          monitoring-shaped surface, not a credential. */}
       <RejectionAssistantCard client={client} />
 
       {/* Measured conversion detail (the card, with its movement caveat) + setup
@@ -231,6 +306,31 @@ export function AppDetailView({
             </button>
           ))}
         </div>
+      )}
+
+      </div>
+      ) : (
+      <div id={connectionsPanelId} role="tabpanel" aria-labelledby="audit-tab-connections" className="audit-panel">
+        <p className="audit-connections-intro">
+          Setup lives here so the monitoring page stays monitoring. Each connection widens what a
+          run can read — nothing here grants ShipASO permission to publish.
+        </p>
+
+        {/* The existing wired cards, MOVED not rewritten: each keeps its own
+            queries, mutations, copy and tests. The two-column grid is the only
+            thing this tab adds. */}
+        <div className="audit-grid-2 audit-connections-grid">
+          <ConnectAscCard client={client} appId={app.id} onRunStarted={onOpenRun} />
+          <PlayAuditCard client={client} appId={app.id} />
+          <PlayDataSafetyCard client={client} appId={app.id} />
+          <PlayFunnelCard client={client} appId={app.id} />
+        </div>
+
+        <p className="audit-connections-note">
+          Keys are stored encrypted and shown only as metadata — key id, issuer id, and when it was
+          last used. ShipASO never displays key material back to you, here or anywhere.
+        </p>
+      </div>
       )}
     </section>
   );
