@@ -1367,6 +1367,9 @@ h2 { font-family: var(--display); font-weight: 600; font-size: 22px; letter-spac
 .pkw-delta-up { color: var(--signal); }
 .pkw-delta-down { color: var(--bad); }
 .pkw-delta-new { color: var(--signal); }
+/* Fell out of the results (#360) — measured bad news, so it wears --bad like a
+   downward move rather than the neutral --faint of an unmeasured row. */
+.pkw-delta-lost { color: var(--bad); font-weight: 600; }
 .pkw-delta-flat { color: var(--faint); }
 .pkw-store {
   font-family: var(--mono); font-size: 11px; text-align: right;
@@ -1382,6 +1385,12 @@ h2 { font-family: var(--display); font-weight: 600; font-size: 22px; letter-spac
 .pkw-unmeasured-label {
   font-family: var(--mono); font-size: 10.5px; letter-spacing: .1em;
   text-transform: uppercase; color: var(--faint); white-space: nowrap;
+}
+/* Same shape as the unmeasured label but in --bad: this section is a measured
+   loss, not an absence of data (#360). */
+.pkw-lost-label {
+  font-family: var(--mono); font-size: 10.5px; letter-spacing: .1em;
+  text-transform: uppercase; color: var(--bad); white-space: nowrap;
 }
 .pkw-rule { flex: 1; height: 1px; background: var(--line-soft); min-width: 10px; }
 .pkw-unmeasured-why { font-size: 12.5px; color: var(--dim); }

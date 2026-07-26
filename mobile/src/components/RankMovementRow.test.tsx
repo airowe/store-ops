@@ -40,6 +40,23 @@ describe("RankMovementRow (honesty)", () => {
     expect(screen.getAllByText("—").length).toBeGreaterThanOrEqual(1);
     expect(screen.queryByText("0")).toBeNull();
   });
+
+  /**
+   * #360 — a term we HAD ranked and can no longer find fell out of the results.
+   * It used to render as the neutral "—", identical to "we never checked", so
+   * the most consequential event a tracked keyword can have read as silence.
+   */
+  it("a keyword that fell out of the results says 'lost', not '—'", () => {
+    const e: DeltaEntry = { keyword: "budget", current: null, previous: 9, delta: null, direction: "lost" };
+    render(<RankMovementRow entry={e} />);
+    // The MOVEMENT cell says "lost". The rank cell still reads "—", correctly:
+    // we have no current rank, and inventing one would be the fabrication this
+    // row exists to prevent. The bug was the movement cell being "—" too.
+    expect(screen.getByText("lost")).toBeTruthy();
+    expect(screen.queryByText("0")).toBeNull();
+    // exactly one "—" (the rank), not two
+    expect(screen.getAllByText("—")).toHaveLength(1);
+  });
 });
 
 describe("RankMovementRow theming", () => {
