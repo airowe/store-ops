@@ -626,6 +626,17 @@ export type StoredCredential = {
   createdAt: string;
   lastUsedAt: string | null;
   kekVersion: number;
+  /**
+   * #372: false when the stored key can no longer be DECRYPTED — the row is
+   * present but the key-encryption key it was sealed under is not the one
+   * configured (e.g. CRED_KEK_V1 replaced instead of rotated to V2).
+   *
+   * Optional so an older API response (which omits it) is treated as readable
+   * rather than a fleet of keys silently reading as broken. The UI must withhold
+   * push affordances when it is explicitly false: metadata listing never
+   * decrypts, so without this a dead key looks perfectly healthy.
+   */
+  readable?: boolean;
 };
 
 /** A scoped agent/MCP API key — metadata only; the raw key is never in here. */

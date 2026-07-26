@@ -99,4 +99,24 @@ describe("autonomous keyed sweep (#67 Phase 2)", () => {
     expect(report.appsProcessed).toBe(1);
     expect(report.perApp[0]!.error).toBeUndefined(); // the app was NOT errored out
   });
+
+  /**
+   * #372 — the case the test above does NOT cover. It mocks useCredential
+   * RESOLVING and the later keyed pass failing. But useCredential itself is
+   * called OUTSIDE the try block, so when it THROWS — a row sealed under a KEK
+   * that was replaced rather than rotated — the throw escapes before `passed`
+   * is ever assigned and takes down the app's entire sweep.
+   *
+   * A dead key must cost the user only the keyed pass, never the whole run.
+   * This is the header's existing promise ("never strands the sweep") applied
+   * to the read itself, not just the pass.
+   */
+  it("an UNREADABLE stored key degrades to the public pass, not an errored app", async () => {
+    useCredential.mockRejectedValue(new Error("stored credential cannot be read"));
+    const report = await runWeeklySweep(env, {});
+    expect(runAgent).toHaveBeenCalledTimes(1); // fell back to the public pass
+    expect(report.appsProcessed).toBe(1);
+    expect(report.perApp[0]!.error).toBeUndefined(); // the app was NOT errored out
+    expect(persistRun).toHaveBeenCalledTimes(1); // and the run still happened
+  });
 });

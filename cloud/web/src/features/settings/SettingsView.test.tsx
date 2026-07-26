@@ -4,9 +4,9 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import type { ApiClient } from "@shipaso/api";
 import { SettingsView } from "./SettingsView.js";
 
-function makeClient() {
+function makeClient(overrides: { creds?: unknown } = {}) {
   const meData = { email: "me@x.com", push_run_ready: true, email_digest: "weekly", rank_cadence: "weekly" };
-  const creds = {
+  const creds = overrides.creds ?? {
     enabled: true,
     credentials: [
       { id: "c1", appId: null, kind: "asc", keyId: "KID123", issuerId: "iss", createdAt: "2026-07-01T00:00:00Z", lastUsedAt: null, kekVersion: 1 },
@@ -78,6 +78,37 @@ describe("<SettingsView />", () => {
     await waitFor(() =>
       expect(request).toHaveBeenCalledWith("/account/credentials/asc", { method: "DELETE" }),
     );
+  });
+
+  /**
+   * #372: a key whose KEK was replaced still lists (metadata never decrypts),
+   * so this panel showed it as a perfectly healthy stored key. The row must say
+   * it can't be read — and must still offer Delete, because re-connecting is
+   * the fix and that starts with removing the dead row.
+   */
+  it("marks a key the server reports as UNREADABLE, and still allows deleting it", async () => {
+    const { client } = makeClient({
+      creds: {
+        enabled: true,
+        credentials: [
+          { id: "c1", appId: null, kind: "asc", keyId: "KID123", issuerId: "iss", createdAt: "2026-07-01T00:00:00Z", lastUsedAt: null, kekVersion: 1, readable: false },
+        ],
+      },
+    });
+    renderView(client);
+    await waitFor(() => screen.getByTestId("delete-asc"));
+    const notice = screen.getByTestId("key-unreadable-asc");
+    expect(notice).toHaveTextContent(/can’t be read|cannot be read/i);
+    expect(notice).toHaveTextContent(/re-connect/i);
+    // the row is still deletable — that is the recovery path
+    expect(screen.getByTestId("delete-asc")).toBeInTheDocument();
+  });
+
+  it("a readable key shows no warning (the guard is not over-broad)", async () => {
+    const { client } = makeClient();
+    renderView(client);
+    await waitFor(() => screen.getByTestId("delete-asc"));
+    expect(screen.queryByTestId("key-unreadable-asc")).not.toBeInTheDocument();
   });
 
   it("pausing the autonomous sweep posts /agent/pause and flips to Paused", async () => {

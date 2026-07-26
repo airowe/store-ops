@@ -146,22 +146,27 @@ export async function runKeyedSweepForApp(
   const previous = await getLatestCompetitorMap(env.DB, app.id);
   const cronReasoner = reasonerForEnv(env.AI);
   const confirmed = await confirmedCompetitorKeys(env.DB, app.id);
-  const storedAsc = credentialsEnabled(env)
-    ? await useCredential(env, app.user_id, app.id, "asc")
-    : null;
   let passed: { result: AgentResult; resultWithSnapshot: AgentResult } | null = null;
-  if (storedAsc) {
+  if (credentialsEnabled(env)) {
+    // #372: the READ is inside the try. It used to sit outside, so a stored key
+    // that can no longer be decrypted (CredentialUnreadableError — e.g. a KEK
+    // replaced instead of rotated) threw past this block and errored the app out
+    // of the sweep entirely. A dead key must cost only the keyed pass; the user
+    // still gets their run.
     try {
-      const token = await mintAscJwt({
-        p8: storedAsc.plaintext,
-        keyId: storedAsc.meta.keyId,
-        issuerId: storedAsc.meta.issuerId,
-      });
-      passed = await keyedAscPass(env, app, token, "en-US", {
-        ...(confirmed.length ? { competitors: confirmed } : {}),
-      });
+      const storedAsc = await useCredential(env, app.user_id, app.id, "asc");
+      if (storedAsc) {
+        const token = await mintAscJwt({
+          p8: storedAsc.plaintext,
+          keyId: storedAsc.meta.keyId,
+          issuerId: storedAsc.meta.issuerId,
+        });
+        passed = await keyedAscPass(env, app, token, "en-US", {
+          ...(confirmed.length ? { competitors: confirmed } : {}),
+        });
+      }
     } catch {
-      passed = null; // stored-key read failed → fall back to the public pass
+      passed = null; // unreadable key or a failed keyed pass → the public pass
     }
   }
   const keyed = passed !== null;
