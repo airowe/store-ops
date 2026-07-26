@@ -121,7 +121,25 @@ const ROUTES: Array<[RegExp, unknown]> = [
 /** A request whose path is one of our API routes — host-agnostic, so the mocks
  *  work whether the build targets api.shipaso.com or a relative base. */
 function isApiPath(pathname: string): boolean {
-  return /^\/(apps|runs|auth|account|github|proof|preview|resolve)\b/.test(pathname);
+  return /^\/(apps|runs|auth|account|github|proof|preview|resolve|competitors|keywords)\b/.test(
+    pathname,
+  );
+}
+
+/**
+ * Per-spec overrides for the honesty flows (#369). A value may be a plain
+ * object OR a thunk: the thunk is called on every request, so a spec can flip
+ * server-side state (a key deleted, a pair confirmed) and have the app's next
+ * refetch observe it. That is what makes "delete is immediate" and "nothing is
+ * auto-watched" testable rather than merely asserted against a frozen fixture.
+ */
+export type MockOverrides = {
+  credentials?: unknown | (() => unknown);
+  portfolioCompetitors?: unknown | (() => unknown);
+};
+
+function resolveOverride(v: unknown): unknown {
+  return typeof v === "function" ? (v as () => unknown)() : v;
 }
 
 /**
@@ -130,7 +148,7 @@ function isApiPath(pathname: string): boolean {
  * CSS) loads normally. Host-agnostic so the same mocks work in CI (built with any
  * VITE_API_BASE) and locally.
  */
-export async function installMocks(page: Page): Promise<void> {
+export async function installMocks(page: Page, overrides: MockOverrides = {}): Promise<void> {
   await page.route(
     (url) => isApiPath(url.pathname),
     async (route) => {
@@ -139,8 +157,39 @@ export async function installMocks(page: Page): Promise<void> {
       // like an API path — let it through so the server serves the SPA shell.
       const type = route.request().resourceType();
       if (type !== "fetch" && type !== "xhr") return route.continue();
+
       const u = new URL(route.request().url());
-      const hit = ROUTES.find(([re]) => re.test(u.pathname + u.search));
+      const path = u.pathname + u.search;
+
+      // A mutation with no fixture of its own is a spec's business, not the
+      // general harness's: a spec that wants to OBSERVE a DELETE or a confirm
+      // registers its own route, and falling back lets that route answer rather
+      // than this one silently swallowing the call.
+      //
+      // Scoped to unfixtured paths on purpose — POST /preview is a fixtured
+      // mutation the landing spec depends on, so a blanket "fall back on any
+      // non-GET" breaks it.
+      const isRead = route.request().method() === "GET" || route.request().method() === "HEAD";
+      if (!isRead && !ROUTES.some(([re]) => re.test(path))) return route.fallback();
+
+      // Overrides are checked first and re-evaluated per request, so a spec can
+      // change what the server reports between refetches.
+      if (overrides.credentials !== undefined && /\/account\/credentials$/.test(u.pathname)) {
+        return route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify(resolveOverride(overrides.credentials)),
+        });
+      }
+      if (overrides.portfolioCompetitors !== undefined && /^\/competitors$/.test(u.pathname)) {
+        return route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify(resolveOverride(overrides.portfolioCompetitors)),
+        });
+      }
+
+      const hit = ROUTES.find(([re]) => re.test(path));
       await route.fulfill({
         status: 200,
         contentType: "application/json",
