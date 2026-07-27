@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Every page of the marketing site, and the machine-readable surfaces alongside
+  them. Referenced by /robots.txt.
+
+  Hand-maintained because the site is four static pages; a generator would be
+  more machinery than the thing it generates. packages/docpaths/sitemap.test.mjs
+  asserts this file lists exactly the HTML pages present in this directory, so
+  adding a page without listing it fails the build.
+-->
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+  <url>
+    <loc>https://shipaso.com/</loc>
+    <changefreq>weekly</changefreq>
+    <priority>1.0</priority>
+  </url>
+  <url>
+    <loc>https://shipaso.com/check-your-rank.html</loc>
+    <changefreq>monthly</changefreq>
+    <priority>0.9</priority>
+  </url>
+  <url>
+    <loc>https://shipaso.com/install.html</loc>
+    <changefreq>monthly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://shipaso.com/report.html</loc>
+    <changefreq>monthly</changefreq>
+    <priority>0.5</priority>
+  </url>
+  <url>
+    <loc>https://shipaso.com/llms.txt</loc>
+    <changefreq>weekly</changefreq>
+    <priority>0.7</priority>
+  </url>
+  <url>
+    <loc>https://shipaso.com/pricing.md</loc>
+    <changefreq>weekly</changefreq>
+    <priority>0.7</priority>
+  </url>
+</urlset>
