@@ -98,10 +98,11 @@ jobs:
       - name: Test (token parity + honesty + typecheck)
         run: npm test
 
-  # New TanStack web dashboard (PRD 02+). Migrates cloud/public/app.js
-  # route-by-route; consumes the @shipaso spine by path alias. Its own job:
-  # typecheck + unit tests + a production build (build success = the spine wiring
-  # + router bundle are sound). Not yet deployed — coexists behind the edge map.
+  # The TanStack web dashboard (PRD 02+) — since #356 Phase 3 this IS the site:
+  # cloud/public/ and the strangler edge map are gone, and this build's dist/ is
+  # the Pages deploy root. Consumes the @shipaso spine by path alias. Its own
+  # job: typecheck + unit tests + a production build (build success = the spine
+  # wiring + router bundle are sound) + the app's E2E against the built dist.
   web:
     runs-on: ubuntu-latest
     defaults:

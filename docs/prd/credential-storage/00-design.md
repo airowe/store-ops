@@ -123,6 +123,35 @@ enforcement style as the mobile `credentials.neverPersisted` suite.
    stored_credentials GROUP BY kek_version`.
 4. Once no rows remain on v1, `wrangler secret delete CRED_KEK_V1`.
 
+> ⚠️ **Rotation is ADDITIVE. Never overwrite a KEK in place.**
+>
+> Every step above depends on the OLD key still being present: `kekForVersion`
+> resolves `row.kek_version` → its secret, and lazy re-wrap needs to *open* the
+> row under v1 before it can seal it under v2. Writing a new value into
+> `CRED_KEK_V1` instead of adding `CRED_KEK_V2` removes the only key that opens
+> existing rows and orphans every one of them. Nothing in D1 can recover them —
+> the ciphertext is intact but unopenable.
+>
+> This happened on 2026-07-26 (#372): a new `CRED_KEK_V1` was set on a
+> deployment that already had one, orphaning a live ASC credential. Blast radius
+> was one row, and it belonged to the owner.
+>
+> **Before setting any KEK, check whether one exists** — grep for the exact
+> name, because `wrangler secret list` is long enough to scroll past:
+> ```
+> npx wrangler secret list | grep CRED_KEK
+> ```
+>
+> Since #372 an orphaned row fails *honestly* rather than opaquely:
+> `useCredential` throws `CredentialUnreadableError` (typed, carrying
+> identifiers only), `listCredentialMeta` reports `readable: false` by actually
+> attempting the DEK unwrap, the UI marks the key and withholds the push
+> affordance, and the keyed sweep degrades to the public pass instead of
+> erroring the app out. That limits the damage; it does not undo it.
+>
+> Still open in #372: nothing yet *prevents* the overwrite. The safe operation
+> and the destructive one look identical from the operator's side.
+
 ## Out of scope
 
 - Client-side/device storage of credentials (mobile invariant unchanged).
