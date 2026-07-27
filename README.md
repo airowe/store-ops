@@ -169,10 +169,10 @@ The tiers:
 
 | Tier | Price | What you get |
 |------|-------|------|
-| **Free** | $0 | Run the agent yourself in Claude Code. The whole loop, your machine. |
-| **Launch Optimization** | **$49 one-time** | The agent does a full optimization pass on one app, en-US. +$29/locale, +$39 for the Google Play variant. |
-| **Autopilot** | **$19/month** | It keeps working: weekly rank tracking, competitor watch, self-triggered re-optimization you approve. |
-| **Fleet Autopilot** | **$149/month** | Both stores, multiple locales, multiple apps, a portfolio dashboard. For agencies and multi-app devs. |
+| **Free** | $0 | Run the agent yourself in Claude Code. The whole loop, your machine. 1 connected app, manual runs only. |
+| **Indie** | **$7/month** | The weekly autonomous sweep, up to 3 apps. It proposes, you approve, it ships. |
+| **Startup** | **$19/month** | The weekly sweep across up to 10 apps, with rank history and competitor watch. |
+| **Scale** | **$65/month** | Up to 50 apps plus the portfolio roll-up. For agencies and multi-app devs. |
 
 We will **never** resell Apple/Google data through a shared account (that breaks
 their ToS) — the hosted tier is BYO-credentials too, and we never hold your

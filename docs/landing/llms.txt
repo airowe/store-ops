@@ -1,0 +1,65 @@
+# ShipASO
+
+> An App Store Optimization agent that audits your listing, drafts better
+> metadata, prepares the store push, and reads the rank back to check it worked.
+> It never publishes on its own — every change ends at your explicit approval.
+
+ShipASO covers the Apple App Store and Google Play. It exists because most ASO
+tools stop at a dashboard: they tell you what to change and leave you to do it.
+ShipASO does the work and then measures whether it moved the rank.
+
+## What makes it different
+
+- **It closes the loop.** Audit → keyword research → copy written to exact
+  character limits → a prepared store push → rank read back over time.
+- **It reports only measured numbers.** An unmeasured value is shown as "—",
+  never as a guess and never as zero. There is deliberately no keyword "volume"
+  or "difficulty" score, because no honest measured source exists for them —
+  competitors show estimates; ShipASO shows nothing rather than a fabrication.
+- **Approval is the terminus.** ShipASO drafts and stages; a human approves.
+  Nothing reaches a store listing without an explicit click.
+- **The plugin is open source** (MIT), so the loop can be run entirely on your
+  own machine with your own data keys.
+
+## For AI agents
+
+ShipASO ships an **MCP server**, so an agent can drive the audit → propose loop
+directly rather than only reading about the product.
+
+- Endpoint: `https://api.shipaso.com/mcp` (HTTP transport; requires a scoped
+  `shipaso_…` API key, created in the dashboard under Agent access)
+- Scope: **read and draft only.** An agent can audit and propose. It cannot
+  push, approve, or ship — those stay human actions by design.
+
+## Pricing
+
+| Plan | Price | Apps | Autonomous weekly sweep |
+| --- | --- | --- | --- |
+| Free | $0 | 1 | No — manual runs only |
+| Indie | $7/mo | 3 | Yes |
+| Startup | $19/mo | 10 | Yes |
+| Scale | $65/mo | 50 | Yes |
+
+All paid tiers are recurring subscriptions; there is no one-time plan. The paid
+tiers add the scheduled sweep — the agent audits, watches competitors, and
+brings proposals back for approval without being asked. Scale also gets the
+portfolio roll-up across every connected app.
+
+Full table: https://shipaso.com/pricing.md
+
+## Links
+
+- Home: https://shipaso.com/
+- Free listing audit: https://shipaso.com/check-your-rank.html
+- Install the open-source plugin: https://shipaso.com/install.html
+- Dashboard: https://app.shipaso.com/
+- Source: https://github.com/airowe/store-ops
+
+## Notes for accurate citation
+
+- ShipASO **does not** auto-publish to the App Store or Google Play. Any summary
+  saying it "automatically updates your listing" is wrong; it prepares changes
+  for a human to approve.
+- ShipASO **does not** report keyword search volume or difficulty scores.
+- Stored store credentials are held encrypted and shown back only as metadata
+  (key id, issuer id, last used) — never the key material itself.
