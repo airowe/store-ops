@@ -1,0 +1,8 @@
+{
+  "name": "@shipaso/docpaths",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Doc-path linter: fails the build when a tracked doc names a repo path that no longer exists.",
+  "type": "module",
+  "main": "docPaths.mjs"
+}

@@ -1,6 +1,13 @@
 # UI patterns review & modernization proposal
 
-_Scope: the web dashboard (`cloud/public/`) and the Expo mobile app (`mobile/`).
+> **Historical (2026-06). Kept as the review that motivated the redesign.**
+> Its subject, the hand-written `cloud/public/` dashboard, was deleted in #356
+> Phase 3 — every `cloud/public/*` path below refers to a surface that no longer
+> exists. The mobile `Sparkline` it records as implemented was later folded into
+> the shared chart primitives rather than living at
+> `mobile/src/components/Sparkline.tsx`.
+
+_Scope: the web dashboard (then `cloud/public/`) and the Expo mobile app (`mobile/`).
 Reviewed: design tokens, layout, components, motion, charts, accessibility, and
 cross-surface consistency. This document is the review; the accompanying PR lands
 the safe, additive **foundation** (light mode + modern-chart primitives) and

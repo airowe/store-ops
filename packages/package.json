@@ -4,13 +4,20 @@
   "private": true,
   "description": "Shared spine for ShipASO (PRD 01): design tokens (SoT), pure honesty helpers, and the transport-agnostic API client. Consumed by both the web and native surfaces.",
   "type": "module",
-  "workspaces": ["tokens", "honesty", "api"],
+  "workspaces": [
+    "tokens",
+    "honesty",
+    "api",
+    "docpaths"
+  ],
   "scripts": {
     "build:tokens": "node tokens/build.mjs",
     "verify:tokens": "node tokens/verify.mjs",
     "test:honesty": "cd honesty && node --test",
     "typecheck": "tsc -p tsconfig.json",
-    "test": "npm run build:tokens && npm run verify:tokens && npm run test:honesty && npm run typecheck"
+    "test": "npm run build:tokens && npm run verify:tokens && npm run test:honesty && npm run test:docpaths:unit && npm run test:docpaths && npm run typecheck",
+    "test:docpaths": "node docpaths/lint.mjs",
+    "test:docpaths:unit": "cd docpaths && node --test"
   },
   "devDependencies": {
     "typescript": "5.7.3"

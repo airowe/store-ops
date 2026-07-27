@@ -18,9 +18,9 @@ or be verified in CI/this sandbox. This is the runbook.
 
 ## 1. Fill the placeholders
 
-1. **Association files** (`cloud/public/.well-known/`, from PR #124): replace
+1. **Association files** (`cloud/web/public/.well-known/`, moved there in #356 Phase 3; from PR #124): replace
    `TEAMID` and `REPLACE_WITH_RELEASE_SIGNING_SHA256_FINGERPRINT`, then deploy
-   Pages. Verify per `cloud/public/.well-known/README.md`. The identifiers MUST
+   Pages. Verify per `cloud/web/public/.well-known/README.md`. The identifiers MUST
    equal `APP_IDENTIFIER` in `app.config.ts` (a test pins the internal copies).
 2. **`eas.json` → submit.production**: real `appleId` / `ascAppId` / `appleTeamId`;
    provide the Play service-account via the `GOOGLE_SERVICE_ACCOUNT_KEY` EAS secret

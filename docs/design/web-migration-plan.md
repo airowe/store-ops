@@ -1,5 +1,7 @@
 # Web migration plan — vanilla dashboard → TanStack Start
 
+<!-- docpaths:historical -->
+
 > **Status: DELIVERED (#356, 2026-07).** This document is kept as the design
 > record of *why* the migration was done this way — it is no longer a plan, and
 > its present-tense descriptions of `cloud/public/` describe a surface that no

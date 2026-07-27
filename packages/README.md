@@ -2,12 +2,12 @@
 
 Proof-of-shape for [PRD 01](../docs/prd/web-migration/01-shared-spine.md): the
 framework-agnostic packages both surfaces will import, so consistency is
-**structural**, not policed after the fact. **Additive** — nothing in `mobile/`
-or `cloud/public/` is rewired yet.
+**structural**, not policed after the fact. **Additive** when written; both surfaces now consume it, and the legacy
+`cloud/public/` dashboard it referenced was deleted in #356 Phase 3.
 
 | Package | What | Status in this spike |
 |---------|------|----------------------|
-| `@shipaso/tokens` | Canonical `tokens.json` → generates web CSS custom properties + RN palette | **real + verified**: `verify.mjs` proves the generated dark+light palettes match the live `cloud/public/styles.css` (30/30 values) |
+| `@shipaso/tokens` | Canonical `tokens.json` → generates web CSS custom properties + RN palette | **real + verified**: `verify.mjs` regenerates the dark+light palettes from `tokens.json` (30/30). It used to diff them against the legacy dashboard's hand-written stylesheet, deleted in #356 Phase 3, so the real cross-surface guard is now `mobile/src/theme/tokens.test.ts`, whose palette is hand-written and genuinely independent |
 | `@shipaso/honesty` | Pure `formatRank` / `classifyDelta` / `buildSparkGeometry` (+ `format`, `timeAgo`) | **real + tested**: `node --test` (5 suites), logic ported verbatim from the mobile app |
 | `@shipaso/api` | Transport-agnostic REST client + types (injected `fetch` + auth) | **typed shape**: compiles under `packages/tsconfig.json`; types are a representative subset |
 
