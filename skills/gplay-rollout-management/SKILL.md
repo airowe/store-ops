@@ -241,7 +241,7 @@ gplay promote \
 
 ### CI/CD with automated rollout
 ```yaml
-# .github/workflows/rollout.yml
+# Example — create this as a rollout workflow (not present in this repo)
 name: Automated Rollout
 
 on:
