@@ -137,11 +137,34 @@ ASC_WRITE_ENABLED = "true"
 #       openssl rand -base64 32 | npx wrangler secret put CRED_KEK_V1
 #     Keep a copy in your password manager — losing it orphans stored keys
 #     (users simply re-connect; nothing is recoverable from D1 alone).
+#
+#     ⚠️ NEVER overwrite CRED_KEK_V1 with a NEW value. Rotation is ADDITIVE:
+#     set CRED_KEK_V2 and leave V1 in place. currentKek() prefers V2, and
+#     useCredential lazily re-wraps each row's DEK under it on read
+#     (credentialStore.ts), so rows migrate with zero downtime and V1 can be
+#     retired once none remain. Writing a new value into V1 instead replaces
+#     the key that opens existing rows and orphans every one of them —
+#     it happened on 2026-07-26 (#372).
+#
+#     Before setting a KEK, CHECK WHETHER ONE ALREADY EXISTS. `wrangler secret
+#     list` output can be long — grep for the exact name rather than eyeballing:
+#       npx wrangler secret list | grep CRED_KEK
+#     Since #372 an orphaned row fails honestly (CredentialUnreadableError; the
+#     UI marks the key unreadable and withholds push) instead of a raw crypto
+#     error, but the credential is still unrecoverable. Prevention is the fix.
 # (The STRIPE_PRICE_* are not really secret — you may instead put them in [vars].)
 
 # ── Pages (dashboard frontend) — NOT configured by this file ─────────────────
-# The /public dir is a static dashboard deployed to Cloudflare Pages separately:
-#   npx wrangler pages deploy public --project-name store-ops-dashboard
+# The dashboard is the TanStack app in cloud/web/, deployed to Cloudflare Pages
+# separately. Build it, then deploy the generated dist/:
+#   npm run build:combined     # vite build → cloud/web/dist, then web-enable.mjs
+#   npx wrangler pages deploy dist --project-name store-ops-dashboard
+# `build:combined` makes the app's own build the deploy root and emits the
+# advanced-mode _worker.js. cloud/web/public/ rides along verbatim, carrying
+# _headers, config.js, the /auth/m magic-link landing and .well-known/*.
+#
+# (This previously described a hand-written static dashboard at cloud/public/.
+# That directory was deleted in #356 Phase 3 — the app IS the site now.)
 # Point the dashboard at this Worker's URL (set API_BASE in the dashboard, see
 # README). Keeping Pages + Worker separate is the standard Cloudflare split:
-# Worker = API/engine/cron, Pages = static dashboard.
+# Worker = API/engine/cron, Pages = the built app.
