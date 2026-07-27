@@ -1,22 +1,17 @@
 # ShipASO Pricing
 
-Start free by running the open-source agent yourself, or let the hosted agent
-run the loop for you. Every paid plan ends the same way: ShipASO proposes, you
-approve, then it ships.
+Start free by running the open-source agent yourself, or subscribe to let the
+hosted agent run the loop on a schedule. Every paid plan ends the same way:
+ShipASO proposes, you approve, then it ships.
 
-| Plan | Price | Included |
-| --- | --- | --- |
-| Free | $0 | Run the agent yourself. 27 MIT-licensed skills, both stores, your machine, bring your own data keys. |
-| Launch Optimization | $49 once | One full optimization pass: full audit + keyword research, copy written to character limits, ship-ready push commands, baseline rank snapshot set. |
-| Autopilot | $19/mo | Weekly rank tracking + history, competitor watch + alerts, self-triggered re-optimization. It proposes, you approve, it ships. |
-| Fleet Autopilot | $149/mo | Agencies and multi-app devs: both stores, multiple locales, multiple apps under one agent, monthly autonomous re-optimization, portfolio dashboard. |
+| Plan | Price | Apps | Autonomous weekly sweep | What it is |
+| --- | --- | --- | --- | --- |
+| Free | $0 | 1 | No — manual runs only | Run the agent yourself. MIT-licensed skills, both stores, your machine, bring your own data keys. |
+| Indie | $7/mo | 3 | Yes | The recurring loop for a small portfolio. |
+| Startup | $19/mo | 10 | Yes | The recurring loop for a mid-sized portfolio. |
+| Scale | $65/mo | 50 | Yes | Portfolio across many apps, with the fleet roll-up view. |
 
-## Add-ons
-
-Applies to Launch Optimization:
-
-- **+$29 per additional locale**
-- **+$39 for Google Play** alongside the App Store
+All paid tiers are recurring subscriptions. There is no one-time plan.
 
 ## What every plan includes
 
@@ -28,12 +23,20 @@ Applies to Launch Optimization:
 - **Rank read back.** The loop does not end at "we changed your metadata" — it
   measures the rank afterwards so the change can be judged.
 
+## What the paid tiers add
+
+- **The autonomous weekly sweep.** Free runs when you run it; paid tiers audit
+  on a schedule, watch competitors, and bring proposals back for approval
+  without being asked.
+- **More connected apps** — 3 on Indie, 10 on Startup, 50 on Scale.
+- **The portfolio roll-up** (Scale): every app's grade, lead rank and pending
+  approvals on one screen.
+
 ## Notes
 
 - The Free tier is the open-source plugin (MIT). It is not a trial: it runs the
-  same loop locally, indefinitely, with your own API keys.
-- Launch Optimization is a one-time pass, not a subscription.
-- Autopilot is the recurring loop — it re-optimizes on its own schedule and
-  brings each proposal back for approval.
+  same loop locally, indefinitely, with your own API keys. It is limited to one
+  connected app and does not get the scheduled sweep.
+- Prices are per month, billed through Stripe.
 
 Canonical page: https://shipaso.com/#pricing
