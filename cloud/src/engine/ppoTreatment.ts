@@ -3,11 +3,25 @@
  *
  * The issue's Phase 3 is a WRITE lane: generate an outcome-led screenshot set →
  * approve → create the experiment + treatment + upload screenshots via the
- * stored key. Two of those pieces don't exist yet — AI screenshot generation
- * (ShipShots #153/#154) and an ASC screenshot-UPLOAD flow — and creating an
- * experiment is an outward write to a real Apple account. So this ships the
- * honest, unblocked half: a concrete treatment BRIEF the user runs themselves in
- * App Store Connect. No outward write, no invented assets.
+ * stored key. This module ships the honest, unblocked half: a concrete treatment
+ * BRIEF the user runs themselves in App Store Connect. No outward write, no
+ * invented assets.
+ *
+ * STATUS (corrected — this comment previously said the asset half did not
+ * exist, which stopped being true and misled anyone reading it):
+ *   • ASSET GENERATION EXISTS. ShipShots (#153) shipped the planner
+ *     (screenshotPlanner.ts) + the deterministic renderer (lib/shot_templates.py,
+ *     lib/render_localized_shots.py) and their bridge (lib/shipshots_render.py);
+ *     CPP sets (#154) shipped cppSets.ts. The LLM plans, the renderer draws.
+ *   • THE TWO ASC WRITES DO NOT. There is no POST to appStoreVersionExperimentsV2
+ *     and no screenshot-UPLOAD flow (the reservation → PUT → commit dance);
+ *     every appScreenshotSets/appScreenshots call in ascWrite.ts is a read, used
+ *     for duplicate detection. ascExperiments.ts is likewise GET-only.
+ *
+ * So the pipeline today is plan → render locally → the user uploads by hand, and
+ * a BRIEF remains the honest output of this module. Closing the loop needs those
+ * two credentialed writes, behind the same approval gate + stored-credential
+ * path as every other ASC write. Tracked in #374.
  *
  * Honesty, load-bearing:
  *   • the plan is a RECOMMENDATION, never a claim about your numbers,
