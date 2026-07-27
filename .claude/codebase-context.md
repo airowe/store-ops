@@ -10,6 +10,33 @@ spine.
 > stops existing fails the build. Prose claims are NOT enforced; when you change
 > behaviour this file describes, update it in the same PR.
 
+## Writing paths in docs
+
+The linter only checks paths carrying a repo-root prefix — `cloud/…`,
+`mobile/…`, `packages/…`, `docs/…`, `scripts/…`, `lib/…`, `.github/…`,
+`.githooks/…`. **When a doc is asserting that a specific file exists at a
+specific place, write the full path from the repo root**, so a later move breaks
+the build instead of quietly misleading someone. That is the class that has
+actually bitten: `mobile/STORE.md` sent people to edit association files at
+`cloud/public/.well-known/` for weeks after the directory was deleted.
+
+Do **not** mechanically prefix every filename. Two attempts to widen the linter
+to bare and workspace-relative references were measured against this repo and
+rejected — the first flagged 39 documents, the second 17, and on inspection
+essentially every finding was a false positive. Most bare references are
+legitimately contextual and should stay as they are:
+
+- **procedural steps** — `cloud/DEPLOY.md` says "Edit `public/config.js`" at a
+  point where the reader is inside `cloud/web`. Correct as written.
+- **concepts, not locations** — `plans/001` discusses `generated/tokens.css`
+  meaning "the generated palette", not a path to verify.
+- **runtime outputs** — `.asc/screenshots.json` does not exist until the tool
+  runs. Asserting it exists would be wrong.
+
+The distinction is whether the doc is making a **claim about where a file is**
+(prefix it) or **naming something in context** (leave it). A linter cannot tell
+those apart, which is why this is a convention rather than a rule.
+
 ## The two invariants everything else serves
 
 **1. Measured-or-nothing.** Every number shown is measured or absent. An
