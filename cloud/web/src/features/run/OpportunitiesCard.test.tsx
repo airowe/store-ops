@@ -59,6 +59,64 @@ describe("<OpportunitiesCard />", () => {
     expect(container).toBeEmptyDOMElement();
   });
 
+  /**
+   * #388 density. On a real run (Heathen, 7dd8ee24) all 12 opportunities were
+   * byte-identical apart from the keyword: same null rank, same "soon", same
+   * `scored: false`, same 42.5 no-data constant, and the SAME `why` sentence
+   * repeated twelve times. Across other runs the pattern holds — 8 rows carried
+   * 2 distinct rationales, 12 rows carried 1.
+   *
+   * That is what makes the card read as a wall of text: not row count, but the
+   * same sentence restated once per row. Printing an identical rationale twelve
+   * times tells the reader nothing eleven of those times.
+   *
+   * So an identical `why` is stated ONCE for the group. The per-keyword facts
+   * (rank, score, reachability) stay per row — they are the part that actually
+   * varies, and hoisting those would hide measured data.
+   */
+  describe("repeated rationales are stated once, not once per row (#388)", () => {
+    const sameWhy = (keyword: string): Opportunity => ({
+      keyword,
+      rank: null,
+      opportunityScore: 42.5,
+      scored: false,
+      why: "Reachable with a push: not yet ranked, weak/absent competitors.",
+      reachability: "soon",
+    });
+
+    it("hoists a rationale shared by every row into a single group line", () => {
+      const ops = ["calm", "sleep", "focus", "journal"].map(sameWhy);
+      render(<OpportunitiesCard opportunities={ops} />);
+
+      // Stated once for the group…
+      const shared = screen.getAllByText(/Reachable with a push/);
+      expect(shared).toHaveLength(1);
+
+      // …and every keyword still appears, with its own honest facts.
+      for (const o of ops) {
+        const row = screen.getByTestId(`opp-${o.keyword}`);
+        expect(row).toHaveTextContent(o.keyword);
+        expect(row).toHaveTextContent("not in top results");
+        expect(row).toHaveTextContent("not enough data to score");
+        expect(row).not.toHaveTextContent("42.5");
+      }
+    });
+
+    it("keeps rationales per-row when they genuinely differ", () => {
+      // Two distinct reasons must NOT be collapsed — that would drop information.
+      render(<OpportunitiesCard opportunities={[reachable, longshot]} />);
+      expect(screen.getByText(/Close to the top 10/)).toBeInTheDocument();
+      expect(screen.getByText(/Huge term, strong incumbents/)).toBeInTheDocument();
+    });
+
+    it("does not hoist when a single row would make the group line redundant", () => {
+      render(<OpportunitiesCard opportunities={[unscored]} />);
+      // One row: the rationale belongs to it, stated exactly once either way.
+      expect(screen.getAllByText(/Reachable with a push/)).toHaveLength(1);
+      expect(screen.getByTestId("opp-meditation")).toHaveTextContent("meditation");
+    });
+  });
+
   it("shows a winnability bar for a scored keyword and none for an unscored one", () => {
     render(<OpportunitiesCard opportunities={[reachable, unscored]} />);
     // scored → bar present, width reflects the score
