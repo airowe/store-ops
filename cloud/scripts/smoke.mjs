@@ -92,12 +92,48 @@ await check("GET /admin/preference-data (no token) → 403 fail-closed", async (
 });
 
 // 5. The dashboard (Pages) is deployed and serves a hashed bundle (the #54
-//    freshness/#40 hashing contract: app.<hash>.js, cache-bustable).
-await check("GET dashboard → 200 with a hashed app bundle", async () => {
+//    freshness/#40 hashing contract: a content-hashed, cache-bustable bundle).
+//
+//    The pattern is `assets/index-<hash>.js` — vite's output since #356 Phase 3
+//    made the app the site. This check spent that whole period asserting the
+//    LEGACY stamped name (`app.<hash>.js`), so it was red for a reason that had
+//    nothing to do with the dashboard's health. Nobody noticed, because nothing
+//    ran it (see the post-deploy step in .github/workflows/deploy.yml).
+await check("GET dashboard → 200 with a content-hashed bundle", async () => {
   const res = await fetch(DASHBOARD + "/index.html", { headers: { "cache-control": "no-cache" } });
   assert(res.status === 200, `expected 200, got ${res.status}`);
   const html = await res.text();
-  assert(/app\.[a-f0-9]{6,}\.js/.test(html), "index.html does not reference a hashed app.<hash>.js bundle");
+  assert(
+    /assets\/index-[A-Za-z0-9_-]{6,}\.js/.test(html),
+    "index.html does not reference a content-hashed assets/index-<hash>.js bundle",
+  );
+});
+
+// 6. Assets survive a BROWSER-shaped request. `fetch` and a browser do not send
+//    the same thing: index.html loads its bundles with `crossorigin`, so a
+//    browser attaches an `Origin` header and gets a different cache key.
+//
+//    On 2026-07-28 that key held a cached HTML error response under
+//    `/assets/* → max-age=31536000, immutable`, so every real browser got
+//    "Refused to apply style…" and a blank page for hours while every check
+//    above stayed green. Checks 1-5 all use plain fetch and would do so again.
+//
+//    This is the cheap fetch-level guard; prodSmoke.e2e.ts asserts the same
+//    thing in an actual browser, which is the only way to catch what a
+//    request-shaped check still cannot see.
+await check("GET dashboard assets (crossorigin) → correct MIME, not cached HTML", async () => {
+  const res = await fetch(DASHBOARD + "/index.html", { headers: { "cache-control": "no-cache" } });
+  const html = await res.text();
+  const refs = [...html.matchAll(/(?:src|href)="(\/assets\/[^"]+\.(?:js|css))"/g)].map((m) => m[1]);
+  assert(refs.length > 0, "index.html referenced no /assets/ bundles");
+
+  for (const path of refs) {
+    const asset = await fetch(DASHBOARD + path, { headers: { Origin: DASHBOARD } });
+    assert(asset.status === 200, `${path} (with Origin) → ${asset.status}`);
+    const type = asset.headers.get("content-type") ?? "";
+    const ok = path.endsWith(".css") ? /text\/css/.test(type) : /javascript|ecmascript/.test(type);
+    assert(ok, `${path} served as "${type}" to a crossorigin request — cached HTML?`);
+  }
 });
 
 // ── report ───────────────────────────────────────────────────────────────────
