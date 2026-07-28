@@ -11,7 +11,12 @@ const PORT = 8794;
 
 export default defineConfig({
   testDir: "./tests-e2e",
+  // Every *.e2e.ts EXCEPT prodSmoke, which targets live production and has its
+  // own config (playwright.prod.config.ts). Without the exclusion this suite
+  // picks it up and runs internet-dependent assertions against the local mock
+  // server — so a production outage would surface as a mysteriously red PR.
   testMatch: /.*\.e2e\.ts/,
+  testIgnore: /prodSmoke\.e2e\.ts/,
   fullyParallel: true,
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 1 : 0,

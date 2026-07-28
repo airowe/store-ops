@@ -18,6 +18,20 @@
 # filename, so a content change yields a NEW name and there is no stale-content
 # risk. (The old /*.js and /*.css rules matched the legacy stamped root, which
 # put bundles at the top level; the new app never does.)
+#
+# KNOWN FAILURE MODE — a year-long cache entry is only as good as what got
+# cached. On 2026-07-28 an HTML error response was cached for /assets/*.js
+# during the deploy window and served to every real browser for hours, blank
+# page, no console error the tooling caught. A one-second origin blip became an
+# outage that would NOT have expired on its own until 2027.
+#
+# `immutable` is still right — these names are content-hashed, so the fix is
+# not a shorter TTL (that only shortens the outage). Recovery is a cache purge:
+#   npx wrangler pages deployment list --project-name store-ops-dashboard
+#   …then Purge Everything for the zone in the Cloudflare dashboard.
+# Detection is scripts/smoke.mjs check 6 and web/tests-e2e/prodSmoke.e2e.ts,
+# which request assets the way a BROWSER does (with `Origin`) — the poisoned
+# entry sits under a cache key plain curl never touches.
 /assets/*
   Cache-Control: public, max-age=31536000, immutable
 

@@ -164,6 +164,36 @@ jobs:
           workingDirectory: .
           command: pages deploy docs/landing --project-name store-ops-site --branch main
 
+      # ── post-deploy: did any of that actually WORK? ──
+      # On 2026-07-28 app.shipaso.com served a blank page for hours. The deploy
+      # was green, 578 unit tests passed, and the assets returned 200 with the
+      # right MIME type to curl. Nothing was watching the one thing that matters
+      # — whether the page renders — so the outage was found by opening it.
+      #
+      # `smoke` is the fetch-level pass (Worker, auth, engine, bundle refs).
+      # `smoke:prod` loads the real site in a real browser, which is the only
+      # check that sees what a user sees: a browser sends `Origin` for the
+      # crossorigin bundles and can be served a poisoned cache entry that curl
+      # never requests. Both run; both must pass.
+      #
+      # `if: success()` not `always()` — smoke against a half-finished deploy
+      # reports noise, and the failure alert below already covers that case.
+      # Two working directories on purpose: `smoke` is a cloud/ script, and
+      # playwright must run from cloud/web (its config resolves testDir
+      # relatively, so invoking it from cloud/ finds no tests).
+      - name: Smoke-test production (fetch level)
+        if: steps.creds.outputs.configured == 'true' && success()
+        working-directory: cloud
+        run: npm run smoke
+
+      - name: Smoke-test production (real browser)
+        if: steps.creds.outputs.configured == 'true' && success()
+        working-directory: cloud/web
+        run: |
+          set -euo pipefail
+          npx playwright install --with-deps chromium
+          npx playwright test -c playwright.prod.config.ts
+
       # ── failure alert: a red deploy on main must be LOUD ──
       # Opens (or comments on) a pinned-by-title issue so a broken deploy can't
       # fail silently across merges (the 2026-07-04 token episode: 10 merges
@@ -179,7 +209,9 @@ jobs:
           TITLE="deploy to production is failing"
           BODY="Deploy run failed: $RUN_URL (commit ${GITHUB_SHA:0:7}).
 
-          Merges to main are NOT reaching production until this is fixed. Check the run log — historically this is the Cloudflare API token (the header of .github/workflows/deploy.yml documents the permissions it needs: Workers Scripts Edit, Cloudflare Pages Edit, D1 Edit, zone Workers Routes Edit)."
+          Merges to main are NOT reaching production until this is fixed. Check the run log — historically this is the Cloudflare API token (the header of .github/workflows/deploy.yml documents the permissions it needs: Workers Scripts Edit, Cloudflare Pages Edit, D1 Edit, zone Workers Routes Edit).
+
+          If the failing step is one of the SMOKE steps, the deploy itself succeeded and production is live but BROKEN — treat it as an outage, not a pipeline problem. A crossorigin/MIME failure there means a cached HTML response is being served for /assets/* (see the KNOWN FAILURE MODE note in cloud/web/public/_headers); recovery is a Cloudflare cache purge, not a redeploy, because the bundle names are unchanged and a redeploy will not evict the poisoned entry."
           NUM=$(gh issue list --repo "$GITHUB_REPOSITORY" --state open --search "in:title \"$TITLE\"" --json number --jq '.[0].number // empty' || true)
           if [ -n "$NUM" ]; then
             gh issue comment "$NUM" --repo "$GITHUB_REPOSITORY" --body "$BODY"
