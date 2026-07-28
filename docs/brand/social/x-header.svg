@@ -1,0 +1,47 @@
+<!-- ShipASO X header — 1500x500.
+     Layout constraint: the avatar overlaps the lower-LEFT (roughly x<260,
+     y>300 at this size) and X crops the vertical edges on narrow viewports,
+     so all content sits right of 300px and inside the middle band.
+     Palette and atmosphere follow the ShipASO landing page. -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1500 500" width="1500" height="500">
+  <defs>
+    <radialGradient id="signal" cx="22%" cy="8%" r="62%">
+      <stop offset="0%" stop-color="#34d399" stop-opacity="0.20"/>
+      <stop offset="100%" stop-color="#34d399" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="brand" cx="92%" cy="86%" r="58%">
+      <stop offset="0%" stop-color="#5b8cff" stop-opacity="0.14"/>
+      <stop offset="100%" stop-color="#5b8cff" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+
+  <rect width="1500" height="500" fill="#07090e"/>
+  <rect width="1500" height="500" fill="url(#signal)"/>
+  <rect width="1500" height="500" fill="url(#brand)"/>
+
+  <!-- The loop, as a rank line that steps up and holds. The product claim
+       is "we prove the rank moved", so the chart is the message. Sits to the
+       RIGHT of the copy block — crossing the headline made both unreadable. -->
+  <g transform="translate(1010 0)">
+    <polyline points="0,352 55,346 110,300 165,294 220,232 275,226 330,168 385,162 440,132"
+              fill="none" stroke="#34d399" stroke-width="3" stroke-linecap="round"
+              stroke-linejoin="round" opacity="0.5"/>
+    <circle cx="440" cy="132" r="6" fill="#34d399"/>
+    <circle cx="440" cy="132" r="14" fill="#34d399" opacity="0.2"/>
+  </g>
+
+  <text x="300" y="222" font-family="Fraunces, Georgia, serif" font-size="62"
+        font-weight="600" fill="#eef1f7" letter-spacing="-1">
+    Prove the rank moved.
+  </text>
+
+  <text x="302" y="278" font-family="'Space Grotesk', -apple-system, Segoe UI, sans-serif"
+        font-size="25" fill="#97a1b6">
+    App Store and Google Play. Free MIT plugin or a hosted agent.
+  </text>
+
+  <text x="302" y="344" font-family="'JetBrains Mono', ui-monospace, Menlo, monospace"
+        font-size="19" fill="#626c83" letter-spacing="0.5">
+    audit → research → optimize → push → verify
+  </text>
+</svg>
