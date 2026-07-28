@@ -68,6 +68,11 @@ h1 { font-family: var(--display); font-weight: 600; font-size: 30px; letter-spac
   background: linear-gradient(180deg, var(--panel), var(--bg-2));
   border: 1px solid var(--line);
   border-radius: var(--radius); padding: 16px 18px; margin: 14px 0;
+  /* #388: prose overflowed too — a bundle id or URL in body copy is one
+     unbreakable token and widens the card. `anywhere` (not break-word) so the
+     break is also considered when computing min-content width, which is what
+     actually stops a grid track from growing. */
+  min-width: 0; max-width: 100%; overflow-wrap: anywhere;
 }
 .card > b { color: var(--ink); font-size: 15px; }
 /* Clickable cards are real <button>s (native Enter/Space + semantics, no
@@ -232,7 +237,18 @@ h2 { font-family: var(--display); font-weight: 600; font-size: 22px; letter-spac
 }
 .run-status.good { color: var(--signal); }
 .handoff { margin-top: 16px; }
-.cmd-block { margin-top: 10px; }
+/* #388 — nothing may push the run page wider than the viewport.
+   A long unbroken token inside a <pre> (a bundle id, a full asc command) has no
+   break opportunity, so it forces its container wide no matter how the grid
+   track is sized. The .cmd-block rule below already scrolled its own <pre>, but
+   the MCP handoff renders a BARE <pre> that never inherited it. Global, so the
+   next bare <pre> is covered without anyone remembering. */
+pre {
+  max-width: 100%; overflow-x: auto;
+}
+/* overflow-x alone is not enough inside a grid: a grid/flex item defaults to
+   min-width:auto, which lets content set the floor and grow the track anyway. */
+.cmd-block { margin-top: 10px; min-width: 0; }
 .cmd-block pre { margin: 4px 0 0; padding: 10px 12px; background: var(--bg-2); border: 1px solid var(--line-soft); border-radius: 8px; font-family: var(--mono); font-size: 12.5px; overflow-x: auto; color: var(--ink); }
 .store-tag { font-family: var(--mono); font-size: 10.5px; font-weight: 700; padding: 1px 6px; border-radius: 5px; }
 .store-tag.appstore { background: rgba(91,140,255,.16); color: var(--brand); }
@@ -413,7 +429,7 @@ h2 { font-family: var(--display); font-weight: 600; font-size: 22px; letter-spac
 }
 .run-status-bar .sb-cta:hover { text-decoration: underline; }
 
-.run-shell { display: grid; grid-template-columns: 1fr; gap: 20px; align-items: start; padding-bottom: 88px; }
+.run-shell { display: grid; grid-template-columns: 1fr; gap: 20px; align-items: start; padding-bottom: 88px; max-width: 100%; }
 @media (min-width: 900px) {
   .run-shell { grid-template-columns: 200px minmax(0, 1fr); }
 }
@@ -430,7 +446,7 @@ h2 { font-family: var(--display); font-weight: 600; font-size: 22px; letter-spac
 .section-rail .rail-link {
   font-family: var(--mono); font-size: 12px;
 }
-.run-detail-pane { min-width: 0; }
+.run-detail-pane { min-width: 0; max-width: 100%; }
 
 /* Below the rail breakpoint, the rail lays out as a horizontal wrap of the same
    buttons (no <select>) so the keyboard model and tests are identical. */
