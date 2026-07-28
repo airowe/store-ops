@@ -141,6 +141,59 @@ test("the prices we advertise match the prices recorded in billing.ts", () => {
   }
 });
 
+/**
+ * The guard the marketing files had and the OPERATIONAL docs did not (#380).
+ *
+ * pricing.md/llms.txt/index.html were pinned to each other and to billing.ts,
+ * but docs/RUNBOOK.md still told an operator to set STRIPE_PRICE_LAUNCH /
+ * _AUTOPILOT / _FLEET — three secrets the code never reads. Following that
+ * runbook would leave checkout silently broken, which is worse than a wrong
+ * number on a page: it is a wrong INSTRUCTION.
+ */
+test("the runbook names the Stripe price secrets the code actually reads", () => {
+  const runbook = readFileSync(join(repoRoot, "docs/RUNBOOK.md"), "utf8");
+  const billing = readFileSync(join(repoRoot, "cloud/src/billing.ts"), "utf8");
+  const codeSecrets = new Set([...billing.matchAll(/STRIPE_PRICE_[A-Z]+/g)].map((m) => m[0]));
+  const runbookSecrets = new Set([...runbook.matchAll(/STRIPE_PRICE_[A-Z]+/g)].map((m) => m[0]));
+  assert.ok(codeSecrets.size >= 3, "billing.ts should reference the price secrets");
+  for (const secret of runbookSecrets) {
+    assert.ok(
+      codeSecrets.has(secret),
+      `RUNBOOK tells an operator to set ${secret}, which billing.ts never reads ` +
+        `(${[...codeSecrets].join(", ")}) — following it would leave checkout broken`,
+    );
+  }
+});
+
+/**
+ * Launch collateral is excluded from the doc-path linter as archival, so a
+ * stale PRICE in it was invisible. These are documents someone would actually
+ * post or paste, so a wrong tier there reaches customers.
+ */
+test("launch collateral quotes no price the billing code does not charge", () => {
+  const billing = readFileSync(join(repoRoot, "cloud/src/billing.ts"), "utf8");
+  const codePrices = new Set([...billing.matchAll(/\$([0-9][0-9,]*)\/mo/g)].map((m) => `$${m[1]}`));
+  for (const rel of ["docs/LAUNCH_X.md"]) {
+    const text = readFileSync(join(repoRoot, rel), "utf8");
+    // Only prices presented as OURS. Launch copy legitimately cites a
+    // competitor's price ("No $9/mo tracker") — flagging that would be a false
+    // positive, and a guard that cries wolf gets switched off. A price is ours
+    // when it names one of our tiers on the same line.
+    const ourTierLine = new RegExp(`(Indie|Startup|Scale|ShipASO)`, "i");
+    for (const line of text.split("\n")) {
+      if (!ourTierLine.test(line)) continue;
+      for (const price of pricesIn(line)) {
+        if (price === "$0") continue;
+        assert.ok(
+          codePrices.has(price),
+          `${rel} quotes ${price} for one of our tiers, which billing.ts does ` +
+            `not charge (${[...codePrices].join(", ")})\n  line: ${line.trim()}`,
+        );
+      }
+    }
+  }
+});
+
 test("llms.txt states the approval boundary, so an agent cannot mis-summarize it", () => {
   assert.match(llms, /does \*\*not\*\* auto-publish|never publishes/i);
   assert.match(llms, /approval/i);

@@ -86,9 +86,9 @@ values to `wrangler.toml`).
 npx wrangler secret put SESSION_SECRET          # HMAC key for magic-link + session tokens (REQUIRED outside demo)
 npx wrangler secret put STRIPE_SECRET_KEY       # Stripe secret key (Bearer for REST API), test OR live
 npx wrangler secret put STRIPE_WEBHOOK_SECRET   # verifies Stripe-Signature on /billing/webhook
-npx wrangler secret put STRIPE_PRICE_LAUNCH     # Price id — Launch Optimization ($49 one-time)
-npx wrangler secret put STRIPE_PRICE_AUTOPILOT  # Price id — Autopilot ($19/mo)
-npx wrangler secret put STRIPE_PRICE_FLEET      # Price id — Fleet Autopilot ($149/mo)
+npx wrangler secret put STRIPE_PRICE_INDIE      # Price id — Indie ($7/mo)
+npx wrangler secret put STRIPE_PRICE_STARTUP    # Price id — Startup ($19/mo)
+npx wrangler secret put STRIPE_PRICE_SCALE      # Price id — Scale ($65/mo)
 npx wrangler secret put TINYFISH_API_KEY        # routes iTunes calls through TinyFish (clean egress; REQUIRED in prod)
 npx wrangler secret put RESEND_API_KEY          # Resend API key for magic-link email delivery
 npx wrangler secret put RESEND_FROM             # verified sender, e.g. "ShipASO <login@mail.shipaso.com>"
