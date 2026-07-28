@@ -231,6 +231,10 @@ CREATE TABLE IF NOT EXISTS stored_credentials (
   ciphertext    TEXT NOT NULL,                        -- IV ++ payload-ct+tag
   wrapped_dek   TEXT NOT NULL,                        -- IV ++ wrapped-DEK+tag
   kek_version   INTEGER NOT NULL,
+  -- #372: which KEK sealed this row -- a truncated domain-separated hash, never
+  -- key material. NULL means unknown, e.g. a row written before the migration;
+  -- it must never be read as "mismatched".
+  kek_fingerprint TEXT,
   created_at    TEXT NOT NULL DEFAULT (datetime('now')),
   last_used_at  TEXT,
   UNIQUE (user_id, app_id, kind)

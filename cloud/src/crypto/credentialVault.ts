@@ -70,6 +70,37 @@ export async function importKek(b64: string): Promise<CryptoKey> {
   return crypto.subtle.importKey("raw", raw, { name: "AES-GCM" }, false, ["encrypt", "decrypt"]);
 }
 
+/**
+ * A short, non-reversible identifier for a KEK (#372).
+ *
+ * Purpose: tell whether a stored row was sealed under the KEK this deployment
+ * currently holds, WITHOUT attempting a decrypt and without storing anything
+ * that helps an attacker. The incident this exists for — CRED_KEK_V1 replaced
+ * in place rather than rotated to V2 — was undetectable precisely because a
+ * wrong-but-present key looks identical to the right one until a decrypt fails.
+ *
+ * Design notes, each load-bearing:
+ *   • DOMAIN-SEPARATED: hashed with a fixed label, so the value is not a bare
+ *     SHA-256 of the key that could be checked against a precomputed list.
+ *   • TRUNCATED to 64 bits: plenty to distinguish the handful of KEKs a
+ *     deployment ever has, far too short to serve as a verification oracle for
+ *     brute-forcing the key.
+ *   • VALIDATED first: importKek rejects anything that is not 32 bytes, so a
+ *     malformed secret fails loudly here rather than producing a plausible
+ *     fingerprint for garbage.
+ *
+ * It is safe to store in D1 and safe to log. It is not a secret, and it is not
+ * a checksum of the credential — only of the key that wraps it.
+ */
+export async function kekFingerprint(b64: string): Promise<string> {
+  await importKek(b64); // validates length/shape; throws on a malformed KEK
+  const input = new TextEncoder().encode(`shipaso-kek-fingerprint-v1|${b64}`);
+  const digest = await crypto.subtle.digest("SHA-256", input);
+  return [...new Uint8Array(digest).slice(0, 8)]
+    .map((byte) => byte.toString(16).padStart(2, "0"))
+    .join("");
+}
+
 /** Seal one GCM layer: base64(IV ++ ciphertext+tag), AAD-authenticated. */
 async function seal(key: CryptoKey, data: Uint8Array, aad: Uint8Array): Promise<string> {
   const iv = crypto.getRandomValues(new Uint8Array(IV_BYTES));
