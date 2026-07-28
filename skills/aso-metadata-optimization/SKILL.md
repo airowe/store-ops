@@ -52,6 +52,18 @@ emits over-limit copy (the #1 cause of rejected/wasted metadata).
    - Android: `gplay-metadata-sync` upload commands
 3. A one-line approval prompt: review `aso-copy.md`, then run the commands to ship.
 
+**If the push has nowhere to go:** those commands write into an App Store version
+in `PREPARE_FOR_SUBMISSION`. A shipped app between releases has only a live
+`READY_FOR_SALE` version, which cannot be edited — so the push fails with nothing
+wrong in the copy. Check first:
+
+```bash
+asc versions list --app <APP_ID> --limit 3
+```
+
+If nothing is editable, the **`asc-metadata-write-lane`** skill creates the
+version, attaches a build, and lands the copy — stopping before submission.
+
 ## Guardrail — nothing auto-ships
 
 This skill **never** calls `asc apps info edit` / `gplay` upload itself. It writes
