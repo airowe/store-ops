@@ -119,6 +119,33 @@ export function isNavigationRequest(method, pathname, accept = "") {
 }
 
 /**
+ * A request is for a FILE, not a page — so a miss must 404 as a file rather
+ * than be handed the SPA shell (#393).
+ *
+ * Pages' asset store falls back to index.html with a **200** for anything it
+ * cannot find, because the app build ships no 404.html. That turns every
+ * mistyped or missing bundle into a "successful" HTML response — and a 200 is
+ * CACHEABLE. Under `/assets/* → max-age=31536000, immutable` one bad response
+ * is stored as though it were the real bundle: exactly #392, where
+ * app.shipaso.com served a blank page for hours from a cached HTML error that
+ * would not have expired until 2027.
+ *
+ * Deliberately the same shape test as `isNavigationRequest`'s exclusions
+ * (/assets/* prefix, or a last segment containing a dot) rather than a
+ * content-type sniff: the Accept header is exactly what proved unreliable —
+ * Apple's CDN sends none, browsers send `*​/*` for `crossorigin` bundles.
+ *
+ * Extensionless static pages (/auth/m, the Apple association file) do NOT match,
+ * which is correct: they are real files that must be served, and 404ing them
+ * would break sign-in by emailed link and iOS universal links.
+ */
+export function isAssetRequest(pathname) {
+  if (pathname.startsWith("/assets/")) return true;
+  const last = pathname.split("/").pop() ?? "";
+  return last.includes(".");
+}
+
+/**
  * Paths that are STATIC PAGES shipped from the app's public/ directory, not SPA
  * routes (#356 Phase 3). They are navigation-shaped, so without this the
  * "every navigation goes to the app" rule would hand them the SPA shell.

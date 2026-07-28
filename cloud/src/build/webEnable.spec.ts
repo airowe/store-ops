@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 // Pure ESM (Node-CI-importable, no TS loader) — same file the middleware uses.
 import {
   isNavigationRequest,
+  isAssetRequest,
   serveDecision,
   NEW_APP_ENTRY,
   extractOwnedArray,
@@ -141,6 +142,72 @@ describe("serveDecision", () => {
     // /_web.html → /_web, which broke the middleware rewrite. Must be /_web.
     expect(NEW_APP_ENTRY).toBe("/_web");
     expect(NEW_APP_ENTRY.endsWith(".html")).toBe(false);
+  });
+});
+
+/**
+ * #393: a missing /assets/* file must 404 as a FILE, never be handed the SPA
+ * shell with a 200.
+ *
+ * This module's own docstring has claimed since #356 Phase 3 that "a genuinely
+ * missing FILE still 404s as a file rather than being handed an HTML shell".
+ * That was never true in production and nothing asserted it: `serveDecision`
+ * correctly returns "passthrough", but Pages' asset store then falls back to
+ * index.html with a 200, because the app build ships no 404.html.
+ *
+ * Why it matters beyond tidiness — a `200` is CACHEABLE. Under
+ * `/assets/* → max-age=31536000, immutable`, one bad response gets stored as
+ * though it were the real bundle. That is #392: app.shipaso.com served a blank
+ * page for hours because an HTML error was cached under the bundle's URL, and
+ * it would not have expired until 2027.
+ *
+ * A 404 makes that class of poisoning far harder: there is no successful
+ * response to cache in the first place.
+ */
+describe("isAssetRequest (#393 — an asset miss must not become an HTML 200)", () => {
+  /**
+   * Path-shape only, deliberately — no Accept sniff. The Accept header is
+   * exactly what proved unreliable in #392: browsers send `*​/*` for
+   * `crossorigin` bundles and Apple's CDN sends none at all.
+   */
+  it("identifies /assets/* as an asset request", () => {
+    expect(isAssetRequest("/assets/index-abc123.js")).toBe(true);
+    expect(isAssetRequest("/assets/index-abc123.css")).toBe(true);
+  });
+
+  it("identifies any path with a file extension as an asset request", () => {
+    expect(isAssetRequest("/favicon.ico")).toBe(true);
+    expect(isAssetRequest("/config.js")).toBe(true);
+    expect(isAssetRequest("/robots.txt")).toBe(true);
+  });
+
+  it("does NOT treat page paths as asset requests", () => {
+    // These must keep reaching the SPA, which renders its own 404 (#356 Phase 3).
+    expect(isAssetRequest("/")).toBe(false);
+    expect(isAssetRequest("/settings")).toBe(false);
+    expect(isAssetRequest("/runs/759ca698-5842-4152-9fe4-c42202bf56da")).toBe(false);
+    expect(isAssetRequest("/old-bookmark")).toBe(false);
+  });
+
+  /**
+   * The extensionless static pages are the trap here: /auth/m and the Apple
+   * association file have no extension, so an extension-only rule keeps them
+   * out — which is what we want, they are real files that must be served, not
+   * 404'd. Guarding it so a future tightening of the rule cannot break sign-in
+   * or iOS universal links.
+   */
+  it("leaves the extensionless static pages alone", () => {
+    expect(isAssetRequest("/auth/m")).toBe(false);
+    expect(isAssetRequest("/.well-known/apple-app-site-association")).toBe(false);
+  });
+
+  it("is the complement of a navigation for the paths that matter", () => {
+    // Nothing may be BOTH: that would make the worker's branch order significant.
+    for (const p of ["/assets/x.js", "/favicon.ico", "/", "/settings", "/auth/m"]) {
+      const nav = isNavigationRequest("GET", p, "text/html");
+      const asset = isAssetRequest(p);
+      expect(nav && asset, `${p} classified as both navigation and asset`).toBe(false);
+    }
   });
 });
 

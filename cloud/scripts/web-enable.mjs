@@ -103,6 +103,13 @@ function isNavigationRequest(method, pathname, accept) {
   return true;
 }
 
+// A request for a FILE, not a page. Mirrors webEnable.mjs \`isAssetRequest\`.
+function isAssetRequest(pathname) {
+  if (pathname.startsWith("/assets/")) return true;
+  const last = pathname.split("/").pop() || "";
+  return last.includes(".");
+}
+
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
@@ -121,7 +128,36 @@ export default {
       // ${NEW_APP_ENTRY} is extensionless — Pages 308-redirects *.html away.
       return env.ASSETS.fetch(new Request(new URL("${NEW_APP_ENTRY}", url), request));
     }
-    return env.ASSETS.fetch(request);
+
+    const res = await env.ASSETS.fetch(request);
+
+    // #393: an asset MISS must 404 as a file, never be handed the SPA shell.
+    //
+    // Pages has no 404.html for this project, so its asset store answers a miss
+    // with index.html and a **200**. For a page path that is fine — the SPA
+    // renders its own 404 (#356 Phase 3) — but for a FILE it is actively
+    // dangerous: a 200 is cacheable, and \`/assets/* → max-age=31536000,
+    // immutable\` then stores an HTML error as though it were the real bundle.
+    //
+    // That is #392. app.shipaso.com served a blank page for hours because a
+    // cached HTML response sat under the bundle's URL; it would not have
+    // expired until 2027, and recovery needed a full zone purge (a targeted
+    // per-URL purge could not reach it — the entry was keyed on \`Origin\`).
+    //
+    // Detected by content type rather than by re-fetching: the shell is the only
+    // HTML the asset store can return here, and a real .js/.css asset never has
+    // an HTML content type. \`Cache-Control: no-store\` so this 404 cannot itself
+    // become the next poisoned entry.
+    if (isAssetRequest(url.pathname) && res.ok) {
+      const type = res.headers.get("content-type") || "";
+      if (type.includes("text/html")) {
+        return new Response(\`404 Not Found: \${url.pathname}\\n\`, {
+          status: 404,
+          headers: { "content-type": "text/plain; charset=utf-8", "cache-control": "no-store" },
+        });
+      }
+    }
+    return res;
   },
 };
 `;
