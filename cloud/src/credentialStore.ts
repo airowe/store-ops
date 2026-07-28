@@ -16,6 +16,7 @@
  */
 import {
   importKek,
+  kekFingerprint,
   openCredential,
   rewrapDek,
   sealCredential,
@@ -77,6 +78,8 @@ type Row = {
   ciphertext: string;
   wrapped_dek: string;
   kek_version: number;
+  /** #372: which KEK sealed this row. NULL = unknown (pre-migration). */
+  kek_fingerprint: string | null;
   created_at: string;
   last_used_at: string | null;
 };
@@ -169,15 +172,16 @@ export async function saveCredential(
   // Upsert on the UNIQUE(user, app, kind) — replacing rotates to a fresh DEK.
   await env.DB.prepare(
     `INSERT INTO stored_credentials
-       (id, user_id, app_id, kind, key_id, issuer_id, ciphertext, wrapped_dek, kek_version)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+       (id, user_id, app_id, kind, key_id, issuer_id, ciphertext, wrapped_dek, kek_version, kek_fingerprint)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
      ON CONFLICT (user_id, app_id, kind) DO UPDATE SET
        key_id = excluded.key_id, issuer_id = excluded.issuer_id,
        ciphertext = excluded.ciphertext, wrapped_dek = excluded.wrapped_dek,
-       kek_version = excluded.kek_version, created_at = datetime('now'),
+       kek_version = excluded.kek_version, kek_fingerprint = excluded.kek_fingerprint,
+       created_at = datetime('now'),
        last_used_at = NULL`,
   )
-    .bind(id, args.userId, args.appId, args.kind, args.keyId, args.issuerId, sealed.ciphertext, sealed.wrappedDek, kek.version)
+    .bind(id, args.userId, args.appId, args.kind, args.keyId, args.issuerId, sealed.ciphertext, sealed.wrappedDek, kek.version, await kekFingerprint(kek.b64))
     .run();
   const row = await fetchRow(env, args.userId, args.appId, args.kind);
   return metaOf(row!);
@@ -250,6 +254,13 @@ export async function listCredentialMeta(env: Env, userId: string): Promise<Cred
 async function dekOpens(env: Env, r: Row): Promise<boolean> {
   const kekB64 = kekForVersion(env, r.kek_version);
   if (!kekB64) return false;
+  // #372 fast path: when the row records WHICH KEK sealed it and that is not
+  // the KEK we hold, the answer is known without any crypto. A NULL means
+  // unknown, not mismatched — a pre-migration row still has to be judged by
+  // whether it actually opens, never assumed broken.
+  if (r.kek_fingerprint !== null && r.kek_fingerprint !== (await kekFingerprint(kekB64))) {
+    return false;
+  }
   try {
     const kek = await importKek(kekB64);
     await openCredential(kek, sealedOf(r), ctxFor(r.user_id, r.app_id, r.kind, r.kek_version));
@@ -316,6 +327,13 @@ export async function useCredential(
   if (!rowKekB64) {
     throw new CredentialUnreadableError(row.kind, row.key_id, row.kek_version);
   }
+  // #372: if the row records which KEK sealed it, a mismatch is DIAGNOSABLE
+  // before any decrypt — so the failure says "sealed under a different key"
+  // rather than surfacing an opaque AES-GCM error. NULL stays unknown and falls
+  // through to the decrypt, which remains the authority.
+  if (row.kek_fingerprint !== null && row.kek_fingerprint !== (await kekFingerprint(rowKekB64))) {
+    throw new CredentialUnreadableError(row.kind, row.key_id, row.kek_version);
+  }
   const rowKek = await importKek(rowKekB64);
   const sealed: SealedCredential = sealedOf(row);
   // A WRONG (not merely missing) KEK surfaces here as a raw AES-GCM
@@ -328,9 +346,14 @@ export async function useCredential(
     throw new CredentialUnreadableError(row.kind, row.key_id, row.kek_version);
   }
 
-  // Stamp usage (best-effort).
-  await env.DB.prepare("UPDATE stored_credentials SET last_used_at = datetime('now') WHERE id = ?")
-    .bind(row.id)
+  // Stamp usage, and BACKFILL the fingerprint for rows written before #372
+  // added the column. Safe to do here and only here: the decrypt above just
+  // succeeded, so this KEK provably opens the row — we are recording a fact, not
+  // asserting one. Best-effort; a failed stamp must never block the use.
+  await env.DB.prepare(
+    "UPDATE stored_credentials SET last_used_at = datetime('now'), kek_fingerprint = ? WHERE id = ?",
+  )
+    .bind(await kekFingerprint(rowKekB64), row.id)
     .run()
     .catch(() => undefined);
 

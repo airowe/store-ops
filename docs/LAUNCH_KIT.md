@@ -6,7 +6,7 @@ abandons you at the App Store Connect form. ShipASO does the work and proves the
 rank moved.** New angle since the early drafts: **you can see your real rank for
 free, no signup** (the try-before-signup preview).
 
-Current facts (keep these accurate): 24 skills (12 ASO + 12 store-CLI), 344 cloud
+Current facts (keep these accurate): 26 skills (14 ASO + 12 store-CLI), 2,160 cloud
 tests, App Store + Google Play, MIT plugin + a hosted agent at app.shipaso.com.
 
 ---
@@ -50,7 +50,7 @@ difficulty scores, rank graphs. They stop at "here's what to do." The doing is
 still on you, and most gate the data behind a paid API.
 
 So I built the other half. ShipASO is a set of agent skills that run in Claude
-Code (24 skills, 344 tests on the hosted side). It does the whole loop: audits
+Code (26 skills, 2,160 tests on the hosted side). It does the whole loop: audits
 your live listing, researches keywords on **real rank data with no paid API**
 (it reads the public iTunes Search API — your position in the results *is* your
 rank), optimizes copy to exact char limits, hands you the exact `asc`/`gplay`
@@ -114,7 +114,7 @@ your store credentials — that's the whole trust model.
 **6/** Then it reads the rank back weekly and emails you when something actually
 moved. Not a dashboard you have to remember to check — a result that comes to you.
 
-**7/** Free + MIT plugin for Claude Code (24 skills). Or the hosted agent runs it
+**7/** Free + MIT plugin for Claude Code (26 skills). Or the hosted agent runs it
 on a schedule.
 
 Free rank check (no account): shipaso.com/check-your-rank

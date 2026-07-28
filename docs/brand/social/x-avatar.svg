@@ -1,0 +1,15 @@
+<!-- ShipASO avatar for circular crops (X, GitHub, Postiz).
+     The app icon's rounded-square corners are pointless here — the platform
+     crops to a circle — and its mark runs edge to edge, so the hull clips.
+     Full-bleed background, mark scaled to ~72% for safe margin inside the
+     circle. Same geometry and palette as docs/brand/shipaso-icon.svg. -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="1000" height="1000">
+  <rect width="32" height="32" fill="#0b0e14"/>
+  <g transform="translate(16 16.2) scale(0.72) translate(-16 -15.5)">
+    <g fill="#34d399">
+      <path d="M16 6 L8.5 17 h15 Z"/>
+      <path d="M5.5 19 h21 l-3 5 H8.5 Z"/>
+    </g>
+    <line x1="16" y1="8" x2="16" y2="17" stroke="#0b0e14" stroke-width="1.5"/>
+  </g>
+</svg>

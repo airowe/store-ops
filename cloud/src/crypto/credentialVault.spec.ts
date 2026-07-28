@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   importKek,
+  kekFingerprint,
   openCredential,
   rewrapDek,
   sealCredential,
@@ -81,5 +82,52 @@ describe("credentialVault envelope", () => {
     expect(await openCredential(kekV2, rotated, CTX)).toBe(P8); // opens under v2 + ctx(v2 coalesced)
     // the rotated envelope is NOT openable with the old KEK
     await expect(openCredential(kekV1, rotated, CTX)).rejects.toBeTruthy();
+  });
+});
+
+/**
+ * #372 — KEK fingerprints. The incident: CRED_KEK_V1 was REPLACED with a new
+ * value rather than a new version being added as V2, which silently orphaned
+ * every stored credential. Nothing detected it, because a wrong-but-present KEK
+ * is indistinguishable from the right one until a decrypt fails.
+ *
+ * A fingerprint stored beside each row makes the mismatch identifiable BEFORE
+ * any decryption is attempted — and, more importantly, lets the system say
+ * "this row was sealed under a different key" instead of "decrypt failed".
+ */
+describe("kekFingerprint (#372)", () => {
+  it("is stable for the same key and differs for a different one", async () => {
+    const a1 = await kekFingerprint(KEK_A);
+    const a2 = await kekFingerprint(KEK_A);
+    const b = await kekFingerprint(KEK_B);
+    expect(a1).toBe(a2);
+    expect(a1).not.toBe(b);
+  });
+
+  /**
+   * The security property that matters: the fingerprint is stored in D1, so a
+   * database leak must not help an attacker recover or verify-guess the KEK.
+   * It is a SALTED hash with a fixed domain-separation label, never the key
+   * itself and never a bare digest of it.
+   */
+  it("never contains the key material, and is not a bare digest of it", async () => {
+    const fp = await kekFingerprint(KEK_A);
+    expect(fp).not.toContain(KEK_A);
+    // a bare SHA-256 of the base64 string would be trivially checkable against
+    // a candidate list; ours is domain-separated, so it must differ from it
+    const bare = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(KEK_A));
+    const bareHex = [...new Uint8Array(bare)].map((b) => b.toString(16).padStart(2, "0")).join("");
+    expect(fp).not.toBe(bareHex);
+  });
+
+  it("is short enough to store and log without being the secret", async () => {
+    const fp = await kekFingerprint(KEK_A);
+    // 16 hex chars = 64 bits: ample to distinguish a handful of KEKs, far too
+    // short to be useful as a verification oracle for brute force.
+    expect(fp).toMatch(/^[0-9a-f]{16}$/);
+  });
+
+  it("rejects a malformed KEK rather than fingerprinting garbage", async () => {
+    await expect(kekFingerprint("not-base64-32-bytes")).rejects.toThrow();
   });
 });
