@@ -376,7 +376,11 @@ pre {
 .rail-link:hover { color: var(--dim); }
 .rail-link.active { color: var(--ink); border-left-color: var(--signal, #34d399); }
 
-.run-layout { display: grid; grid-template-columns: 1fr; gap: 24px; }
+/* min-width:0 is required at EVERY level of a nested grid, not just the ends.
+   #389 fixed .run-shell and .run-detail-pane but missed this one in between, so
+   an over-wide child still propagated up through .run-layout and widened the
+   page — the fix looked right in isolation and did nothing in situ. */
+.run-layout { display: grid; grid-template-columns: 1fr; gap: 24px; min-width: 0; max-width: 100%; }
 @media (min-width: 900px) {
   .run-layout--railed { grid-template-columns: 160px minmax(0, 1fr); align-items: start; }
 }
@@ -429,7 +433,7 @@ pre {
 }
 .run-status-bar .sb-cta:hover { text-decoration: underline; }
 
-.run-shell { display: grid; grid-template-columns: 1fr; gap: 20px; align-items: start; padding-bottom: 88px; max-width: 100%; }
+.run-shell { display: grid; grid-template-columns: 1fr; gap: 20px; align-items: start; padding-bottom: 88px; min-width: 0; max-width: 100%; }
 @media (min-width: 900px) {
   .run-shell { grid-template-columns: 200px minmax(0, 1fr); }
 }

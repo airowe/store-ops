@@ -50,8 +50,14 @@ describe("run page cannot overflow horizontally", () => {
    * default `min-width: auto` lets its content set the floor, so the track
    * still grows. `min-width: 0` is what actually lets it shrink.
    */
+  /**
+   * Every level of the nested grid, not just the ends. The first pass set this
+   * on .run-shell and .run-detail-pane and missed .run-layout in between — so
+   * an over-wide child still propagated up and widened the page. A chain is
+   * only as shrinkable as its least shrinkable link.
+   */
   it("the scrolling containers can actually shrink inside the grid", () => {
-    for (const sel of [".run-detail-pane", ".cmd-block"]) {
+    for (const sel of [".run-layout", ".run-shell", ".run-detail-pane", ".cmd-block"]) {
       expect(blocksFor(sel).join(" "), `${sel} must be shrinkable`).toMatch(
         /min-width\s*:\s*0/,
       );
