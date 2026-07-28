@@ -40,8 +40,8 @@ for you:
 
 | Path | What |
 |------|------|
-| **`skills/` + `lib/`** | The **free OSS Claude Code plugin** — 27 skills + the engine (Python, 168 tests). Run the whole loop yourself in your editor. |
-| **`cloud/`** | The **hosted autonomous agent** — a Cloudflare app (Workers + D1 + Cron + Pages) that runs the loop on a schedule and surfaces decisions for approval. Engine ported to TypeScript (45 tests). See `cloud/README.md` + `cloud/DEPLOY.md`. |
+| **`skills/` + `lib/`** | The **free OSS Claude Code plugin** — 26 skills + the engine (Python, 200 tests). Run the whole loop yourself in your editor. |
+| **`cloud/`** | The **hosted autonomous agent** — a Cloudflare app (Workers + D1 + Cron + Pages) that runs the loop on a schedule and surfaces decisions for approval. Engine ported to TypeScript (2,160 tests). See `cloud/README.md` + `cloud/DEPLOY.md`. |
 | **`commercial/`, `docs/`** | The offer, the launch posts, the landing page. |
 
 The plugin is the **funnel** (discover the agent by running it); the hosted app
@@ -146,7 +146,7 @@ reviews, rollout, vitals — for both App Store Connect and Google Play Console.
 ## Open-core — what's free vs. hosted
 
 **The plugin is free and MIT-licensed, forever.** Everything above — the full
-audit → research → optimize → push → verify loop, both stores, all 27 skills —
+audit → research → optimize → push → verify loop, both stores, all 26 skills —
 runs locally with your own credentials at no cost. Use it, fork it, ship apps
 with it. That's the whole product for anyone who's comfortable in a terminal.
 
@@ -158,7 +158,7 @@ schedule.
 
 | | Free (this plugin) | Hosted agent |
 |---|---|---|
-| The 27 skills + full loop | ✅ all of it | ✅ same engine |
+| The 26 skills + full loop | ✅ all of it | ✅ same engine |
 | Real volume data | BYO Apple/Google keys | guided setup |
 | Rank tracking | run `aso-rank-check` by hand | **scheduled** weekly + history + delta alerts |
 | Standing autonomy (weekly cron) | ❌ you re-run it | ✅ Autopilot / Fleet |
