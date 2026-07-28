@@ -345,8 +345,17 @@ h2 { font-family: var(--display); font-weight: 600; font-size: 22px; letter-spac
   position: sticky; top: 24px; display: flex; flex-direction: column; gap: 2px;
   font-family: var(--mono); font-size: 12px;
 }
+/* Rail items are real <button>s (SectionRail: keyboard reach + native
+   Enter/Space), so they must strip the browser chrome a button brings — the
+   bevel, the grey fill and the system font — exactly as `button.card` and
+   `.btn` do. Without this the run page's section index rendered as a stack of
+   default platform buttons. The left border is the ACTIVE affordance and is
+   deliberately kept. */
 .rail-link {
-  color: var(--faint); text-decoration: none; padding: 4px 10px; border-left: 2px solid var(--line-soft);
+  display: block; width: 100%; text-align: left;
+  appearance: none; background: none; border: 0; font: inherit; cursor: pointer;
+  color: var(--faint); text-decoration: none; padding: 4px 10px;
+  border-left: 2px solid var(--line-soft);
 }
 .rail-link:hover { color: var(--dim); }
 .rail-link.active { color: var(--ink); border-left-color: var(--signal, #34d399); }
@@ -413,9 +422,12 @@ h2 { font-family: var(--display); font-weight: 600; font-size: 22px; letter-spac
   font-family: var(--mono); font-size: 10px; letter-spacing: 0.08em;
   text-transform: uppercase; color: var(--faint); padding: 4px 10px 2px;
 }
-/* the rail buttons reuse .rail-link; reset button chrome so they match the old anchors */
+/* The rail's own type treatment. The button-chrome reset lives on `.rail-link`
+   itself (above) so it applies wherever a rail item renders — this rule had a
+   partial reset that omitted `border` and `appearance`, which is exactly what
+   left every item wearing the platform's default bevelled box. Kept to the
+   things that are genuinely rail-specific. */
 .section-rail .rail-link {
-  display: block; width: 100%; text-align: left; background: none; cursor: pointer;
   font-family: var(--mono); font-size: 12px;
 }
 .run-detail-pane { min-width: 0; }
