@@ -35,7 +35,11 @@ function makeClient(
   return { get, post: vi.fn(), request: vi.fn() } as unknown as ApiClient;
 }
 
-function renderView(client: ApiClient, onOpenRun = () => {}, onWarRoom = () => {}) {
+function renderView(
+  client: ApiClient,
+  onOpenRun: (runId: string) => void = () => {},
+  onWarRoom: (appId: string) => void = () => {},
+) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
     <QueryClientProvider client={qc}>
@@ -123,7 +127,107 @@ describe("<AppDetailView />", () => {
     // no deltas → nothing measured → the tile must show the em dash
     renderView(makeClient({ deltas: { entries: [] } }));
     await waitFor(() => screen.getByText("Acme"));
-    expect(screen.getByText("no keyword measured yet")).toBeInTheDocument();
+    // #384: the empty state now names the SCOPE — "targeted" — so it reads as
+    // "this run's targets haven't ranked", not "this app ranks nowhere".
+    expect(screen.getByText("no targeted keyword measured yet")).toBeInTheDocument();
+  });
+
+  /**
+   * #384 — the metric band is scoped to the LATEST RUN'S keyword targets (#74,
+   * so keywords the app has since dropped don't resurface here). That scoping is
+   * deliberate and correct. The bug was that the copy didn't say so.
+   *
+   * Heathen showed "0 currently ranking" on this page while the Keywords page
+   * showed the same app at #1 for "secular meditation" — a term the latest run
+   * didn't target. Both screens were honest; together they read as broken.
+   *
+   * The fix is precision, not new data: name the set the number describes.
+   */
+  it("says which set the count describes, so it cannot read as 'this app ranks nowhere'", async () => {
+    const deltas = {
+      entries: [
+        { keyword: "meditation", previous: null, current: null, delta: null, direction: "unmeasured" },
+        { keyword: "calm", previous: null, current: null, delta: null, direction: "unmeasured" },
+      ],
+    };
+    renderView(makeClient({ deltas }));
+    await waitFor(() => screen.getByText("Acme"));
+    const tile = screen.getByTestId("tracked-terms-tile");
+    // "0 of 2 tracked terms ranking" — not a bare "0 currently ranking"
+    expect(tile).toHaveTextContent(/0 of 2/);
+    expect(tile).toHaveTextContent(/tracked/i);
+  });
+
+  it("scopes the lead-rank tile's empty state to this run's targets", async () => {
+    renderView(makeClient({ deltas: { entries: [] } }));
+    await waitFor(() => screen.getByText("Acme"));
+    const tile = screen.getByTestId("lead-rank-tile");
+    // must not imply the app has never ranked for anything
+    expect(tile).toHaveTextContent(/target/i);
+  });
+
+  it("still reports a real measured count without hedging", async () => {
+    const deltas = {
+      entries: [
+        { keyword: "weather", previous: 20, current: 8, delta: 12, direction: "up" },
+        { keyword: "forecast", previous: null, current: null, delta: null, direction: "unmeasured" },
+      ],
+    };
+    renderView(makeClient({ deltas }));
+    await waitFor(() => screen.getByText("Acme"));
+    expect(screen.getByTestId("tracked-terms-tile")).toHaveTextContent(/1 of 2/);
+  });
+
+  /**
+   * #385 — the keyless run had no caller in either surface. The only way to
+   * start an audit was to paste a .p8 key, so the free tier — whose entire
+   * product is the public audit — had no manual start button for its own loop.
+   */
+  describe("run audit now (#385)", () => {
+    /** makeClient's post is a bare vi.fn(); give it a resolved/rejected value. */
+    function withRun(result: unknown, reject = false) {
+      const client = makeClient();
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (client as any).post = vi.fn(async () =>
+        reject ? Promise.reject(result) : result,
+      );
+      return client;
+    }
+
+    it("triggers the keyless run and opens the resulting run", async () => {
+      const opened: string[] = [];
+      const client = withRun({ id: "run-new", status: "detected" });
+      renderView(client, (id: string) => opened.push(id));
+      await waitFor(() => screen.getByText("Acme"));
+
+      fireEvent.click(screen.getByTestId("run-audit"));
+
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      await waitFor(() => expect((client as any).post).toHaveBeenCalledWith("/apps/a1/run"));
+      await waitFor(() => expect(opened).toEqual(["run-new"]));
+    });
+
+    /**
+     * The audit costs a run against the plan and re-reads the store, so it must
+     * never fire on render — only on an explicit click. Same rule as every
+     * other action in this product.
+     */
+    it("never runs on mount — only on an explicit click", async () => {
+      const client = withRun({ id: "r", status: "detected" });
+      renderView(client);
+      await waitFor(() => screen.getByText("Acme"));
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      expect((client as any).post).not.toHaveBeenCalled();
+    });
+
+    it("surfaces a refusal honestly instead of failing silently", async () => {
+      const client = withRun(new Error("your plan allows 1 connected app"), true);
+      renderView(client);
+      await waitFor(() => screen.getByText("Acme"));
+      fireEvent.click(screen.getByTestId("run-audit"));
+      const msg = await screen.findByTestId("run-audit-error");
+      expect(msg).toHaveTextContent(/plan allows 1 connected app/);
+    });
   });
 
   it("shows the measured conversion rate in the metric band when analytics exist", async () => {

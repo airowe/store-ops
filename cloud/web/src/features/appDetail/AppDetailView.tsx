@@ -22,9 +22,9 @@
  * is unconnected, rather than showing a guess or a hollow "0".
  */
 import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import type { ApiClient } from "@shipaso/api";
-import { getApp, getCredentials, getDeltas, getEngagement, getRanks } from "@shipaso/api";
+import { getApp, getCredentials, getDeltas, getEngagement, getRanks, runApp } from "@shipaso/api";
 import { timeAgo } from "@shipaso/honesty";
 import type { CSSProperties } from "react";
 import { runStatusLabel } from "../../lib/status.js";
@@ -64,6 +64,18 @@ export function AppDetailView({
   // rather than adding a request.
   const credsQ = useQuery({ queryKey: ["credentials"], queryFn: () => getCredentials(client) });
   const [tab, setTab] = useState<"monitor" | "connections">("monitor");
+
+  // #385: the keyless audit. POST /apps/:id/run existed and had no caller in
+  // either surface, so the free tier — whose whole product IS the public audit
+  // — had no way to start its own loop without pasting a .p8 key.
+  //
+  // Explicit click only: this costs a run against the plan and re-reads the
+  // store, so it must never fire on mount. On success we land on the run it
+  // created, because a run the user cannot find is the same as no run.
+  const audit = useMutation({
+    mutationFn: () => runApp(client, id),
+    onSuccess: (run) => onOpenRun(run.id),
+  });
 
   if (appQ.isLoading) return <p className="muted">Loading…</p>;
   if (appQ.isError || !appQ.data) return <p className="muted">Couldn’t load this app. Try again.</p>;
@@ -124,10 +136,27 @@ export function AppDetailView({
           <div className="audit-sub mono">{app.bundle_id} · {app.country}</div>
         </div>
         <div className="audit-header-actions">
+          {/* #385: the manual start for the loop. Keyless — the public audit is
+              a real path, not a degraded one, so this must not imply a key is
+              needed. Approval still gates anything leaving the building. */}
+          <button
+            type="button"
+            className="btn primary"
+            data-testid="run-audit"
+            disabled={audit.isPending}
+            onClick={() => audit.mutate()}
+          >
+            {audit.isPending ? "Auditing…" : "Run audit"}
+          </button>
           <button type="button" className="btn ghost" data-testid="war-room" onClick={() => onWarRoom(app.id)}>
             War room
           </button>
         </div>
+        {audit.isError ? (
+          <p className="micro bad" data-testid="run-audit-error">
+            {audit.error instanceof Error ? audit.error.message : "Couldn’t start the audit."}
+          </p>
+        ) : null}
       </header>
 
       {/* store tabs — App Store active; Google Play behind a connect chip */}
@@ -191,15 +220,24 @@ export function AppDetailView({
               </span>
             ) : null}
           </div>
-          <div className="metric-sub">{lead ? `“${lead.keyword}”` : "no keyword measured yet"}</div>
+          {/* #384: name the SCOPE. This band reads the latest run's targets
+              (#74), not every rank ever measured for the app — so an app can
+              show "—" here while the Keywords page shows it at #1 for a term
+              this run didn't target. Both are true; only the wording made them
+              look contradictory. */}
+          <div className="metric-sub">
+            {lead ? `“${lead.keyword}”` : "no targeted keyword measured yet"}
+          </div>
         </div>
-        <div className="metric-tile">
+        <div className="metric-tile" data-testid="tracked-terms-tile">
           <div className="metric-label mono">Tracked terms</div>
           <div className="metric-value-row">
             <span className="metric-value">{entries.length || "—"}</span>
           </div>
           <div className="metric-sub">
-            {entries.length ? `${measured.length} currently ranking` : "none tracked yet"}
+            {entries.length
+              ? `${measured.length} of ${entries.length} tracked terms ranking`
+              : "none tracked yet"}
           </div>
         </div>
         <div className="metric-tile" data-testid="conversion-tile">
