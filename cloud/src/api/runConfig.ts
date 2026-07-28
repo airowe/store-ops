@@ -46,10 +46,24 @@ export type RunOverrides = {
   auditOnly?: boolean;
 };
 
-// Words that are never useful keyword seeds.
+/**
+ * Words that carry no search intent on their own — filler and generic app-store
+ * padding. A user types "meditation", never "the" or "pro".
+ *
+ * "secular" USED TO BE HERE, dismissed as a "brandy/qualifier word... weak as
+ * the ONLY seed". Production disproved that: Heathen ("Heathen — Secular
+ * Meditation") ranks #1 of 169 for "secular" and #1 for "secular meditation",
+ * while the six genre seeds substituted in its place returned rank `null` on
+ * every one of 126 readings — it has never ranked for any of them.
+ *
+ * The general rule that replaced the special case: a DISTINCTIVE qualifier in
+ * an app's own name is usually its most winnable term, precisely because it is
+ * narrow. Only genuinely intent-free words belong here. Do not add a word
+ * merely because it is niche — niche is the point.
+ */
 const SEED_STOP = new Set([
   "the", "and", "for", "your", "app", "free", "pro", "lite", "best", "new",
-  "with", "secular", // brandy/qualifier words still useful elsewhere but weak as the ONLY seed
+  "with",
 ]);
 
 // Genre → a small set of category seeds, so even a one-word app name yields a
