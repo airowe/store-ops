@@ -47,6 +47,26 @@ export function OpportunitiesCard({ opportunities }: { opportunities: Opportunit
     opportunities.length > 1 && new Set(opportunities.map((o) => o.why)).size === 1
       ? opportunities[0]!.why
       : null;
+
+  /**
+   * #396: a keyword with NOTHING measured — no rank and no score — has no
+   * per-row facts to show. On the Heathen run all 12 were in this state, so the
+   * card printed "not in top results · reachable soon · not enough data to
+   * score" twelve times: one fact, stated twelve times.
+   *
+   * Those collapse into a single line that names the count and the keywords.
+   * Everything with a real rank or a real score keeps its own row — this is a
+   * PARTITION, not a filter, so no measured value can ever be swept into the
+   * summary. Measured-or-nothing is strengthened, not weakened: the absence of
+   * data is stated more plainly than twelve identical rows stated it.
+   *
+   * Only worth doing for two or more: a summary line replacing one row is
+   * longer than the row it replaces.
+   */
+  const isUnmeasured = (o: Opportunity) => o.rank === null && o.scored === false;
+  const unmeasured = opportunities.filter(isUnmeasured);
+  const collapse = unmeasured.length > 1;
+  const rows = collapse ? opportunities.filter((o) => !isUnmeasured(o)) : opportunities;
   return (
     <div className="card" data-testid="opportunities-card">
       <b>Where to push next</b>
@@ -58,7 +78,7 @@ export function OpportunitiesCard({ opportunities }: { opportunities: Opportunit
           {sharedWhy}
         </p>
       ) : null}
-      {opportunities.map((o) => (
+      {rows.map((o) => (
         <div key={o.keyword} className="opp-row" data-testid={`opp-${o.keyword}`} style={{ margin: "10px 0" }}>
           <p style={{ margin: 0 }}>
             <b>{o.keyword}</b>
@@ -87,6 +107,15 @@ export function OpportunitiesCard({ opportunities }: { opportunities: Opportunit
           {sharedWhy ? null : <p className="micro" style={{ margin: "2px 0 0" }}>{o.why}</p>}
         </div>
       ))}
+      {collapse ? (
+        <p className="micro muted opp-unmeasured" data-testid="opp-unmeasured" style={{ margin: "10px 0 0" }}>
+          {/* States the absence directly. No rank, no score, and explicitly not
+              the 42.5 no-data constant — naming the keywords so summarising
+              never hides WHICH terms went unmeasured. */}
+          <b>{unmeasured.length} keywords not measured yet</b> — no rank and not enough data to
+          score: {unmeasured.map((o) => o.keyword).join(", ")}.
+        </p>
+      ) : null}
     </div>
   );
 }
