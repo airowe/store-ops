@@ -2,7 +2,10 @@
   "name": "store-ops",
   "version": "0.1.0",
   "description": "ShipASO — the AI-native ASO loop for App Store AND Google Play. Audit your live listing, research keywords on real rank data (no paid API), optimize copy to exact char limits, push, and prove the rank moved. Free + MIT. Want it to run weekly on its own? → app.shipaso.com",
-  "author": "airowe",
+  "author": {
+    "name": "Adam Rowe",
+    "url": "https://github.com/airowe"
+  },
   "homepage": "https://shipaso.com",
   "license": "MIT",
   "keywords": [
@@ -18,34 +21,5 @@
     "ios",
     "android"
   ],
-  "skills": [
-    "skills/store-ops",
-    "skills/aso-audit",
-    "skills/aso-context",
-    "skills/aso-keyword-research",
-    "skills/aso-metadata-optimization",
-    "skills/aso-rank-check",
-    "skills/aso-rank-monitor",
-    "skills/aso-competitor-watch",
-    "skills/aso-review-mine",
-    "skills/aso-offstore-mine",
-    "skills/aso-screenshot-score",
-    "skills/aso-localize-research",
-    "skills/aso-review-risk",
-    "skills/aso-rejection-assistant",
-    "skills/aso-ppo-treatment",
-    "skills/shipaso-mcp",
-    "skills/asc-metadata-sync",
-    "skills/asc-localize-metadata",
-    "skills/asc-ppp-pricing",
-    "skills/asc-id-resolver",
-    "skills/asc-submission-health",
-    "skills/asc-shots-pipeline",
-    "skills/gplay-metadata-sync",
-    "skills/gplay-screenshot-automation",
-    "skills/gplay-ppp-pricing",
-    "skills/gplay-review-management",
-    "skills/gplay-rollout-management",
-    "skills/gplay-vitals-monitoring"
-  ]
+  "repository": "https://github.com/airowe/store-ops"
 }
