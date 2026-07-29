@@ -45,7 +45,7 @@ describe("<FindingsCard />", () => {
     render(
       <FindingsCard
         findings={[actionable]}
-        summary={{ label: "1 fix available · 1 critical", critical: 1 }}
+        summary={{ label: "1 fix available · 1 critical", critical: 1, warn: 0, good: 0, info: 0, total: 1, topImpact: "ranking" }}
       />,
     );
     expect(screen.getByText("1 fix available · 1 critical")).toBeInTheDocument();

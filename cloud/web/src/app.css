@@ -1622,3 +1622,103 @@ pre {
 @media (max-width: 640px) {
   .notfound { margin: 24px 16px; padding: 28px 20px; }
 }
+
+/* ── run verdict + collapsed sections ────────────────────────────────────────
+   The run page stacked 8 equal-weight cards: 578 words, 2.6 screens, for a run
+   whose answer was "nothing needs your approval" — a sentence that appeared
+   nowhere. Most cards report ABSENCE (8 unreadable surfaces, 17 unmeasured
+   keywords), and absence should not occupy the same room as a finding.
+
+   So: the verdict gets the page's only large type, and everything else
+   collapses to a titled row carrying its measured count. */
+
+.run-verdict {
+  padding: 28px 0 20px;
+  border-bottom: 1px solid var(--line-soft);
+  margin-bottom: 4px;
+}
+/* Fraunces at scale, tight — the one piece of display type on the page. Its job
+   is to be readable from across the desk, because it is the whole answer. */
+.run-verdict-headline {
+  font-family: var(--display);
+  font-weight: 600;
+  font-size: clamp(28px, 4.2vw, 42px);
+  line-height: 1.08;
+  letter-spacing: -1.2px;
+  color: var(--ink);
+  margin: 0;
+  max-width: 22ch; /* forces the break where a headline should break */
+  overflow-wrap: anywhere;
+}
+/* The counts. Mono because they are data, dim because they are not the answer. */
+.run-verdict-detail {
+  font-family: var(--mono);
+  font-size: 13px;
+  color: var(--dim);
+  margin: 10px 0 0;
+  overflow-wrap: anywhere;
+}
+.run-verdict-cta { margin-top: 18px; }
+
+/* A blocked run — nothing readable — is the one state that gets colour, because
+   it is the one state where the page cannot answer the question it exists for. */
+.run-verdict[data-tone="blocked"] .run-verdict-headline { color: var(--warn); }
+
+.run-section {
+  border-bottom: 1px solid var(--line-soft);
+  min-width: 0;
+}
+.run-section-summary {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 15px 2px;
+  cursor: pointer;
+  list-style: none;
+  min-width: 0;
+}
+.run-section-summary::-webkit-details-marker { display: none; }
+/* The disclosure affordance: a caret that rotates. Cheap, conventional, and it
+   survives `prefers-reduced-motion` because the rotation is the state, not an
+   animation for its own sake. */
+.run-section-summary::before {
+  content: "›";
+  font-family: var(--mono);
+  color: var(--faint);
+  transform: rotate(0deg);
+  transition: transform var(--duration-hover) var(--ease-out);
+  flex: 0 0 auto;
+}
+.run-section[open] > .run-section-summary::before { transform: rotate(90deg); }
+.run-section-summary:hover .run-section-title { color: var(--ink); }
+.run-section-summary:focus-visible {
+  outline: 2px solid var(--brand);
+  outline-offset: 2px;
+  border-radius: 6px;
+}
+.run-section-title {
+  font-family: var(--sans);
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--dim);
+  margin-right: auto;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+/* Counts are mono and right-aligned so the column scans vertically — the point
+   of a collapsed list is that you can read the numbers without opening it. */
+.run-section-count {
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--faint);
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+.run-section-body { padding: 2px 0 20px; min-width: 0; }
+/* Sections already carry the rule + spacing; a nested .card would double it. */
+.run-section-body > .card { border: 0; padding: 0; background: none; }
+
+@media (prefers-reduced-motion: reduce) {
+  .run-section-summary::before { transition: none; }
+}

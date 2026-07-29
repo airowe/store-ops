@@ -27,6 +27,8 @@ import { PpoTreatmentCard } from "./PpoTreatmentCard.js";
 import { ScreenshotPlanCard } from "./ScreenshotPlanCard.js";
 import { CppSetsCard } from "./CppSetsCard.js";
 import { LocalizationCard } from "./LocalizationCard.js";
+import { RunVerdictHeader } from "./RunVerdictHeader.js";
+import { RunSection } from "./RunSection.js";
 import { DecisionSummary } from "./DecisionSummary.js";
 import { RunStatusBar } from "./RunStatusBar.js";
 import { RunDetailPane } from "./RunDetailPane.js";
@@ -167,6 +169,20 @@ export function RunView({
   // Section cards, keyed by rail id — identical JSX to what rendered inline
   // before; the pane is the container now, so the `id="..."` anchor wrappers
   // are gone. Only sections that are present get an entry.
+  // Counts for the collapsed rows. Measured-or-absent: a section with nothing
+  // measured shows no number rather than a fabricated zero.
+  const findingsCount = r.findings?.length ?? 0;
+  const changedFieldCount = (["name", "subtitle", "keywords", "promo", "description"] as const).filter(
+    (k) => {
+      const next = r.proposedCopy[k];
+      return typeof next === "string" && next.trim() !== "" && next !== r.currentCopy[k];
+    },
+  ).length;
+  const coverageCount =
+    r.coverage?.coverageScore !== undefined && r.coverage.coverageScore !== null
+      ? `${Math.round(r.coverage.coverageScore)}/100`
+      : undefined;
+
   const sections: Record<string, ReactNode> = {
     changes: <CopyDiff current={r.currentCopy} proposed={r.proposedCopy} />,
     ...(hasAudit
@@ -284,24 +300,71 @@ export function RunView({
   return (
     <div className="run-layout">
       <section className="run-main">
-        <h1>Proposed changes</h1>
-        <CopyDiff current={r.currentCopy} proposed={r.proposedCopy} />
+        {/* The answer, before its evidence. Everything below collapses — most of
+            it reports absence, and absence should not cost a screen of scroll. */}
+        <RunVerdictHeader
+          {...(r.findingsSummary !== undefined ? { summary: r.findingsSummary } : { summary: undefined })}
+          lockCount={r.locks?.length ?? 0}
+          appName={r.audit?.liveName ?? r.currentCopy.name ?? "this app"}
+          {...(onConnect ? { onConnect } : {})}
+        />
 
-        {hasAudit ? (
-          <FindingsCard
-            findings={r.findings ?? []}
-            {...(r.locks !== undefined ? { locks: r.locks } : {})}
-            {...(r.findingsSummary !== undefined ? { summary: r.findingsSummary } : {})}
-            {...(onConnect ? { onConnect } : {})}
-          />
+        {changedFieldCount > 0 ? (
+          <RunSection
+            title="Proposed changes"
+            count={`${changedFieldCount} field${changedFieldCount === 1 ? "" : "s"}`}
+            defaultOpen
+            testId="section-changes"
+          >
+            <CopyDiff current={r.currentCopy} proposed={r.proposedCopy} />
+          </RunSection>
         ) : null}
 
-        {hasMetadata ? <CoverageCard coverage={r.coverage!} /> : null}
-        {hasKeywords ? <OpportunitiesCard opportunities={r.opportunities!} /> : null}
-        {hasMarkets ? <LocalizationExpansionCard recommendations={r.localizationExpansion!} /> : null}
-        {r.ppoTreatment ? <PpoTreatmentCard plan={r.ppoTreatment} /> : null}
+        {hasAudit ? (
+          <RunSection
+            title="What we found"
+            count={findingsCount > 0 ? `${findingsCount} note${findingsCount === 1 ? "" : "s"}` : undefined}
+            testId="section-audit"
+          >
+            <FindingsCard
+              findings={r.findings ?? []}
+              {...(r.locks !== undefined ? { locks: r.locks } : {})}
+              {...(r.findingsSummary !== undefined ? { summary: r.findingsSummary } : {})}
+              {...(onConnect ? { onConnect } : {})}
+            />
+          </RunSection>
+        ) : null}
+
+        {hasMetadata ? (
+          <RunSection title="Keyword budget" count={coverageCount} testId="section-metadata">
+            <CoverageCard coverage={r.coverage!} />
+          </RunSection>
+        ) : null}
+        {hasKeywords ? (
+          <RunSection
+            title="Where to push next"
+            count={`${r.opportunities!.length} keyword${r.opportunities!.length === 1 ? "" : "s"}`}
+            testId="section-keywords"
+          >
+            <OpportunitiesCard opportunities={r.opportunities!} />
+          </RunSection>
+        ) : null}
+        {hasMarkets ? (
+          <RunSection
+            title="Markets to expand into"
+            count={`${r.localizationExpansion!.length} locale${r.localizationExpansion!.length === 1 ? "" : "s"}`}
+            testId="section-markets"
+          >
+            <LocalizationExpansionCard recommendations={r.localizationExpansion!} />
+          </RunSection>
+        ) : null}
+        {r.ppoTreatment ? (
+          <RunSection title="Run a product page test" testId="section-ppo">
+            <PpoTreatmentCard plan={r.ppoTreatment} />
+          </RunSection>
+        ) : null}
         {hasScreenshots ? (
-          <>
+          <RunSection title="Build assets" testId="section-assets">
             <ScreenshotPlanCard
               client={client}
               inputs={{
@@ -333,7 +396,7 @@ export function RunView({
                 }}
               />
             ) : null}
-          </>
+          </RunSection>
         ) : null}
 
         <p className={"run-status" + (approved ? " good" : "")} data-testid="run-status">
