@@ -1289,6 +1289,55 @@ describe("review-risk lint integration (#178)", () => {
   });
 });
 
+/**
+ * Promotional text is the only listing field editable WITHOUT submitting a new
+ * version, and it is NOT indexed — so it costs nothing from the 100-char keyword
+ * budget and can ship same-day.
+ *
+ * Heathen's audit missed it entirely: every POPULATED field was scored, and 170
+ * unused characters at the top of the listing went unmentioned because there was
+ * no content to critique. An empty field flags nothing unless something looks
+ * for the absence.
+ *
+ * Deliberately NOT a keyword lever — the field is unindexed, so this must never
+ * suggest putting search terms in it.
+ */
+describe("promotional text (unindexed, version-free — flag when unused)", () => {
+  it("flags promotional text that is absent", () => {
+    expect(ids(input({ currentCopy: {} }))).toContain("promo_text_unused");
+  });
+
+  it("flags promotional text that is empty or whitespace", () => {
+    expect(ids(input({ currentCopy: { promo: "" } }))).toContain("promo_text_unused");
+    expect(ids(input({ currentCopy: { promo: "   " } }))).toContain("promo_text_unused");
+  });
+
+  it("does not flag it when the field is in use", () => {
+    expect(
+      ids(input({ currentCopy: { promo: "New: 10 Stoic readings for the new year." } })),
+    ).not.toContain("promo_text_unused");
+  });
+
+  /**
+   * Absent `currentCopy` means the run never READ the field — which is not the
+   * same as the field being empty. Claiming "unused" there would assert
+   * something unmeasured.
+   */
+  it("stays silent when the copy was never read (unmeasured ≠ empty)", () => {
+    expect(ids(input())).not.toContain("promo_text_unused");
+  });
+
+  it("never recommends keywords in it — the field is not indexed", () => {
+    const f = auditFindings(input({ currentCopy: {} } as never)).find(
+      (x) => x.id === "promo_text_unused",
+    );
+    expect(f).toBeDefined();
+    const text = `${f!.title} ${f!.detail}`.toLowerCase();
+    expect(text).toContain("not indexed");
+    expect(text).not.toMatch(/add keywords|keyword field|search terms/);
+  });
+});
+
 describe("Studio grade projection (#26)", () => {
   it("projects a before→after grade for a set with count headroom (C with 3 shots)", () => {
     const got = ids(input({ audit: audit(shot({ iphoneCount: 3, score: 60, grade: "C" })) }));
@@ -1392,5 +1441,37 @@ describe("#324 — finding actions (Tier 2 in-product handoff)", () => {
     snap.appInfo = { ...snap.appInfo!, secondaryCategory: undefined };
     const f = byId(auditFindings(withTrackId({ snapshot: snap })), "secondary_category_missing");
     expect(f?.action?.tool).toBeUndefined();
+  });
+});
+
+/**
+ * The finding must actually REACH a real run.
+ *
+ * A finding function can be perfect while no call site passes it the data it
+ * needs — it then never fires in production and no unit test notices, because
+ * the unit tests construct the input directly. That exact shape has bitten this
+ * repo twice: a generated worker that defined a helper it never called (#393),
+ * and a stylesheet guard that asserted selectors the layout did not use (#389).
+ *
+ * Asserted against the call sites' SOURCE, since exercising the real API path
+ * needs a Worker runtime + D1.
+ */
+describe("promo_text_unused is wired into every auditFindings call site", () => {
+  const read = (rel: string) => {
+    const { readFileSync } = require("node:fs") as typeof import("node:fs");
+    const { dirname, resolve } = require("node:path") as typeof import("node:path");
+    return readFileSync(resolve(dirname(__filename), "..", "..", rel), "utf8");
+  };
+
+  it("api/index.ts passes currentCopy wherever it passes proposedCopy", () => {
+    const src = read("src/api/index.ts");
+    const proposed = (src.match(/proposedCopy: result\.proposedCopy/g) ?? []).length;
+    const current = (src.match(/currentCopy: result\.currentCopy/g) ?? []).length;
+    expect(proposed, "expected auditFindings call sites in api/index.ts").toBeGreaterThan(0);
+    expect(current, "a call site passes proposedCopy but not currentCopy").toBe(proposed);
+  });
+
+  it("mcp/tools.ts passes currentCopy too", () => {
+    expect(read("src/mcp/tools.ts")).toMatch(/currentCopy: result\.currentCopy/);
   });
 });

@@ -33,8 +33,33 @@ Cross-platform — and the Google Play side is the open lane no public tool cove
 | **Subtitle / short desc** | DISTINCT keywords from title (no waste)? value prop clear? ≤30 / ≤80? |
 | **Keyword field (iOS)** | no spaces after commas (wastes chars)? no title/subtitle dupes? no filler/stop-words? plurals handled? ≤100? |
 | **Description** | keyword-rich first 3 lines (the visible part)? feature clarity? Play: keyword density without stuffing? |
+| **Promotional text (iOS)** | **PRESENT AT ALL?** ≤170? time-sensitive rather than evergreen? not duplicating the description's opening? |
 | **Screenshots/preview** | present for required device sizes? caption keywords? first 2 tell the story? |
 | **Reviews** | rating trend, recurring complaint themes (feed back into listing + roadmap) |
+
+### Promotional text — check for ABSENCE, not just quality
+
+An empty field scores nothing and flags nothing unless you look for it. Heathen's
+audit missed this: every populated field was scored, and 170 unused characters at
+the top of the listing went unmentioned because there was no content to critique.
+
+**Always report promotional text as empty when it is empty.** That is a finding,
+not a non-event.
+
+Why the field is worth the flag:
+
+- **It is NOT indexed.** No keyword value, so it costs nothing from the 100-char
+  keyword budget. Do not recommend stuffing it with search terms.
+- **It is the only listing field editable WITHOUT submitting a new version.**
+  That is the whole point: launches, seasonal hooks, press mentions, a response
+  to a competitor — all shippable same-day.
+- **It is therefore a free A/B surface for positioning.** Iterate value props
+  here weekly, then promote the winner into the subtitle, where it *does* get
+  indexed. Testing copy in a field that requires review is slow; testing it here
+  is not.
+
+Flag it as `warn` when empty, `info` when present but evergreen (a permanent
+tagline wastes the one field that can be timely).
 
 ## Output
 
