@@ -245,6 +245,7 @@ import { findAscAppId, applyAscMetadata, createAscLocalization, createAscVersion
 import { ascWriteGate } from "../engine/ascWriteGate.js";
 import { uploadScreenshot } from "../engine/ascUploadClient.js";
 import { createPpoExperiment } from "../engine/ascExperimentCreate.js";
+import { ensureScreenshotSet } from "../engine/ascScreenshotSet.js";
 import { readAscExperiments } from "../engine/ascExperiments.js";
 import { registerWebhook, WEBHOOK_EVENT_TYPES } from "../engine/ascWebhookRegister.js";
 import { saveWebhookSecret } from "../d1.js";
@@ -3948,15 +3949,28 @@ async function ascUploadScreenshotRoute(
 
   const body = (await req.json().catch(() => ({}))) as AscCredBody & {
     screenshotSetId?: string;
+    /** Alternative to screenshotSetId: the device bucket, e.g. "APP_IPHONE_67". */
+    screenshotDisplayType?: string;
+    /** The appStoreVersionLocalization, required when creating a set. */
+    localizationId?: string;
     fileName?: string;
     /** base64 of the PNG bytes. */
     fileBase64?: string;
   };
 
-  const screenshotSetId = (body.screenshotSetId ?? "").trim();
   const fileName = (body.fileName ?? "").trim();
-  if (!screenshotSetId) throw new HttpError(400, "screenshotSetId is required");
   if (!fileName) throw new HttpError(400, "fileName is required");
+  // Either target an existing set directly, or name a device size and let us
+  // find-or-create it. The second form is what an app with NO screenshots needs
+  // — there is no set id to pass when no set exists.
+  const givenSetId = (body.screenshotSetId ?? "").trim();
+  const displayType = (body.screenshotDisplayType ?? "").trim();
+  if (!givenSetId && !displayType) {
+    throw new HttpError(400, "screenshotSetId or screenshotDisplayType is required");
+  }
+  if (!givenSetId && !(body.localizationId ?? "").trim()) {
+    throw new HttpError(400, "localizationId is required when creating a screenshot set");
+  }
 
   let file: Uint8Array;
   try {
@@ -3976,6 +3990,15 @@ async function ascUploadScreenshotRoute(
   }
 
   try {
+    const screenshotSetId = givenSetId
+      ? givenSetId
+      : (
+          await ensureScreenshotSet(fetch, {
+            token,
+            localizationId: (body.localizationId ?? "").trim(),
+            displayType,
+          })
+        ).id;
     return await uploadScreenshot(fetch, { token, screenshotSetId, fileName, file });
   } catch (e) {
     if (e instanceof AscWriteError) return { ok: false, reason: e.message };

@@ -21,6 +21,9 @@ const uploadScreenshot = vi.fn(async () => ({
 vi.mock("../engine/ascUploadClient.js", () => ({ uploadScreenshot }));
 vi.mock("../engine/ascJwt.js", () => ({ mintAscJwt: async () => "tok" }));
 
+const ensureScreenshotSet = vi.fn(async () => ({ id: "set-made", created: true }));
+vi.mock("../engine/ascScreenshotSet.js", () => ({ ensureScreenshotSet }));
+
 let tier = "startup";
 let optedIn = true;
 let runStatus = "approved";
@@ -102,6 +105,7 @@ const validBody = {
 
 beforeEach(() => {
   uploadScreenshot.mockClear();
+  ensureScreenshotSet.mockClear();
   tier = "startup";
   optedIn = true;
   runStatus = "approved";
@@ -170,5 +174,44 @@ describe("POST /runs/:id/asc/upload-screenshot", () => {
     const arg = (uploadScreenshot.mock.calls[0] as unknown as [unknown, { file: Uint8Array }])[1];
     expect(arg.file).toBeInstanceOf(Uint8Array);
     expect(arg.file[0]).toBe(0x89); // PNG magic — decoded, not re-encoded text
+  });
+
+  /**
+   * The fresh-app case: no set exists, so none can be named. Found by pointing
+   * verification at a real app (ShipASO Scratch) with 0 screenshot sets — every
+   * test passed while the path was unusable, because they all supplied an id.
+   */
+  it("find-or-creates a set when given a display type instead of a set id", async () => {
+    const res = await post({
+      fileName: "APP_IPHONE_67_01.png",
+      fileBase64: btoa("\x89PNG"),
+      screenshotDisplayType: "APP_IPHONE_67",
+      localizationId: "loc-1",
+    });
+    expect(res.status).toBe(200);
+    expect(ensureScreenshotSet).toHaveBeenCalledTimes(1);
+    const arg = (uploadScreenshot.mock.calls[0] as unknown as [unknown, { screenshotSetId: string }])[1];
+    expect(arg.screenshotSetId).toBe("set-made");
+  });
+
+  it("does not touch set creation when an explicit set id is given", async () => {
+    await post(validBody);
+    expect(ensureScreenshotSet).not.toHaveBeenCalled();
+  });
+
+  it("400s when neither a set id nor a display type is given", async () => {
+    const res = await post({ fileName: "a.png", fileBase64: btoa("x") });
+    expect(res.status).toBe(400);
+    expect(uploadScreenshot).not.toHaveBeenCalled();
+  });
+
+  it("400s a display type with no localizationId to create the set against", async () => {
+    const res = await post({
+      fileName: "a.png",
+      fileBase64: btoa("x"),
+      screenshotDisplayType: "APP_IPHONE_67",
+    });
+    expect(res.status).toBe(400);
+    expect(ensureScreenshotSet).not.toHaveBeenCalled();
   });
 });
