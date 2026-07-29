@@ -40,7 +40,7 @@ for you:
 
 | Path | What |
 |------|------|
-| **`skills/` + `lib/`** | The **free OSS Claude Code plugin** — 26 skills + the engine (Python, 200 tests). Run the whole loop yourself in your editor. |
+| **`skills/` + `lib/`** | The **free OSS Claude Code plugin** — 29 skills + the engine (Python, 200 tests). Run the whole loop yourself in your editor. |
 | **`cloud/`** | The **hosted autonomous agent** — a Cloudflare app (Workers + D1 + Cron + Pages) that runs the loop on a schedule and surfaces decisions for approval. Engine ported to TypeScript (2,160 tests). See `cloud/README.md` + `cloud/DEPLOY.md`. |
 | **`commercial/`, `docs/`** | The offer, the launch posts, the landing page. |
 
@@ -110,9 +110,49 @@ python3 lib/run_tests.py
 | `aso-rank-check` | Read your organic App Store rank per keyword and log it over time — did the change land? **Free public iTunes API, no key.** |
 | `store-ops` | Router for the full chain. |
 
-**Execution (bundled, via the asc / gplay CLIs):**
-metadata sync, localization, PPP pricing, screenshots, submission health,
-reviews, rollout, vitals — for both App Store Connect and Google Play Console.
+**More reasoning — audit, risk, and research:**
+| Skill | Does |
+|-------|------|
+| `aso-context` | Scaffold the per-app `context.md` every other ASO skill reads. Start here. |
+| `aso-review-mine` | Mine your own reviews for the words real users use to describe the app. |
+| `aso-offstore-mine` | Mine "best `<category>` apps" articles + YouTube for off-store discovery language. |
+| `aso-localize-research` | Keyword + rank research per market (de-DE, ja-JP, es-MX…) instead of US-only. |
+| `aso-competitor-watch` | Track competitors' listing changes over time — name, subtitle, price, rating. |
+| `aso-screenshot-score` | Score a live screenshot set — count, device/aspect coverage, first-two story. |
+| `aso-review-risk` | Flag copy that gets apps **rejected** — unverifiable claims, "#1", competitor names. |
+| `aso-rejection-assistant` | Turn a rejection into a plan against the guideline the reviewer actually cited. |
+| `aso-ppo-treatment` | Design a free screenshot A/B test (Product Page Optimization). |
+| `aso-rank-monitor` | Run a keyword set on a cadence so you get **deltas**, not one snapshot. |
+
+**Execution — App Store Connect (via the `asc` CLI):**
+| Skill | Does |
+|-------|------|
+| `asc-metadata-write-lane` | Create the editable version, attach the build, push the copy — **stops before submit**. |
+| `asc-metadata-sync` | Sync + validate metadata; migrate the legacy metadata format. |
+| `asc-localize-metadata` | Translate and sync metadata across locales. |
+| `asc-submission-health` | Preflight a submission, submit a build, monitor review status. |
+| `asc-id-resolver` | Resolve app / build / version / group IDs from human-friendly names. |
+| `asc-ppp-pricing` | Per-territory pricing by purchasing power. |
+| `asc-shots-pipeline` | iOS screenshot capture via xcodebuild / simctl / AXe. |
+
+**Execution — Google Play (via the `gplay` CLI):**
+| Skill | Does |
+|-------|------|
+| `gplay-metadata-sync` | Listing sync, including Fastlane format. |
+| `gplay-review-management` | Review monitoring, filtering, and responses. |
+| `gplay-rollout-management` | Staged rollout orchestration and monitoring. |
+| `gplay-vitals-monitoring` | Crashes, ANRs, performance, errors. |
+| `gplay-screenshot-automation` | Android capture across devices/locales via adb + Espresso. |
+| `gplay-ppp-pricing` | Region-specific pricing. |
+
+**Hosted:**
+| Skill | Does |
+|-------|------|
+| `shipaso-mcp` | Point your agent at the hosted ShipASO MCP server and drive the loop over it. |
+
+Every `asc-*` / `gplay-*` skill that **writes** asks which API key to use before
+it does — `asc` resolves credentials from a default profile, and with more than
+one registered a push through the wrong one succeeds against the wrong account.
 
 ## Principles
 
@@ -146,7 +186,7 @@ reviews, rollout, vitals — for both App Store Connect and Google Play Console.
 ## Open-core — what's free vs. hosted
 
 **The plugin is free and MIT-licensed, forever.** Everything above — the full
-audit → research → optimize → push → verify loop, both stores, all 26 skills —
+audit → research → optimize → push → verify loop, both stores, all 29 skills —
 runs locally with your own credentials at no cost. Use it, fork it, ship apps
 with it. That's the whole product for anyone who's comfortable in a terminal.
 
@@ -158,7 +198,7 @@ schedule.
 
 | | Free (this plugin) | Hosted agent |
 |---|---|---|
-| The 26 skills + full loop | ✅ all of it | ✅ same engine |
+| The 29 skills + full loop | ✅ all of it | ✅ same engine |
 | Real volume data | BYO Apple/Google keys | guided setup |
 | Rank tracking | run `aso-rank-check` by hand | **scheduled** weekly + history + delta alerts |
 | Standing autonomy (weekly cron) | ❌ you re-run it | ✅ Autopilot / Fleet |
