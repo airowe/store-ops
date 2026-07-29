@@ -122,3 +122,34 @@ test("the skill count advertised on the landing pages matches reality", () => {
     assert.equal(n, actual, `${page} advertises ${n} skills; the repo ships ${actual}`);
   }
 });
+
+/**
+ * A skill that ships without a version bump is INVISIBLE.
+ *
+ * `asc-metadata-write-lane` was merged, deployed, and documented — and
+ * `/plugin marketplace update` did not install it, because the cache keys on
+ * plugin.json's `version` and it had sat at 0.1.0 across every skill added
+ * since. The user ran the update, got "✔ Updated 1 marketplace", and still had
+ * the old skill set. Nothing reported a problem.
+ *
+ * This pins the two facts that make a refresh actually happen: the version is
+ * present and parseable, and the marketplace agrees with it. Bumping is then a
+ * deliberate step someone can see in a diff, not a thing to remember.
+ */
+test("plugin.json declares a semver version", () => {
+  assert.match(
+    String(plugin.version ?? ""),
+    /^\d+\.\d+\.\d+$/,
+    "plugin.json needs a semver `version` — the plugin cache keys on it, and a stale version means new skills never install",
+  );
+});
+
+test("marketplace metadata version matches plugin.json", () => {
+  const mv = marketplace.metadata?.version;
+  if (mv === undefined) return; // optional field; only checked when present
+  assert.equal(
+    mv,
+    plugin.version,
+    "marketplace.json and plugin.json disagree on the version — the refresh a user gets is then ambiguous",
+  );
+});
