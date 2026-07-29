@@ -837,6 +837,89 @@ function promoTextFindings(currentCopy: Partial<CopyFields> | undefined): Findin
   ];
 }
 
+/**
+ * Audit the keyword field the user ALREADY has.
+ *
+ * These rules are not new — `optimize.ts` has enforced them since it shipped: no
+ * spaces around commas, no words already carried by the name or subtitle. But
+ * they only ran when GENERATING copy, so nothing ever looked at the live field.
+ *
+ * That silence cost real characters. Heathen re-indexed `calm` (already in its
+ * subtitle) for 4 chars; Who Got Cooked spends 12 on `argument` + `AI`. Both
+ * audits reported nothing, and both were found by hand.
+ *
+ * Apple indexes name + subtitle + keyword field TOGETHER, which is why a repeat
+ * buys nothing: the term is already indexed, and the characters are gone.
+ *
+ * Requires a keyed run: a no-key run cannot read the keyword field, and "we
+ * didn't look" must never be reported as "it's clean".
+ */
+function keywordFieldFindings(input: AuditFindingsInput): Finding[] {
+  const copy = input.currentCopy;
+  if (!copy) return [];
+  const keywords = copy.keywords;
+  if (typeof keywords !== "string" || keywords.trim() === "") return [];
+
+  const out: Finding[] = [];
+
+  // Words already indexed via the name/subtitle. Split the same way optimize.ts
+  // does so the audit and the generator cannot disagree about what counts.
+  const indexed = new Set(
+    `${copy.name ?? ""} ${copy.subtitle ?? ""}`
+      .toLowerCase()
+      .split(/[^a-z0-9]+/)
+      .filter(Boolean),
+  );
+  const terms = keywords
+    .split(",")
+    .map((t) => t.trim())
+    .filter(Boolean);
+  const dupes = terms.filter((t) =>
+    t
+      .toLowerCase()
+      .split(/[^a-z0-9]+/)
+      .filter(Boolean)
+      .some((w) => indexed.has(w)),
+  );
+
+  if (dupes.length > 0) {
+    // Characters reclaimed = the terms themselves plus their separators.
+    const reclaimed = dupes.reduce((n, t) => n + t.length + 1, 0);
+    out.push(
+      mk({
+        id: "keywords_duplicate_indexed",
+        surface: "keywords",
+        severity: "warn",
+        impact: "ranking",
+        title: `${dupes.length} keyword${dupes.length === 1 ? "" : "s"} already indexed by your name or subtitle`,
+        detail:
+          `Apple indexes your name, subtitle and keyword field together, so repeating ` +
+          `${dupes.join(", ")} buys nothing — it just spends characters. Removing ` +
+          `${dupes.length === 1 ? "it" : "them"} frees about ${reclaimed} of your 100.`,
+        fix: `Drop ${dupes.join(", ")} from the keyword field and spend the space on terms you don't rank for yet.`,
+      }),
+    );
+  }
+
+  if (/,\s|\s,/.test(keywords)) {
+    out.push(
+      mk({
+        id: "keywords_wasted_chars",
+        surface: "keywords",
+        severity: "warn",
+        impact: "ranking",
+        title: "Spaces around commas are spending your keyword budget",
+        detail:
+          "The keyword field is 100 characters including separators. Apple splits on commas, " +
+          "so a space after each one is a character bought and thrown away.",
+        fix: "Remove the spaces: write term,term,term with no spaces around the commas.",
+      }),
+    );
+  }
+
+  return out;
+}
+
 /** cross-surface / meta — the no-key unlock CTA + optional read-error notes. */
 function metaFindings(input: AuditFindingsInput): Finding[] {
   const out: Finding[] = [];
@@ -1175,6 +1258,7 @@ export function auditFindings(input: AuditFindingsInput): Finding[] {
     ...metaFindings(input),
     ...reviewRiskFindings(input.proposedCopy),
     ...promoTextFindings(input.currentCopy),
+    ...keywordFieldFindings(input),
     ...ppoFindings(input.snapshot?.experiments),
     ...ppoResultFindings(input.snapshot?.ppoResults?.results ?? []),
   ];
