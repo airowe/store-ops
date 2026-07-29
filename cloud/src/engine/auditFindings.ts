@@ -811,6 +811,14 @@ function languageFindings(input: AuditFindingsInput): Finding[] {
  */
 function promoTextFindings(currentCopy: Partial<CopyFields> | undefined): Finding[] {
   if (!currentCopy) return [];
+  // MEASURED-OR-NOTHING. The public iTunes lookup does not expose promotional
+  // text, so a no-key run's currentCopy has NO `promo` key at all (verified on a
+  // live run: keys were ['description','name']). An absent key means "we did not
+  // look" — NOT "the field is empty" — and flagging it would assert a deficiency
+  // in an unseen field, firing identically for an app with 170 characters we
+  // simply could not read. Only a key that EXISTS and is blank is a measured
+  // absence. The no-key blind spot is disclosed as a surface lock instead.
+  if (!("promo" in currentCopy)) return [];
   if ((currentCopy.promo ?? "").trim() !== "") return [];
   return [
     mk({
@@ -1207,6 +1215,12 @@ const NO_KEY_SURFACE_LOCKS: readonly SurfaceLock[] = [
     surface: "previews",
     label: "We can't see your app preview video without access",
     unlockCopy: "Connect App Store Connect to read your preview coverage and improve it.",
+  },
+  {
+    surface: "promo",
+    label: "We can't see your promotional text without access",
+    unlockCopy:
+      "Connect App Store Connect to read your promotional text — the one listing field you can change without submitting a new version.",
   },
   {
     surface: "privacy",

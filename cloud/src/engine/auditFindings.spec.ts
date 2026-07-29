@@ -733,6 +733,10 @@ describe("surfaceLocks", () => {
     "keywords",
     "screenshots",
     "previews",
+    // Promotional text is not in the public iTunes payload, so a no-key run
+    // cannot see it either. Disclosed as a lock rather than flagged as empty —
+    // "we did not look" is not "the field is unused".
+    "promo",
     "privacy",
     "category",
     "locales",
@@ -1303,32 +1307,71 @@ describe("review-risk lint integration (#178)", () => {
  * suggest putting search terms in it.
  */
 describe("promotional text (unindexed, version-free — flag when unused)", () => {
-  it("flags promotional text that is absent", () => {
-    expect(ids(input({ currentCopy: {} }))).toContain("promo_text_unused");
-  });
-
-  it("flags promotional text that is empty or whitespace", () => {
-    expect(ids(input({ currentCopy: { promo: "" } }))).toContain("promo_text_unused");
-    expect(ids(input({ currentCopy: { promo: "   " } }))).toContain("promo_text_unused");
+  /**
+   * READ AND EMPTY. Only a keyed run can know this: ASC returns the field as
+   * "" when it exists and is unused. That is a measured absence, and the only
+   * case where claiming "unused" is honest.
+   */
+  it("flags promotional text that was read and is empty", () => {
+    expect(ids(input({ hasAscKey: true, currentCopy: { promo: "" } }))).toContain(
+      "promo_text_unused",
+    );
+    expect(ids(input({ hasAscKey: true, currentCopy: { promo: "   " } }))).toContain(
+      "promo_text_unused",
+    );
   });
 
   it("does not flag it when the field is in use", () => {
     expect(
-      ids(input({ currentCopy: { promo: "New: 10 Stoic readings for the new year." } })),
+      ids(
+        input({ hasAscKey: true, currentCopy: { promo: "New: 10 Stoic readings for the new year." } }),
+      ),
     ).not.toContain("promo_text_unused");
   });
 
   /**
-   * Absent `currentCopy` means the run never READ the field — which is not the
-   * same as the field being empty. Claiming "unused" there would assert
-   * something unmeasured.
+   * NOT READ. The public iTunes lookup does not expose promotional text, so a
+   * no-key run's `currentCopy` has NO `promo` key — the exact shape production
+   * produces (verified on a live Heathen run: keys were ['description','name']).
+   *
+   * An absent key is "we did not look", not "the field is empty". Flagging it
+   * would assert a deficiency in an unseen field — the precise thing
+   * NO_KEY_SURFACE_LOCKS exists to prevent — and would fire identically for an
+   * app with 170 characters of promo text we simply could not read.
    */
-  it("stays silent when the copy was never read (unmeasured ≠ empty)", () => {
+  it("stays SILENT when the field was never read (no-key run shape)", () => {
+    const noKey = ids(input({ hasAscKey: false, currentCopy: { name: "Heathen", description: "x" } }));
+    expect(noKey).not.toContain("promo_text_unused");
+  });
+
+  it("stays silent when no copy was read at all", () => {
     expect(ids(input())).not.toContain("promo_text_unused");
   });
 
+  /**
+   * A keyed run whose copy somehow lacks the key is still unmeasured — do not
+   * infer emptiness from a missing key just because a key was present.
+   */
+  it("stays silent on a keyed run when the promo key is absent", () => {
+    expect(ids(input({ hasAscKey: true, currentCopy: { name: "Heathen" } }))).not.toContain(
+      "promo_text_unused",
+    );
+  });
+
+  /** The blind spot must still be VISIBLE to a no-key run — as a lock, not a flag. */
+  it("declares promotional text a locked surface on a no-key run", () => {
+    const locks = surfaceLocks(input({ hasAscKey: false }));
+    const promo = locks.find((l) => l.surface === "promo");
+    expect(promo, "no-key runs must disclose promo text as unreadable").toBeDefined();
+    expect(promo!.label.toLowerCase()).not.toMatch(/empty|unused|missing/);
+  });
+
+  it("locks nothing on a keyed run", () => {
+    expect(surfaceLocks(input({ hasAscKey: true }))).toEqual([]);
+  });
+
   it("never recommends keywords in it — the field is not indexed", () => {
-    const f = auditFindings(input({ currentCopy: {} } as never)).find(
+    const f = auditFindings(input({ hasAscKey: true, currentCopy: { promo: "" } })).find(
       (x) => x.id === "promo_text_unused",
     );
     expect(f).toBeDefined();
