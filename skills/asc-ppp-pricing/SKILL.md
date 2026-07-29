@@ -8,7 +8,11 @@ description: Set territory-specific pricing for subscriptions and in-app purchas
 Use this skill to set different prices for different countries based on purchasing power parity or custom pricing strategies.
 
 ## Preconditions
-- Ensure credentials are set (`asc auth login` or `ASC_*` env vars).
+- Ensure credentials are set (`asc auth login` or `ASC_*` env vars). This skill
+  **changes prices**, so confirm *which* key first — `asc auth status` lists the
+  registered profiles; have the user name the one that owns the app.
+  See the “Which App Store Connect key?” section of
+  `asc-metadata-write-lane` for registering a `.p8` and switching profiles.
 - Use `ASC_APP_ID` or pass `--app` explicitly.
 - Know your base territory (usually USA) and base price tier.
 

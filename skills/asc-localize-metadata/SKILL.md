@@ -19,7 +19,12 @@ Use this skill to pull English (or any source locale) App Store metadata, transl
 - Prefer deterministic ID-based operations. Do not "pick the first row" via `head -1` unless the user explicitly agrees.
 
 ## Preconditions
-- Auth configured (`asc auth login` or `ASC_*` env vars)
+- Auth configured (`asc auth login` or `ASC_*` env vars). This skill **writes**,
+  so confirm *which* key first — run `asc auth status`, show the user the
+  profiles, and have them name the one that owns the app. With more than one key
+  registered, a push through the wrong profile succeeds against the wrong
+  account. See the “Which App Store Connect key?” section of
+  `asc-metadata-write-lane` for registering a `.p8` and switching profiles.
 - Know your app ID (`asc apps list` to find it)
 - At least one locale (typically en-US) already has metadata in App Store Connect
 

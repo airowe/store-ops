@@ -64,18 +64,31 @@ asc auth switch --name "<profile>"     # change the default
 ASC_PROFILE="<profile>" asc <command>  # or scope it to one command
 ```
 
-No profile yet:
+No profile yet? `asc auth login` takes flags — it does **not** prompt, so ask the
+user for the three values and pass the `.p8` as a path:
 
 ```bash
-asc auth login   # prompts for the .p8 path, key id, issuer id
+asc auth login --name "MarketingOps" \
+  --key-id <KEY_ID> --issuer-id <ISSUER_ID> \
+  --private-key ~/Downloads/AuthKey_<KEY_ID>.p8 \
+  --network
 ```
 
-Keys come from **App Store Connect → Users and Access → Integrations → App Store
-Connect API**. The `.p8` downloads **once** — Apple will not show it again.
+`--network` validates against the live API, so a wrong issuer id fails here
+rather than three steps later.
 
-Never ask the user to paste the `.p8` contents into a conversation. `asc auth
-login` reads the file directly and stores it in the system keychain; the key
-should never transit a chat log.
+Keys come from **App Store Connect → Users and Access → Integrations → App Store
+Connect API**. The `.p8` downloads **once** — Apple will not show it again. Once
+registered, the key material lives in the system keychain and the file can be
+moved somewhere safe; `asc` no longer needs it at that path.
+
+Never ask the user to paste the `.p8` contents into a conversation, and never
+read the file to display it. Pass the path — `asc auth login` reads it directly.
+Key material in a transcript is leaked key material, and the only remedy is
+revoking the key.
+
+If `status` looks right but calls still fail, `asc auth doctor` diagnoses
+mismatches (mixed env/keychain sources, expired or malformed keys).
 
 ## Preconditions — check, do not assume
 
