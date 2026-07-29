@@ -1319,6 +1319,98 @@ describe("review-risk lint integration (#178)", () => {
  *
  * Same shape as the promo-text gap: the check existed, the audit didn't run it.
  */
+/**
+ * #410: there was NO iOS length finding at all. A subtitle over 30, or a keyword
+ * field over 100, produced silence — Apple rejects at submission and the audit
+ * said nothing.
+ *
+ * The limits already live in constants.ts CHAR_LIMITS and optimize.ts enforces
+ * them — but only when GENERATING copy. Same shape as the promo-text and
+ * keyword-dupe gaps: the rule existed, the audit never ran it.
+ *
+ * Severity is `warn`, not `critical`: an over-limit field is a real submission
+ * blocker, but the #41 trap is over-asserting. Apple's own limit is the fact;
+ * the consequence is stated without escalating.
+ */
+describe("iOS field lengths are audited (#410)", () => {
+  const copy = (over: Partial<{ name: string; subtitle: string; keywords: string; promo: string }>) => ({
+    name: "Heathen",
+    subtitle: "Stoic calm for atheists",
+    keywords: "mindfulness,sleep",
+    ...over,
+  });
+
+  it.each([
+    ["subtitle", "s".repeat(31), 30],
+    ["keywords", "k".repeat(101), 100],
+    ["promo", "p".repeat(171), 170],
+  ])("flags %s over its %d-char limit", (field, value, limit) => {
+    const got = auditFindings(
+      input({ hasAscKey: true, currentCopy: copy({ [field]: value }) as never }),
+    );
+    const f = got.find((x) => x.id === `${field}_over_limit`);
+    expect(f, `expected a ${field} over-limit finding`).toBeDefined();
+    // The number must be Apple's, quoted, not a vague "too long".
+    expect(`${f!.title} ${f!.detail}`).toContain(String(limit));
+  });
+
+  it("names the overage so the fix is arithmetic, not guesswork", () => {
+    const got = auditFindings(
+      input({ hasAscKey: true, currentCopy: copy({ subtitle: "s".repeat(35) }) }),
+    );
+    const f = got.find((x) => x.id === "subtitle_over_limit")!;
+    expect(`${f.title} ${f.detail}`).toMatch(/35/); // actual
+    expect(`${f.detail} ${f.fix ?? ""}`).toMatch(/\b5\b/); // over by
+  });
+
+  it.each([
+    ["subtitle", "s".repeat(30)],
+    ["keywords", "k".repeat(100)],
+    ["promo", "p".repeat(170)],
+  ])("stays silent on %s exactly AT the limit", (field, value) => {
+    const got = auditFindings(
+      input({ hasAscKey: true, currentCopy: copy({ [field]: value }) as never }),
+    ).map((x) => x.id);
+    expect(got).not.toContain(`${field}_over_limit`);
+  });
+
+  it("flags the app NAME over 30 as well", () => {
+    const got = auditFindings(
+      input({ hasAscKey: true, currentCopy: copy({ name: "n".repeat(31) }) }),
+    ).map((x) => x.id);
+    expect(got).toContain("name_over_limit");
+  });
+
+  /**
+   * Unmeasured ≠ within limits — the rule #404 established. A no-key run cannot
+   * read these fields, so claiming they fit would assert something never seen.
+   */
+  it("says nothing about lengths when the copy was never read", () => {
+    const noKey = auditFindings(
+      input({ hasAscKey: false, currentCopy: { name: "X", description: "y" } }),
+    ).map((x) => x.id);
+    for (const f of ["name", "subtitle", "keywords", "promo"]) {
+      expect(noKey).not.toContain(`${f}_over_limit`);
+    }
+  });
+
+  it("says nothing about a field that is absent", () => {
+    const got = auditFindings(input({ hasAscKey: true, currentCopy: { name: "Heathen" } })).map(
+      (x) => x.id,
+    );
+    expect(got).not.toContain("subtitle_over_limit");
+    expect(got).not.toContain("promo_over_limit");
+  });
+
+  it("never escalates an over-limit field past warn (#41)", () => {
+    const got = auditFindings(
+      input({ hasAscKey: true, currentCopy: copy({ subtitle: "s".repeat(60) }) }),
+    );
+    const f = got.find((x) => x.id === "subtitle_over_limit")!;
+    expect(f.severity).toBe("warn");
+  });
+});
+
 describe("keyword field is audited, not just generated", () => {
   const copy = (over: Partial<{ name: string; subtitle: string; keywords: string }>) => ({
     name: "Heathen - Secular Meditation",

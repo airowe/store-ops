@@ -40,6 +40,7 @@ import { mk, sortFindings } from "./findings/core.js";
 import { withActions } from "./findingActions.js";
 import type { Finding, SurfaceLock } from "./findings/core.js";
 import type { CopyFields } from "./optimize.js";
+import { CHAR_LIMITS, type StoreField } from "./constants.js";
 import { reviewRiskFindings } from "./reviewRisk.js";
 import { ppoFindings } from "./ppoFindings.js";
 import { ppoResultFindings } from "./ppoResults.js";
@@ -838,6 +839,57 @@ function promoTextFindings(currentCopy: Partial<CopyFields> | undefined): Findin
 }
 
 /**
+ * Audit the LENGTH of the iOS copy fields (#410).
+ *
+ * There was no iOS length finding at all: a subtitle over 30 or a keyword field
+ * over 100 produced silence, and Apple would reject at submission having been
+ * told nothing. The limits live in CHAR_LIMITS and optimize.ts enforces them —
+ * but only when GENERATING copy, so the live listing was never measured.
+ *
+ * Reads CHAR_LIMITS directly rather than restating the numbers, so the audit and
+ * the generator cannot drift apart on what the limit is.
+ *
+ * `warn`, never `critical` (#41): an over-limit field really does block
+ * submission, and stating Apple's own number is enough — escalating past that is
+ * the over-assertion this codebase avoids.
+ */
+function copyLengthFindings(currentCopy: Partial<CopyFields> | undefined): Finding[] {
+  if (!currentCopy) return [];
+
+  const FIELDS: Array<{ key: keyof CopyFields & StoreField; label: string; surface: string }> = [
+    { key: "name", label: "app name", surface: "name" },
+    { key: "subtitle", label: "subtitle", surface: "subtitle" },
+    { key: "keywords", label: "keyword field", surface: "keywords" },
+    { key: "promo", label: "promotional text", surface: "metadata" },
+  ];
+
+  const out: Finding[] = [];
+  for (const { key, label, surface } of FIELDS) {
+    const value = currentCopy[key];
+    // Absent ⇒ never read ⇒ say nothing. Unmeasured is not "within limits".
+    if (typeof value !== "string") continue;
+    const limit = CHAR_LIMITS[key];
+    if (value.length <= limit) continue;
+
+    const over = value.length - limit;
+    out.push(
+      mk({
+        id: `${key}_over_limit`,
+        surface,
+        severity: "warn",
+        impact: "completeness",
+        title: `Your ${label} is ${value.length} characters — Apple's limit is ${limit}`,
+        detail:
+          `App Store Connect will not accept a ${label} longer than ${limit} characters, ` +
+          `so this blocks submission until it is shortened.`,
+        fix: `Cut ${over} character${over === 1 ? "" : "s"} from your ${label}.`,
+      }),
+    );
+  }
+  return out;
+}
+
+/**
  * Audit the keyword field the user ALREADY has.
  *
  * These rules are not new — `optimize.ts` has enforced them since it shipped: no
@@ -1259,6 +1311,7 @@ export function auditFindings(input: AuditFindingsInput): Finding[] {
     ...reviewRiskFindings(input.proposedCopy),
     ...promoTextFindings(input.currentCopy),
     ...keywordFieldFindings(input),
+    ...copyLengthFindings(input.currentCopy),
     ...ppoFindings(input.snapshot?.experiments),
     ...ppoResultFindings(input.snapshot?.ppoResults?.results ?? []),
   ];
