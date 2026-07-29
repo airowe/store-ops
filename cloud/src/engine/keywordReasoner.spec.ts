@@ -187,6 +187,44 @@ describe("classifyDeterministic — no LLM", () => {
     expect(out.target).not.toContain("pantry");
   });
 
+  /**
+   * GENRE_SEEDS covered 15 consumer-utility triggers and nothing social, chat,
+   * entertainment, sports or news. An app in one of those categories whose name
+   * is pure brand got ZERO targets — every name token classified as brand, no
+   * genre seed to fold in — and silently tracked nothing for weeks.
+   *
+   * Real case: "Who Got Cooked" (Social Networking / Entertainment) had no rank
+   * snapshot from 2026-07-06 onward. Three portfolio apps were in that state.
+   */
+  it("seeds a social/chat app whose name carries no category word", () => {
+    const out = classifyDeterministic({
+      appName: "Who Got Cooked Social Networking, Entertainment",
+      description:
+        "Send Maude AI a screenshot of any text argument and she returns a ruling. " +
+        "The courtroom for your group chat.",
+      candidateTokens: ["who", "got", "cooked"],
+    });
+    // Every name token is brand — that part is correct and stays.
+    expect(out.brand).toEqual(expect.arrayContaining(["who", "got", "cooked"]));
+    // But it must no longer end up targeting NOTHING.
+    expect(out.target.length).toBeGreaterThan(0);
+  });
+
+  it.each([
+    ["social", "Some App Social Networking"],
+    ["chat", "Some App chat"],
+    ["entertainment", "Some App Entertainment"],
+    ["sports", "Some App Sports, News"],
+    ["news", "Some App News"],
+  ])("seeds the %s category", (_label, appName) => {
+    const out = classifyDeterministic({
+      appName,
+      description: "An app that does a thing.",
+      candidateTokens: [],
+    });
+    expect(out.target.length, `${appName} produced no targets`).toBeGreaterThan(0);
+  });
+
   it("never lets a brand or junk token leak into the genre-seeded target set", () => {
     const out = classifyDeterministic({
       appName: "Pantry Pro",

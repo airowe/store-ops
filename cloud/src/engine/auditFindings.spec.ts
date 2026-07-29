@@ -80,7 +80,11 @@ function input(over: Partial<AuditFindingsInput> = {}): AuditFindingsInput {
   return {
     snapshot: healthySnapshot(),
     audit: audit(),
-    ranks: [],
+    // A HEALTHY app tracks keywords. The fixture defaulted to [] — which
+    // describes an app tracking nothing, the exact state keywords_none_tracked
+    // now flags. Every test built on this baseline was quietly asserting
+    // against a broken app.
+    ranks: [{ keyword: "demo", rank: 12, checkedAt: "2026-07-27" } as never],
     appName: "Demo",
     hasAscKey: true,
     ...over,
@@ -1346,6 +1350,53 @@ describe("review-risk lint integration (#178)", () => {
  * "Who Got Cooked" whose subtitle carries the keywords. The promise is removed
  * from SKILL.md instead of shipped as a misfire.
  */
+/**
+ * An app tracking ZERO keywords is the loudest possible fact about a rank
+ * tracker, and it produced silence.
+ *
+ * Found by asking why Who Got Cooked had no rank snapshot since 2026-07-06. The
+ * sweep ran every Monday and did its work; the reasoner correctly classified
+ * "who"/"got"/"cooked" as brand tokens and excluded them, no genre trigger
+ * matched its category (Social Networking / Entertainment is not in
+ * GENRE_SEEDS), and it was left targeting nothing. Three of the portfolio's apps
+ * are in that state.
+ *
+ * Every card downstream renders empty and the audit reports clean — an app
+ * tracking nothing looks exactly like a healthy one. This is the finding that
+ * distinguishes them.
+ */
+describe("zero tracked keywords is a finding, not silence", () => {
+  it("flags an app that is tracking no keywords at all", () => {
+    const got = auditFindings(input({ ranks: [] })).find((f) => f.id === "keywords_none_tracked");
+    expect(got, "an app tracking nothing must say so").toBeDefined();
+    expect(got!.severity).toBe("warn");
+  });
+
+  it("explains that rank data cannot arrive, not merely that a list is empty", () => {
+    const f = auditFindings(input({ ranks: [] })).find((x) => x.id === "keywords_none_tracked")!;
+    const text = `${f.title} ${f.detail}`.toLowerCase();
+    expect(text).toMatch(/rank|track/);
+  });
+
+  it("stays silent when the app tracks at least one keyword", () => {
+    const ranks = [{ keyword: "meditation", rank: 12, checkedAt: "2026-07-27" }] as never;
+    expect(auditFindings(input({ ranks })).map((f) => f.id)).not.toContain("keywords_none_tracked");
+  });
+
+  /**
+   * A tracked keyword that came back UNRANKED is still tracked — that is #396's
+   * case (measured, no position), and materially different from tracking
+   * nothing. Conflating them would report a working app as broken.
+   */
+  it("stays silent when keywords are tracked but unranked", () => {
+    const ranks = [
+      { keyword: "meditation", rank: null, checkedAt: "2026-07-27" },
+      { keyword: "calm", rank: null, checkedAt: "2026-07-27" },
+    ] as never;
+    expect(auditFindings(input({ ranks })).map((f) => f.id)).not.toContain("keywords_none_tracked");
+  });
+});
+
 describe("keyword hygiene (#410)", () => {
   const copy = (over: Partial<{ name: string; subtitle: string; keywords: string; promo: string; description: string }>) => ({
     name: "Heathen",
