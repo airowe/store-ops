@@ -1,0 +1,30 @@
+-- 0011_asc_write_opt_in — per-user consent for ShipASO performing ASC writes
+-- on the user's behalf (#374: screenshot upload, PPO experiment, CPP create).
+--
+-- WHY A SEPARATE FLAG FROM THE TIER GATE:
+-- `canAscWrite(tier)` answers "is this capability AVAILABLE on your plan".
+-- It must not answer "should we write". Subscribing to a paid plan is a
+-- purchase decision, not a grant of permission to mutate a live App Store
+-- listing with a borrowed credential — those are different consents and
+-- collapsing them would mean an upgrade silently enabled outward writes.
+--
+-- So a write requires ALL of:
+--   1. a paid tier          (canAscWrite)
+--   2. THIS flag             (the user said yes)
+--   3. an approved run       (existing ascPushRoute gate)
+--   4. an explicit click     (never the cron)
+-- Any one absent ⇒ no write.
+--
+-- DEFAULT 0 is the load-bearing part. A default of 1 would mean every existing
+-- paid user woke up opted in to something they never chose, which is exactly
+-- the failure this column exists to prevent. Opting in is an action.
+--
+-- Plain ALTER rather than the table-rebuild used by 0010: that migration
+-- rebuilt because it changed a column's shape on a table with existing rows.
+-- This only APPENDS a NOT NULL column with a default, which SQLite applies to
+-- existing rows without a rewrite.
+--
+-- The column is defined HERE ONLY, not in schema.sql. The specs build a real DB
+-- as schema.sql (baseline) + every migration in order, so a column present in
+-- both fails with "duplicate column name" — verified by doing exactly that.
+ALTER TABLE users ADD COLUMN asc_write_opt_in INTEGER NOT NULL DEFAULT 0;

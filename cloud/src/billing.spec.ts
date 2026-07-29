@@ -7,6 +7,7 @@ import { describe, expect, it, vi } from "vitest";
 import {
   appLimitForTier,
   canRunCron,
+  canAscWrite,
   createCheckoutSession,
   dunningEmail,
   dunningOutcome,
@@ -46,6 +47,38 @@ describe("canRunCron", () => {
     expect(canRunCron("indie")).toBe(true);
     expect(canRunCron("startup")).toBe(true);
     expect(canRunCron("scale")).toBe(true);
+  });
+});
+
+/**
+ * #374: ShipASO performing an ASC WRITE on the user's behalf (screenshot upload,
+ * experiment/CPP create) is a paid convenience. Reading stays free; acting does
+ * not. Same principle as `canRunCron`, applied to the write lane.
+ *
+ * This gate answers only "is the capability AVAILABLE to this tier". It is NOT
+ * consent: a write additionally requires the user's own opt-in, an approved run,
+ * and an explicit click. Being on a paid plan must never mean writes start
+ * happening silently.
+ */
+describe("canAscWrite", () => {
+  it("excludes free — reading is free, acting is not", () => {
+    expect(canAscWrite("free")).toBe(false);
+  });
+
+  it("includes every paid (recurring) tier", () => {
+    expect(canAscWrite("indie")).toBe(true);
+    expect(canAscWrite("startup")).toBe(true);
+    expect(canAscWrite("scale")).toBe(true);
+  });
+
+  /**
+   * Pinned to canRunCron deliberately: both answer "may ShipASO act on your
+   * behalf". If they ever diverge it should be a decision, not a drift.
+   */
+  it("agrees with canRunCron on every tier", () => {
+    for (const tier of ["free", "indie", "startup", "scale"] as const) {
+      expect(canAscWrite(tier), `${tier}`).toBe(canRunCron(tier));
+    }
   });
 });
 
