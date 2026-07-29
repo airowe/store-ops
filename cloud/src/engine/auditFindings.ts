@@ -82,6 +82,12 @@ export type AuditFindingsInput = {
    */
   proposedCopy?: CopyFields | undefined;
   /**
+   * The listing's CURRENT copy as read from the store. Undefined means the run
+   * never read it — which is NOT the same as a field being empty, so findings
+   * that assert absence must stay silent rather than claim something unmeasured.
+   */
+  currentCopy?: Partial<CopyFields> | undefined;
+  /**
    * PUBLIC-review sentiment (#95). Undefined when reviews weren't fetched (or
    * the fetch came back empty) — the `reviews` surface then emits NOTHING, like
    * every other absent surface. When present it carries the honest sample size
@@ -786,6 +792,43 @@ function languageFindings(input: AuditFindingsInput): Finding[] {
   ];
 }
 
+/**
+ * Promotional text — flag the field being UNUSED.
+ *
+ * It is the only listing field editable without submitting a new version, and it
+ * is NOT indexed. So it costs nothing from the 100-char keyword budget, and it
+ * is the one surface where positioning can be tested weekly instead of per
+ * release: iterate here, then promote the winner into the subtitle, where it
+ * DOES get indexed.
+ *
+ * An empty field scores nothing and flags nothing unless something looks for the
+ * absence — which is exactly how 170 unused characters went unmentioned in a real
+ * audit while every populated field was scored.
+ *
+ * `currentCopy` undefined means the run never READ the copy. That is not the same
+ * as the field being empty, so this stays silent rather than asserting something
+ * unmeasured.
+ */
+function promoTextFindings(currentCopy: Partial<CopyFields> | undefined): Finding[] {
+  if (!currentCopy) return [];
+  if ((currentCopy.promo ?? "").trim() !== "") return [];
+  return [
+    mk({
+      id: "promo_text_unused",
+      surface: "metadata",
+      severity: "warn",
+      impact: "conversion",
+      title: "Promotional text is empty — 170 characters unused",
+      detail:
+        "Promotional text sits above your description and is the only listing field you can change " +
+        "WITHOUT submitting a new version. It is not indexed, so it costs nothing from your keyword " +
+        "budget — use it for what is timely (a launch, a season, a press mention) and to test " +
+        "positioning weekly, then move the winner into your subtitle where it does get indexed.",
+      fix: "Write up to 170 characters of timely copy in App Store Connect — no resubmission needed.",
+    }),
+  ];
+}
+
 /** cross-surface / meta — the no-key unlock CTA + optional read-error notes. */
 function metaFindings(input: AuditFindingsInput): Finding[] {
   const out: Finding[] = [];
@@ -1123,6 +1166,7 @@ export function auditFindings(input: AuditFindingsInput): Finding[] {
     ...chartRankFindings(input),
     ...metaFindings(input),
     ...reviewRiskFindings(input.proposedCopy),
+    ...promoTextFindings(input.currentCopy),
     ...ppoFindings(input.snapshot?.experiments),
     ...ppoResultFindings(input.snapshot?.ppoResults?.results ?? []),
   ];
