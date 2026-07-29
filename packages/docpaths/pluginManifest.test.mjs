@@ -122,3 +122,92 @@ test("the skill count advertised on the landing pages matches reality", () => {
     assert.equal(n, actual, `${page} advertises ${n} skills; the repo ships ${actual}`);
   }
 });
+
+/**
+ * A skill that ships without a version bump is INVISIBLE.
+ *
+ * `asc-metadata-write-lane` was merged, deployed, and documented — and
+ * `/plugin marketplace update` did not install it, because the cache keys on
+ * plugin.json's `version` and it had sat at 0.1.0 across every skill added
+ * since. The user ran the update, got "✔ Updated 1 marketplace", and still had
+ * the old skill set. Nothing reported a problem.
+ *
+ * This pins the two facts that make a refresh actually happen: the version is
+ * present and parseable, and the marketplace agrees with it. Bumping is then a
+ * deliberate step someone can see in a diff, not a thing to remember.
+ */
+test("plugin.json declares a semver version", () => {
+  assert.match(
+    String(plugin.version ?? ""),
+    /^\d+\.\d+\.\d+$/,
+    "plugin.json needs a semver `version` — the plugin cache keys on it, and a stale version means new skills never install",
+  );
+});
+
+/**
+ * Every skill that WRITES to Apple must make the user choose the key.
+ *
+ * `asc` resolves credentials from a default profile. A developer with a client
+ * key and a personal key has two, and the default is whichever was registered
+ * last. A push through the wrong one does not error — it succeeds, against the
+ * wrong account, and stays invisible until it lands on someone's live listing.
+ *
+ * Prose is the only place this can live (the skills are markdown), so prose is
+ * what gets pinned. Asserted on `asc auth status` specifically: it is the
+ * command that makes the choice visible, and a skill that mentions keys without
+ * it is telling the user to care without telling them how to look.
+ */
+test("every write-capable asc skill tells the user to confirm the key first", () => {
+  // Skills that mutate Apple state. Read-only skills (asc-id-resolver,
+  // asc-submission-health) are deliberately excluded: picking the wrong profile
+  // there returns wrong data, which is visible, not a silent bad write.
+  const writeSkills = [
+    "asc-metadata-write-lane",
+    "asc-localize-metadata",
+    "asc-ppp-pricing",
+  ];
+
+  for (const skill of writeSkills) {
+    const md = readFileSync(join(repoRoot, "skills", skill, "SKILL.md"), "utf8");
+    assert.match(
+      md,
+      /asc auth status/,
+      `${skill} writes to a real Apple account but never tells the user to run \`asc auth status\` — with two profiles registered, it will push through whichever happens to be default`,
+    );
+  }
+});
+
+/**
+ * The `.p8` must never transit the transcript.
+ *
+ * `asc auth login` takes `--private-key <path>` and reads the file itself. An
+ * agent that instead asks the user to paste the key contents leaks unrevocable
+ * material into a chat log — Apple lets you download a key exactly once, so the
+ * only remedy is revoking it. The skill says so; this keeps it saying so.
+ */
+test("the write lane forbids pasting .p8 contents and passes a path instead", () => {
+  const md = readFileSync(
+    join(repoRoot, "skills", "asc-metadata-write-lane", "SKILL.md"),
+    "utf8",
+  );
+  assert.match(
+    md,
+    /--private-key/,
+    "the key-registration example must pass the .p8 by PATH via --private-key",
+  );
+  assert.match(
+    md,
+    /[Nn]ever ask the user to paste the `?\.p8/,
+    "the skill must explicitly forbid pasting .p8 contents into the conversation",
+  );
+});
+
+test("marketplace metadata version matches plugin.json", () => {
+  const mv = marketplace.metadata?.version;
+  if (mv === undefined) return; // optional field; only checked when present
+  assert.equal(
+    mv,
+    plugin.version,
+    "marketplace.json and plugin.json disagree on the version — the refresh a user gets is then ambiguous",
+  );
+});

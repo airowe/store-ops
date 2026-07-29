@@ -39,6 +39,57 @@ here is undoable. Submitting for review is not, which is why it is out of scope.
 **Approving is not shipping.** This skill can put copy in front of Apple's
 submit button; pressing it stays a deliberate human act.
 
+## Which App Store Connect key? — ask, do not assume
+
+Every command here writes to a real Apple account, so **which key is active
+matters as much as the command**. `asc` stores keys as named profiles, and a
+developer with more than one app usually has more than one:
+
+```bash
+asc auth status          # which profile is active, and what else is stored
+```
+
+```
+credentials:
+  MarketingOps    keyId NC235A8728   (default)
+  ThelowpostDev   keyId DA635L7294
+```
+
+**If more than one profile exists, ask the user which to use before writing.**
+Picking the default silently can push metadata to the wrong Apple account — an
+error that is invisible until it lands on someone's live listing.
+
+```bash
+asc auth switch --name "<profile>"     # change the default
+ASC_PROFILE="<profile>" asc <command>  # or scope it to one command
+```
+
+No profile yet? `asc auth login` takes flags — it does **not** prompt, so ask the
+user for the three values and pass the `.p8` as a path:
+
+```bash
+asc auth login --name "MarketingOps" \
+  --key-id <KEY_ID> --issuer-id <ISSUER_ID> \
+  --private-key ~/Downloads/AuthKey_<KEY_ID>.p8 \
+  --network
+```
+
+`--network` validates against the live API, so a wrong issuer id fails here
+rather than three steps later.
+
+Keys come from **App Store Connect → Users and Access → Integrations → App Store
+Connect API**. The `.p8` downloads **once** — Apple will not show it again. Once
+registered, the key material lives in the system keychain and the file can be
+moved somewhere safe; `asc` no longer needs it at that path.
+
+Never ask the user to paste the `.p8` contents into a conversation, and never
+read the file to display it. Pass the path — `asc auth login` reads it directly.
+Key material in a transcript is leaked key material, and the only remedy is
+revoking the key.
+
+If `status` looks right but calls still fail, `asc auth doctor` diagnoses
+mismatches (mixed env/keychain sources, expired or malformed keys).
+
 ## Preconditions — check, do not assume
 
 ```bash

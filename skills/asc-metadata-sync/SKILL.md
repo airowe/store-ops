@@ -32,6 +32,24 @@ asc localizations download --version "VERSION_ID" --path "./localizations"
 asc localizations upload --version "VERSION_ID" --path "./localizations"
 ```
 
+## Which App Store Connect key?
+
+These commands write to a real Apple account. `asc` stores keys as named
+profiles, and a developer with several apps usually has several:
+
+```bash
+asc auth status                        # active profile + what else is stored
+asc auth switch --name "<profile>"     # change the default
+ASC_PROFILE="<profile>" asc <command>  # or scope it to one command
+```
+
+**If more than one profile exists, ask which to use before writing** — the
+default may belong to a different app, and that only becomes visible once the
+metadata lands on the wrong listing.
+
+No profile yet: `asc auth login` (prompts for the `.p8` path, key id, issuer id;
+stores it in the system keychain). Never ask for the `.p8` contents in chat.
+
 ## Before any version-level write: is there an editable version?
 
 Version fields (description, keywords, promotional text, what's new) can only be
