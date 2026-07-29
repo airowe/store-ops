@@ -43,6 +43,21 @@ export function canRunCron(tier: Tier): boolean {
   return tier === "indie" || tier === "startup" || tier === "scale";
 }
 
+/**
+ * May ShipASO perform an App Store Connect WRITE on this user's behalf —
+ * uploading a screenshot set, creating a PPO experiment or a Custom Product
+ * Page (#374)? Reading a listing stays free; acting on it is a paid convenience,
+ * the same principle `canRunCron` already applies to autonomy.
+ *
+ * AVAILABILITY ONLY — this is not consent. A write additionally requires the
+ * user's own opt-in (`users.asc_write_opt_in`, default OFF), an approved run,
+ * and an explicit click. Being on a paid plan must never mean writes start
+ * happening silently.
+ */
+export function canAscWrite(tier: Tier): boolean {
+  return canRunCron(tier);
+}
+
 // ── tier ⇄ Stripe price mapping ───────────────────────────────────────────────────
 
 export type StripePriceEnv = {

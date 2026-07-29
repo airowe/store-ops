@@ -446,6 +446,37 @@ export async function setOptOut(
 }
 
 /**
+ * Has this user opted IN to ShipASO performing App Store Connect writes on their
+ * behalf — screenshot upload, PPO experiment, CPP create (#374)?
+ *
+ * Fails CLOSED: a missing row or a missing flag reads as `false`. The opposite
+ * default would mean an unknown user is treated as having consented to mutating
+ * a live listing, which is the failure this flag exists to prevent.
+ *
+ * This is CONSENT ONLY. A write additionally requires a paid tier
+ * (`canAscWrite`), an approved run, and an explicit click — this answers just
+ * "did the user say yes".
+ */
+export async function getAscWriteOptIn(db: D1Database, userId: string): Promise<boolean> {
+  const row = await db
+    .prepare("SELECT asc_write_opt_in FROM users WHERE id = ?")
+    .bind(userId)
+    .first<{ asc_write_opt_in: number }>();
+  return (row?.asc_write_opt_in ?? 0) === 1;
+}
+
+/** Set a user's ASC-write consent (the settings toggle calls this). */
+export async function setAscWriteOptIn(
+  db: D1Database,
+  args: { userId: string; optIn: boolean },
+): Promise<void> {
+  await db
+    .prepare("UPDATE users SET asc_write_opt_in = ? WHERE id = ?")
+    .bind(args.optIn ? 1 : 0, args.userId)
+    .run();
+}
+
+/**
  * Build the ANONYMOUS, ENCRYPTED `proposal_edits` INSERT statements for a decided
  * run (#39 Part 2), to be APPENDED to recordApproval's atomic batch so the
  * captured signal can never disagree with the recorded gate decision.

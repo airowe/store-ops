@@ -44,6 +44,9 @@ CREATE TABLE IF NOT EXISTS users (
   email_digest            TEXT NOT NULL DEFAULT 'weekly' -- comms-prefs: weekly digest email; 'off' silences it (the sweep runs regardless)
                             CHECK (email_digest IN ('weekly', 'off')),
   push_run_ready          INTEGER NOT NULL DEFAULT 1     -- comms-prefs: 0 ⇒ do NOT send run-ready push (the run still opens)
+  -- NOTE: asc_write_opt_in (#374) is added by migrations/0011, NOT here. The
+  -- specs apply this baseline AND every migration in order, so a column in both
+  -- is a "duplicate column name" failure.
 );
 
 -- Migration for an EXISTING db (the CREATE above only fires on a fresh db). Run
