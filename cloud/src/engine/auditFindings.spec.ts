@@ -1306,6 +1306,92 @@ describe("review-risk lint integration (#178)", () => {
  * Deliberately NOT a keyword lever — the field is unindexed, so this must never
  * suggest putting search terms in it.
  */
+/**
+ * The keyword-field rules already exist in optimize.ts `validateCopy` — no
+ * spaces around commas, no title/subtitle duplicates, ≤100 chars. But they only
+ * run when GENERATING new copy, so nothing ever checked the listing the user
+ * ALREADY has.
+ *
+ * Consequence, found twice by hand before anyone noticed the pattern: Heathen
+ * spent 4 chars re-indexing `calm` (already in its subtitle) and Who Got Cooked
+ * spends 12 on `argument` + `AI`. Both audits stayed silent, because auditing
+ * the current keyword field was simply not a thing the engine did.
+ *
+ * Same shape as the promo-text gap: the check existed, the audit didn't run it.
+ */
+describe("keyword field is audited, not just generated", () => {
+  const copy = (over: Partial<{ name: string; subtitle: string; keywords: string }>) => ({
+    name: "Heathen - Secular Meditation",
+    subtitle: "Stoic calm for atheists",
+    keywords: "mindfulness,sleep,breathe",
+    ...over,
+  });
+
+  it("flags a keyword already indexed by the name or subtitle", () => {
+    // `calm` is in the subtitle: Apple indexes title+subtitle+keywords together,
+    // so the keyword-field copy buys nothing and costs characters.
+    const got = auditFindings(
+      input({ hasAscKey: true, currentCopy: copy({ keywords: "mindfulness,calm,sleep" }) }),
+    );
+    const f = got.find((x) => x.id === "keywords_duplicate_indexed");
+    expect(f, "expected a duplicate-keyword finding").toBeDefined();
+    expect(f!.detail).toMatch(/calm/);
+  });
+
+  it("names every duplicate, not just the first", () => {
+    const got = auditFindings(
+      input({
+        hasAscKey: true,
+        currentCopy: copy({
+          name: "Who Got Cooked",
+          subtitle: "AI-powered argument moderation",
+          keywords: "argument,AITA,receipts,AI",
+        }),
+      }),
+    );
+    const f = got.find((x) => x.id === "keywords_duplicate_indexed")!;
+    expect(f.detail).toMatch(/argument/i);
+    expect(f.detail).toMatch(/\bAI\b/i);
+  });
+
+  it("stays silent when no keyword duplicates the name or subtitle", () => {
+    const got = auditFindings({ ...input({ hasAscKey: true, currentCopy: copy({}) }) });
+    expect(got.map((x) => x.id)).not.toContain("keywords_duplicate_indexed");
+  });
+
+  it("flags spaces around commas, which waste the 100-char budget", () => {
+    const got = auditFindings(
+      input({ hasAscKey: true, currentCopy: copy({ keywords: "mindfulness, sleep, breathe" }) }),
+    );
+    expect(got.map((x) => x.id)).toContain("keywords_wasted_chars");
+  });
+
+  it("stays silent on a correctly comma-separated field", () => {
+    const got = auditFindings(input({ hasAscKey: true, currentCopy: copy({}) }));
+    expect(got.map((x) => x.id)).not.toContain("keywords_wasted_chars");
+  });
+
+  /**
+   * Unmeasured ≠ clean. A no-key run cannot read the keyword field at all, so
+   * claiming it has no duplicates would assert something never looked at —
+   * the same rule the promo finding had to learn.
+   */
+  it("says nothing about the keyword field when it was never read", () => {
+    const noKey = auditFindings(
+      input({ hasAscKey: false, currentCopy: { name: "X", description: "y" } }),
+    ).map((x) => x.id);
+    expect(noKey).not.toContain("keywords_duplicate_indexed");
+    expect(noKey).not.toContain("keywords_wasted_chars");
+  });
+
+  it("says nothing when there is no keyword field at all", () => {
+    const got = auditFindings(
+      input({ hasAscKey: true, currentCopy: { name: "X", subtitle: "Y" } }),
+    ).map((x) => x.id);
+    expect(got).not.toContain("keywords_duplicate_indexed");
+  });
+});
+
 describe("promotional text (unindexed, version-free — flag when unused)", () => {
   /**
    * READ AND EMPTY. Only a keyed run can know this: ASC returns the field as
