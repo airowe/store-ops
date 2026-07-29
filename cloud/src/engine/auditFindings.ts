@@ -839,6 +839,122 @@ function promoTextFindings(currentCopy: Partial<CopyFields> | undefined): Findin
 }
 
 /**
+ * Filler terms that cost characters and buy no reach — articles, prepositions,
+ * and the marketing words every listing already uses. Matched as WHOLE terms
+ * only: "apple" contains "app" and "freedom" contains "free", and flagging those
+ * would be a false positive on a correct listing.
+ */
+const KEYWORD_STOP_WORDS = new Set([
+  "the","a","an","and","or","of","for","to","in","on","with","your","my",
+  "app","apps","best","top","free","new","get","download",
+]);
+
+/**
+ * Keyword-field hygiene beyond duplicates and length (#410).
+ *
+ * Every rule here is deliberately NARROW. Measured against the real listings
+ * first — neither Heathen nor Who Got Cooked trips any of them — because a
+ * hygiene check that fires on a correct listing is worse than no check.
+ *
+ * Not included: "does the title contain the primary keyword". Every version of
+ * that either goes silent for unranked apps (most of them, #396) or flags a
+ * deliberate brand name whose subtitle carries the keywords. The promise was
+ * removed from the skill rather than shipped as a misfire.
+ */
+function keywordHygieneFindings(currentCopy: Partial<CopyFields> | undefined): Finding[] {
+  if (!currentCopy) return [];
+  const keywords = currentCopy.keywords;
+  if (typeof keywords !== "string" || keywords.trim() === "") return [];
+
+  const terms = keywords.split(",").map((t) => t.trim()).filter(Boolean);
+  const out: Finding[] = [];
+
+  // ── stop-words ────────────────────────────────────────────────────────────
+  const stops = terms.filter((t) => KEYWORD_STOP_WORDS.has(t.toLowerCase()));
+  if (stops.length > 0) {
+    const freed = stops.reduce((n, t) => n + t.length + 1, 0);
+    out.push(
+      mk({
+        id: "keywords_stop_words",
+        surface: "keywords",
+        severity: "warn",
+        impact: "ranking",
+        title: `${stops.length} keyword${stops.length === 1 ? "" : "s"} that won't earn you reach`,
+        detail:
+          `${stops.join(", ")} ${stops.length === 1 ? "is a term" : "are terms"} every listing uses — ` +
+          `they cost characters without making you findable for anything. Removing ` +
+          `${stops.length === 1 ? "it" : "them"} frees about ${freed} of your 100.`,
+        fix: `Drop ${stops.join(", ")} and spend the space on terms someone would actually search.`,
+      }),
+    );
+  }
+
+  // ── plural/singular pairs ─────────────────────────────────────────────────
+  // Apple stems, so shipping both spends characters for no additional reach.
+  // EXACT +s/+es pairs only: near-miss stemming produces noise, and this is a
+  // rule that should never be wrong when it does fire.
+  const lower = new Set(terms.map((t) => t.toLowerCase()));
+  const redundant = terms.filter((t) => {
+    const l = t.toLowerCase();
+    if (l.endsWith("es") && lower.has(l.slice(0, -2))) return true;
+    return l.endsWith("s") && lower.has(l.slice(0, -1));
+  });
+  if (redundant.length > 0) {
+    const freed = redundant.reduce((n, t) => n + t.length + 1, 0);
+    out.push(
+      mk({
+        id: "keywords_plural_pair",
+        surface: "keywords",
+        severity: "warn",
+        impact: "ranking",
+        title: `${redundant.length} plural${redundant.length === 1 ? "" : "s"} duplicating a keyword you already have`,
+        detail:
+          `Apple matches singular and plural forms, so ${redundant.join(", ")} ` +
+          `${redundant.length === 1 ? "adds" : "add"} no reach beyond the singular you already list — ` +
+          `about ${freed} characters spent twice.`,
+        fix: `Drop ${redundant.join(", ")}; the singular already covers both.`,
+      }),
+    );
+  }
+
+  return out;
+}
+
+/**
+ * Promotional text that just repeats how the description opens (#410).
+ *
+ * EXACT-PREFIX only. The real mistake is pasting the description's first line
+ * into promo text; a fuzzy similarity threshold would be a number we invented,
+ * which is exactly what this codebase refuses to do elsewhere.
+ *
+ * Silent on empty promo text — that is `promo_text_unused`'s job, and two
+ * findings for one field would be noise.
+ */
+function promoDuplicationFindings(currentCopy: Partial<CopyFields> | undefined): Finding[] {
+  if (!currentCopy) return [];
+  const promo = (currentCopy.promo ?? "").trim();
+  const description = (currentCopy.description ?? "").trim();
+  if (promo === "" || description === "") return [];
+  if (!description.toLowerCase().startsWith(promo.toLowerCase())) return [];
+
+  return [
+    mk({
+      id: "promo_duplicates_description",
+      surface: "metadata",
+      severity: "warn",
+      impact: "conversion",
+      title: "Your promotional text repeats how your description already opens",
+      detail:
+        "Promotional text sits directly above the description, so a reader sees the same " +
+        "sentence twice and learns nothing from the first. It is also the only field you can " +
+        "change without submitting a new version — spending it on a repeat wastes the one " +
+        "surface that can carry something timely.",
+      fix: "Replace it with something the description does not say — a launch, a season, a result.",
+    }),
+  ];
+}
+
+/**
  * Audit the LENGTH of the iOS copy fields (#410).
  *
  * There was no iOS length finding at all: a subtitle over 30 or a keyword field
@@ -1312,6 +1428,8 @@ export function auditFindings(input: AuditFindingsInput): Finding[] {
     ...promoTextFindings(input.currentCopy),
     ...keywordFieldFindings(input),
     ...copyLengthFindings(input.currentCopy),
+    ...keywordHygieneFindings(input.currentCopy),
+    ...promoDuplicationFindings(input.currentCopy),
     ...ppoFindings(input.snapshot?.experiments),
     ...ppoResultFindings(input.snapshot?.ppoResults?.results ?? []),
   ];

@@ -1332,6 +1332,129 @@ describe("review-risk lint integration (#178)", () => {
  * blocker, but the #41 trap is over-asserting. Apple's own limit is the fact;
  * the consequence is stated without escalating.
  */
+/**
+ * #410's remaining checks, built to the decisions recorded on the issue.
+ *
+ * Each rule is deliberately NARROW. Measured against the two real listings
+ * first: neither Heathen nor Who Got Cooked has a stop-word or a plural pair, so
+ * these fire rarely — which is the point. A keyword-hygiene check that fires on
+ * a correct listing is worse than no check, and thresholds we cannot measure are
+ * numbers we would be inventing.
+ *
+ * "Title: primary keyword present" is NOT here: every version either goes silent
+ * for unranked apps (most of them, #396) or flags a deliberate brand name like
+ * "Who Got Cooked" whose subtitle carries the keywords. The promise is removed
+ * from SKILL.md instead of shipped as a misfire.
+ */
+describe("keyword hygiene (#410)", () => {
+  const copy = (over: Partial<{ name: string; subtitle: string; keywords: string; promo: string; description: string }>) => ({
+    name: "Heathen",
+    subtitle: "Secular meditation",
+    keywords: "mindfulness,sleep,breathe",
+    ...over,
+  });
+
+  describe("stop-words waste the 100-char budget", () => {
+    it("flags filler terms Apple gains nothing from", () => {
+      const got = auditFindings(
+        input({ hasAscKey: true, currentCopy: copy({ keywords: "the,best,meditation,app,free" }) }),
+      );
+      const f = got.find((x) => x.id === "keywords_stop_words");
+      expect(f, "expected a stop-word finding").toBeDefined();
+      for (const w of ["the", "best", "app", "free"]) expect(f!.detail).toContain(w);
+    });
+
+    it("does not flag a legitimate term that merely contains a stop-word", () => {
+      // "apple" contains "app"; "freedom" contains "free". Substring matching
+      // here would flag correct keywords, which is the failure mode to avoid.
+      const got = auditFindings(
+        input({ hasAscKey: true, currentCopy: copy({ keywords: "apple,freedom,theory" }) }),
+      ).map((x) => x.id);
+      expect(got).not.toContain("keywords_stop_words");
+    });
+
+    it("stays silent on a clean keyword field", () => {
+      expect(
+        auditFindings(input({ hasAscKey: true, currentCopy: copy({}) })).map((x) => x.id),
+      ).not.toContain("keywords_stop_words");
+    });
+  });
+
+  describe("plural/singular pairs are redundant (Apple stems)", () => {
+    it.each([
+      ["+s", "meditation,meditations,sleep"],
+      ["+es", "watch,watches,sleep"],
+    ])("flags an exact %s pair", (_label, keywords) => {
+      const got = auditFindings(input({ hasAscKey: true, currentCopy: copy({ keywords }) }));
+      expect(got.map((x) => x.id)).toContain("keywords_plural_pair");
+    });
+
+    it("does not flag unrelated terms that happen to end in s", () => {
+      // Narrow by design: only an exact +s/+es pair counts. "stress"/"stre" is
+      // not a pair, and near-miss stemming produces noise.
+      const got = auditFindings(
+        input({ hasAscKey: true, currentCopy: copy({ keywords: "stress,focus,sleep,gratitude" }) }),
+      ).map((x) => x.id);
+      expect(got).not.toContain("keywords_plural_pair");
+    });
+
+    it("names the redundant term and the chars it frees", () => {
+      const got = auditFindings(
+        input({ hasAscKey: true, currentCopy: copy({ keywords: "meditation,meditations" }) }),
+      );
+      const f = got.find((x) => x.id === "keywords_plural_pair")!;
+      expect(f.detail).toContain("meditations");
+      expect(`${f.detail} ${f.fix ?? ""}`).toMatch(/\d+/);
+    });
+  });
+
+  describe("promotional text repeating the description", () => {
+    it("flags promo text that is a literal prefix of the description", () => {
+      const description = "Send the screenshot. Get the verdict. Maude reads any argument.";
+      const got = auditFindings(
+        input({
+          hasAscKey: true,
+          currentCopy: copy({ promo: "Send the screenshot. Get the verdict.", description }),
+        }),
+      );
+      expect(got.map((x) => x.id)).toContain("promo_duplicates_description");
+    });
+
+    it("does not flag promo text that merely shares words", () => {
+      // Exact-prefix only. A fuzzy similarity threshold would be a number we
+      // invented, which is the thing this codebase does not do.
+      const got = auditFindings(
+        input({
+          hasAscKey: true,
+          currentCopy: copy({
+            promo: "New: 10 Stoic readings for the new year.",
+            description: "Send the screenshot. Get the verdict.",
+          }),
+        }),
+      ).map((x) => x.id);
+      expect(got).not.toContain("promo_duplicates_description");
+    });
+
+    it("stays silent when promo text is empty (that is promo_text_unused's job)", () => {
+      const got = auditFindings(
+        input({ hasAscKey: true, currentCopy: copy({ promo: "", description: "Anything." }) }),
+      ).map((x) => x.id);
+      expect(got).not.toContain("promo_duplicates_description");
+      expect(got).toContain("promo_text_unused");
+    });
+  });
+
+  /** Unmeasured ≠ clean — the rule from #404, holding across all three. */
+  it("says nothing about any of these when the copy was never read", () => {
+    const noKey = auditFindings(
+      input({ hasAscKey: false, currentCopy: { name: "X", description: "y" } }),
+    ).map((x) => x.id);
+    for (const id of ["keywords_stop_words", "keywords_plural_pair", "promo_duplicates_description"]) {
+      expect(noKey).not.toContain(id);
+    }
+  });
+});
+
 describe("iOS field lengths are audited (#410)", () => {
   const copy = (over: Partial<{ name: string; subtitle: string; keywords: string; promo: string }>) => ({
     name: "Heathen",

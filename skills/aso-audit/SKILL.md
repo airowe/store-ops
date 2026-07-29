@@ -29,13 +29,29 @@ Cross-platform — and the Google Play side is the open lane no public tool cove
 
 | Field | Checks |
 |---|---|
-| **Title** | primary keyword present? brand+keyword balance? ≤30 (iOS) / ≤30 (Play)? |
-| **Subtitle / short desc** | DISTINCT keywords from title (no waste)? value prop clear? ≤30 / ≤80? |
-| **Keyword field (iOS)** | no spaces after commas (wastes chars)? no title/subtitle dupes? no filler/stop-words? plurals handled? ≤100? |
+| **Title** | ≤30 (iOS) / ≤30 (Play)? |
+| **Subtitle / short desc** | DISTINCT keywords from title (no waste)? ≤30 / ≤80? |
+| **Keyword field (iOS)** | no spaces after commas (wastes chars)? no title/subtitle dupes? no filler/stop-words? exact plural/singular pairs? ≤100? |
 | **Description** | keyword-rich first 3 lines (the visible part)? feature clarity? Play: keyword density without stuffing? |
 | **Promotional text (iOS)** | **PRESENT AT ALL?** ≤170? time-sensitive rather than evergreen? not duplicating the description's opening? |
 | **Screenshots/preview** | present for required device sizes? caption keywords? first 2 tell the story? |
 | **Reviews** | rating trend, recurring complaint themes (feed back into listing + roadmap) |
+
+### Not checked: "is the primary keyword in the title?"
+
+This was promised here and never implemented, and after building it three ways
+it should stay unimplemented. Every version misfires:
+
+- **against the top tracked keyword** — silent for an app whose keywords are all
+  unranked, which is most of them (#396), so it says nothing precisely when a
+  listing needs the most help;
+- **against any tracked keyword** — flags a deliberate brand name whose subtitle
+  carries the keywords. "Who Got Cooked" + "AI-powered argument moderation" is a
+  correct listing, and a check that calls it broken is worse than no check.
+
+A title is a branding decision with an ASO consequence, not a slot to stuff. The
+honest checks are the ones that remain: length, and whether the subtitle wastes
+characters repeating the title.
 
 ### Promotional text — check for ABSENCE, not just quality
 
