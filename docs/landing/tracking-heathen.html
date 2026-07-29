@@ -1,0 +1,356 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="dark">
+<title>Heathen — Live App Store Rank Tracking | ShipASO</title>
+<meta name="description" content="A public weekly log of one app's organic App Store rank. Heathen holds #1 for 'secular meditation' and does not appear in the top 200 for 'meditation'. Same 22 keywords, snapshotted every week, published whichever way it moves.">
+<meta property="og:title" content="Heathen — tracked weekly, published either way">
+<meta property="og:description" content="#1 for 'secular meditation'. Nowhere in the top 200 for 'meditation'. A public log of what deliberate ASO actually does to an app's rankings, snapshotted every week.">
+<meta property="og:type" content="article">
+<meta property="og:url" content="https://shipaso.com/tracking-heathen">
+<link rel="canonical" href="https://shipaso.com/tracking-heathen">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%230b0e14'/%3E%3Cg fill='%2334d399'%3E%3Cpath d='M16 6 L8.5 17 h15 Z'/%3E%3Cpath d='M5.5 19 h21 l-3 5 H8.5 Z'/%3E%3C/g%3E%3Cline x1='16' y1='8' x2='16' y2='17' stroke='%230b0e14' stroke-width='1.5'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&family=Fraunces:opsz,wght@9..144,500;9..144,600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #07090e;
+    --bg-2: #0b0e14;
+    --panel: #11151f;
+    --line: #222a3b;
+    --line-soft: #1a2130;
+    --ink: #eef1f7;
+    --dim: #97a1b6;
+    --faint: #626c83;
+    --signal: #34d399;        /* held position — terminal success */
+    --signal-dim: #1f8f66;
+    --signal-glow: rgba(52, 211, 153, 0.18);
+    --weak: #5d6b86;          /* ranked 101-200: present, not winning */
+    --absent: #1c2331;        /* outside the window */
+    --bad: #f87171;
+    --mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
+    --sans: "Space Grotesk", -apple-system, "Segoe UI", Roboto, sans-serif;
+    --display: "Fraunces", Georgia, serif;
+  }
+  * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    margin: 0; font-family: var(--sans); font-size: 17px; line-height: 1.6;
+    color: var(--ink); background: var(--bg);
+    -webkit-font-smoothing: antialiased;
+    background-image:
+      radial-gradient(900px 500px at 12% -8%, var(--signal-glow), transparent 60%),
+      linear-gradient(var(--line-soft) 1px, transparent 1px),
+      linear-gradient(90deg, var(--line-soft) 1px, transparent 1px);
+    background-size: 100% 100%, 46px 46px, 46px 46px;
+    background-position: 0 0, -1px -1px, -1px -1px;
+  }
+  body::before {
+    content: ""; position: fixed; inset: 0; pointer-events: none; z-index: 0; opacity: 0.025;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  }
+  .wrap { max-width: 820px; margin: 0 auto; padding: 0 24px; position: relative; z-index: 1; }
+  a { color: inherit; }
+  a:focus-visible { outline: 2px solid var(--signal); outline-offset: 3px; border-radius: 3px; }
+
+  @keyframes rise { from { opacity: 0; transform: translateY(14px); } to { opacity: 1; transform: none; } }
+  .reveal { opacity: 0; animation: rise .7s cubic-bezier(.2,.7,.2,1) forwards; }
+  .d1 { animation-delay: .05s } .d2 { animation-delay: .15s } .d3 { animation-delay: .25s }
+  @media (prefers-reduced-motion: reduce) {
+    .reveal { animation: none; opacity: 1; }
+    .kicker .dot { animation: none; }
+  }
+
+  header { padding: 60px 0 8px; }
+  .brand {
+    font-family: var(--mono); font-weight: 700; font-size: 17px; letter-spacing: -0.5px;
+    color: var(--ink); display: inline-flex; align-items: center; gap: 9px; margin-bottom: 32px;
+  }
+  .brand .tick {
+    width: 22px; height: 22px; border-radius: 6px; display: grid; place-items: center;
+    background: var(--signal-glow); border: 1px solid var(--signal-dim);
+  }
+  .brand a { color: inherit; text-decoration: none; display: inline-flex; align-items: center; gap: 9px; }
+
+  .kicker {
+    display: inline-flex; align-items: center; gap: 8px; font-family: var(--mono);
+    font-size: 12.5px; color: var(--signal);
+    border: 1px solid var(--line); background: rgba(52,211,153,0.04);
+    padding: 6px 12px; border-radius: 999px; margin-bottom: 22px;
+  }
+  .kicker .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--signal); animation: pulse 2.4s infinite; }
+  @keyframes pulse { 0% { box-shadow: 0 0 0 0 var(--signal-glow); } 70% { box-shadow: 0 0 0 7px rgba(52,211,153,0); } 100% { box-shadow: 0 0 0 0 rgba(52,211,153,0); } }
+
+  h1 {
+    font-family: var(--display); font-weight: 600; font-size: clamp(34px, 5.6vw, 52px);
+    line-height: 1.05; letter-spacing: -1.2px; margin: 0 0 18px; text-wrap: balance;
+  }
+  h1 .hl { font-style: italic; color: var(--signal); }
+  .lede { font-size: clamp(18px, 2.3vw, 21px); color: var(--dim); margin: 0 0 30px; max-width: 58ch; }
+  .lede b { color: var(--ink); font-weight: 600; }
+
+  .meta {
+    display: flex; flex-wrap: wrap; gap: 9px 24px; padding: 16px 0;
+    border-top: 1px solid var(--line-soft); border-bottom: 1px solid var(--line-soft);
+    font-family: var(--mono); font-size: 12.5px; color: var(--faint); margin-bottom: 46px;
+  }
+  .meta b { color: var(--dim); font-weight: 500; }
+
+  h2 {
+    font-family: var(--mono); font-size: 12px; letter-spacing: .12em; text-transform: uppercase;
+    color: var(--faint); font-weight: 500; margin: 46px 0 16px;
+  }
+
+  .held { display: grid; gap: 11px; grid-template-columns: repeat(auto-fit, minmax(172px, 1fr)); }
+  .card {
+    background: linear-gradient(180deg, var(--panel), var(--bg-2));
+    border: 1px solid var(--line); border-radius: 12px; padding: 17px 19px;
+  }
+  .card .r {
+    font-family: var(--mono); font-size: 34px; font-weight: 700; line-height: 1;
+    color: var(--signal); font-variant-numeric: tabular-nums;
+  }
+  .card .t { font-size: 14px; color: var(--dim); margin-top: 9px; }
+
+  .note { font-size: 14.5px; color: var(--dim); margin: 0 0 18px; max-width: 62ch; }
+
+  .scroller { overflow-x: auto; }
+  table { width: 100%; border-collapse: collapse; }
+  th {
+    font-family: var(--mono); font-size: 11px; letter-spacing: .1em; text-transform: uppercase;
+    color: var(--faint); font-weight: 500; text-align: left; padding: 0 0 11px;
+    border-bottom: 1px solid var(--line);
+  }
+  th.n { text-align: right; }
+  td { padding: 9px 0; border-bottom: 1px solid var(--line-soft); vertical-align: middle; }
+  tr:last-child td { border-bottom: none; }
+
+  .kw { font-size: 14.5px; color: var(--dim); white-space: nowrap; padding-right: 18px; }
+  tr.win .kw { color: var(--ink); font-weight: 500; }
+
+  .track { position: relative; height: 15px; min-width: 140px; }
+  .track::after { content: ""; position: absolute; right: 0; top: -2px; bottom: -2px; width: 1px; background: var(--line); }
+  .bar { position: absolute; left: 0; top: 3px; height: 9px; border-radius: 0 3px 3px 0; background: var(--weak); }
+  tr.win .bar { background: var(--signal); }
+  .rail { position: absolute; left: 0; right: 0; top: 7px; height: 2px; border-radius: 1px; background: var(--absent); }
+
+  td.n {
+    text-align: right; font-family: var(--mono); font-size: 13.5px; color: var(--dim);
+    font-variant-numeric: tabular-nums; white-space: nowrap; padding-left: 16px;
+  }
+  tr.win td.n { color: var(--signal); font-weight: 500; }
+  td.n.none { color: #3d4658; }
+  td.mv { text-align: right; font-family: var(--mono); font-size: 12.5px; color: var(--faint);
+          font-variant-numeric: tabular-nums; white-space: nowrap; padding-left: 14px; }
+  td.mv.up { color: var(--signal); }
+  td.mv.dn { color: var(--bad); }
+
+  .method { margin-top: 50px; padding-top: 26px; border-top: 1px solid var(--line); }
+  .method p { font-size: 15px; color: var(--dim); line-height: 1.7; margin: 0 0 14px; max-width: 66ch; }
+  .method b { color: var(--ink); font-weight: 600; }
+  .method code {
+    font-family: var(--mono); font-size: 13px; color: var(--signal);
+    background: rgba(52,211,153,0.06); border: 1px solid var(--line-soft);
+    padding: 2px 6px; border-radius: 5px;
+  }
+
+  .cta {
+    margin: 44px 0 0; padding: 26px; border-radius: 14px;
+    background: linear-gradient(180deg, var(--panel), var(--bg-2));
+    border: 1px solid var(--line);
+  }
+  .cta h3 { font-family: var(--display); font-size: 24px; font-weight: 600; margin: 0 0 8px; letter-spacing: -0.4px; }
+  .cta p { font-size: 15px; color: var(--dim); margin: 0 0 18px; max-width: 54ch; }
+  .btn {
+    display: inline-flex; align-items: center; gap: 9px; padding: 12px 20px; font-size: 15px;
+    font-weight: 600; border-radius: 10px; text-decoration: none; font-family: var(--sans);
+    background: var(--signal); color: #05231a; border: 1px solid var(--signal);
+    transition: transform .12s, box-shadow .2s;
+  }
+  .btn:hover { transform: translateY(-1px); box-shadow: 0 10px 24px rgba(52,211,153,0.18); }
+
+  footer {
+    margin-top: 54px; padding: 24px 0 60px; border-top: 1px solid var(--line-soft);
+    display: flex; justify-content: space-between; gap: 18px; flex-wrap: wrap;
+    font-family: var(--mono); font-size: 12px; color: var(--faint);
+  }
+  footer a { color: var(--dim); text-decoration: none; }
+  footer a:hover { color: var(--signal); }
+
+  @media (max-width: 560px) {
+    .kw { font-size: 13px; }
+    .track { min-width: 84px; }
+    header { padding-top: 40px; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <div class="brand">
+    <a href="/">
+      <span class="tick">
+        <svg viewBox="0 0 32 32" aria-hidden="true">
+          <g fill="#34d399"><path d="M16 6 L8.5 17 h15 Z"/><path d="M5.5 19 h21 l-3 5 H8.5 Z"/></g>
+        </svg>
+      </span>
+      ShipASO
+    </a>
+  </div>
+
+  <div class="kicker reveal d1"><span class="dot"></span> Tracking live · updated weekly</div>
+
+  <h1 class="reveal d1">Heathen holds <span class="hl">#1</span> for two terms and nothing at all for twelve.</h1>
+
+  <p class="lede reveal d2">
+    A public log of one app's organic App Store position. Same 22 keywords every
+    week, same method, <b>published whichever way it moves</b>.
+  </p>
+
+  <div class="meta reveal d3">
+    <span>Last snapshot <b id="m-date">2026-07-28</b></span>
+    <span><b id="m-ranked">7</b>/<b id="m-total">22</b> ranked</span>
+    <span>US storefront</span>
+    <span>Top-200 window</span>
+  </div>
+</header>
+
+<main>
+  <h2>Held positions</h2>
+  <div class="held" id="held"></div>
+
+  <h2>The full window</h2>
+  <p class="note">
+    Every keyword sits on the same 200-slot scale, so a longer bar is a better
+    position. Terms outside the window keep their row — the absences are the
+    argument, not missing data.
+  </p>
+  <div class="scroller">
+    <table>
+      <thead>
+        <tr>
+          <th scope="col">Keyword</th>
+          <th scope="col">Position in top 200</th>
+          <th scope="col" class="n">Rank</th>
+          <th scope="col" class="n">Week</th>
+        </tr>
+      </thead>
+      <tbody id="rows"></tbody>
+    </table>
+  </div>
+
+  <div class="method">
+    <p>
+      <b>Why the head terms are empty.</b> Ranking #200 for "meditation" produces
+      no impressions, so no installs, so no conversion signal for Apple to promote
+      on. Holding #1 for "secular meditation" produces real downloads. The narrow
+      band is the strategy, not a consolation prize.
+    </p>
+    <p>
+      <b>Method.</b> Organic rank comes from the public iTunes Search API, US
+      storefront, which returns at most 200 results per term — the same free
+      method described in <a href="/check-your-rank.html">check your rank</a>. A
+      dash means the app sits outside that window, not that it is absent from the
+      store.
+    </p>
+    <p>
+      <b>Movement.</b> The week column fills in once two snapshots exist. Nothing
+      is back-filled, and no snapshot is removed after the fact — including the
+      ones that go the wrong way.
+    </p>
+  </div>
+
+  <div class="cta">
+    <h3>Track your own</h3>
+    <p>
+      Same free method, on your app. No account, no rank-tracking subscription.
+    </p>
+    <a class="btn" href="/check-your-rank.html">Check your rank →</a>
+  </div>
+</main>
+
+<footer>
+  <span>Heathen is <a href="https://apps.apple.com/app/id6759360137">on the App Store</a>.</span>
+  <span><a href="/">shipaso.com</a></span>
+</footer>
+
+</div>
+
+<script>
+// Snapshot series. Append one object per week — newest last. Source of truth is
+// marketing/aso/heathen/ranks.jsonl in the openclaw-config repo; this is the
+// published copy. The page renders the newest and diffs it against the previous.
+const SNAPSHOTS = [
+  {
+    date: "2026-07-28",
+    keywords: {
+      "secular meditation": 1,    "secular": 1,
+      "agnostic": 48,             "secular mindfulness": 77,
+      "humanist": 78,             "atheist": 106,
+      "freethinker": 130,         "nonreligious": null,
+      "skeptic": null,            "rationalist": null,
+      "stoic": null,              "philosophy": null,
+      "aurelius": null,           "seneca": null,
+      "meditation": null,         "mindfulness": null,
+      "anxiety": null,            "sleep": null,
+      "journal": null,            "gratitude": null,
+      "calm": null,               "breathwork": null
+    }
+  }
+];
+
+const WINDOW = 200;
+const latest = SNAPSHOTS[SNAPSHOTS.length - 1];
+const prev = SNAPSHOTS.length > 1 ? SNAPSHOTS[SNAPSHOTS.length - 2] : null;
+const entries = Object.entries(latest.keywords);
+const ranked = entries.filter(([, r]) => r !== null);
+
+document.getElementById("m-date").textContent = latest.date;
+document.getElementById("m-ranked").textContent = ranked.length;
+document.getElementById("m-total").textContent = entries.length;
+
+document.getElementById("held").innerHTML = ranked
+  .filter(([, r]) => r <= 100)
+  .sort((a, b) => a[1] - b[1])
+  .map(([kw, r]) => `<div class="card"><div class="r">#${r}</div><div class="t">${kw}</div></div>`)
+  .join("");
+
+function movement(kw, now) {
+  if (!prev) return { cls: "", text: "—" };
+  const was = prev.keywords[kw];
+  if (was === undefined) return { cls: "", text: "new" };
+  if (was === null && now === null) return { cls: "", text: "—" };
+  if (was === null) return { cls: "up", text: "entered" };
+  if (now === null) return { cls: "dn", text: "dropped out" };
+  if (now === was) return { cls: "", text: "—" };
+  const up = now < was;   // lower rank number = better position
+  return { cls: up ? "up" : "dn", text: `${up ? "↑" : "↓"} ${Math.abs(now - was)}` };
+}
+
+document.getElementById("rows").innerHTML = entries
+  .sort((a, b) => {
+    if (a[1] === null && b[1] === null) return a[0].localeCompare(b[0]);
+    if (a[1] === null) return 1;
+    if (b[1] === null) return -1;
+    return a[1] - b[1];
+  })
+  .map(([kw, r]) => {
+    const mv = movement(kw, r);
+    if (r === null) {
+      return `<tr><td class="kw">${kw}</td>` +
+             `<td><div class="track"><div class="rail"></div></div></td>` +
+             `<td class="n none">—</td><td class="mv ${mv.cls}">${mv.text}</td></tr>`;
+    }
+    const pct = ((WINDOW - r + 1) / WINDOW) * 100;
+    return `<tr class="${r <= 100 ? "win" : ""}"><td class="kw">${kw}</td>` +
+           `<td><div class="track"><div class="bar" style="width:${pct.toFixed(1)}%"></div></div></td>` +
+           `<td class="n">#${r}</td><td class="mv ${mv.cls}">${mv.text}</td></tr>`;
+  })
+  .join("");
+</script>
+</body>
+</html>

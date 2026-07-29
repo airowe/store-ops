@@ -25,6 +25,11 @@
     <priority>0.8</priority>
   </url>
   <url>
+    <loc>https://shipaso.com/tracking-heathen.html</loc>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
     <loc>https://shipaso.com/report.html</loc>
     <changefreq>monthly</changefreq>
     <priority>0.5</priority>
