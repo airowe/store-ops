@@ -62,6 +62,21 @@ const GENRE_SEEDS: Record<string, string[]> = {
   workout: ["workout", "fitness", "exercise", "gym", "training"],
   fitness: ["workout", "fitness", "exercise", "gym", "training"],
   weather: ["weather", "forecast", "radar", "rain", "temperature"],
+  // Social / communication / media. Added after three portfolio apps were found
+  // targeting NOTHING: the set above is all consumer-utility, so an app in one
+  // of these categories whose name is pure brand had every token classified as
+  // brand and no seed to fall back on. "Who Got Cooked" tracked zero keywords
+  // from 2026-07-06 and the audit reported clean.
+  social: ["social", "friends", "community", "share", "group chat"],
+  chat: ["chat", "messaging", "group chat", "conversation", "text"],
+  messaging: ["chat", "messaging", "group chat", "conversation", "text"],
+  entertainment: ["fun", "entertainment", "meme", "viral", "share"],
+  meme: ["meme", "funny", "viral", "share", "entertainment"],
+  sports: ["sports", "scores", "team", "league", "stats"],
+  news: ["news", "headlines", "daily", "briefing", "stories"],
+  // Categories the portfolio touches that the utility set also missed.
+  medical: ["medical", "health", "insurance", "cost", "care"],
+  shopping: ["shopping", "deals", "price", "compare", "list"],
 };
 
 /** Words that are never useful keyword seeds (generic store/marketing fluff). */

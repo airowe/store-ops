@@ -839,6 +839,40 @@ function promoTextFindings(currentCopy: Partial<CopyFields> | undefined): Findin
 }
 
 /**
+ * An app tracking ZERO keywords — the loudest possible fact about a rank
+ * tracker, and until now it produced silence.
+ *
+ * Found by asking why one app had no rank snapshot for three weeks. The sweep
+ * ran every Monday and worked correctly: the reasoner classified every token of
+ * "Who Got Cooked" as brand and excluded them (deliberate — brand tokens are
+ * monitor-only), and no GENRE_SEEDS trigger matched its category, so it targeted
+ * nothing. Three portfolio apps are in that state.
+ *
+ * Every downstream card then renders empty and the audit reports clean, so an
+ * app tracking nothing is indistinguishable from a healthy one.
+ *
+ * NOT the same as #396's "tracked but unranked": a keyword that came back with
+ * no position IS measured. Conflating them would report a working app as broken.
+ */
+function noTrackedKeywordsFindings(input: AuditFindingsInput): Finding[] {
+  if (input.ranks.length > 0) return [];
+  return [
+    mk({
+      id: "keywords_none_tracked",
+      surface: "keywords",
+      severity: "warn",
+      impact: "ranking",
+      title: "No keywords are being tracked for this app",
+      detail:
+        "Nothing is being checked, so no rank data can arrive — this app's rank history will " +
+        "stay empty however long it runs. It usually means the name is all brand (every token " +
+        "is monitor-only) and the category has no keyword seeds yet, leaving nothing to target.",
+      fix: "Set the keywords to track for this app, or add them to your App Store Connect keyword field so a keyed run can read them.",
+    }),
+  ];
+}
+
+/**
  * Filler terms that cost characters and buy no reach — articles, prepositions,
  * and the marketing words every listing already uses. Matched as WHOLE terms
  * only: "apple" contains "app" and "freedom" contains "free", and flagging those
@@ -1428,6 +1462,7 @@ export function auditFindings(input: AuditFindingsInput): Finding[] {
     ...promoTextFindings(input.currentCopy),
     ...keywordFieldFindings(input),
     ...copyLengthFindings(input.currentCopy),
+    ...noTrackedKeywordsFindings(input),
     ...keywordHygieneFindings(input.currentCopy),
     ...promoDuplicationFindings(input.currentCopy),
     ...ppoFindings(input.snapshot?.experiments),
