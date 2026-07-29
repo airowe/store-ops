@@ -111,7 +111,11 @@ test("the skill count advertised on the landing pages matches reality", () => {
     existsSync(join(skillsDir, d, "SKILL.md")),
   ).length;
 
-  const pages = ["docs/landing/index.html", "docs/landing/install.html"];
+  // README.md included deliberately: it stated "26 skills" in three places
+  // while the repo shipped 29, and this test did not look at it. The landing
+  // pages were right the whole time, so checking only them proved nothing about
+  // the file most contributors actually read.
+  const pages = ["docs/landing/index.html", "docs/landing/install.html", "README.md"];
   const claims = [];
   for (const page of pages) {
     const html = readFileSync(join(repoRoot, page), "utf8");
@@ -121,6 +125,46 @@ test("the skill count advertised on the landing pages matches reality", () => {
   for (const { page, n } of claims) {
     assert.equal(n, actual, `${page} advertises ${n} skills; the repo ships ${actual}`);
   }
+});
+
+/**
+ * The README must NAME every skill, not just count them.
+ *
+ * It documented 4 of 29 by name and summarised the rest as a prose blob —
+ * "metadata sync, localization, PPP pricing, screenshots…". Every Google Play
+ * skill, the whole write lane, and all the risk/verify skills were unfindable
+ * by name in the file most people read first. A skill nobody can name is a
+ * skill nobody invokes.
+ *
+ * Matches the leading `| \`name\`` cell of a table row, which is how the Skills
+ * section lists them.
+ */
+test("the README names every skill the repo ships", () => {
+  const skillsDir = join(repoRoot, "skills");
+  const shipped = readdirSync(skillsDir).filter((d) =>
+    existsSync(join(skillsDir, d, "SKILL.md")),
+  );
+
+  const readme = readFileSync(join(repoRoot, "README.md"), "utf8");
+  const listed = new Set(
+    [...readme.matchAll(/^\|\s*`([a-z0-9-]+)`/gim)].map((m) => m[1]),
+  );
+
+  const missing = shipped.filter((s) => !listed.has(s));
+  assert.deepEqual(
+    missing,
+    [],
+    `these skills ship but are not named in the README: ${missing.join(", ")}`,
+  );
+
+  // The other direction: a README row for a skill that no longer exists sends
+  // the reader to an invocation that fails.
+  const phantom = [...listed].filter((n) => !shipped.includes(n));
+  assert.deepEqual(
+    phantom,
+    [],
+    `the README lists skills that do not exist: ${phantom.join(", ")}`,
+  );
 });
 
 /**
