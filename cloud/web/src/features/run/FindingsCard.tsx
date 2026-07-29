@@ -14,10 +14,10 @@ import { useState } from "react";
 import type { Finding, FindingsSummary, SurfaceLock } from "@shipaso/api";
 
 const SEVERITY_COLOR: Record<Finding["severity"], string> = {
-  critical: "var(--danger, #c0392b)",
-  warn: "var(--warn, #b7791f)",
-  good: "var(--signal, #2f855a)",
-  info: "var(--muted, #718096)",
+  critical: "var(--bad, #f87171)",
+  warn: "var(--warn, #fbbf24)",
+  good: "var(--signal, #34d399)",
+  info: "var(--faint, #828ca3)",
 };
 
 const SEV_RANK: Record<Finding["severity"], number> = { critical: 0, warn: 1, info: 2, good: 3 };
@@ -30,56 +30,55 @@ function FindingRow({ f }: { f: Finding }) {
   const [expanded, setExpanded] = useState(false);
   const hasDetail = Boolean(f.detail || f.fix || f.evidence);
 
+  const headerContent = (
+    <>
+      <span
+        className="sev-chip"
+        style={{ color: SEVERITY_COLOR[f.severity], fontWeight: "bold" }}
+      >
+        {f.severity}
+      </span>
+      <b className="finding-title">{f.title}</b>
+      {hasDetail && !expanded && f.detail ? (
+        <span className="micro muted finding-detail-preview">
+          — {f.detail}
+        </span>
+      ) : (
+        <span style={{ flex: 1 }} />
+      )}
+      {hasDetail ? (
+        <span className="micro muted" style={{ paddingLeft: 4 }}>
+          {expanded ? "▾" : "▸"}
+        </span>
+      ) : null}
+    </>
+  );
+
   return (
     <div
       className={"finding-row sev-" + f.severity}
       data-testid={`finding-${f.id}`}
       data-severity={f.severity}
-      style={{ marginBottom: 6 }}
     >
-      <div
-        onClick={() => hasDetail && setExpanded((prev) => !prev)}
-        style={{
-          display: "flex",
-          alignItems: "center",
-          cursor: hasDetail ? "pointer" : "default",
-          gap: 6,
-          userSelect: "none",
-        }}
-      >
-        <span
-          className="sev-chip"
-          style={{ color: SEVERITY_COLOR[f.severity], fontSize: 12, fontWeight: "bold" }}
+      {hasDetail ? (
+        <button
+          type="button"
+          className="finding-toggle"
+          aria-expanded={expanded}
+          onClick={() => setExpanded((prev) => !prev)}
         >
-          {f.severity}
-        </span>
-        <b style={{ fontSize: 13 }}>{f.title}</b>
-        {hasDetail && !expanded && f.detail ? (
-          <span
-            className="micro muted"
-            style={{
-              marginLeft: 6,
-              overflow: "hidden",
-              textOverflow: "ellipsis",
-              whiteSpace: "nowrap",
-              flex: 1,
-              opacity: 0.8,
-            }}
-          >
-            — {f.detail}
-          </span>
-        ) : <span style={{ flex: 1 }} />}
-        {hasDetail ? (
-          <span className="micro muted" style={{ fontSize: 10, paddingLeft: 4 }}>
-            {expanded ? "▾" : "▸"}
-          </span>
-        ) : null}
-      </div>
+          {headerContent}
+        </button>
+      ) : (
+        <div className="finding-header">
+          {headerContent}
+        </div>
+      )}
 
-      {expanded ? (
-        <div style={{ marginTop: 4, paddingLeft: 12, borderLeft: `2px solid ${SEVERITY_COLOR[f.severity]}` }}>
+      {expanded && hasDetail ? (
+        <div className="finding-details">
           {f.detail ? <p className="micro" style={{ margin: "2px 0 0" }}>{f.detail}</p> : null}
-          {f.fix ? <p className="micro" style={{ margin: "2px 0 0", color: "var(--signal, #2f855a)" }}>→ {f.fix}</p> : null}
+          {f.fix ? <p className="micro" style={{ margin: "2px 0 0", color: "var(--signal)" }}>→ {f.fix}</p> : null}
           {f.evidence ? <p className="micro muted" style={{ margin: "2px 0 0" }}>{f.evidence}</p> : null}
         </div>
       ) : null}
