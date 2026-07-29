@@ -160,6 +160,7 @@ import {
   listTrackedMarkets,
   getRun,
   getTier,
+  getAscWriteOptIn,
   getUserByStripeCustomer,
   latestRunTraceForApp,
   listAllApps,
@@ -241,6 +242,8 @@ import { buildFastlaneBundle } from "../engine/fastlane.js";
 import { zipStore } from "../engine/zip.js";
 import { mintAscJwt } from "../engine/ascJwt.js";
 import { findAscAppId, applyAscMetadata, createAscLocalization, createAscVersion, getEditableVersionId, isValidVersionString, readAscLocalization, AscWriteError } from "../engine/ascWrite.js";
+import { ascWriteGate } from "../engine/ascWriteGate.js";
+import { uploadScreenshot } from "../engine/ascUploadClient.js";
 import { registerWebhook, WEBHOOK_EVENT_TYPES } from "../engine/ascWebhookRegister.js";
 import { saveWebhookSecret } from "../d1.js";
 import { readAscSnapshot, ascScreenshotsToListing, type AscSnapshot } from "../engine/ascRead.js";
@@ -3908,6 +3911,79 @@ async function ascPushRoute(
 }
 
 /**
+ * POST /runs/:id/asc/upload-screenshot (#374) — upload ONE screenshot into an
+ * existing appScreenshotSet on the user's App Store Connect account.
+ *
+ * The first write that carries an ASSET rather than text, and the first gated on
+ * the #405 pair: a paid tier (`canAscWrite`) AND the user's own opt-in
+ * (`users.asc_write_opt_in`). Both, plus an approved run, plus this explicit
+ * call — `ascWriteGate` is the single place that decision is made, so this route
+ * cannot drift from the others.
+ *
+ * Deliberately ONE asset per call. A batch endpoint would have to decide what
+ * "partially uploaded" means on a live listing; one call either published one
+ * screenshot or published nothing, and the caller sequences them.
+ *
+ * Never submits, never starts a test, never touches a READY_FOR_SALE version.
+ */
+async function ascUploadScreenshotRoute(
+  req: Request,
+  env: Env,
+  userId: string,
+  runId: string,
+): Promise<unknown> {
+  const run = await getRun(env.DB, runId);
+  if (!run) throw new HttpError(404, "run not found");
+  const app = await requireOwnedApp(env, run.app_id, userId);
+
+  const gate = ascWriteGate({
+    flagOn: isFlagOn(env.ASC_WRITE_ENABLED),
+    tier: await getTier(env.DB, userId),
+    optedIn: await getAscWriteOptIn(env.DB, userId),
+    runStatus: run.status,
+  });
+  if (!gate.allowed) throw new HttpError(gate.status, gate.reason);
+
+  const body = (await req.json().catch(() => ({}))) as AscCredBody & {
+    screenshotSetId?: string;
+    fileName?: string;
+    /** base64 of the PNG bytes. */
+    fileBase64?: string;
+  };
+
+  const screenshotSetId = (body.screenshotSetId ?? "").trim();
+  const fileName = (body.fileName ?? "").trim();
+  if (!screenshotSetId) throw new HttpError(400, "screenshotSetId is required");
+  if (!fileName) throw new HttpError(400, "fileName is required");
+
+  let file: Uint8Array;
+  try {
+    const bin = atob(body.fileBase64 ?? "");
+    file = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) file[i] = bin.charCodeAt(i);
+  } catch {
+    throw new HttpError(400, "fileBase64 must be base64-encoded image bytes");
+  }
+
+  const cred = await ascCredForRequest(env, userId, app.id, body);
+  let token: string;
+  try {
+    token = await mintAscJwt({ p8: cred.p8, keyId: cred.keyId, issuerId: cred.issuerId });
+  } catch (e) {
+    throw new HttpError(400, e instanceof Error ? e.message : "invalid credentials");
+  }
+
+  try {
+    return await uploadScreenshot(fetch, { token, screenshotSetId, fileName, file });
+  } catch (e) {
+    if (e instanceof AscWriteError) return { ok: false, reason: e.message };
+    // A refusal (placeholder / empty / bad plan) is the caller's fault, not
+    // Apple's — surface it as a 400 rather than a 500.
+    throw new HttpError(400, e instanceof Error ? e.message : "screenshot upload failed");
+  }
+}
+
+/**
  * POST /runs/:id/asc/create-version (#34) — create a DRAFT App Store version
  * (PREPARE_FOR_SUBMISSION) on the user's Apple account so the approved
  * proposal has somewhere to land. Its OWN per-action gate: same flag +
@@ -4867,6 +4943,9 @@ export async function handleApi(req: Request, env: Env, ctx?: ExecutionContext):
       }
       if (seg.length === 4 && seg[2] === "asc" && seg[3] === "push" && method === "POST") {
         return json(await ascPushRoute(req, env, user.id, runId), 200, origin);
+      }
+      if (seg.length === 4 && seg[2] === "asc" && seg[3] === "upload-screenshot" && method === "POST") {
+        return json(await ascUploadScreenshotRoute(req, env, user.id, runId), 200, origin);
       }
       if (seg.length === 4 && seg[2] === "asc" && seg[3] === "create-version" && method === "POST") {
         return json(await ascCreateVersionRoute(req, env, user.id, runId), 200, origin);
