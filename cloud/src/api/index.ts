@@ -244,6 +244,9 @@ import { mintAscJwt } from "../engine/ascJwt.js";
 import { findAscAppId, applyAscMetadata, createAscLocalization, createAscVersion, getEditableVersionId, isValidVersionString, readAscLocalization, AscWriteError } from "../engine/ascWrite.js";
 import { ascWriteGate } from "../engine/ascWriteGate.js";
 import { uploadScreenshot } from "../engine/ascUploadClient.js";
+import { createPpoExperiment } from "../engine/ascExperimentCreate.js";
+import { ensureScreenshotSet } from "../engine/ascScreenshotSet.js";
+import { readAscExperiments } from "../engine/ascExperiments.js";
 import { registerWebhook, WEBHOOK_EVENT_TYPES } from "../engine/ascWebhookRegister.js";
 import { saveWebhookSecret } from "../d1.js";
 import { readAscSnapshot, ascScreenshotsToListing, type AscSnapshot } from "../engine/ascRead.js";
@@ -3946,15 +3949,28 @@ async function ascUploadScreenshotRoute(
 
   const body = (await req.json().catch(() => ({}))) as AscCredBody & {
     screenshotSetId?: string;
+    /** Alternative to screenshotSetId: the device bucket, e.g. "APP_IPHONE_67". */
+    screenshotDisplayType?: string;
+    /** The appStoreVersionLocalization, required when creating a set. */
+    localizationId?: string;
     fileName?: string;
     /** base64 of the PNG bytes. */
     fileBase64?: string;
   };
 
-  const screenshotSetId = (body.screenshotSetId ?? "").trim();
   const fileName = (body.fileName ?? "").trim();
-  if (!screenshotSetId) throw new HttpError(400, "screenshotSetId is required");
   if (!fileName) throw new HttpError(400, "fileName is required");
+  // Either target an existing set directly, or name a device size and let us
+  // find-or-create it. The second form is what an app with NO screenshots needs
+  // — there is no set id to pass when no set exists.
+  const givenSetId = (body.screenshotSetId ?? "").trim();
+  const displayType = (body.screenshotDisplayType ?? "").trim();
+  if (!givenSetId && !displayType) {
+    throw new HttpError(400, "screenshotSetId or screenshotDisplayType is required");
+  }
+  if (!givenSetId && !(body.localizationId ?? "").trim()) {
+    throw new HttpError(400, "localizationId is required when creating a screenshot set");
+  }
 
   let file: Uint8Array;
   try {
@@ -3974,12 +3990,94 @@ async function ascUploadScreenshotRoute(
   }
 
   try {
+    const screenshotSetId = givenSetId
+      ? givenSetId
+      : (
+          await ensureScreenshotSet(fetch, {
+            token,
+            localizationId: (body.localizationId ?? "").trim(),
+            displayType,
+          })
+        ).id;
     return await uploadScreenshot(fetch, { token, screenshotSetId, fileName, file });
   } catch (e) {
     if (e instanceof AscWriteError) return { ok: false, reason: e.message };
     // A refusal (placeholder / empty / bad plan) is the caller's fault, not
     // Apple's — surface it as a 400 rather than a 500.
     throw new HttpError(400, e instanceof Error ? e.message : "screenshot upload failed");
+  }
+}
+
+/**
+ * POST /runs/:id/asc/create-experiment (#374) — create a Product Page
+ * Optimization experiment, STOPPED.
+ *
+ * The only write in this codebase that can change what real App Store visitors
+ * see, so it carries its OWN flag (`ASC_EXPERIMENT_WRITE_ENABLED`) on top of the
+ * shared `ascWriteGate` — every other write is pre-review and invisible until
+ * the developer submits.
+ *
+ * Creating is not starting: `createPpoExperiment` never sends a field that would
+ * begin the test, and refuses outright while another is running. Pressing start
+ * stays a deliberate act in App Store Connect. This route will not do it, and
+ * there is no endpoint that will.
+ */
+async function ascCreateExperimentRoute(
+  req: Request,
+  env: Env,
+  userId: string,
+  runId: string,
+): Promise<unknown> {
+  if (!isFlagOn(env.ASC_EXPERIMENT_WRITE_ENABLED)) {
+    throw new HttpError(
+      403,
+      "creating product page experiments is not enabled on this deployment",
+    );
+  }
+  const run = await getRun(env.DB, runId);
+  if (!run) throw new HttpError(404, "run not found");
+  const app = await requireOwnedApp(env, run.app_id, userId);
+
+  const gate = ascWriteGate({
+    flagOn: isFlagOn(env.ASC_WRITE_ENABLED),
+    tier: await getTier(env.DB, userId),
+    optedIn: await getAscWriteOptIn(env.DB, userId),
+    runStatus: run.status,
+  });
+  if (!gate.allowed) throw new HttpError(gate.status, gate.reason);
+
+  const body = (await req.json().catch(() => ({}))) as AscCredBody & {
+    appStoreVersionId?: string;
+    name?: string;
+    trafficProportion?: number;
+  };
+  const appStoreVersionId = (body.appStoreVersionId ?? "").trim();
+  if (!appStoreVersionId) throw new HttpError(400, "appStoreVersionId is required");
+
+  const cred = await ascCredForRequest(env, userId, app.id, body);
+  let token: string;
+  try {
+    token = await mintAscJwt({ p8: cred.p8, keyId: cred.keyId, issuerId: cred.issuerId });
+  } catch (e) {
+    throw new HttpError(400, e instanceof Error ? e.message : "invalid credentials");
+  }
+
+  // Read the CURRENT experiments first: the "is one already live?" decision must
+  // be made from Apple's present state, never from what a stale run recorded.
+  const ascAppId = await findAscAppId(fetch, token, app.bundle_id);
+  const { experiments } = await readAscExperiments(fetch, { token, appId: ascAppId });
+
+  try {
+    return await createPpoExperiment(fetch, {
+      token,
+      appStoreVersionId,
+      name: (body.name ?? "").trim(),
+      trafficProportion: body.trafficProportion ?? 50,
+      runningExperiments: experiments,
+    });
+  } catch (e) {
+    if (e instanceof AscWriteError) return { ok: false, reason: e.message };
+    throw new HttpError(400, e instanceof Error ? e.message : "could not create the experiment");
   }
 }
 
@@ -4946,6 +5044,9 @@ export async function handleApi(req: Request, env: Env, ctx?: ExecutionContext):
       }
       if (seg.length === 4 && seg[2] === "asc" && seg[3] === "upload-screenshot" && method === "POST") {
         return json(await ascUploadScreenshotRoute(req, env, user.id, runId), 200, origin);
+      }
+      if (seg.length === 4 && seg[2] === "asc" && seg[3] === "create-experiment" && method === "POST") {
+        return json(await ascCreateExperimentRoute(req, env, user.id, runId), 200, origin);
       }
       if (seg.length === 4 && seg[2] === "asc" && seg[3] === "create-version" && method === "POST") {
         return json(await ascCreateVersionRoute(req, env, user.id, runId), 200, origin);

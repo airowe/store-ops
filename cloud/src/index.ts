@@ -69,6 +69,13 @@ export type Env = {
   // endpoint returns 403 (the credential-free Fastlane handoff stays the default).
   // Set to "1"/"true" only after verifying against a test app.
   ASC_WRITE_ENABLED?: string;
+  // Its OWN gate, on top of ASC_WRITE_ENABLED, for creating a Product Page
+  // Optimization experiment (#374). Deliberately not folded into the flag above:
+  // every other ASC write is pre-review and invisible until the developer
+  // submits, while a PPO experiment splits LIVE App Store traffic. Different
+  // blast radius ⇒ different switch. Unset → the create endpoint 403s.
+  // Note this gates CREATING (stopped) only; starting a test is never ours.
+  ASC_EXPERIMENT_WRITE_ENABLED?: string;
   // Opt-in gate for creating the ASC Analytics Reports request (Phase 1). Unset →
   // the /apps/:id/analytics/enable write returns 403 (the read-only status probe
   // stays available). Creating an ONGOING report request is an outward write to
