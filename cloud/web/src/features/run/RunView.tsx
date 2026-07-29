@@ -44,10 +44,18 @@ export function RunView({
   client,
   id,
   onConnect,
+  onAccountSettings,
 }: {
   client: import("@shipaso/api").ApiClient;
   id: string;
-  onConnect?: () => void;
+  /**
+   * Connect a key for THIS app. Receives the run's `app_id`, because the key
+   * card is app-scoped — a destination without it lands on a page that cannot
+   * show the app's key at all.
+   */
+  onConnect?: (appId: string) => void;
+  /** Account-level settings (MCP/agent access). Not app-scoped. */
+  onAccountSettings?: () => void;
 }) {
   const qc = useQueryClient();
   const runQ = useQuery({ queryKey: ["run", id], queryFn: () => getRun(client, id) });
@@ -153,6 +161,11 @@ export function RunView({
   const r = run.result;
   const tierLimited = decide.error instanceof ApiError && decide.error.isTierLimit;
 
+  // Bind the app here, where it is known. The child cards render a CTA and
+  // should not have to carry which app it belongs to; this view already reads
+  // `run.app_id` to resolve the stored key.
+  const connectThisApp = onConnect ? () => onConnect(run.app_id) : undefined;
+
   // The stored ASC key for THIS app (or an account-level one) backs one-click
   // push. Absent → the CLI handoff is the only path, exactly as before.
   const ascKeyRow = (credsQ.data?.credentials ?? []).find(
@@ -192,7 +205,7 @@ export function RunView({
               findings={r.findings ?? []}
               {...(r.locks !== undefined ? { locks: r.locks } : {})}
               {...(r.findingsSummary !== undefined ? { summary: r.findingsSummary } : {})}
-              {...(onConnect ? { onConnect } : {})}
+              {...(connectThisApp ? { onConnect: connectThisApp } : {})}
               onTool={goToTool}
             />
           ),
@@ -258,7 +271,7 @@ export function RunView({
           {...(r.audit?.liveVersion !== undefined ? { version: r.audit.liveVersion } : {})}
           {...(r.audit?.rating !== undefined ? { rating: r.audit.rating } : {})}
           {...(r.audit?.categoryRank !== undefined ? { categoryRank: r.audit.categoryRank } : {})}
-          {...(onConnect ? { onConnectAnalytics: onConnect } : {})}
+          {...(connectThisApp ? { onConnectAnalytics: connectThisApp } : {})}
         />
         <h1 className="run-title">Proposed changes</h1>
         <p className="run-lede">
@@ -306,7 +319,7 @@ export function RunView({
           {...(r.findingsSummary !== undefined ? { summary: r.findingsSummary } : { summary: undefined })}
           lockCount={r.locks?.length ?? 0}
           appName={r.audit?.liveName ?? r.currentCopy.name ?? "this app"}
-          {...(onConnect ? { onConnect } : {})}
+          {...(connectThisApp ? { onConnect: connectThisApp } : {})}
         />
 
         {changedFieldCount > 0 ? (
@@ -330,7 +343,7 @@ export function RunView({
               findings={r.findings ?? []}
               {...(r.locks !== undefined ? { locks: r.locks } : {})}
               {...(r.findingsSummary !== undefined ? { summary: r.findingsSummary } : {})}
-              {...(onConnect ? { onConnect } : {})}
+              {...(connectThisApp ? { onConnect: connectThisApp } : {})}
             />
           </RunSection>
         ) : null}
@@ -553,8 +566,13 @@ export function RunView({
   --header "Authorization: Bearer <your shipaso_ key>"`}</pre>
           <p className="micro muted" style={{ margin: "4px 0 0" }}>
             Generate a key in Settings → Agent access.{" "}
-            {onConnect ? (
-              <button type="button" className="btn ghost" data-testid="mcp-settings" onClick={onConnect}>
+            {onAccountSettings ? (
+              <button
+                type="button"
+                className="btn ghost"
+                data-testid="mcp-settings"
+                onClick={onAccountSettings}
+              >
                 Open Settings →
               </button>
             ) : (

@@ -48,12 +48,19 @@ export function AppDetailView({
   onOpenRun,
   onWarRoom,
   now = Date.now(),
+  initialTab = "monitor",
 }: {
   client: ApiClient;
   id: string;
   onOpenRun: (runId: string) => void;
   onWarRoom: (appId: string) => void;
   now?: number;
+  /**
+   * Which tab opens first. The key cards live on "connections", so a link that
+   * exists to connect a key must be able to land there — otherwise arriving
+   * here is still a dead end, one hidden click deep.
+   */
+  initialTab?: "monitor" | "connections";
 }) {
   const appQ = useQuery({ queryKey: ["app", id], queryFn: () => getApp(client, id) });
   const ranksQ = useQuery({ queryKey: ["ranks", id], queryFn: () => getRanks(client, id) });
@@ -63,7 +70,7 @@ export function AppDetailView({
   // run this same query under the same key, so this shares their cache entry
   // rather than adding a request.
   const credsQ = useQuery({ queryKey: ["credentials"], queryFn: () => getCredentials(client) });
-  const [tab, setTab] = useState<"monitor" | "connections">("monitor");
+  const [tab, setTab] = useState<"monitor" | "connections">(initialTab);
 
   // #385: the keyless audit. POST /apps/:id/run existed and had no caller in
   // either surface, so the free tier — whose whole product IS the public audit

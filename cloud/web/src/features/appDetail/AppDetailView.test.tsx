@@ -271,6 +271,33 @@ describe("<AppDetailView />", () => {
     expect(screen.getByTestId("rank-movement")).toBeInTheDocument();
   });
 
+  /**
+   * The run page's "Connect a key" CTA links here to connect a key, and the key
+   * cards live on Connections. Landing on Monitor instead is the dead end the
+   * CTA was reported for — right page, wrong tab, no visible way to act.
+   *
+   * Rendered directly rather than through renderView(): initialTab is the thing
+   * under test, and the ~30 other tests should keep asserting the default.
+   */
+  it("opens on Connections when told to, so a connect link lands on the key cards", async () => {
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <QueryClientProvider client={qc}>
+        <AppDetailView
+          client={makeClient()}
+          id="a1"
+          onOpenRun={() => {}}
+          onWarRoom={() => {}}
+          initialTab="connections"
+          now={Date.parse("2026-07-05T00:00:00Z")}
+        />
+      </QueryClientProvider>,
+    );
+    await waitFor(() => screen.getByText("Acme"));
+    expect(screen.getByTestId("audit-tab-connections")).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByTestId("connect-asc")).toBeInTheDocument();
+  });
+
   it("keeps the four credential cards OFF the Monitor tab", async () => {
     renderView(makeClient());
     await waitFor(() => screen.getByText("Acme"));
