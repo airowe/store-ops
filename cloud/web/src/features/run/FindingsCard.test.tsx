@@ -41,7 +41,7 @@ const lock: SurfaceLock = {
 };
 
 describe("<FindingsCard />", () => {
-  it("renders actionable findings with severity, fix, and the summary label", () => {
+  it("collapses finding details by default and expands on accessible button toggle", () => {
     render(
       <FindingsCard
         findings={[actionable]}
@@ -50,8 +50,40 @@ describe("<FindingsCard />", () => {
     );
     expect(screen.getByText("1 fix available · 1 critical")).toBeInTheDocument();
     expect(screen.getByText("No subtitle")).toBeInTheDocument();
+
+    // Details/fix are hidden before click
+    expect(screen.queryByText(/Add a 30-char subtitle/)).toBeNull();
+
+    // Expedient accessibility check on the toggle button
+    const button = screen.getByRole("button", { name: /No subtitle/ });
+    expect(button).toHaveAttribute("aria-expanded", "false");
+    expect(button).toHaveTextContent("▸");
+
+    // Click / keyboard activate button
+    fireEvent.click(button);
+    expect(button).toHaveAttribute("aria-expanded", "true");
+    expect(button).toHaveTextContent("▾");
     expect(screen.getByText(/Add a 30-char subtitle/)).toBeInTheDocument();
     expect(screen.getByTestId("finding-subtitle_missing")).toHaveTextContent("critical");
+  });
+
+  it("renders a non-interactive header with no chevron or button when finding has no details", () => {
+    const noDetailFinding: Finding = {
+      id: "no_detail",
+      surface: "title",
+      severity: "warn",
+      impact: "completeness",
+      title: "Title is set",
+      detail: "",
+      fix: "",
+      evidence: "",
+    };
+
+    render(<FindingsCard findings={[noDetailFinding]} />);
+    expect(screen.getByText("Title is set")).toBeInTheDocument();
+    expect(screen.queryByRole("button")).toBeNull();
+    expect(screen.queryByText("▸")).toBeNull();
+    expect(screen.queryByText("▾")).toBeNull();
   });
 
   it("separates status/context facts from the actionable list", () => {
@@ -274,8 +306,15 @@ describe("<FindingsCard /> — #324 finding actions", () => {
     expect(screen.queryByTestId("finding-tool-secondary_category_missing")).not.toBeInTheDocument();
   });
 
-  it("renders a legacy finding with no action at all, unchanged", () => {
+  it("renders a legacy finding with no action at all, and still surfaces its fix", () => {
     render(<FindingsCard findings={[withAction(undefined)]} />);
+    // #325 moved detail/fix/evidence behind a disclosure, so the fix is no
+    // longer on screen at first paint. What this test protects is that it is
+    // still REACHABLE and that a finding without an `action` grows no action
+    // row — not the initial paint, which the collapse deliberately changed.
+    expect(screen.queryByTestId("finding-action-secondary_category_missing")).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: /No secondary category/ }));
     expect(screen.getByTestId("finding-secondary_category_missing")).toHaveTextContent(
       "Pick your most relevant secondary category",
     );

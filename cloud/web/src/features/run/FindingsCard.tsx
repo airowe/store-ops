@@ -28,26 +28,71 @@ function isHealthy(f: Finding): boolean {
 }
 
 function FindingRow({ f, onTool }: { f: Finding; onTool?: ((tool: FindingTool) => void) | undefined }) {
+  const [expanded, setExpanded] = useState(false);
+  const hasDetail = Boolean(f.detail || f.fix || f.evidence);
+
+  const headerContent = (
+    <>
+      <span
+        className="sev-chip"
+        style={{ color: SEVERITY_COLOR[f.severity], fontWeight: "bold" }}
+      >
+        {f.severity}
+      </span>
+      <b className="finding-title">{f.title}</b>
+      {hasDetail && !expanded && f.detail ? (
+        <span className="micro muted finding-detail-preview">
+          — {f.detail}
+        </span>
+      ) : (
+        <span style={{ flex: 1 }} />
+      )}
+      {hasDetail ? (
+        <span className="micro muted" style={{ paddingLeft: 4 }}>
+          {expanded ? "▾" : "▸"}
+        </span>
+      ) : null}
+    </>
+  );
+
   return (
     <div
       className={"finding-row sev-" + f.severity}
       data-testid={`finding-${f.id}`}
       data-severity={f.severity}
     >
-      <p style={{ margin: 0 }}>
-        <span
-          className="sev-chip"
-          style={{ color: SEVERITY_COLOR[f.severity], fontSize: 12, marginRight: 8 }}
+      {hasDetail ? (
+        <button
+          type="button"
+          className="finding-toggle"
+          aria-expanded={expanded}
+          onClick={() => setExpanded((prev) => !prev)}
         >
-          {f.severity}
-        </span>
-        <b>{f.title}</b>
-      </p>
-      <p className="micro" style={{ margin: "2px 0 0" }}>{f.detail}</p>
-      {f.fix ? <p className="micro" style={{ margin: "2px 0 0" }}>→ {f.fix}</p> : null}
-      {/* #324: where to actually DO it — ASC deep link + any in-product handoff. */}
+          {headerContent}
+        </button>
+      ) : (
+        <div className="finding-header">
+          {headerContent}
+        </div>
+      )}
+
+      {expanded && hasDetail ? (
+        <div className="finding-details">
+          {f.detail ? <p className="micro" style={{ margin: "2px 0 0" }}>{f.detail}</p> : null}
+          {f.fix ? <p className="micro" style={{ margin: "2px 0 0", color: "var(--signal)" }}>→ {f.fix}</p> : null}
+          {f.evidence ? <p className="micro muted" style={{ margin: "2px 0 0" }}>{f.evidence}</p> : null}
+        </div>
+      ) : null}
+
+      {/* #324: where to actually DO it — ASC deep link + any in-product handoff.
+          OUTSIDE the disclosure deliberately. This card already hides noise at
+          the GROUP level: healthy checks sit behind their own toggle, so every
+          row rendered here is something the reader may need to act on. Putting
+          the action behind a second click costs a click on exactly the rows
+          that earned their place, to hide the one element that is already a
+          single line. Progressive disclosure applies to the EXPLANATION
+          (detail/fix/evidence), not to the act. */}
       <FindingActionRow finding={f} onTool={onTool} />
-      {f.evidence ? <p className="micro muted" style={{ margin: "2px 0 0" }}>{f.evidence}</p> : null}
     </div>
   );
 }
