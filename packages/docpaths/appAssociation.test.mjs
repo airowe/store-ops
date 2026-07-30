@@ -100,6 +100,30 @@ test("the site pins application/json for the extensionless association file", ()
 });
 
 /**
+ * The link the email actually contains has to be on the associated host.
+ *
+ * This is the fault that caused the rejection. MAGIC_LINK_BASE was UNSET, so
+ * buildMagicLink() fell back to `${requestOrigin}/auth/callback` — api.shipaso.com,
+ * which iOS was never told to associate. The link opened Safari and stayed
+ * there. Declaring it in [vars] rather than as a `wrangler secret` is what makes
+ * it deploy automatically instead of being a step someone must remember.
+ */
+test("MAGIC_LINK_BASE is set, and points at the app's associated host", () => {
+  const toml = read("cloud/wrangler.toml");
+  const m = toml.match(/^MAGIC_LINK_BASE\s*=\s*"([^"]+)"/m);
+  assert.ok(
+    m,
+    "cloud/wrangler.toml does not set MAGIC_LINK_BASE — magic links fall back to the API origin, which is not an associated domain, and sign-in will not return to the app",
+  );
+  const host = new URL(m[1]).host;
+  assert.equal(
+    host,
+    associatedHost(),
+    `MAGIC_LINK_BASE points at "${host}" but the app declares applinks:${associatedHost()} — a link on a non-associated host opens Safari instead of the app`,
+  );
+});
+
+/**
  * The magic link's landing path. MAGIC_LINK_BASE points at the associated host,
  * and the AASA maps /auth/m — so that path has to exist on that site or the
  * link 404s before iOS ever gets a chance to hand off.
