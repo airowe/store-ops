@@ -143,7 +143,7 @@ describe("<PortfolioRunsView /> honesty", () => {
   it("renders the chip only when a summary was actually measured", async () => {
     const { client } = makeClient([
       row("y", "awaiting_approval", "2026-07-25T09:00:00Z", {
-        findings_summary: { label: "2 critical findings", critical: 2 },
+        findings_summary: { label: "2 critical findings", critical: 2, warn: 0, good: 0, info: 0, total: 2, topImpact: "ranking" },
       }),
     ]);
     renderView(client);

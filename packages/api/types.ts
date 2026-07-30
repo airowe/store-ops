@@ -19,7 +19,27 @@ export type RunStatus =
   | "approved" | "rejected" | "shipped" | "superseded";
 
 export type RankSummary = { lead_keyword: string; lead_rank: number | null };
-export type FindingsSummary = { label: string; critical: number };
+/**
+ * The findings roll-up as the engine actually sends it.
+ *
+ * This was declared as `{ label, critical }` while `summarizeFindings` has
+ * always emitted all seven fields — verified against a live run:
+ * `{critical:0, warn:0, good:0, info:4, total:4, topImpact:"completeness",
+ * label:"No fixes found"}`. The narrow type meant the web could not tell
+ * "4 info notes" from "4 fixes" without re-counting the findings array itself.
+ *
+ * `critical + warn` are the actionable ones; `info`/`good` are context and must
+ * never be presented as work.
+ */
+export type FindingsSummary = {
+  label: string;
+  critical: number;
+  warn: number;
+  good: number;
+  info: number;
+  total: number;
+  topImpact: string | null;
+};
 
 export type AppListItem = {
   id: string;
