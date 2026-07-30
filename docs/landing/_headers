@@ -21,6 +21,33 @@
   Content-Type: application/xml; charset=utf-8
   Cache-Control: public, max-age=3600
 
+# ── Apple / Android app association ──────────────────────────────────────────
+# The iOS app declares `applinks:shipaso.com` (mobile/app.config.ts), so THIS
+# host is the one iOS fetches the association from — not app.shipaso.com. It
+# 404'd here, which is why App Review saw "the sign in link does not link user
+# back to the app" (Guideline 2.1(a), submission a64749cd, 2026-07-29): the
+# magic link opened Safari and stayed there.
+#
+# Apple requires apple-app-site-association EXTENSIONLESS, as application/json,
+# with no redirect. Pages would otherwise serve an extensionless file as
+# application/octet-stream and iOS would reject it. Short cache so an appID
+# correction propagates quickly.
+/.well-known/apple-app-site-association
+  Content-Type: application/json
+  Cache-Control: public, max-age=3600
+/.well-known/assetlinks.json
+  Content-Type: application/json
+  Cache-Control: public, max-age=3600
+
+# The magic-link landing page. Never cache it — it reads a one-time token from
+# the query string, and a cached copy would be served to the next signer.
+/auth/m
+  Cache-Control: no-store
+/auth/m/index.html
+  Cache-Control: no-store
+/config.js
+  Cache-Control: no-cache
+
 # ── HTML: always revalidate ──────────────────────────────────────────────────
 # The landing pages are hand-written and edited in place (no content hashing),
 # so a cached copy is a stale copy.
