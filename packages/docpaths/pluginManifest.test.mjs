@@ -139,6 +139,67 @@ test("the skill count advertised on the landing pages matches reality", () => {
  * Matches the leading `| \`name\`` cell of a table row, which is how the Skills
  * section lists them.
  */
+/**
+ * AGENTS.md is the front door for NON-Claude agents (Cursor, Codex, Zed,
+ * Windsurf and anything else that reads the emerging convention). It is the
+ * only file those agents are guaranteed to look at, so a skill missing from it
+ * is a skill they will never invoke — the exact failure the README had, in a
+ * file with less traffic and therefore less chance of being noticed.
+ *
+ * Same shape as the README guard: every shipped skill named, and no phantoms.
+ */
+test("AGENTS.md names every skill the repo ships", () => {
+  const skillsDir = join(repoRoot, "skills");
+  const shipped = readdirSync(skillsDir).filter((d) =>
+    existsSync(join(skillsDir, d, "SKILL.md")),
+  );
+
+  const agents = readFileSync(join(repoRoot, "AGENTS.md"), "utf8");
+  // Skills appear as inline code anywhere in the doc, not only in table cells.
+  const listed = new Set([...agents.matchAll(/`([a-z0-9-]+)`/g)].map((m) => m[1]));
+
+  const missing = shipped.filter((s) => !listed.has(s));
+  assert.deepEqual(
+    missing,
+    [],
+    `these skills ship but are not named in AGENTS.md: ${missing.join(", ")}`,
+  );
+});
+
+/**
+ * The two invariants are the product. An agent that reads AGENTS.md and does
+ * not learn them will fabricate numbers and push to live stores — the two
+ * things this codebase exists to prevent. Pinned as prose because prose is
+ * where they live for a reading agent.
+ */
+test("AGENTS.md states both product invariants", () => {
+  const agents = readFileSync(join(repoRoot, "AGENTS.md"), "utf8");
+  // Assert the RULE, not a slogan: that an unmeasured value renders as an em
+  // dash and never as a placeholder or zero. A looser /measured or absent/
+  // matched the body sentence even after the heading was removed, so it could
+  // not tell a stated invariant from an incidental phrase.
+  assert.match(
+    agents,
+    /never a placeholder/i,
+    "AGENTS.md must state the measured-or-nothing rule — an agent that misses it will emit placeholder numbers",
+  );
+  assert.match(
+    agents,
+    /no keyword "?(volume|difficulty)"? (or|nor)/i,
+    "AGENTS.md must say there is deliberately no volume/difficulty score — otherwise an agent will invent one",
+  );
+  assert.match(
+    agents,
+    /approv\w+ is not shipping|approval is the terminus/i,
+    "AGENTS.md must state that approving is not shipping — an agent that misses it may push to a live store",
+  );
+  assert.match(
+    agents,
+    /\.p8/,
+    "AGENTS.md must cover .p8 handling — key material pasted into a transcript is unrecoverable",
+  );
+});
+
 test("the README names every skill the repo ships", () => {
   const skillsDir = join(repoRoot, "skills");
   const shipped = readdirSync(skillsDir).filter((d) =>
