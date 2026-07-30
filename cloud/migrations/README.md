@@ -9,7 +9,7 @@ Because migrations apply before the Worker deploys, a table/column a migration a
 already exists by the time the new code reads it — no manual deploy-ordering.
 
 > **History:** there used to be a *second*, parallel mechanism — a manual
-> `.github/workflows/db-migrate.yml` that PRAGMA-probed prod and added missing
+> a `db-migrate` workflow (since deleted) that PRAGMA-probed prod and added missing
 > columns. Two systems that both "apply pending schema" is how a bad migration
 > slipped through (0002 first shipped assuming a column existed). It's **retired**.
 > Its historical column-adds already live in `schema.sql`'s `CREATE`s (fresh DBs)

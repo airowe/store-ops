@@ -4,9 +4,9 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import type { ApiClient } from "@shipaso/api";
 import { SettingsView } from "./SettingsView.js";
 
-function makeClient() {
+function makeClient(overrides: { creds?: unknown } = {}) {
   const meData = { email: "me@x.com", push_run_ready: true, email_digest: "weekly", rank_cadence: "weekly" };
-  const creds = {
+  const creds = overrides.creds ?? {
     enabled: true,
     credentials: [
       { id: "c1", appId: null, kind: "asc", keyId: "KID123", issuerId: "iss", createdAt: "2026-07-01T00:00:00Z", lastUsedAt: null, kekVersion: 1 },
@@ -80,14 +80,129 @@ describe("<SettingsView />", () => {
     );
   });
 
+  /**
+   * #372: a key whose KEK was replaced still lists (metadata never decrypts),
+   * so this panel showed it as a perfectly healthy stored key. The row must say
+   * it can't be read — and must still offer Delete, because re-connecting is
+   * the fix and that starts with removing the dead row.
+   */
+  it("marks a key the server reports as UNREADABLE, and still allows deleting it", async () => {
+    const { client } = makeClient({
+      creds: {
+        enabled: true,
+        credentials: [
+          { id: "c1", appId: null, kind: "asc", keyId: "KID123", issuerId: "iss", createdAt: "2026-07-01T00:00:00Z", lastUsedAt: null, kekVersion: 1, readable: false },
+        ],
+      },
+    });
+    renderView(client);
+    await waitFor(() => screen.getByTestId("delete-asc"));
+    const notice = screen.getByTestId("key-unreadable-asc");
+    expect(notice).toHaveTextContent(/can’t be read|cannot be read/i);
+    expect(notice).toHaveTextContent(/re-connect/i);
+    // the row is still deletable — that is the recovery path
+    expect(screen.getByTestId("delete-asc")).toBeInTheDocument();
+  });
+
+  it("a readable key shows no warning (the guard is not over-broad)", async () => {
+    const { client } = makeClient();
+    renderView(client);
+    await waitFor(() => screen.getByTestId("delete-asc"));
+    expect(screen.queryByTestId("key-unreadable-asc")).not.toBeInTheDocument();
+  });
+
   it("pausing the autonomous sweep posts /agent/pause and flips to Paused", async () => {
     const { client, post } = makeClient();
     renderView(client);
     await waitFor(() => expect(screen.getByTestId("pause-toggle")).toHaveTextContent("Active"));
-    expect(screen.getByText(/this changes what the agent does/i)).toBeInTheDocument();
+    // The send-vs-do claim now lives on the scope pill; the subline points at it.
+    expect(screen.getByTestId("autonomy-scope-pill")).toHaveTextContent(/changes what the agent does/i);
+    expect(screen.getByText(/Unlike everything above, this one is not about messages/i)).toBeInTheDocument();
     fireEvent.click(screen.getByTestId("pause-toggle"));
     await waitFor(() => expect(post).toHaveBeenCalledWith("/agent/pause"));
     await waitFor(() => expect(screen.getByTestId("pause-toggle")).toHaveTextContent("Paused"));
+  });
+
+  it("gives the send-vs-do distinction visual weight: neutral pill on Communications, amber on Autonomy", async () => {
+    const { client } = makeClient();
+    renderView(client);
+    await waitFor(() => screen.getByTestId("comms-scope-pill"));
+    // Communications changes what gets SENT — neutral.
+    const send = screen.getByTestId("comms-scope-pill");
+    expect(send).toHaveTextContent(/CHANGES WHAT WE SEND/i);
+    expect(send).toHaveClass("scope-pill");
+    expect(send).not.toHaveClass("warn");
+    // Autonomy changes what the AGENT DOES — amber, and the panel sits forward.
+    const does = screen.getByTestId("autonomy-scope-pill");
+    expect(does).toHaveTextContent(/CHANGES WHAT THE AGENT DOES/i);
+    expect(does).toHaveClass("scope-pill", "warn");
+    expect(screen.getByTestId("autonomy-panel")).toHaveClass("is-forward");
+  });
+
+  it("the on-this-page nav is real anchors and the autonomy dot tracks paused state", async () => {
+    const { client, post } = makeClient();
+    renderView(client);
+    await waitFor(() => screen.getByTestId("page-nav"));
+    const nav = screen.getByTestId("page-nav");
+    // Keyboard-operable by construction: real <a href="#…">, no hand-rolled handlers.
+    const hrefs = Array.from(nav.querySelectorAll("a")).map((a) => a.getAttribute("href"));
+    expect(hrefs).toEqual(["#comms", "#autonomy", "#connections", "#agent", "#keys", "#appearance", "#account"]);
+    // Active sweep → signal dot; paused → warn dot.
+    expect(screen.getByTestId("autonomy-nav-dot")).toHaveClass("is-active");
+    fireEvent.click(screen.getByTestId("pause-toggle"));
+    await waitFor(() => expect(post).toHaveBeenCalledWith("/agent/pause"));
+    await waitFor(() => expect(screen.getByTestId("autonomy-nav-dot")).toHaveClass("is-paused"));
+  });
+
+  it("the autonomy inset is state-driven and never claims ShipASO can push", async () => {
+    const { client, post } = makeClient();
+    renderView(client);
+    await waitFor(() => screen.getByTestId("autonomy-inset"));
+    expect(screen.getByTestId("autonomy-inset")).toHaveClass("is-active");
+    expect(screen.getByText(/It never pushes\. Every run ends at your approval\./i)).toBeInTheDocument();
+    fireEvent.click(screen.getByTestId("pause-toggle"));
+    await waitFor(() => expect(post).toHaveBeenCalledWith("/agent/pause"));
+    await waitFor(() => expect(screen.getByTestId("autonomy-inset")).toHaveClass("is-paused"));
+  });
+
+  it("theme is a segmented control whose active segment tracks the choice", async () => {
+    const { client } = makeClient();
+    renderView(client);
+    await waitFor(() => screen.getByTestId("theme-dark"));
+    fireEvent.click(screen.getByTestId("theme-light"));
+    expect(document.documentElement.getAttribute("data-theme")).toBe("light");
+    expect(screen.getByTestId("theme-light")).toHaveClass("is-on");
+    expect(screen.getByTestId("theme-dark")).not.toHaveClass("is-on");
+    fireEvent.click(screen.getByTestId("theme-dark"));
+    expect(document.documentElement.getAttribute("data-theme")).toBe("dark");
+    expect(screen.getByTestId("theme-dark")).toHaveClass("is-on");
+  });
+
+  /**
+   * #362: "System" is the default, and choosing it hands control back to the
+   * OS. Without this segment there is no way to undo an explicit choice — the
+   * stored key would stay "light"/"dark" forever.
+   */
+  it("offers a System segment that stores 'system' and follows the OS", async () => {
+    const { client } = makeClient();
+    // jsdom reports no match for any query by default; make the OS say light.
+    vi.stubGlobal("matchMedia", (q: string) => ({
+      matches: q.includes("light"),
+      addEventListener: () => {},
+      removeEventListener: () => {},
+    }));
+    renderView(client);
+    await waitFor(() => screen.getByTestId("theme-system"));
+
+    fireEvent.click(screen.getByTestId("theme-dark"));
+    expect(localStorage.getItem("store-ops:theme")).toBe("dark");
+
+    fireEvent.click(screen.getByTestId("theme-system"));
+    expect(localStorage.getItem("store-ops:theme")).toBe("system");
+    expect(screen.getByTestId("theme-system")).toHaveClass("is-on");
+    // …and the OS's light preference now wins.
+    expect(document.documentElement.getAttribute("data-theme")).toBe("light");
+    vi.unstubAllGlobals();
   });
 
   it("sign out calls logout and notifies", async () => {

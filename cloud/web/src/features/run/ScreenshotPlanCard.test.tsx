@@ -50,6 +50,18 @@ describe("<ScreenshotPlanCard />", () => {
     expect(screen.getByTestId("shot-review-1")).toBeInTheDocument();
   });
 
+  // #350 — see the matching test in CppSetsCard: this marker carried the same
+  // off-palette #d97706, identical in both themes because a hex cannot respond
+  // to the theme toggle.
+  it("paints the needs-review marker from the warn token, not a raw hex", async () => {
+    renderWithPlan(basePlan);
+    fireEvent.click(screen.getByTestId("plan-screenshots-btn"));
+    await waitFor(() => expect(screen.getByTestId("shot-review-1")).toBeInTheDocument());
+    const color = screen.getByTestId("shot-review-1").style.color;
+    expect(color).toContain("var(--warn");
+    expect(color).not.toMatch(/#[0-9a-f]{3,8}/i);
+  });
+
   it("shows the verbatim draft label", async () => {
     renderWithPlan(basePlan);
     fireEvent.click(screen.getByTestId("plan-screenshots-btn"));

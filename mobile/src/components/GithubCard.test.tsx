@@ -11,6 +11,21 @@ import type { ApiClient } from "../api/client.js";
 import type { GithubStatus } from "../types/api.js";
 import { GithubCard } from "./GithubCard.js";
 
+import { useColorScheme } from "react-native";
+import { ThemeProvider } from "../theme/index.js";
+import { lightPalette, palette } from "../theme/tokens.js";
+
+jest.mock("react-native/Libraries/Utilities/useColorScheme");
+const mockColorScheme = useColorScheme as unknown as jest.Mock;
+
+/** Flatten RN's style prop (array | object) into one resolved object. */
+function flatStyle(node: { props: { style?: unknown } }): Record<string, unknown> {
+  const flatten = (s: unknown): Record<string, unknown> =>
+    Array.isArray(s) ? Object.assign({}, ...s.map(flatten)) : ((s ?? {}) as Record<string, unknown>);
+  return flatten(node.props.style);
+}
+
+
 function fakeClient(
   status: GithubStatus,
   onConnect?: (body: unknown) => GithubStatus,
@@ -28,6 +43,19 @@ function fakeClient(
   } as unknown as ApiClient;
   return { client, bodies };
 }
+
+/** A client that reads status fine but refuses the connect POST — the error path. */
+function errClient(): ApiClient {
+  return {
+    get: async () => ({ appConfigured: true, connected: false, repo: null }),
+    post: async () => {
+      throw new Error("that installation can’t reach acme/app");
+    },
+    request: async () => ({}),
+  } as unknown as ApiClient;
+}
+
+beforeEach(() => mockColorScheme.mockReturnValue("dark")); // every other test in this file assumes the dark default
 
 describe("GithubCard", () => {
   it("renders the inert notice when the GitHub App isn't configured on this deployment", async () => {
@@ -67,5 +95,22 @@ describe("GithubCard", () => {
     fireEvent.press(screen.getByTestId("gh-connect"));
     await waitFor(() => expect(bodies[0]).toEqual({ installation_id: "12345", repo: "acme/app" }));
     await waitFor(() => expect(screen.getByTestId("gh-connected")).toBeTruthy());
+  });
+
+  it("paints the error line from the LIVE palette (light provider → light bad)", async () => {
+    mockColorScheme.mockReturnValue("light");
+    render(
+      <ThemeProvider>
+        <GithubCard client={errClient()} />
+      </ThemeProvider>,
+    );
+    await waitFor(() => expect(screen.getByTestId("gh-connect")).toBeTruthy());
+    fireEvent.changeText(screen.getByTestId("gh-installation"), "12345");
+    fireEvent.changeText(screen.getByTestId("gh-repo"), "acme/app");
+    fireEvent.press(screen.getByTestId("gh-connect"));
+    await waitFor(() => expect(screen.getByTestId("gh-error")).toBeTruthy());
+
+    expect(flatStyle(screen.getByTestId("gh-error")).color).toBe(lightPalette.bad);
+    expect(lightPalette.bad).not.toBe(palette.bad);
   });
 });

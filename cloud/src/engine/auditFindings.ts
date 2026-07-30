@@ -37,8 +37,10 @@ type LocaleRow = AscSnapshot["locales"] extends ReadonlyArray<infer T> | undefin
 // ones used internally and RE-EXPORT the public surface so every existing
 // importer (index.ts, agent.ts, api, mcp, the spec) keeps importing them here.
 import { mk, sortFindings } from "./findings/core.js";
+import { withActions } from "./findingActions.js";
 import type { Finding, SurfaceLock } from "./findings/core.js";
 import type { CopyFields } from "./optimize.js";
+import { CHAR_LIMITS, type StoreField } from "./constants.js";
 import { reviewRiskFindings } from "./reviewRisk.js";
 import { ppoFindings } from "./ppoFindings.js";
 import { ppoResultFindings } from "./ppoResults.js";
@@ -80,6 +82,12 @@ export type AuditFindingsInput = {
    * (e.g. a run with no proposal) emits no review-risk findings.
    */
   proposedCopy?: CopyFields | undefined;
+  /**
+   * The listing's CURRENT copy as read from the store. Undefined means the run
+   * never read it — which is NOT the same as a field being empty, so findings
+   * that assert absence must stay silent rather than claim something unmeasured.
+   */
+  currentCopy?: Partial<CopyFields> | undefined;
   /**
    * PUBLIC-review sentiment (#95). Undefined when reviews weren't fetched (or
    * the fetch came back empty) — the `reviews` surface then emits NOTHING, like
@@ -785,6 +793,335 @@ function languageFindings(input: AuditFindingsInput): Finding[] {
   ];
 }
 
+/**
+ * Promotional text — flag the field being UNUSED.
+ *
+ * It is the only listing field editable without submitting a new version, and it
+ * is NOT indexed. So it costs nothing from the 100-char keyword budget, and it
+ * is the one surface where positioning can be tested weekly instead of per
+ * release: iterate here, then promote the winner into the subtitle, where it
+ * DOES get indexed.
+ *
+ * An empty field scores nothing and flags nothing unless something looks for the
+ * absence — which is exactly how 170 unused characters went unmentioned in a real
+ * audit while every populated field was scored.
+ *
+ * `currentCopy` undefined means the run never READ the copy. That is not the same
+ * as the field being empty, so this stays silent rather than asserting something
+ * unmeasured.
+ */
+function promoTextFindings(currentCopy: Partial<CopyFields> | undefined): Finding[] {
+  if (!currentCopy) return [];
+  // MEASURED-OR-NOTHING. The public iTunes lookup does not expose promotional
+  // text, so a no-key run's currentCopy has NO `promo` key at all (verified on a
+  // live run: keys were ['description','name']). An absent key means "we did not
+  // look" — NOT "the field is empty" — and flagging it would assert a deficiency
+  // in an unseen field, firing identically for an app with 170 characters we
+  // simply could not read. Only a key that EXISTS and is blank is a measured
+  // absence. The no-key blind spot is disclosed as a surface lock instead.
+  if (!("promo" in currentCopy)) return [];
+  if ((currentCopy.promo ?? "").trim() !== "") return [];
+  return [
+    mk({
+      id: "promo_text_unused",
+      surface: "metadata",
+      severity: "warn",
+      impact: "conversion",
+      title: "Promotional text is empty — 170 characters unused",
+      detail:
+        "Promotional text sits above your description and is the only listing field you can change " +
+        "WITHOUT submitting a new version. It is not indexed, so it costs nothing from your keyword " +
+        "budget — use it for what is timely (a launch, a season, a press mention) and to test " +
+        "positioning weekly, then move the winner into your subtitle where it does get indexed.",
+      fix: "Write up to 170 characters of timely copy in App Store Connect — no resubmission needed.",
+    }),
+  ];
+}
+
+/**
+ * An app tracking ZERO keywords — the loudest possible fact about a rank
+ * tracker, and until now it produced silence.
+ *
+ * Found by asking why one app had no rank snapshot for three weeks. The sweep
+ * ran every Monday and worked correctly: the reasoner classified every token of
+ * "Who Got Cooked" as brand and excluded them (deliberate — brand tokens are
+ * monitor-only), and no GENRE_SEEDS trigger matched its category, so it targeted
+ * nothing. Three portfolio apps are in that state.
+ *
+ * Every downstream card then renders empty and the audit reports clean, so an
+ * app tracking nothing is indistinguishable from a healthy one.
+ *
+ * NOT the same as #396's "tracked but unranked": a keyword that came back with
+ * no position IS measured. Conflating them would report a working app as broken.
+ */
+function noTrackedKeywordsFindings(input: AuditFindingsInput): Finding[] {
+  if (input.ranks.length > 0) return [];
+  return [
+    mk({
+      id: "keywords_none_tracked",
+      surface: "keywords",
+      severity: "warn",
+      impact: "ranking",
+      title: "No keywords are being tracked for this app",
+      detail:
+        "Nothing is being checked, so no rank data can arrive — this app's rank history will " +
+        "stay empty however long it runs. It usually means the name is all brand (every token " +
+        "is monitor-only) and the category has no keyword seeds yet, leaving nothing to target.",
+      fix: "Set the keywords to track for this app, or add them to your App Store Connect keyword field so a keyed run can read them.",
+    }),
+  ];
+}
+
+/**
+ * Filler terms that cost characters and buy no reach — articles, prepositions,
+ * and the marketing words every listing already uses. Matched as WHOLE terms
+ * only: "apple" contains "app" and "freedom" contains "free", and flagging those
+ * would be a false positive on a correct listing.
+ */
+const KEYWORD_STOP_WORDS = new Set([
+  "the","a","an","and","or","of","for","to","in","on","with","your","my",
+  "app","apps","best","top","free","new","get","download",
+]);
+
+/**
+ * Keyword-field hygiene beyond duplicates and length (#410).
+ *
+ * Every rule here is deliberately NARROW. Measured against the real listings
+ * first — neither Heathen nor Who Got Cooked trips any of them — because a
+ * hygiene check that fires on a correct listing is worse than no check.
+ *
+ * Not included: "does the title contain the primary keyword". Every version of
+ * that either goes silent for unranked apps (most of them, #396) or flags a
+ * deliberate brand name whose subtitle carries the keywords. The promise was
+ * removed from the skill rather than shipped as a misfire.
+ */
+function keywordHygieneFindings(currentCopy: Partial<CopyFields> | undefined): Finding[] {
+  if (!currentCopy) return [];
+  const keywords = currentCopy.keywords;
+  if (typeof keywords !== "string" || keywords.trim() === "") return [];
+
+  const terms = keywords.split(",").map((t) => t.trim()).filter(Boolean);
+  const out: Finding[] = [];
+
+  // ── stop-words ────────────────────────────────────────────────────────────
+  const stops = terms.filter((t) => KEYWORD_STOP_WORDS.has(t.toLowerCase()));
+  if (stops.length > 0) {
+    const freed = stops.reduce((n, t) => n + t.length + 1, 0);
+    out.push(
+      mk({
+        id: "keywords_stop_words",
+        surface: "keywords",
+        severity: "warn",
+        impact: "ranking",
+        title: `${stops.length} keyword${stops.length === 1 ? "" : "s"} that won't earn you reach`,
+        detail:
+          `${stops.join(", ")} ${stops.length === 1 ? "is a term" : "are terms"} every listing uses — ` +
+          `they cost characters without making you findable for anything. Removing ` +
+          `${stops.length === 1 ? "it" : "them"} frees about ${freed} of your 100.`,
+        fix: `Drop ${stops.join(", ")} and spend the space on terms someone would actually search.`,
+      }),
+    );
+  }
+
+  // ── plural/singular pairs ─────────────────────────────────────────────────
+  // Apple stems, so shipping both spends characters for no additional reach.
+  // EXACT +s/+es pairs only: near-miss stemming produces noise, and this is a
+  // rule that should never be wrong when it does fire.
+  const lower = new Set(terms.map((t) => t.toLowerCase()));
+  const redundant = terms.filter((t) => {
+    const l = t.toLowerCase();
+    if (l.endsWith("es") && lower.has(l.slice(0, -2))) return true;
+    return l.endsWith("s") && lower.has(l.slice(0, -1));
+  });
+  if (redundant.length > 0) {
+    const freed = redundant.reduce((n, t) => n + t.length + 1, 0);
+    out.push(
+      mk({
+        id: "keywords_plural_pair",
+        surface: "keywords",
+        severity: "warn",
+        impact: "ranking",
+        title: `${redundant.length} plural${redundant.length === 1 ? "" : "s"} duplicating a keyword you already have`,
+        detail:
+          `Apple matches singular and plural forms, so ${redundant.join(", ")} ` +
+          `${redundant.length === 1 ? "adds" : "add"} no reach beyond the singular you already list — ` +
+          `about ${freed} characters spent twice.`,
+        fix: `Drop ${redundant.join(", ")}; the singular already covers both.`,
+      }),
+    );
+  }
+
+  return out;
+}
+
+/**
+ * Promotional text that just repeats how the description opens (#410).
+ *
+ * EXACT-PREFIX only. The real mistake is pasting the description's first line
+ * into promo text; a fuzzy similarity threshold would be a number we invented,
+ * which is exactly what this codebase refuses to do elsewhere.
+ *
+ * Silent on empty promo text — that is `promo_text_unused`'s job, and two
+ * findings for one field would be noise.
+ */
+function promoDuplicationFindings(currentCopy: Partial<CopyFields> | undefined): Finding[] {
+  if (!currentCopy) return [];
+  const promo = (currentCopy.promo ?? "").trim();
+  const description = (currentCopy.description ?? "").trim();
+  if (promo === "" || description === "") return [];
+  if (!description.toLowerCase().startsWith(promo.toLowerCase())) return [];
+
+  return [
+    mk({
+      id: "promo_duplicates_description",
+      surface: "metadata",
+      severity: "warn",
+      impact: "conversion",
+      title: "Your promotional text repeats how your description already opens",
+      detail:
+        "Promotional text sits directly above the description, so a reader sees the same " +
+        "sentence twice and learns nothing from the first. It is also the only field you can " +
+        "change without submitting a new version — spending it on a repeat wastes the one " +
+        "surface that can carry something timely.",
+      fix: "Replace it with something the description does not say — a launch, a season, a result.",
+    }),
+  ];
+}
+
+/**
+ * Audit the LENGTH of the iOS copy fields (#410).
+ *
+ * There was no iOS length finding at all: a subtitle over 30 or a keyword field
+ * over 100 produced silence, and Apple would reject at submission having been
+ * told nothing. The limits live in CHAR_LIMITS and optimize.ts enforces them —
+ * but only when GENERATING copy, so the live listing was never measured.
+ *
+ * Reads CHAR_LIMITS directly rather than restating the numbers, so the audit and
+ * the generator cannot drift apart on what the limit is.
+ *
+ * `warn`, never `critical` (#41): an over-limit field really does block
+ * submission, and stating Apple's own number is enough — escalating past that is
+ * the over-assertion this codebase avoids.
+ */
+function copyLengthFindings(currentCopy: Partial<CopyFields> | undefined): Finding[] {
+  if (!currentCopy) return [];
+
+  const FIELDS: Array<{ key: keyof CopyFields & StoreField; label: string; surface: string }> = [
+    { key: "name", label: "app name", surface: "name" },
+    { key: "subtitle", label: "subtitle", surface: "subtitle" },
+    { key: "keywords", label: "keyword field", surface: "keywords" },
+    { key: "promo", label: "promotional text", surface: "metadata" },
+  ];
+
+  const out: Finding[] = [];
+  for (const { key, label, surface } of FIELDS) {
+    const value = currentCopy[key];
+    // Absent ⇒ never read ⇒ say nothing. Unmeasured is not "within limits".
+    if (typeof value !== "string") continue;
+    const limit = CHAR_LIMITS[key];
+    if (value.length <= limit) continue;
+
+    const over = value.length - limit;
+    out.push(
+      mk({
+        id: `${key}_over_limit`,
+        surface,
+        severity: "warn",
+        impact: "completeness",
+        title: `Your ${label} is ${value.length} characters — Apple's limit is ${limit}`,
+        detail:
+          `App Store Connect will not accept a ${label} longer than ${limit} characters, ` +
+          `so this blocks submission until it is shortened.`,
+        fix: `Cut ${over} character${over === 1 ? "" : "s"} from your ${label}.`,
+      }),
+    );
+  }
+  return out;
+}
+
+/**
+ * Audit the keyword field the user ALREADY has.
+ *
+ * These rules are not new — `optimize.ts` has enforced them since it shipped: no
+ * spaces around commas, no words already carried by the name or subtitle. But
+ * they only ran when GENERATING copy, so nothing ever looked at the live field.
+ *
+ * That silence cost real characters. Heathen re-indexed `calm` (already in its
+ * subtitle) for 4 chars; Who Got Cooked spends 12 on `argument` + `AI`. Both
+ * audits reported nothing, and both were found by hand.
+ *
+ * Apple indexes name + subtitle + keyword field TOGETHER, which is why a repeat
+ * buys nothing: the term is already indexed, and the characters are gone.
+ *
+ * Requires a keyed run: a no-key run cannot read the keyword field, and "we
+ * didn't look" must never be reported as "it's clean".
+ */
+function keywordFieldFindings(input: AuditFindingsInput): Finding[] {
+  const copy = input.currentCopy;
+  if (!copy) return [];
+  const keywords = copy.keywords;
+  if (typeof keywords !== "string" || keywords.trim() === "") return [];
+
+  const out: Finding[] = [];
+
+  // Words already indexed via the name/subtitle. Split the same way optimize.ts
+  // does so the audit and the generator cannot disagree about what counts.
+  const indexed = new Set(
+    `${copy.name ?? ""} ${copy.subtitle ?? ""}`
+      .toLowerCase()
+      .split(/[^a-z0-9]+/)
+      .filter(Boolean),
+  );
+  const terms = keywords
+    .split(",")
+    .map((t) => t.trim())
+    .filter(Boolean);
+  const dupes = terms.filter((t) =>
+    t
+      .toLowerCase()
+      .split(/[^a-z0-9]+/)
+      .filter(Boolean)
+      .some((w) => indexed.has(w)),
+  );
+
+  if (dupes.length > 0) {
+    // Characters reclaimed = the terms themselves plus their separators.
+    const reclaimed = dupes.reduce((n, t) => n + t.length + 1, 0);
+    out.push(
+      mk({
+        id: "keywords_duplicate_indexed",
+        surface: "keywords",
+        severity: "warn",
+        impact: "ranking",
+        title: `${dupes.length} keyword${dupes.length === 1 ? "" : "s"} already indexed by your name or subtitle`,
+        detail:
+          `Apple indexes your name, subtitle and keyword field together, so repeating ` +
+          `${dupes.join(", ")} buys nothing — it just spends characters. Removing ` +
+          `${dupes.length === 1 ? "it" : "them"} frees about ${reclaimed} of your 100.`,
+        fix: `Drop ${dupes.join(", ")} from the keyword field and spend the space on terms you don't rank for yet.`,
+      }),
+    );
+  }
+
+  if (/,\s|\s,/.test(keywords)) {
+    out.push(
+      mk({
+        id: "keywords_wasted_chars",
+        surface: "keywords",
+        severity: "warn",
+        impact: "ranking",
+        title: "Spaces around commas are spending your keyword budget",
+        detail:
+          "The keyword field is 100 characters including separators. Apple splits on commas, " +
+          "so a space after each one is a character bought and thrown away.",
+        fix: "Remove the spaces: write term,term,term with no spaces around the commas.",
+      }),
+    );
+  }
+
+  return out;
+}
+
 /** cross-surface / meta — the no-key unlock CTA + optional read-error notes. */
 function metaFindings(input: AuditFindingsInput): Finding[] {
   const out: Finding[] = [];
@@ -1122,11 +1459,22 @@ export function auditFindings(input: AuditFindingsInput): Finding[] {
     ...chartRankFindings(input),
     ...metaFindings(input),
     ...reviewRiskFindings(input.proposedCopy),
+    ...promoTextFindings(input.currentCopy),
+    ...keywordFieldFindings(input),
+    ...copyLengthFindings(input.currentCopy),
+    ...noTrackedKeywordsFindings(input),
+    ...keywordHygieneFindings(input.currentCopy),
+    ...promoDuplicationFindings(input.currentCopy),
     ...ppoFindings(input.snapshot?.experiments),
     ...ppoResultFindings(input.snapshot?.ppoResults?.results ?? []),
   ];
 
-  return sortFindings(findings);
+  // #324: attach the action (ASC deep link + any in-product tool handoff) at the
+  // single funnel, so every rule above stays focused on DIAGNOSIS and no rule
+  // has to remember to link. `audit.trackId` is the app's App Store id when the
+  // lookup returned one; absent → the action falls back to the generic console
+  // link rather than a fabricated app-scoped URL.
+  return withActions(sortFindings(findings), input.audit.trackId);
 }
 
 // ── Locked-field upgrade surface (#61) ───────────────────────────────────────
@@ -1157,6 +1505,12 @@ const NO_KEY_SURFACE_LOCKS: readonly SurfaceLock[] = [
     surface: "previews",
     label: "We can't see your app preview video without access",
     unlockCopy: "Connect App Store Connect to read your preview coverage and improve it.",
+  },
+  {
+    surface: "promo",
+    label: "We can't see your promotional text without access",
+    unlockCopy:
+      "Connect App Store Connect to read your promotional text — the one listing field you can change without submitting a new version.",
   },
   {
     surface: "privacy",

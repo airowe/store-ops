@@ -17,7 +17,7 @@ import { useMemo, useState } from "react";
 import type { ReactNode } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ApiError, ascCreateVersion, ascPush, decideRun, getCredentials, getGithubStatus, getRun, githubPr } from "@shipaso/api";
-import type { AscPushResult, RunDetail } from "@shipaso/api";
+import type { AscPushResult, FindingTool, RunDetail } from "@shipaso/api";
 import { CopyDiff } from "./CopyDiff.js";
 import { FindingsCard } from "./FindingsCard.js";
 import { OpportunitiesCard } from "./OpportunitiesCard.js";
@@ -27,6 +27,8 @@ import { PpoTreatmentCard } from "./PpoTreatmentCard.js";
 import { ScreenshotPlanCard } from "./ScreenshotPlanCard.js";
 import { CppSetsCard } from "./CppSetsCard.js";
 import { LocalizationCard } from "./LocalizationCard.js";
+import { RunVerdictHeader } from "./RunVerdictHeader.js";
+import { RunSection } from "./RunSection.js";
 import { DecisionSummary } from "./DecisionSummary.js";
 import { RunStatusBar } from "./RunStatusBar.js";
 import { RunDetailPane } from "./RunDetailPane.js";
@@ -42,10 +44,18 @@ export function RunView({
   client,
   id,
   onConnect,
+  onAccountSettings,
 }: {
   client: import("@shipaso/api").ApiClient;
   id: string;
-  onConnect?: () => void;
+  /**
+   * Connect a key for THIS app. Receives the run's `app_id`, because the key
+   * card is app-scoped — a destination without it lands on a page that cannot
+   * show the app's key at all.
+   */
+  onConnect?: (appId: string) => void;
+  /** Account-level settings (MCP/agent access). Not app-scoped. */
+  onAccountSettings?: () => void;
 }) {
   const qc = useQueryClient();
   const runQ = useQuery({ queryKey: ["run", id], queryFn: () => getRun(client, id) });
@@ -102,6 +112,14 @@ export function RunView({
   // keep hook order stable (Rules of Hooks).
   const [activeId, setActiveId] = useState("changes");
 
+  /**
+   * #324 Tier 2 — hand a finding off to the ShipASO builder that continues it,
+   * instead of stopping at "do X in App Store Connect". Both the screenshot-set
+   * planner and the CPP set generator live in the "screenshots" section, so both
+   * tools resolve there; this is a client-side jump, never a write.
+   */
+  const goToTool = (_tool: FindingTool) => setActiveId("screenshots");
+
   // Derived grouping inputs, read defensively so the memo below stays hook-safe.
   const auditNeedsYou = Boolean(
     rMaybe?.findings?.some((f) => !f.context && (f.severity === "critical" || f.severity === "warn")),
@@ -143,16 +161,41 @@ export function RunView({
   const r = run.result;
   const tierLimited = decide.error instanceof ApiError && decide.error.isTierLimit;
 
+  // Bind the app here, where it is known. The child cards render a CTA and
+  // should not have to carry which app it belongs to; this view already reads
+  // `run.app_id` to resolve the stored key.
+  const connectThisApp = onConnect ? () => onConnect(run.app_id) : undefined;
+
   // The stored ASC key for THIS app (or an account-level one) backs one-click
   // push. Absent → the CLI handoff is the only path, exactly as before.
-  const storedAscKey = (credsQ.data?.credentials ?? []).find(
+  const ascKeyRow = (credsQ.data?.credentials ?? []).find(
     (c) => c.kind === "asc" && (c.appId === run.app_id || c.appId === null),
   );
+  // #372: a key the server reports as unreadable cannot push. Offering the
+  // button anyway advertises a capability we don't have and fails at click
+  // time. `readable === false` is the only withholding signal — an omitted
+  // field (older API) still means readable.
+  const ascKeyUnreadable = ascKeyRow?.readable === false;
+  const storedAscKey = ascKeyUnreadable ? undefined : ascKeyRow;
   const pushResult: AscPushResult | undefined = push.data;
 
   // Section cards, keyed by rail id — identical JSX to what rendered inline
   // before; the pane is the container now, so the `id="..."` anchor wrappers
   // are gone. Only sections that are present get an entry.
+  // Counts for the collapsed rows. Measured-or-absent: a section with nothing
+  // measured shows no number rather than a fabricated zero.
+  const findingsCount = r.findings?.length ?? 0;
+  const changedFieldCount = (["name", "subtitle", "keywords", "promo", "description"] as const).filter(
+    (k) => {
+      const next = r.proposedCopy[k];
+      return typeof next === "string" && next.trim() !== "" && next !== r.currentCopy[k];
+    },
+  ).length;
+  const coverageCount =
+    r.coverage?.coverageScore !== undefined && r.coverage.coverageScore !== null
+      ? `${Math.round(r.coverage.coverageScore)}/100`
+      : undefined;
+
   const sections: Record<string, ReactNode> = {
     changes: <CopyDiff current={r.currentCopy} proposed={r.proposedCopy} />,
     ...(hasAudit
@@ -162,7 +205,8 @@ export function RunView({
               findings={r.findings ?? []}
               {...(r.locks !== undefined ? { locks: r.locks } : {})}
               {...(r.findingsSummary !== undefined ? { summary: r.findingsSummary } : {})}
-              {...(onConnect ? { onConnect } : {})}
+              {...(connectThisApp ? { onConnect: connectThisApp } : {})}
+              onTool={goToTool}
             />
           ),
         }
@@ -217,14 +261,23 @@ export function RunView({
   if (pending) {
     return (
       <div className="run-layout">
-        <h1>Proposed changes</h1>
+        {/* Status first, then the verdict heading — you should know WHICH run and
+            what state it's in before reading the diff. */}
         <RunStatusBar
           appName={r.audit?.liveName ?? r.currentCopy.name ?? "—"}
           grade={r.audit?.screenshots?.grade ?? null}
           coverageScore={r.coverage?.coverageScore ?? null}
           status={run.status}
-          {...(onConnect ? { onConnectAnalytics: onConnect } : {})}
+          {...(r.audit?.liveVersion !== undefined ? { version: r.audit.liveVersion } : {})}
+          {...(r.audit?.rating !== undefined ? { rating: r.audit.rating } : {})}
+          {...(r.audit?.categoryRank !== undefined ? { categoryRank: r.audit.categoryRank } : {})}
+          {...(connectThisApp ? { onConnectAnalytics: connectThisApp } : {})}
         />
+        <h1 className="run-title">Proposed changes</h1>
+        <p className="run-lede">
+          Review the diff below. Approving reveals the push commands — ShipASO never ships to a live
+          store; you run them yourself.
+        </p>
         <DecisionSummary current={r.currentCopy} proposed={r.proposedCopy} findings={r.findings ?? []} />
         <div className="run-shell">
           <SectionRail items={railItems} activeId={activeId} onSelect={setActiveId} />
@@ -232,19 +285,18 @@ export function RunView({
         </div>
         {!tierLimited ? (
           <div className="decision-bar" data-testid="decision-bar">
-            <span className="db-summary micro muted">
-              {(() => {
-                const added = (r.proposedCopy.keywords ?? "").split(",").map((s) => s.trim()).filter(Boolean).length;
-                const needsYou = r.findings?.filter((f) => !f.context && (f.severity === "critical" || f.severity === "warn")).length ?? 0;
-                return `${needsYou} to review · ${added} keywords`;
-              })()}
+            <span className="db-summary">
+              <span className="db-title">Approve this run?</span>
+              <span className="db-note">
+                Approval only reveals the push handoff — it never ships anything.
+              </span>
             </span>
             <span className="db-actions">
               <button type="button" className="btn ghost" data-testid="reject" disabled={decide.isPending} onClick={() => decide.mutate("reject")}>
                 Reject
               </button>
               <button type="button" className="btn primary" data-testid="approve" disabled={decide.isPending} onClick={() => decide.mutate("approve")}>
-                {decide.isPending ? "Approving…" : "Approve changes"}
+                {decide.isPending ? "Approving…" : "Approve & reveal push"}
               </button>
             </span>
           </div>
@@ -261,24 +313,71 @@ export function RunView({
   return (
     <div className="run-layout">
       <section className="run-main">
-        <h1>Proposed changes</h1>
-        <CopyDiff current={r.currentCopy} proposed={r.proposedCopy} />
+        {/* The answer, before its evidence. Everything below collapses — most of
+            it reports absence, and absence should not cost a screen of scroll. */}
+        <RunVerdictHeader
+          {...(r.findingsSummary !== undefined ? { summary: r.findingsSummary } : { summary: undefined })}
+          lockCount={r.locks?.length ?? 0}
+          appName={r.audit?.liveName ?? r.currentCopy.name ?? "this app"}
+          {...(connectThisApp ? { onConnect: connectThisApp } : {})}
+        />
 
-        {hasAudit ? (
-          <FindingsCard
-            findings={r.findings ?? []}
-            {...(r.locks !== undefined ? { locks: r.locks } : {})}
-            {...(r.findingsSummary !== undefined ? { summary: r.findingsSummary } : {})}
-            {...(onConnect ? { onConnect } : {})}
-          />
+        {changedFieldCount > 0 ? (
+          <RunSection
+            title="Proposed changes"
+            count={`${changedFieldCount} field${changedFieldCount === 1 ? "" : "s"}`}
+            defaultOpen
+            testId="section-changes"
+          >
+            <CopyDiff current={r.currentCopy} proposed={r.proposedCopy} />
+          </RunSection>
         ) : null}
 
-        {hasMetadata ? <CoverageCard coverage={r.coverage!} /> : null}
-        {hasKeywords ? <OpportunitiesCard opportunities={r.opportunities!} /> : null}
-        {hasMarkets ? <LocalizationExpansionCard recommendations={r.localizationExpansion!} /> : null}
-        {r.ppoTreatment ? <PpoTreatmentCard plan={r.ppoTreatment} /> : null}
+        {hasAudit ? (
+          <RunSection
+            title="What we found"
+            count={findingsCount > 0 ? `${findingsCount} note${findingsCount === 1 ? "" : "s"}` : undefined}
+            testId="section-audit"
+          >
+            <FindingsCard
+              findings={r.findings ?? []}
+              {...(r.locks !== undefined ? { locks: r.locks } : {})}
+              {...(r.findingsSummary !== undefined ? { summary: r.findingsSummary } : {})}
+              {...(connectThisApp ? { onConnect: connectThisApp } : {})}
+            />
+          </RunSection>
+        ) : null}
+
+        {hasMetadata ? (
+          <RunSection title="Keyword budget" count={coverageCount} testId="section-metadata">
+            <CoverageCard coverage={r.coverage!} />
+          </RunSection>
+        ) : null}
+        {hasKeywords ? (
+          <RunSection
+            title="Where to push next"
+            count={`${r.opportunities!.length} keyword${r.opportunities!.length === 1 ? "" : "s"}`}
+            testId="section-keywords"
+          >
+            <OpportunitiesCard opportunities={r.opportunities!} />
+          </RunSection>
+        ) : null}
+        {hasMarkets ? (
+          <RunSection
+            title="Markets to expand into"
+            count={`${r.localizationExpansion!.length} locale${r.localizationExpansion!.length === 1 ? "" : "s"}`}
+            testId="section-markets"
+          >
+            <LocalizationExpansionCard recommendations={r.localizationExpansion!} />
+          </RunSection>
+        ) : null}
+        {r.ppoTreatment ? (
+          <RunSection title="Run a product page test" testId="section-ppo">
+            <PpoTreatmentCard plan={r.ppoTreatment} />
+          </RunSection>
+        ) : null}
         {hasScreenshots ? (
-          <>
+          <RunSection title="Build assets" testId="section-assets">
             <ScreenshotPlanCard
               client={client}
               inputs={{
@@ -310,7 +409,7 @@ export function RunView({
                 }}
               />
             ) : null}
-          </>
+          </RunSection>
         ) : null}
 
         <p className={"run-status" + (approved ? " good" : "")} data-testid="run-status">
@@ -322,6 +421,21 @@ export function RunView({
             You’ve hit your plan’s run limit — upgrade to approve more.
           </p>
         ) : null}
+
+      {/* #372: the key is stored but can't be decrypted. Say so plainly and name
+          it, rather than silently dropping the push button and leaving the user
+          to wonder why the CLI is suddenly the only path. */}
+      {approved && ascKeyUnreadable ? (
+        <div className="card" data-testid="asc-key-unreadable">
+          <b>Your saved App Store Connect key can’t be read</b>
+          <p className="micro">
+            The stored key ({ascKeyRow?.keyId}) was encrypted with a key-encryption key this
+            deployment no longer has, so it can’t be used to push. Nothing was pushed and nothing
+            was lost on Apple’s side — re-connect the key in Settings to restore one-click push.
+            The commands below still work in the meantime.
+          </p>
+        </div>
+      ) : null}
 
       {approved && storedAscKey ? (
         <div className="card" data-testid="asc-push-card">
@@ -339,9 +453,14 @@ export function RunView({
             {push.isPending ? "Pushing…" : "Push to App Store Connect"}
           </button>
           {pushResult ? (
-            <p className="micro" data-testid="push-result">
+            <p
+              className={"micro" + (!pushResult.ok || pushResult.partialFailure ? " bad" : "")}
+              data-testid="push-result"
+            >
               {pushResult.ok
-                ? `Staged on your editable version: ${pushResult.fieldsPushed.join(", ")}.`
+                ? pushResult.partialFailure
+                  ? `Partly staged: ${pushResult.fieldsPushed.join(", ")}. App Store Connect refused the rest: ${pushResult.partialFailure}`
+                  : `Staged on your editable version: ${pushResult.fieldsPushed.join(", ")}.`
                 : `App Store Connect refused the push: ${pushResult.reason}`}
             </p>
           ) : null}
@@ -447,8 +566,13 @@ export function RunView({
   --header "Authorization: Bearer <your shipaso_ key>"`}</pre>
           <p className="micro muted" style={{ margin: "4px 0 0" }}>
             Generate a key in Settings → Agent access.{" "}
-            {onConnect ? (
-              <button type="button" className="btn ghost" data-testid="mcp-settings" onClick={onConnect}>
+            {onAccountSettings ? (
+              <button
+                type="button"
+                className="btn ghost"
+                data-testid="mcp-settings"
+                onClick={onAccountSettings}
+              >
                 Open Settings →
               </button>
             ) : (

@@ -13,6 +13,38 @@
 export type FindingSeverity = "critical" | "warn" | "good" | "info";
 export type FindingImpact = "ranking" | "conversion" | "trust" | "completeness";
 
+/**
+ * An in-product tool a finding can hand off to (#324 Tier 2) — a builder that
+ * already exists in ShipASO, so "you should test this" becomes "here's the
+ * treatment to test". Open-ended by design; the client maps it to a section.
+ */
+export type FindingTool = "screenshots" | "cpp";
+
+/**
+ * #324: the ACTION attached to a finding whose fix would otherwise read as
+ * "→ do X in App Store Connect" — homework rather than an action.
+ *
+ * `url` is ALWAYS present and always on Apple's console host, but it is not
+ * always precise: `appScoped` says whether we landed the customer on their own
+ * app's page or could only reach the generic console. That flag exists because
+ * Apple doesn't document the console's routes, so a verified app-scoped path is
+ * something we can only sometimes offer — and we say which it is rather than
+ * implying a precision we don't have.
+ *
+ * `tool` is present only where ShipASO genuinely has a builder for this finding.
+ * Absent means no handoff exists — never a wrong one.
+ */
+export type FindingAction = {
+  /** where to go in App Store Connect. Generic console URL when unscoped. */
+  url: string;
+  /** link text, server-authored so the UI never invents a claim. */
+  label: string;
+  /** true = the link lands on THIS app's page; false = generic console. */
+  appScoped: boolean;
+  /** an existing ShipASO builder that continues this finding, when one exists. */
+  tool?: FindingTool | undefined;
+};
+
 export type Finding = {
   /** stable id, e.g. "privacy_policy_missing" */
   id: string;
@@ -35,6 +67,11 @@ export type Finding = {
    * strip so they never dilute the actionable list. Absent = actionable.
    */
   context?: true | undefined;
+  /**
+   * #324: where to actually DO this — an ASC deep link, and an in-product tool
+   * handoff when one exists. Absent on findings with no fix (nothing to act on).
+   */
+  action?: FindingAction | undefined;
 };
 
 /**
@@ -139,9 +176,10 @@ export function findingsLabel(critical: number, warn: number): string {
 
 /** A finding builder with `evidence` only attached when defined (exactOptional). */
 export function mk(
-  f: Omit<Finding, "evidence" | "context"> & {
+  f: Omit<Finding, "evidence" | "context" | "action"> & {
     evidence?: string | undefined;
     context?: true | undefined;
+    action?: FindingAction | undefined;
   },
 ): Finding {
   const out: Finding = {
@@ -155,6 +193,7 @@ export function mk(
   };
   if (f.evidence !== undefined) out.evidence = f.evidence;
   if (f.context !== undefined) out.context = f.context;
+  if (f.action !== undefined) out.action = f.action;
   return out;
 }
 

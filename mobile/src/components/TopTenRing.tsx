@@ -4,9 +4,10 @@
  */
 import React from "react";
 import Svg, { Circle, Text as SvgText } from "react-native-svg";
-import { palette } from "../theme/index.js";
+import { usePalette } from "../theme/index.js";
 
 export function TopTenRing({ inTop10, total, size = 64 }: { inTop10: number; total: number; size?: number }) {
+  const palette = usePalette();
   if (total <= 0) return null;
   const r = 15.9155; // circumference ~= 100 for easy dasharray math
   const frac = Math.max(0, Math.min(1, inTop10 / total));

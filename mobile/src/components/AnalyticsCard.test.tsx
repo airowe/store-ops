@@ -13,6 +13,21 @@ import type { ApiClient } from "../api/client.js";
 import type { AnalyticsState, AnalyticsIngestResult } from "../types/api.js";
 import { AnalyticsCard } from "./AnalyticsCard.js";
 
+import { useColorScheme } from "react-native";
+import { ThemeProvider } from "../theme/index.js";
+import { lightPalette, palette } from "../theme/tokens.js";
+
+jest.mock("react-native/Libraries/Utilities/useColorScheme");
+const mockColorScheme = useColorScheme as unknown as jest.Mock;
+
+/** Flatten RN's style prop (array | object) into one resolved object. */
+function flatStyle(node: { props: { style?: unknown } }): Record<string, unknown> {
+  const flatten = (s: unknown): Record<string, unknown> =>
+    Array.isArray(s) ? Object.assign({}, ...s.map(flatten)) : ((s ?? {}) as Record<string, unknown>);
+  return flatten(node.props.style);
+}
+
+
 function fakeClient(enable: AnalyticsState, ingest?: AnalyticsIngestResult): { client: ApiClient; bodies: unknown[] } {
   const bodies: unknown[] = [];
   const client = {
@@ -26,7 +41,10 @@ function fakeClient(enable: AnalyticsState, ingest?: AnalyticsIngestResult): { c
   return { client, bodies };
 }
 
-beforeEach(() => jest.clearAllMocks());
+beforeEach(() => {
+  jest.clearAllMocks();
+  mockColorScheme.mockReturnValue("dark"); // every other test in this file assumes the dark default
+});
 
 function fillKey() {
   fireEvent.changeText(screen.getByTestId("an-key-id"), "KEY123");
@@ -79,5 +97,26 @@ describe("AnalyticsCard", () => {
 
     fireEvent.press(screen.getByTestId("an-ingest"));
     await waitFor(() => expect(screen.getByTestId("an-ingest-result")).toHaveTextContent(/42 rows across 30 days/));
+  });
+
+  it("paints the ingest result from the LIVE palette (light provider → light signal)", async () => {
+    mockColorScheme.mockReturnValue("light");
+    const { client } = fakeClient(
+      { state: "pending", message: "Requested.", requestId: "r1", created: true },
+      { state: "ingested", instances: 1, rowsPersisted: 42, days: 30 },
+    );
+    render(
+      <ThemeProvider>
+        <AnalyticsCard client={client} appId="app-1" />
+      </ThemeProvider>,
+    );
+    fillKey();
+    fireEvent.press(screen.getByTestId("an-enable"));
+    await waitFor(() => expect(screen.getByTestId("an-ingest")).toBeTruthy());
+    fireEvent.press(screen.getByTestId("an-ingest"));
+    await waitFor(() => expect(screen.getByTestId("an-ingest-result")).toBeTruthy());
+
+    expect(flatStyle(screen.getByTestId("an-ingest-result")).color).toBe(lightPalette.signal);
+    expect(lightPalette.signal).not.toBe(palette.signal);
   });
 });

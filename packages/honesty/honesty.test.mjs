@@ -24,7 +24,26 @@ test("classifyDelta: inverted axis + no fabricated count-up", () => {
   assert.deepEqual(classifyDelta({ previous: 8, current: 20 }), { direction: "down", delta: -12 });
   assert.deepEqual(classifyDelta({ previous: 5, current: 5 }), { direction: "same", delta: 0 });
   assert.deepEqual(classifyDelta({ previous: null, current: 9 }), { direction: "new", delta: null });
-  assert.deepEqual(classifyDelta({ previous: 9, current: null }), { direction: "unmeasured", delta: null });
+});
+
+/**
+ * "Fell out" and "never checked" are DIFFERENT facts and must not collapse (#360).
+ *
+ * Both have `current: null`, so classifying on that alone reported "unmeasured"
+ * for a keyword we had measured at #9 the week before and measured again this
+ * week — finding it gone. That is a measured, meaningful, bad-news event, and
+ * reporting it as "we didn't look" understates it.
+ *
+ * The distinguishing fact is `previous`: if we have a previous rank, the term
+ * WAS ranked and now is not.
+ */
+test("classifyDelta: a keyword that drops out of the top 200 is 'lost', not 'unmeasured'", () => {
+  assert.deepEqual(classifyDelta({ previous: 9, current: null }), { direction: "lost", delta: null });
+  // No previous rank → we genuinely have nothing to compare, so it stays honest.
+  assert.deepEqual(classifyDelta({ previous: null, current: null }), { direction: "unmeasured", delta: null });
+  assert.deepEqual(classifyDelta({ previous: undefined, current: null }), { direction: "unmeasured", delta: null });
+  // Never a fabricated count-up: a lost keyword has no numeric delta.
+  assert.equal(classifyDelta({ previous: 1, current: null }).delta, null);
 });
 
 test("buildSparkGeometry: honest empties, inverted axis, #200+ floor", () => {

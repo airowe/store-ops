@@ -12,7 +12,7 @@ import * as Linking from "expo-linking";
 import type { ApiClient } from "../api/client.js";
 import { githubPr } from "../api/endpoints.js";
 import type { GithubPrResult } from "../types/api.js";
-import { palette, spacing } from "../theme/index.js";
+import { spacing, usePalette } from "../theme/index.js";
 import { AppText, Button, Card } from "./primitives.js";
 
 export function GithubPrCard({
@@ -28,6 +28,7 @@ export function GithubPrCard({
   connected: boolean;
   repo: string | null;
 }) {
+  const palette = usePalette();
   const [result, setResult] = useState<GithubPrResult | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);

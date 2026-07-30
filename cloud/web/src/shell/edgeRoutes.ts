@@ -24,14 +24,28 @@ export const OWNED_PATHS: readonly OwnedPattern[] = [
   "/proof",
   "/broadcast",
   "/privacy",
+  "/onboarding",
   "/",
   // App detail — exactly one segment after /apps. NOT the bare /apps connect
   // endpoint.
   /^\/apps\/[^/]+$/,
   // War room (PRD 06) — /apps/:id/war-room.
   /^\/apps\/[^/]+\/war-room$/,
-  // Run detail / money screen (PRD 07) — /runs/:id.
-  /^\/runs\/[^/]+$/,
+  // Run detail / money screen (PRD 07) — /runs/:id, where :id is a UUID.
+  //
+  // Matching "any single segment" here was wrong (#359): `approve-all` is shaped
+  // exactly like a run id, so the SPA claimed a Worker API path. Run ids come
+  // from `uuid()` (cloud/src/d1.ts), so the pattern says UUID and any future
+  // non-id sibling (/runs/export, /runs/search) stays with the API by default
+  // rather than being silently swallowed.
+  /^\/runs\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i,
+  // Portfolio index screens (#356) — the fleet-wide siblings of the per-app
+  // views. These are RegExps, not strings, on purpose: the string arm of
+  // resolveSurface is a PREFIX match, so a bare "/runs" would also claim
+  // /runs/:id/asc/push and every other API path nested under it.
+  /^\/runs$/,
+  /^\/keywords$/,
+  /^\/competitors$/,
 ];
 
 /** Decide which surface should serve a pathname. */

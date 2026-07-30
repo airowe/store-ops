@@ -357,3 +357,137 @@ describe("buildPushCommands — never emits a destructive flag for an unread fie
     );
   });
 });
+
+/**
+ * #326 — the run status bar's measured stats. The audit already fetches the
+ * lookup + the public storefront page; these fields ride the SAME reads. The
+ * honesty invariant is the assertion: an unread field is null/undefined, never
+ * a plausible-looking default.
+ */
+describe("audit — live version + rating (#326)", () => {
+  it("carries the live version string from the lookup", async () => {
+    const fetchFn = stubFetch({ trackName: "Acme", version: "4.2.0" } as never);
+    const r = await runAgent(fetchFn as never, baseInput());
+    expect(r.audit.liveVersion).toBe("4.2.0");
+  });
+
+  it("leaves liveVersion undefined when the lookup carries no version", async () => {
+    const fetchFn = stubFetch({ trackName: "Acme" });
+    const r = await runAgent(fetchFn as never, baseInput());
+    expect(r.audit.liveVersion).toBeUndefined();
+  });
+
+  it("carries the measured rating average + count from the lookup", async () => {
+    const fetchFn = stubFetch({
+      trackName: "Acme",
+      averageUserRating: 4.73215,
+      userRatingCount: 1240,
+    } as never);
+    const r = await runAgent(fetchFn as never, baseInput());
+    expect(r.audit.rating).toEqual({ average: 4.7, count: 1240, source: "lookup" });
+  });
+
+  it("reports a measured average with an unread count as count:null", async () => {
+    const fetchFn = stubFetch({ trackName: "Acme", averageUserRating: 4.5 } as never);
+    const r = await runAgent(fetchFn as never, baseInput());
+    expect(r.audit.rating).toEqual({ average: 4.5, count: null, source: "lookup" });
+  });
+
+  it("omits rating entirely when the lookup measured neither field", async () => {
+    const fetchFn = stubFetch({ trackName: "Acme" });
+    const r = await runAgent(fetchFn as never, baseInput());
+    expect(r.audit.rating).toBeUndefined();
+  });
+
+  it("leaves version + rating unknown when the lookup returns no result", async () => {
+    const fetchFn = async () =>
+      new Response(JSON.stringify({ resultCount: 0, results: [] }), { status: 200 });
+    const r = await runAgent(fetchFn as never, baseInput());
+    expect(r.audit.liveVersion).toBeUndefined();
+    expect(r.audit.rating).toBeUndefined();
+  });
+});
+
+/**
+ * #326 — the storefront page carries a ratings shelf the lookup API sometimes
+ * omits. It rides the audit already (as `storefront.ratings`), so the status
+ * bar has a measured fallback WITHOUT a second fetch. The lookup stays
+ * authoritative when it read a value; neither source is ever synthesized.
+ */
+describe("audit — storefront ratings back up the lookup (#326)", () => {
+  const pageWithRatings = (average: number, count: number) =>
+    `<script type="application/json" id="serialized-server-data">${JSON.stringify({
+      data: [
+        {
+          data: {
+            shelfMapping: {
+              productRatings: {
+                items: [{ ratingAverage: average, totalNumberOfRatings: count, ratingCounts: [] }],
+              },
+            },
+          },
+        },
+      ],
+    })}</script>`;
+
+  function stubWithPage(listing: Record<string, unknown>, html: string) {
+    return async (url: string) => {
+      if (url.includes("/lookup")) {
+        return new Response(
+          JSON.stringify({
+            resultCount: 1,
+            results: [{ bundleId: "com.acme.app", trackViewUrl: "https://apps.apple.com/x", ...listing }],
+          }),
+          { status: 200 },
+        );
+      }
+      if (url.includes("apps.apple.com")) return new Response(html, { status: 200 });
+      return new Response(JSON.stringify({ resultCount: 0, results: [] }), { status: 200 });
+    };
+  }
+
+  it("carries the storefront ratings shelf on the audit for the null-lookup case", async () => {
+    const fetchFn = stubWithPage({ trackName: "Acme" }, pageWithRatings(4.6, 980));
+    const r = await runAgent(fetchFn as never, baseInput());
+    expect(r.audit.storefront?.ratings).toEqual({ average: 4.6, count: 980, histogram: [] });
+  });
+
+  it("keeps the lookup's rating authoritative when the lookup measured one", async () => {
+    const fetchFn = stubWithPage(
+      { trackName: "Acme", averageUserRating: 4.1, userRatingCount: 22 },
+      pageWithRatings(4.6, 980),
+    );
+    const r = await runAgent(fetchFn as never, baseInput());
+    expect(r.audit.rating).toEqual({ average: 4.1, count: 22, source: "lookup" });
+  });
+
+  it("falls back to the storefront rating when the lookup carried none", async () => {
+    const fetchFn = stubWithPage({ trackName: "Acme" }, pageWithRatings(4.6, 980));
+    const r = await runAgent(fetchFn as never, baseInput());
+    expect(r.audit.rating).toEqual({ average: 4.6, count: 980, source: "storefront" });
+  });
+
+  /**
+   * The two surfaces can disagree, so a {average, count} pair must come from
+   * ONE surface. A half-read lookup still WINS outright — we must never splice
+   * the storefront's count onto the lookup's average, because the resulting
+   * pair would describe no real measurement.
+   */
+  it("does NOT fill a null lookup count from the storefront count", async () => {
+    const fetchFn = stubWithPage({ trackName: "Acme", averageUserRating: 4.1 }, pageWithRatings(4.6, 980));
+    const r = await runAgent(fetchFn as never, baseInput());
+    expect(r.audit.rating).toEqual({ average: 4.1, count: null, source: "lookup" });
+  });
+
+  it("does NOT fill a null lookup average from the storefront average", async () => {
+    const fetchFn = stubWithPage({ trackName: "Acme", userRatingCount: 22 }, pageWithRatings(4.6, 980));
+    const r = await runAgent(fetchFn as never, baseInput());
+    expect(r.audit.rating).toEqual({ average: null, count: 22, source: "lookup" });
+  });
+
+  it("omits rating when neither the lookup nor the storefront carried one", async () => {
+    const fetchFn = stubWithPage({ trackName: "Acme" }, "<html><body>no shelves</body></html>");
+    const r = await runAgent(fetchFn as never, baseInput());
+    expect(r.audit.rating).toBeUndefined();
+  });
+});

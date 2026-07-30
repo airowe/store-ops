@@ -227,3 +227,122 @@ describe("metadataCoverage — honesty", () => {
     expect("topMissingValue" in r ? r.topMissingValue : undefined).toBeUndefined();
   });
 });
+
+// ── #322: wasted-budget items must be ACTIONABLE (field + safety) ────────────
+//
+// The central complaint: "'for' is a low-relevance filler term" tells the
+// customer nothing they can act on, because it never says WHICH FIELD 'for'
+// lives in. The function already knows (it builds per-field token sets and
+// throws them away). These tests pin the field attribution to the source, plus
+// the keyword-field-vs-name/subtitle safety distinction the issue is explicit
+// about.
+describe("metadataCoverage — #322 field attribution on waste", () => {
+  it("a filler term carries the field(s) it was found in", () => {
+    const r = metadataCoverage({ name: "Radar for Storms", subtitle: "Live maps", keywords: "rain,thunder" });
+    const forItem = r.waste.find((w) => w.kind === "filler" && w.detail.includes("'for'"));
+    expect(forItem).toBeTruthy();
+    expect(forItem!.fields).toEqual(["name"]);
+  });
+
+  it("a filler term in the keyword field is attributed to keywords, not guessed", () => {
+    const r = metadataCoverage({ name: "Radar", subtitle: "Live maps", keywords: "for,rain,thunder" });
+    const forItem = r.waste.find((w) => w.kind === "filler" && w.detail.includes("'for'"));
+    expect(forItem!.fields).toEqual(["keywords"]);
+  });
+
+  it("a duplicate names WHICH fields it repeats across, not just how many", () => {
+    const r = metadataCoverage({ name: "Storm Radar", subtitle: "Best maps", keywords: "storm,rain" });
+    const dup = r.waste.find((w) => w.kind === "duplicate" && w.detail.includes("'storm'"));
+    expect(dup).toBeTruthy();
+    expect(dup!.fields).toEqual(["name", "keywords"]);
+  });
+
+  it("fields are always reported in name → subtitle → keywords order", () => {
+    const r = metadataCoverage({ name: "Storm", subtitle: "Storm maps", keywords: "storm" });
+    const dup = r.waste.find((w) => w.kind === "duplicate" && w.detail.includes("'storm'"));
+    expect(dup!.fields).toEqual(["name", "subtitle", "keywords"]);
+  });
+
+  it("a brand_repeat is attributed to the subtitle (the field it burns)", () => {
+    const r = metadataCoverage({ name: "MyApp", subtitle: "MyApp weather", keywords: "rain" }, { brand: "MyApp" });
+    const brand = r.waste.find((w) => w.kind === "brand_repeat");
+    expect(brand!.fields).toEqual(["subtitle"]);
+  });
+});
+
+describe("metadataCoverage — #322 safe-to-strip vs readability call", () => {
+  it("keyword-field filler is marked safe to strip automatically (Apple ignores it for ranking)", () => {
+    const r = metadataCoverage({ name: "Radar", subtitle: "Live maps", keywords: "for,rain,thunder" });
+    const forItem = r.waste.find((w) => w.kind === "filler" && w.detail.includes("'for'"));
+    expect(forItem!.safeToStrip).toBe(true);
+  });
+
+  it("name/subtitle filler is NOT auto-strippable — it's a readability call for the human", () => {
+    const r = metadataCoverage({ name: "Radar for Storms", subtitle: "Live maps", keywords: "rain" });
+    const forItem = r.waste.find((w) => w.kind === "filler" && w.detail.includes("'for'"));
+    expect(forItem!.safeToStrip).toBe(false);
+  });
+
+  it("a filler term in BOTH the keyword field and the name is not safe to auto-strip wholesale", () => {
+    const r = metadataCoverage({ name: "Radar for Storms", subtitle: "Live maps", keywords: "for,rain" });
+    const forItem = r.waste.find((w) => w.kind === "filler" && w.detail.includes("'for'"));
+    expect(forItem!.fields).toEqual(["name", "keywords"]);
+    expect(forItem!.safeToStrip).toBe(false);
+  });
+
+  it("a safe-to-strip keyword filler says so in its detail — never a bare 'your call'", () => {
+    const r = metadataCoverage({ name: "Radar", subtitle: "Live maps", keywords: "for,rain" });
+    const forItem = r.waste.find((w) => w.kind === "filler" && w.detail.includes("'for'"));
+    expect(forItem!.detail.toLowerCase()).not.toContain("your call");
+    expect(forItem!.detail.toLowerCase()).toContain("keyword field");
+  });
+
+  it("a name/subtitle filler keeps the honest 'your call' — no fabricated replacement keyword", () => {
+    const r = metadataCoverage({ name: "Radar for Storms", subtitle: "Live maps", keywords: "rain" });
+    const forItem = r.waste.find((w) => w.kind === "filler" && w.detail.includes("'for'"));
+    expect(forItem!.detail.toLowerCase()).toContain("your call");
+  });
+
+  it("duplicates and brand repeats are never marked safeToStrip by this flag (it's filler-only)", () => {
+    const r = metadataCoverage({ name: "Storm Radar", subtitle: "Best maps", keywords: "storm,rain" });
+    for (const w of r.waste.filter((x) => x.kind !== "filler")) {
+      expect(w.safeToStrip).toBe(false);
+    }
+  });
+});
+
+describe("metadataCoverage — #322 reclaimable keyword-field text (safe + reversible)", () => {
+  it("exposes the tightened keyword field so the change is SHOWN, never applied silently", () => {
+    const r = metadataCoverage({ name: "Radar", subtitle: "Live maps", keywords: "for,rain,the,thunder" });
+    expect(r.keywordFieldStrip).toEqual({
+      before: "for,rain,the,thunder",
+      after: "rain,thunder",
+      removed: ["for", "the"],
+      reclaimedChars: "for,rain,the,thunder".length - "rain,thunder".length,
+    });
+  });
+
+  it("is absent when the keyword field carries no strippable filler (nothing to show)", () => {
+    const r = metadataCoverage({ name: "Radar", subtitle: "Live maps", keywords: "rain,thunder" });
+    expect(r.keywordFieldStrip).toBeUndefined();
+  });
+
+  it("is absent when the keyword field was never read (unseen ≠ empty)", () => {
+    const r = metadataCoverage({ name: "Radar for Storms", subtitle: "Live maps" });
+    expect(r.keywordFieldStrip).toBeUndefined();
+  });
+
+  it("never strips a filler term that also appears in the name/subtitle without saying so", () => {
+    // 'for' is in BOTH name and keywords — stripping the keyword copy is still
+    // safe (Apple ignores it there) but the item must not read as safeToStrip.
+    const r = metadataCoverage({ name: "Radar for Storms", subtitle: "Live maps", keywords: "for,rain" });
+    expect(r.keywordFieldStrip!.removed).toEqual(["for"]);
+    const forItem = r.waste.find((w) => w.kind === "filler" && w.detail.includes("'for'"));
+    expect(forItem!.safeToStrip).toBe(false);
+  });
+
+  it("preserves the original keyword order and spacing style of what remains", () => {
+    const r = metadataCoverage({ name: "Radar", subtitle: "Live maps", keywords: "rain, for, thunder" });
+    expect(r.keywordFieldStrip!.after).toBe("rain, thunder");
+  });
+});

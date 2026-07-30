@@ -41,6 +41,38 @@ describe("<CompetitorsCard />", () => {
     expect(screen.getByTestId("comp-dismiss-222")).toBeInTheDocument();
   });
 
+  // A suggestion list is a row of near-identical grey buttons unless the
+  // affirmative action is painted as primary (#344). Confirm is the action the
+  // customer is being asked for; Dismiss is the escape hatch, and the two must
+  // not read as equally weighted.
+  it("paints Confirm as the primary action and Dismiss as secondary", async () => {
+    const { client } = makeClient([SUGGESTED]);
+    renderCard(client);
+    await waitFor(() => expect(screen.getByTestId("comp-confirm-222")).toBeInTheDocument());
+    expect(screen.getByTestId("comp-confirm-222").className).toContain("primary");
+    expect(screen.getByTestId("comp-dismiss-222").className).not.toContain("primary");
+  });
+
+  // Add is the affirmative action of the entry row for the same reason.
+  it("paints Add as primary and Discover as secondary", async () => {
+    const { client } = makeClient([]);
+    renderCard(client);
+    await waitFor(() => expect(screen.getByTestId("comp-add")).toBeInTheDocument());
+    expect(screen.getByTestId("comp-add").className).toContain("primary");
+    expect(screen.getByTestId("comp-discover").className).not.toContain("primary");
+  });
+
+  // Remove destroys a confirmed competitor — it must stay the .bad treatment and
+  // never be promoted to primary alongside the affirmative actions.
+  it("keeps Remove as the destructive treatment, not primary", async () => {
+    const { client } = makeClient([CONFIRMED]);
+    renderCard(client);
+    await waitFor(() => expect(screen.getByTestId("comp-remove-111")).toBeInTheDocument());
+    const cls = screen.getByTestId("comp-remove-111").className;
+    expect(cls).toContain("bad");
+    expect(cls).not.toContain("primary");
+  });
+
   it("Confirm posts to the confirm endpoint and updates the list from the response", async () => {
     const post = vi.fn(async (path: string) => {
       if (path === "/apps/a1/competitors/222/confirm") return { competitors: [CONFIRMED, { ...SUGGESTED, status: "confirmed" }] };

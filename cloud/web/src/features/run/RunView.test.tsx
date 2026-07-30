@@ -168,6 +168,43 @@ describe("<RunView /> — the money screen", () => {
     expect(result).toHaveTextContent(/staged/i);
   });
 
+  /**
+   * #372 — the prod incident, pinned. A stored key whose KEK was replaced is
+   * still listed by the API (metadata never decrypts), so the UI used to offer
+   * "Push to App Store Connect" for a key that cannot be read. Clicking it
+   * 500s. Advertising a capability the system does not have is exactly the kind
+   * of claim this product must never make.
+   *
+   * `readable: false` is the server's honest report; the card must respect it
+   * and say what to do instead of presenting a dead button.
+   */
+  it("an UNREADABLE stored key does not offer a push — it says to re-connect", async () => {
+    const { client } = makeClient({
+      credentials: [{ ...ASC_CRED, readable: false }],
+    });
+    renderView(client);
+    await waitFor(() => screen.getByTestId("approve"));
+    fireEvent.click(screen.getByTestId("approve"));
+
+    // the push affordance must be withheld entirely
+    await waitFor(() => expect(screen.getByTestId("handoff")).toBeInTheDocument());
+    expect(screen.queryByTestId("asc-push")).not.toBeInTheDocument();
+
+    // and the user is told, naming the key so it is actionable
+    const notice = screen.getByTestId("asc-key-unreadable");
+    expect(notice).toHaveTextContent(/KID123/);
+    expect(notice).toHaveTextContent(/re-connect/i);
+  });
+
+  it("a readable key still offers the push (the guard is not over-broad)", async () => {
+    const { client } = makeClient({ credentials: [{ ...ASC_CRED, readable: true }] });
+    renderView(client);
+    await waitFor(() => screen.getByTestId("approve"));
+    fireEvent.click(screen.getByTestId("approve"));
+    await waitFor(() => expect(screen.getByTestId("asc-push")).toBeInTheDocument());
+    expect(screen.queryByTestId("asc-key-unreadable")).not.toBeInTheDocument();
+  });
+
   it("push failure surfaces Apple's reason verbatim — never a silent failure", async () => {
     const { client } = makeClient({
       credentials: [ASC_CRED],
@@ -180,6 +217,28 @@ describe("<RunView /> — the money screen", () => {
     fireEvent.click(screen.getByTestId("asc-push"));
     const result = await screen.findByTestId("push-result");
     expect(result).toHaveTextContent("no editable version found");
+  });
+
+  it("a PARTIAL push (some fields landed, some refused) reads as NOT a clean success", async () => {
+    const { client } = makeClient({
+      credentials: [ASC_CRED],
+      pushResult: {
+        ok: true,
+        versionId: "v1",
+        localizationId: "l1",
+        fieldsPushed: ["keywords", "description"],
+        partialFailure: "update name/subtitle failed (409)",
+      },
+    });
+    renderView(client);
+    await waitFor(() => screen.getByTestId("approve"));
+    fireEvent.click(screen.getByTestId("approve"));
+    await waitFor(() => screen.getByTestId("asc-push"));
+    fireEvent.click(screen.getByTestId("asc-push"));
+    const result = await screen.findByTestId("push-result");
+    expect(result).toHaveTextContent(/Partly staged: keywords, description/);
+    expect(result).toHaveTextContent(/refused the rest/);
+    expect(result).toHaveClass("bad"); // visually flagged, not a clean success
   });
 
   it("a refused push offers Create-draft-version (no curl) and reports Apple's result", async () => {
@@ -346,5 +405,41 @@ describe("<RunView /> — run shell (pending)", () => {
     // reachable via its rail button
     fireEvent.click(screen.getByRole("button", { name: "PPO test" }));
     expect(screen.getByTestId("ppo-treatment-card")).toBeInTheDocument();
+  });
+
+  // #324 Tier 2: a finding that has an in-product builder should HAND OFF to it,
+  // not just point at App Store Connect. Clicking the handoff moves the run view
+  // to that builder's section — "you should test" → "here's the treatment".
+  it("jumps to the screenshot builder when a finding hands off to it", async () => {
+    const { client } = makeClient({
+      extra: {
+        audit: {
+          liveName: "Heathen",
+          screenshots: { grade: "C", score: 60, findings: [], iphoneCount: 3, ipadCount: 0 },
+        },
+        findings: [
+          {
+            id: "ppo_never_tested",
+            surface: "experiments",
+            severity: "info",
+            impact: "conversion",
+            title: "You've never run a product page test — and it's free",
+            detail: "d",
+            fix: "Set up a Product Page Optimization test in App Store Connect.",
+            action: {
+              url: "https://appstoreconnect.apple.com/apps/12345/distribution",
+              label: "Open in App Store Connect →",
+              appScoped: true,
+              tool: "screenshots",
+            },
+          },
+        ],
+      },
+    });
+    renderView(client);
+    await waitFor(() => expect(screen.getByTestId("section-rail")).toBeInTheDocument());
+    fireEvent.click(screen.getByRole("button", { name: "Audit" }));
+    fireEvent.click(screen.getByTestId("finding-tool-ppo_never_tested"));
+    expect(screen.getByTestId("screenshot-plan-card")).toBeInTheDocument();
   });
 });

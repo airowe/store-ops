@@ -170,6 +170,7 @@ export const TOOLS: McpToolDef[] = [
         appName: app.name,
         hasAscKey: false,
         ...(result.audit.storefront !== undefined ? { storefront: result.audit.storefront } : {}),
+        ...(result.currentCopy !== undefined ? { currentCopy: result.currentCopy } : {}),
       });
       return { audit: result.audit, findings, summary: summarizeFindings(findings) };
     },

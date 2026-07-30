@@ -1,0 +1,49 @@
+# Cloudflare Pages headers for the app (app.shipaso.com).
+#
+# Moved here from cloud/public/_headers (#356 Phase 3) so it ships from the new
+# app's own build. Vite copies public/ verbatim into dist/, which is what Pages
+# deploys.
+
+# ── HTML: never cache ────────────────────────────────────────────────────────
+# index.html references content-hashed bundles (assets/index-<hash>.js). If the
+# HTML itself is cached, a returning visitor keeps an old one pointing at the
+# previous hashes — the #40 stale-bundle bug. Always revalidate.
+/
+  Cache-Control: no-cache
+/index.html
+  Cache-Control: no-cache
+
+# ── Hashed bundles: cache hard ───────────────────────────────────────────────
+# Vite emits every JS/CSS chunk into /assets/ with a content hash in the
+# filename, so a content change yields a NEW name and there is no stale-content
+# risk. (The old /*.js and /*.css rules matched the legacy stamped root, which
+# put bundles at the top level; the new app never does.)
+#
+# KNOWN FAILURE MODE — a year-long cache entry is only as good as what got
+# cached. On 2026-07-28 an HTML error response was cached for /assets/*.js
+# during the deploy window and served to every real browser for hours, blank
+# page, no console error the tooling caught. A one-second origin blip became an
+# outage that would NOT have expired on its own until 2027.
+#
+# `immutable` is still right — these names are content-hashed, so the fix is
+# not a shorter TTL (that only shortens the outage). Recovery is a cache purge:
+#   npx wrangler pages deployment list --project-name store-ops-dashboard
+#   …then Purge Everything for the zone in the Cloudflare dashboard.
+# Detection is scripts/smoke.mjs check 6 and web/tests-e2e/prodSmoke.e2e.ts,
+# which request assets the way a BROWSER does (with `Origin`) — the poisoned
+# entry sits under a cache key plain curl never touches.
+/assets/*
+  Cache-Control: public, max-age=31536000, immutable
+
+# ── Universal-link association files ─────────────────────────────────────────
+# Apple requires apple-app-site-association to be served EXTENSIONLESS, as
+# application/json, with no redirect. Pages would otherwise serve an
+# extensionless file as application/octet-stream and iOS would reject it.
+# assetlinks.json is JSON by extension but we pin its type too rather than rely
+# on that. Short cache so a fingerprint or appID correction propagates quickly.
+/.well-known/apple-app-site-association
+  Content-Type: application/json
+  Cache-Control: public, max-age=3600
+/.well-known/assetlinks.json
+  Content-Type: application/json
+  Cache-Control: public, max-age=3600

@@ -5,7 +5,7 @@
   },
   "metadata": {
     "description": "ShipASO — AI-native ASO for App Store and Google Play. Audit, research on real rank data, optimize to exact char limits, push, and prove the rank moved.",
-    "version": "0.1.0"
+    "version": "0.2.0"
   },
   "plugins": [
     {

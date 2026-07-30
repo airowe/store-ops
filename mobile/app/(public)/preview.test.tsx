@@ -4,7 +4,12 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import type { ApiClient } from "../../src/api/client.js";
 import type { PreviewResult } from "../../src/types/api.js";
 import Preview from "./preview.js";
-import { palette } from "../../src/theme/index.js";
+import { useColorScheme } from "react-native";
+import { ThemeProvider, lightPalette, palette } from "../../src/theme/index.js";
+
+jest.mock("react-native/Libraries/Utilities/useColorScheme");
+const mockColorScheme = useColorScheme as unknown as jest.Mock;
+beforeEach(() => mockColorScheme.mockReturnValue("dark"));
 
 /** The real app supplies this from _layout; a standalone mount must too. */
 function renderPreview(client: ApiClient) {
@@ -146,5 +151,46 @@ describe("Preview screen — try-before-signup", () => {
     await waitFor(() => expect(screen.getByTestId("preview-note")).toBeTruthy());
     expect(screen.getByTestId("preview-note")).toHaveTextContent(/no app found/);
     expect(screen.queryByTestId("preview-grade")).toBeNull();
+  });
+});
+
+describe("Preview theming", () => {
+  it("renders the grade pill, rank bar and top-ten ring in the LIGHT palette under a light provider", async () => {
+    mockColorScheme.mockReturnValue("light");
+    const { client } = fakeClient([
+      { preview: { appName: "Paprika", auditGrade: "C", leadKeyword: "recipes", leadRank: 7,
+        keywordsChecked: 12, inTop10: 2, sample: [{ keyword: "recipes", rank: 7 }, { keyword: "pantry", rank: null }] } },
+    ]);
+    const qc = new QueryClient({ defaultOptions: { mutations: { retry: false } } });
+    render(
+      <QueryClientProvider client={qc}>
+        <ThemeProvider>
+          <Preview client={client} />
+        </ThemeProvider>
+      </QueryClientProvider>,
+    );
+    fireEvent.changeText(screen.getByTestId("preview-query"), "Paprika");
+    fireEvent.press(screen.getByTestId("preview-search"));
+    await waitFor(() => expect(screen.getByTestId("preview-grade")).toBeTruthy());
+
+    const pill = screen.getByTestId("preview-grade-pill");
+    const flatPill = Object.assign({}, ...[].concat(pill.props.style as never));
+    expect(flatPill.backgroundColor).toBe(lightPalette.signalGlow);
+    expect(screen.getByTestId("preview-grade")).toHaveStyle({ color: lightPalette.signal });
+
+    // RankBar: the track uses `line`, the fill uses `signal`.
+    const bar = screen.getAllByTestId("rank-bar")[0];
+    expect(bar).toHaveStyle({ backgroundColor: lightPalette.line });
+
+    // TopTenRing draws SVG strokes, not styles.
+    const strokes = screen
+      .getByTestId("preview-topten-ring")
+      .findAll((n) => typeof n.props?.stroke === "string")
+      .map((n) => n.props.stroke as string);
+    expect(strokes).toContain(lightPalette.signal);
+
+    expect(lightPalette.signalGlow).not.toBe(palette.signalGlow);
+    expect(lightPalette.line).not.toBe(palette.line);
+    expect(lightPalette.signal).not.toBe(palette.signal);
   });
 });

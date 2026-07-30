@@ -46,6 +46,10 @@
  *   GET  /portfolio         Scale-tier roll-up: every app's grade / lead rank /
  *                           pending-approval + summary counts (402 below Scale).
  *   POST /runs/approve-all  bulk-approve every pending run across the user's apps.
+ *   GET  /runs              PORTFOLIO: every run across the user's apps, app-first
+ *                           (app_name required), gate-first then newest.
+ *   GET  /keywords          PORTFOLIO: rank movement per keyword × app × storefront.
+ *   GET  /competitors       PORTFOLIO: rivals grouped by rival; watching per-pair.
  *   POST /resolve           {query} → connectable candidates (name / App Store or
  *                           Play URL / numeric id / bundle id). No connect, no run.
  *                           kind: "resolved" | "candidates" | "not-found".
@@ -110,7 +114,7 @@ import {
   sortFindings,
   verifyPlayServiceAccount,
 } from "../engine/index.js";
-import type { ReasoningTrace, AppRow, FindingsSummary } from "../d1.js";
+import type { ReasoningTrace, AppRow, FindingsSummary, RankSnapshotRow } from "../d1.js";
 import { buildPreview } from "../engine/preview.js";
 import { discoverCompetitors, resolveNameToId } from "../engine/competitorWatch.js";
 import { resolveSimilarCompetitors } from "../engine/competitorDiscover.js";
@@ -118,7 +122,7 @@ import { fetchStorefrontListing } from "../engine/storefrontListing.js";
 import { asResponse, buildUrl, fetchJson, ItunesError } from "../engine/itunes.js";
 import { ITUNES_LOOKUP_URL } from "../engine/constants.js";
 import { detectPortfolio } from "../engine/portfolio.js";
-import { fetchChartRank } from "../engine/chartRank.js";
+import { categoryRankFrom, fetchChartRank } from "../engine/chartRank.js";
 import { buildRankAnnotations } from "../engine/rankAnnotations.js";
 import { deriveBrandTokens, localizeCopy, LocalizeError, validateLocalizedSubmission } from "../engine/localizeCopy.js";
 import { readLocaleKeywords } from "../engine/localeKeywords.js";
@@ -156,11 +160,15 @@ import {
   listTrackedMarkets,
   getRun,
   getTier,
+  getAscWriteOptIn,
   getUserByStripeCustomer,
   latestRunTraceForApp,
   listAllApps,
   listAppsForUser,
   listCompetitors,
+  listCompetitorsForUser,
+  listRankSnapshotsForUser,
+  listRunsForUser,
   listCompetitorSnapshots,
   getPlayFunnelSeries,
   listRunsForApp,
@@ -234,6 +242,11 @@ import { buildFastlaneBundle } from "../engine/fastlane.js";
 import { zipStore } from "../engine/zip.js";
 import { mintAscJwt } from "../engine/ascJwt.js";
 import { findAscAppId, applyAscMetadata, createAscLocalization, createAscVersion, getEditableVersionId, isValidVersionString, readAscLocalization, AscWriteError } from "../engine/ascWrite.js";
+import { ascWriteGate } from "../engine/ascWriteGate.js";
+import { uploadScreenshot } from "../engine/ascUploadClient.js";
+import { createPpoExperiment } from "../engine/ascExperimentCreate.js";
+import { ensureScreenshotSet } from "../engine/ascScreenshotSet.js";
+import { readAscExperiments } from "../engine/ascExperiments.js";
 import { registerWebhook, WEBHOOK_EVENT_TYPES } from "../engine/ascWebhookRegister.js";
 import { saveWebhookSecret } from "../d1.js";
 import { readAscSnapshot, ascScreenshotsToListing, type AscSnapshot } from "../engine/ascRead.js";
@@ -483,6 +496,10 @@ async function attachCaptionFindings(env: Env, result: AgentResult): Promise<voi
  * effort and keyless: reads the app's primary-genre chart from the free RSS feed
  * and locates the app. Absent trackId/genre or an unreadable feed leaves
  * `chartRank` undefined (unknown) — never a false "not charting".
+ *
+ * #326: the SAME measured read is also narrowed onto the audit as
+ * `categoryRank` so the run status bar renders one field. Both the keyed and
+ * the public run paths call this, so both get a measured rank or none at all.
  */
 async function attachChartRank(env: Env, app: AppRow, result: AgentResult): Promise<void> {
   const { trackId, primaryGenreId, primaryGenreName } = result.audit;
@@ -494,6 +511,8 @@ async function attachChartRank(env: Env, app: AppRow, result: AgentResult): Prom
     country: app.country?.toLowerCase() || "us",
   });
   if (cr) result.chartRank = cr;
+  const categoryRank = categoryRankFrom(cr);
+  if (categoryRank) result.audit.categoryRank = categoryRank;
 }
 
 /**
@@ -1358,6 +1377,156 @@ async function proofStats(env: Env, origin: string | null): Promise<Response> {
   return json(agg, 200, origin, env, { "cache-control": "public, max-age=3600" });
 }
 
+// ── portfolio screens (#356 Phase 1): /runs · /keywords · /competitors ────────
+// Fleet-wide siblings of the per-app routes. Each reads ONE cross-app statement
+// (see the listXForUser helpers in d1.ts) rather than looping the per-app helper,
+// so a 40-app account costs the same number of round trips as a 1-app account.
+// Ownership is enforced inside those queries by joining through apps.user_id.
+
+/**
+ * GET /runs — every run across the caller's apps, app-first.
+ *
+ * `app_name` is required: each row on this screen names the app before the run,
+ * because a run id means nothing without it. `findings_summary` comes from the
+ * run's persisted trace and is `null` when the run has none (older traces, or a
+ * run whose path never computed findings) — the screen then renders NO chip,
+ * which is the honest reading. A zero would claim "audited, nothing critical".
+ *
+ * Ordering is done in SQL (see listRunsForUser): runs at the human gate lead at
+ * any age, then newest first.
+ */
+async function portfolioRuns(env: Env, userId: string): Promise<unknown> {
+  const rows = await listRunsForUser(env.DB, userId);
+  return {
+    runs: rows.map((r) => ({
+      id: r.id,
+      app_id: r.app_id,
+      app_name: r.app_name,
+      status: r.status,
+      created_at: r.created_at,
+      findings_summary: findingsSummaryFromTrace(r.reasoning_json),
+    })),
+  };
+}
+
+/**
+ * The findings summary a run's persisted trace carries, or null. A trace that
+ * won't parse is treated as "no summary" rather than a 500: one corrupt blob
+ * must not take down the whole fleet view, and null is the honest answer
+ * (we do not know this run's findings) either way.
+ */
+function findingsSummaryFromTrace(reasoningJson: string): FindingsSummary | null {
+  try {
+    return (JSON.parse(reasoningJson) as ReasoningTrace).findingsSummary ?? null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * GET /keywords — rank movement for every tracked keyword across the fleet.
+ *
+ * A row is a keyword × app × STOREFRONT triple. A rank is only meaningful for
+ * one app in one storefront, so collapsing to a keyword-only row would have to
+ * either pick one app's number or average several — both fabricate. We therefore
+ * partition the snapshots on (app_id, country) and run the SAME `rankDeltasView`
+ * the per-app screen and the email digest use over each partition, so no two
+ * surfaces can disagree about a delta.
+ *
+ * Directions are the existing ones. The engine's `lost` (we read the storefront
+ * and the app was not in it, so `current` is null) maps onto the wire's
+ * `unmeasured` — the same fact, in the vocabulary the client type declares. No
+ * new honesty plumbing.
+ */
+async function portfolioKeywords(env: Env, userId: string): Promise<unknown> {
+  const rows = await listRankSnapshotsForUser(env.DB, userId);
+
+  // Partition preserving the query's checked_at ASC order, which rankDeltasView
+  // (via buildDigest) relies on to pick the last two DISTINCT snapshots.
+  const groups = new Map<
+    string,
+    { app_id: string; app_name: string; country: string; rows: RankSnapshotRow[] }
+  >();
+  for (const r of rows) {
+    const key = `${r.app_id} ${r.country}`;
+    let g = groups.get(key);
+    if (!g) {
+      g = { app_id: r.app_id, app_name: r.app_name, country: r.country, rows: [] };
+      groups.set(key, g);
+    }
+    g.rows.push({
+      id: r.id,
+      app_id: r.app_id,
+      keyword: r.keyword,
+      rank: r.rank,
+      total: r.total,
+      country: r.country,
+      checked_at: r.checked_at,
+    });
+  }
+
+  const entries: unknown[] = [];
+  for (const g of groups.values()) {
+    const view = rankDeltasView(g.rows, { appName: g.app_name });
+    for (const e of view.entries) {
+      entries.push({
+        keyword: e.keyword,
+        previous: e.previous,
+        current: e.current,
+        delta: e.delta,
+        direction: e.direction === "lost" ? "unmeasured" : e.direction,
+        app_id: g.app_id,
+        app_name: g.app_name,
+        country: g.country,
+      });
+    }
+  }
+  return { entries };
+}
+
+/**
+ * GET /competitors — the fleet's rivals, grouped by RIVAL rather than by app,
+ * because the same rival typically competes with several of your apps and the
+ * screen is about the rival.
+ *
+ * Watching stays PER-PAIR: `status` ("confirmed" / "suggested") and `source` are
+ * facts about (this app, this rival), not about the rival, so they live on the
+ * pair. Confirming a rival for one app must never silently confirm it for
+ * another.
+ *
+ * `sharedTerms` (how many of an app's tracked keywords the rival also ranks for)
+ * is DELIBERATELY ABSENT. We do not persist rival-vs-our-keyword ranks anywhere:
+ * `rank_snapshots` holds only the customer app's own ranks, and the war room
+ * live-fetches a rival's ranks per request rather than storing them.
+ * `corpus_snapshots` keys on bundle_id for corpus-mining seed terms, while a
+ * rival's `comp_key` is a stringified App Store trackId — the two do not join,
+ * and it is not scoped to an app's tracked set regardless. Producing the number
+ * would mean a live search per (rival × keyword) on every page load. So the
+ * field is omitted rather than estimated: the screen reads fine without it, and
+ * a missing count is honest where a guessed one is not.
+ */
+async function portfolioCompetitors(env: Env, userId: string): Promise<unknown> {
+  const rows = await listCompetitorsForUser(env.DB, userId);
+  const rivals = new Map<
+    string,
+    { key: string; name: string; pairs: Array<{ app_id: string; app_name: string; status: string; source: string }> }
+  >();
+  for (const r of rows) {
+    let rival = rivals.get(r.comp_key);
+    if (!rival) {
+      rival = { key: r.comp_key, name: r.name, pairs: [] };
+      rivals.set(r.comp_key, rival);
+    }
+    rival.pairs.push({
+      app_id: r.app_id,
+      app_name: r.app_name,
+      status: r.status,
+      source: r.source,
+    });
+  }
+  return { rivals: [...rivals.values()] };
+}
+
 /**
  * GET /portfolio — the Scale "one glance" roll-up: every app with its grade,
  * lead rank, and pending-approval flag, plus the summary counts. Scale-tier
@@ -1606,6 +1775,7 @@ async function runApp(
     appName: app.name,
     hasAscKey: false,
     ...(result.proposedCopy !== undefined ? { proposedCopy: result.proposedCopy } : {}),
+    ...(result.currentCopy !== undefined ? { currentCopy: result.currentCopy } : {}),
     ...(result.reviews !== undefined ? { reviews: result.reviews } : {}),
     ...(result.audit.storefront !== undefined ? { storefront: result.audit.storefront } : {}),
     ...(result.chartRank !== undefined ? { chartRank: result.chartRank } : {}),
@@ -1871,6 +2041,7 @@ export async function keyedAscPass(
     appName: app.name,
     hasAscKey: true,
     ...(result.proposedCopy !== undefined ? { proposedCopy: result.proposedCopy } : {}),
+    ...(result.currentCopy !== undefined ? { currentCopy: result.currentCopy } : {}),
     ...(result.reviews !== undefined ? { reviews: result.reviews } : {}),
     ...(result.audit.storefront !== undefined ? { storefront: result.audit.storefront } : {}),
     ...(result.chartRank !== undefined ? { chartRank: result.chartRank } : {}),
@@ -3743,6 +3914,174 @@ async function ascPushRoute(
 }
 
 /**
+ * POST /runs/:id/asc/upload-screenshot (#374) — upload ONE screenshot into an
+ * existing appScreenshotSet on the user's App Store Connect account.
+ *
+ * The first write that carries an ASSET rather than text, and the first gated on
+ * the #405 pair: a paid tier (`canAscWrite`) AND the user's own opt-in
+ * (`users.asc_write_opt_in`). Both, plus an approved run, plus this explicit
+ * call — `ascWriteGate` is the single place that decision is made, so this route
+ * cannot drift from the others.
+ *
+ * Deliberately ONE asset per call. A batch endpoint would have to decide what
+ * "partially uploaded" means on a live listing; one call either published one
+ * screenshot or published nothing, and the caller sequences them.
+ *
+ * Never submits, never starts a test, never touches a READY_FOR_SALE version.
+ */
+async function ascUploadScreenshotRoute(
+  req: Request,
+  env: Env,
+  userId: string,
+  runId: string,
+): Promise<unknown> {
+  const run = await getRun(env.DB, runId);
+  if (!run) throw new HttpError(404, "run not found");
+  const app = await requireOwnedApp(env, run.app_id, userId);
+
+  const gate = ascWriteGate({
+    flagOn: isFlagOn(env.ASC_WRITE_ENABLED),
+    tier: await getTier(env.DB, userId),
+    optedIn: await getAscWriteOptIn(env.DB, userId),
+    runStatus: run.status,
+  });
+  if (!gate.allowed) throw new HttpError(gate.status, gate.reason);
+
+  const body = (await req.json().catch(() => ({}))) as AscCredBody & {
+    screenshotSetId?: string;
+    /** Alternative to screenshotSetId: the device bucket, e.g. "APP_IPHONE_67". */
+    screenshotDisplayType?: string;
+    /** The appStoreVersionLocalization, required when creating a set. */
+    localizationId?: string;
+    fileName?: string;
+    /** base64 of the PNG bytes. */
+    fileBase64?: string;
+  };
+
+  const fileName = (body.fileName ?? "").trim();
+  if (!fileName) throw new HttpError(400, "fileName is required");
+  // Either target an existing set directly, or name a device size and let us
+  // find-or-create it. The second form is what an app with NO screenshots needs
+  // — there is no set id to pass when no set exists.
+  const givenSetId = (body.screenshotSetId ?? "").trim();
+  const displayType = (body.screenshotDisplayType ?? "").trim();
+  if (!givenSetId && !displayType) {
+    throw new HttpError(400, "screenshotSetId or screenshotDisplayType is required");
+  }
+  if (!givenSetId && !(body.localizationId ?? "").trim()) {
+    throw new HttpError(400, "localizationId is required when creating a screenshot set");
+  }
+
+  let file: Uint8Array;
+  try {
+    const bin = atob(body.fileBase64 ?? "");
+    file = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) file[i] = bin.charCodeAt(i);
+  } catch {
+    throw new HttpError(400, "fileBase64 must be base64-encoded image bytes");
+  }
+
+  const cred = await ascCredForRequest(env, userId, app.id, body);
+  let token: string;
+  try {
+    token = await mintAscJwt({ p8: cred.p8, keyId: cred.keyId, issuerId: cred.issuerId });
+  } catch (e) {
+    throw new HttpError(400, e instanceof Error ? e.message : "invalid credentials");
+  }
+
+  try {
+    const screenshotSetId = givenSetId
+      ? givenSetId
+      : (
+          await ensureScreenshotSet(fetch, {
+            token,
+            localizationId: (body.localizationId ?? "").trim(),
+            displayType,
+          })
+        ).id;
+    return await uploadScreenshot(fetch, { token, screenshotSetId, fileName, file });
+  } catch (e) {
+    if (e instanceof AscWriteError) return { ok: false, reason: e.message };
+    // A refusal (placeholder / empty / bad plan) is the caller's fault, not
+    // Apple's — surface it as a 400 rather than a 500.
+    throw new HttpError(400, e instanceof Error ? e.message : "screenshot upload failed");
+  }
+}
+
+/**
+ * POST /runs/:id/asc/create-experiment (#374) — create a Product Page
+ * Optimization experiment, STOPPED.
+ *
+ * The only write in this codebase that can change what real App Store visitors
+ * see, so it carries its OWN flag (`ASC_EXPERIMENT_WRITE_ENABLED`) on top of the
+ * shared `ascWriteGate` — every other write is pre-review and invisible until
+ * the developer submits.
+ *
+ * Creating is not starting: `createPpoExperiment` never sends a field that would
+ * begin the test, and refuses outright while another is running. Pressing start
+ * stays a deliberate act in App Store Connect. This route will not do it, and
+ * there is no endpoint that will.
+ */
+async function ascCreateExperimentRoute(
+  req: Request,
+  env: Env,
+  userId: string,
+  runId: string,
+): Promise<unknown> {
+  if (!isFlagOn(env.ASC_EXPERIMENT_WRITE_ENABLED)) {
+    throw new HttpError(
+      403,
+      "creating product page experiments is not enabled on this deployment",
+    );
+  }
+  const run = await getRun(env.DB, runId);
+  if (!run) throw new HttpError(404, "run not found");
+  const app = await requireOwnedApp(env, run.app_id, userId);
+
+  const gate = ascWriteGate({
+    flagOn: isFlagOn(env.ASC_WRITE_ENABLED),
+    tier: await getTier(env.DB, userId),
+    optedIn: await getAscWriteOptIn(env.DB, userId),
+    runStatus: run.status,
+  });
+  if (!gate.allowed) throw new HttpError(gate.status, gate.reason);
+
+  const body = (await req.json().catch(() => ({}))) as AscCredBody & {
+    appStoreVersionId?: string;
+    name?: string;
+    trafficProportion?: number;
+  };
+  const appStoreVersionId = (body.appStoreVersionId ?? "").trim();
+  if (!appStoreVersionId) throw new HttpError(400, "appStoreVersionId is required");
+
+  const cred = await ascCredForRequest(env, userId, app.id, body);
+  let token: string;
+  try {
+    token = await mintAscJwt({ p8: cred.p8, keyId: cred.keyId, issuerId: cred.issuerId });
+  } catch (e) {
+    throw new HttpError(400, e instanceof Error ? e.message : "invalid credentials");
+  }
+
+  // Read the CURRENT experiments first: the "is one already live?" decision must
+  // be made from Apple's present state, never from what a stale run recorded.
+  const ascAppId = await findAscAppId(fetch, token, app.bundle_id);
+  const { experiments } = await readAscExperiments(fetch, { token, appId: ascAppId });
+
+  try {
+    return await createPpoExperiment(fetch, {
+      token,
+      appStoreVersionId,
+      name: (body.name ?? "").trim(),
+      trafficProportion: body.trafficProportion ?? 50,
+      runningExperiments: experiments,
+    });
+  } catch (e) {
+    if (e instanceof AscWriteError) return { ok: false, reason: e.message };
+    throw new HttpError(400, e instanceof Error ? e.message : "could not create the experiment");
+  }
+}
+
+/**
  * POST /runs/:id/asc/create-version (#34) — create a DRAFT App Store version
  * (PREPARE_FOR_SUBMISSION) on the user's Apple account so the approved
  * proposal has somewhere to land. Its OWN per-action gate: same flag +
@@ -4423,6 +4762,19 @@ export async function handleApi(req: Request, env: Env, ctx?: ExecutionContext):
       return json(await portfolioView(env, user.id), 200, origin, env);
     }
 
+    // The three fleet-wide portfolio screens (#356). Each is the cross-app
+    // sibling of a per-app route. GET /runs is length-1, so it can't collide
+    // with /runs/approve-all or /runs/:id (both length >= 2).
+    if (seg[0] === "runs" && seg.length === 1 && method === "GET") {
+      return json(await portfolioRuns(env, user.id), 200, origin, env);
+    }
+    if (seg[0] === "keywords" && seg.length === 1 && method === "GET") {
+      return json(await portfolioKeywords(env, user.id), 200, origin, env);
+    }
+    if (seg[0] === "competitors" && seg.length === 1 && method === "GET") {
+      return json(await portfolioCompetitors(env, user.id), 200, origin, env);
+    }
+
     // /account/rlhf-optout — flip this user's RLHF capture opt-out (#39 Part 2)
     if (
       seg[0] === "account" &&
@@ -4689,6 +5041,12 @@ export async function handleApi(req: Request, env: Env, ctx?: ExecutionContext):
       }
       if (seg.length === 4 && seg[2] === "asc" && seg[3] === "push" && method === "POST") {
         return json(await ascPushRoute(req, env, user.id, runId), 200, origin);
+      }
+      if (seg.length === 4 && seg[2] === "asc" && seg[3] === "upload-screenshot" && method === "POST") {
+        return json(await ascUploadScreenshotRoute(req, env, user.id, runId), 200, origin);
+      }
+      if (seg.length === 4 && seg[2] === "asc" && seg[3] === "create-experiment" && method === "POST") {
+        return json(await ascCreateExperimentRoute(req, env, user.id, runId), 200, origin);
       }
       if (seg.length === 4 && seg[2] === "asc" && seg[3] === "create-version" && method === "POST") {
         return json(await ascCreateVersionRoute(req, env, user.id, runId), 200, origin);

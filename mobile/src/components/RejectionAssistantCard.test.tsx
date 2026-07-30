@@ -9,6 +9,12 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react-native";
 import type { ApiClient } from "../api/client.js";
 import type { RejectionAnalysis } from "../types/api.js";
+import { useColorScheme } from "react-native";
+import { ThemeProvider, lightPalette, palette } from "../theme/index.js";
+
+jest.mock("react-native/Libraries/Utilities/useColorScheme");
+const mockColorScheme = useColorScheme as unknown as jest.Mock;
+beforeEach(() => mockColorScheme.mockReturnValue("dark"));
 import { RejectionAssistantCard } from "./RejectionAssistantCard.js";
 
 function fakeClient(result: RejectionAnalysis): { client: ApiClient; bodies: unknown[] } {
@@ -84,5 +90,26 @@ describe("RejectionAssistantCard", () => {
     // never a fabricated quote — an honest absence instead
     expect(screen.queryByTestId("ra-quote")).toBeNull();
     expect(screen.getByTestId("ra-no-quote")).toBeTruthy();
+  });
+});
+
+describe("RejectionAssistantCard theming", () => {
+  it("draws the draft block border in the LIGHT line inside a light provider", async () => {
+    mockColorScheme.mockReturnValue("light");
+    const { client } = fakeClient(WITH_QUOTE);
+    render(
+      <ThemeProvider>
+        <RejectionAssistantCard client={client} />
+      </ThemeProvider>,
+    );
+    fireEvent.changeText(screen.getByTestId("ra-text"), "Guideline 4.3 - Design: Spam");
+    fireEvent.press(screen.getByTestId("ra-run"));
+    await waitFor(() => expect(screen.getByTestId("ra-fix")).toBeTruthy());
+    const borders = screen
+      .getByTestId("ra-fix")
+      .findAll((n) => typeof n.props?.style?.borderColor === "string")
+      .map((n) => n.props.style.borderColor as string);
+    expect(borders).toContain(lightPalette.line);
+    expect(lightPalette.line).not.toBe(palette.line);
   });
 });

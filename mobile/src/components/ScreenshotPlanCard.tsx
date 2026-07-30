@@ -15,10 +15,11 @@ import { View } from "react-native";
 import type { ApiClient } from "../api/client.js";
 import { planScreenshots } from "../api/endpoints.js";
 import type { ScreenshotPlan, ScreenshotPlanInputs } from "../types/api.js";
-import { palette, spacing } from "../theme/index.js";
+import { spacing, usePalette } from "../theme/index.js";
 import { AppText, Button, Card } from "./primitives.js";
 
 export function ScreenshotPlanCard({ client, inputs }: { client: ApiClient; inputs: ScreenshotPlanInputs }) {
+  const palette = usePalette();
   const [plan, setPlan] = useState<ScreenshotPlan | null>(null);
   const [busy, setBusy] = useState(false);
 

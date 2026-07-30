@@ -10,7 +10,7 @@ import React, { useState } from "react";
 import { View } from "react-native";
 import * as DocumentPicker from "expo-document-picker";
 import * as Linking from "expo-linking";
-import { palette, spacing } from "../theme/index.js";
+import { spacing, usePalette } from "../theme/index.js";
 import {
   readPickedCredential,
   validateAscCredential,
@@ -61,6 +61,7 @@ async function pickFileText(): Promise<string | null> {
 }
 
 function AscSheet({ onSubmit, busy, submitLabel, allowStore }: { onSubmit: (v: AscSubmit) => void; busy?: boolean; submitLabel?: string; allowStore?: boolean }) {
+  const palette = usePalette();
   const [p8, setP8] = useState("");
   const [keyId, setKeyId] = useState("");
   const [issuerId, setIssuerId] = useState("");
@@ -117,6 +118,7 @@ function AscSheet({ onSubmit, busy, submitLabel, allowStore }: { onSubmit: (v: A
 }
 
 function PlaySheet({ onSubmit, busy, submitLabel }: { onSubmit: (v: PlaySubmit) => void; busy?: boolean; submitLabel?: string }) {
+  const palette = usePalette();
   const [json, setJson] = useState("");
   const [error, setError] = useState<string | null>(null);
 
@@ -134,7 +136,7 @@ function PlaySheet({ onSubmit, busy, submitLabel }: { onSubmit: (v: PlaySubmit) 
       <View style={{ gap: spacing.sm, marginTop: spacing.sm }}>
         <Button label="Pick service-account JSON" variant="ghost" onPress={() => void pickFileText().then((t) => t && setJson(t))} testID="play-pick" />
         <TextField testID="play-json" value={json} onChangeText={setJson} placeholder="…or paste your service-account JSON" multiline />
-        {error ? <AppText kind="dim" style={{ color: palette.bad }}>{error}</AppText> : null}
+        {error ? <AppText kind="dim" testID="play-error" style={{ color: palette.bad }}>{error}</AppText> : null}
         <Button label={submitLabel ?? "Verify & audit"} onPress={submit} loading={!!busy} testID="play-submit" />
       </View>
     </Card>

@@ -80,7 +80,11 @@ function input(over: Partial<AuditFindingsInput> = {}): AuditFindingsInput {
   return {
     snapshot: healthySnapshot(),
     audit: audit(),
-    ranks: [],
+    // A HEALTHY app tracks keywords. The fixture defaulted to [] — which
+    // describes an app tracking nothing, the exact state keywords_none_tracked
+    // now flags. Every test built on this baseline was quietly asserting
+    // against a broken app.
+    ranks: [{ keyword: "demo", rank: 12, checkedAt: "2026-07-27" } as never],
     appName: "Demo",
     hasAscKey: true,
     ...over,
@@ -733,6 +737,10 @@ describe("surfaceLocks", () => {
     "keywords",
     "screenshots",
     "previews",
+    // Promotional text is not in the public iTunes payload, so a no-key run
+    // cannot see it either. Disclosed as a lock rather than flagged as empty —
+    // "we did not look" is not "the field is unused".
+    "promo",
     "privacy",
     "category",
     "locales",
@@ -1289,6 +1297,442 @@ describe("review-risk lint integration (#178)", () => {
   });
 });
 
+/**
+ * Promotional text is the only listing field editable WITHOUT submitting a new
+ * version, and it is NOT indexed — so it costs nothing from the 100-char keyword
+ * budget and can ship same-day.
+ *
+ * Heathen's audit missed it entirely: every POPULATED field was scored, and 170
+ * unused characters at the top of the listing went unmentioned because there was
+ * no content to critique. An empty field flags nothing unless something looks
+ * for the absence.
+ *
+ * Deliberately NOT a keyword lever — the field is unindexed, so this must never
+ * suggest putting search terms in it.
+ */
+/**
+ * The keyword-field rules already exist in optimize.ts `validateCopy` — no
+ * spaces around commas, no title/subtitle duplicates, ≤100 chars. But they only
+ * run when GENERATING new copy, so nothing ever checked the listing the user
+ * ALREADY has.
+ *
+ * Consequence, found twice by hand before anyone noticed the pattern: Heathen
+ * spent 4 chars re-indexing `calm` (already in its subtitle) and Who Got Cooked
+ * spends 12 on `argument` + `AI`. Both audits stayed silent, because auditing
+ * the current keyword field was simply not a thing the engine did.
+ *
+ * Same shape as the promo-text gap: the check existed, the audit didn't run it.
+ */
+/**
+ * #410: there was NO iOS length finding at all. A subtitle over 30, or a keyword
+ * field over 100, produced silence — Apple rejects at submission and the audit
+ * said nothing.
+ *
+ * The limits already live in constants.ts CHAR_LIMITS and optimize.ts enforces
+ * them — but only when GENERATING copy. Same shape as the promo-text and
+ * keyword-dupe gaps: the rule existed, the audit never ran it.
+ *
+ * Severity is `warn`, not `critical`: an over-limit field is a real submission
+ * blocker, but the #41 trap is over-asserting. Apple's own limit is the fact;
+ * the consequence is stated without escalating.
+ */
+/**
+ * #410's remaining checks, built to the decisions recorded on the issue.
+ *
+ * Each rule is deliberately NARROW. Measured against the two real listings
+ * first: neither Heathen nor Who Got Cooked has a stop-word or a plural pair, so
+ * these fire rarely — which is the point. A keyword-hygiene check that fires on
+ * a correct listing is worse than no check, and thresholds we cannot measure are
+ * numbers we would be inventing.
+ *
+ * "Title: primary keyword present" is NOT here: every version either goes silent
+ * for unranked apps (most of them, #396) or flags a deliberate brand name like
+ * "Who Got Cooked" whose subtitle carries the keywords. The promise is removed
+ * from SKILL.md instead of shipped as a misfire.
+ */
+/**
+ * An app tracking ZERO keywords is the loudest possible fact about a rank
+ * tracker, and it produced silence.
+ *
+ * Found by asking why Who Got Cooked had no rank snapshot since 2026-07-06. The
+ * sweep ran every Monday and did its work; the reasoner correctly classified
+ * "who"/"got"/"cooked" as brand tokens and excluded them, no genre trigger
+ * matched its category (Social Networking / Entertainment is not in
+ * GENRE_SEEDS), and it was left targeting nothing. Three of the portfolio's apps
+ * are in that state.
+ *
+ * Every card downstream renders empty and the audit reports clean — an app
+ * tracking nothing looks exactly like a healthy one. This is the finding that
+ * distinguishes them.
+ */
+describe("zero tracked keywords is a finding, not silence", () => {
+  it("flags an app that is tracking no keywords at all", () => {
+    const got = auditFindings(input({ ranks: [] })).find((f) => f.id === "keywords_none_tracked");
+    expect(got, "an app tracking nothing must say so").toBeDefined();
+    expect(got!.severity).toBe("warn");
+  });
+
+  it("explains that rank data cannot arrive, not merely that a list is empty", () => {
+    const f = auditFindings(input({ ranks: [] })).find((x) => x.id === "keywords_none_tracked")!;
+    const text = `${f.title} ${f.detail}`.toLowerCase();
+    expect(text).toMatch(/rank|track/);
+  });
+
+  it("stays silent when the app tracks at least one keyword", () => {
+    const ranks = [{ keyword: "meditation", rank: 12, checkedAt: "2026-07-27" }] as never;
+    expect(auditFindings(input({ ranks })).map((f) => f.id)).not.toContain("keywords_none_tracked");
+  });
+
+  /**
+   * A tracked keyword that came back UNRANKED is still tracked — that is #396's
+   * case (measured, no position), and materially different from tracking
+   * nothing. Conflating them would report a working app as broken.
+   */
+  it("stays silent when keywords are tracked but unranked", () => {
+    const ranks = [
+      { keyword: "meditation", rank: null, checkedAt: "2026-07-27" },
+      { keyword: "calm", rank: null, checkedAt: "2026-07-27" },
+    ] as never;
+    expect(auditFindings(input({ ranks })).map((f) => f.id)).not.toContain("keywords_none_tracked");
+  });
+});
+
+describe("keyword hygiene (#410)", () => {
+  const copy = (over: Partial<{ name: string; subtitle: string; keywords: string; promo: string; description: string }>) => ({
+    name: "Heathen",
+    subtitle: "Secular meditation",
+    keywords: "mindfulness,sleep,breathe",
+    ...over,
+  });
+
+  describe("stop-words waste the 100-char budget", () => {
+    it("flags filler terms Apple gains nothing from", () => {
+      const got = auditFindings(
+        input({ hasAscKey: true, currentCopy: copy({ keywords: "the,best,meditation,app,free" }) }),
+      );
+      const f = got.find((x) => x.id === "keywords_stop_words");
+      expect(f, "expected a stop-word finding").toBeDefined();
+      for (const w of ["the", "best", "app", "free"]) expect(f!.detail).toContain(w);
+    });
+
+    it("does not flag a legitimate term that merely contains a stop-word", () => {
+      // "apple" contains "app"; "freedom" contains "free". Substring matching
+      // here would flag correct keywords, which is the failure mode to avoid.
+      const got = auditFindings(
+        input({ hasAscKey: true, currentCopy: copy({ keywords: "apple,freedom,theory" }) }),
+      ).map((x) => x.id);
+      expect(got).not.toContain("keywords_stop_words");
+    });
+
+    it("stays silent on a clean keyword field", () => {
+      expect(
+        auditFindings(input({ hasAscKey: true, currentCopy: copy({}) })).map((x) => x.id),
+      ).not.toContain("keywords_stop_words");
+    });
+  });
+
+  describe("plural/singular pairs are redundant (Apple stems)", () => {
+    it.each([
+      ["+s", "meditation,meditations,sleep"],
+      ["+es", "watch,watches,sleep"],
+    ])("flags an exact %s pair", (_label, keywords) => {
+      const got = auditFindings(input({ hasAscKey: true, currentCopy: copy({ keywords }) }));
+      expect(got.map((x) => x.id)).toContain("keywords_plural_pair");
+    });
+
+    it("does not flag unrelated terms that happen to end in s", () => {
+      // Narrow by design: only an exact +s/+es pair counts. "stress"/"stre" is
+      // not a pair, and near-miss stemming produces noise.
+      const got = auditFindings(
+        input({ hasAscKey: true, currentCopy: copy({ keywords: "stress,focus,sleep,gratitude" }) }),
+      ).map((x) => x.id);
+      expect(got).not.toContain("keywords_plural_pair");
+    });
+
+    it("names the redundant term and the chars it frees", () => {
+      const got = auditFindings(
+        input({ hasAscKey: true, currentCopy: copy({ keywords: "meditation,meditations" }) }),
+      );
+      const f = got.find((x) => x.id === "keywords_plural_pair")!;
+      expect(f.detail).toContain("meditations");
+      expect(`${f.detail} ${f.fix ?? ""}`).toMatch(/\d+/);
+    });
+  });
+
+  describe("promotional text repeating the description", () => {
+    it("flags promo text that is a literal prefix of the description", () => {
+      const description = "Send the screenshot. Get the verdict. Maude reads any argument.";
+      const got = auditFindings(
+        input({
+          hasAscKey: true,
+          currentCopy: copy({ promo: "Send the screenshot. Get the verdict.", description }),
+        }),
+      );
+      expect(got.map((x) => x.id)).toContain("promo_duplicates_description");
+    });
+
+    it("does not flag promo text that merely shares words", () => {
+      // Exact-prefix only. A fuzzy similarity threshold would be a number we
+      // invented, which is the thing this codebase does not do.
+      const got = auditFindings(
+        input({
+          hasAscKey: true,
+          currentCopy: copy({
+            promo: "New: 10 Stoic readings for the new year.",
+            description: "Send the screenshot. Get the verdict.",
+          }),
+        }),
+      ).map((x) => x.id);
+      expect(got).not.toContain("promo_duplicates_description");
+    });
+
+    it("stays silent when promo text is empty (that is promo_text_unused's job)", () => {
+      const got = auditFindings(
+        input({ hasAscKey: true, currentCopy: copy({ promo: "", description: "Anything." }) }),
+      ).map((x) => x.id);
+      expect(got).not.toContain("promo_duplicates_description");
+      expect(got).toContain("promo_text_unused");
+    });
+  });
+
+  /** Unmeasured ≠ clean — the rule from #404, holding across all three. */
+  it("says nothing about any of these when the copy was never read", () => {
+    const noKey = auditFindings(
+      input({ hasAscKey: false, currentCopy: { name: "X", description: "y" } }),
+    ).map((x) => x.id);
+    for (const id of ["keywords_stop_words", "keywords_plural_pair", "promo_duplicates_description"]) {
+      expect(noKey).not.toContain(id);
+    }
+  });
+});
+
+describe("iOS field lengths are audited (#410)", () => {
+  const copy = (over: Partial<{ name: string; subtitle: string; keywords: string; promo: string }>) => ({
+    name: "Heathen",
+    subtitle: "Stoic calm for atheists",
+    keywords: "mindfulness,sleep",
+    ...over,
+  });
+
+  it.each([
+    ["subtitle", "s".repeat(31), 30],
+    ["keywords", "k".repeat(101), 100],
+    ["promo", "p".repeat(171), 170],
+  ])("flags %s over its %d-char limit", (field, value, limit) => {
+    const got = auditFindings(
+      input({ hasAscKey: true, currentCopy: copy({ [field]: value }) as never }),
+    );
+    const f = got.find((x) => x.id === `${field}_over_limit`);
+    expect(f, `expected a ${field} over-limit finding`).toBeDefined();
+    // The number must be Apple's, quoted, not a vague "too long".
+    expect(`${f!.title} ${f!.detail}`).toContain(String(limit));
+  });
+
+  it("names the overage so the fix is arithmetic, not guesswork", () => {
+    const got = auditFindings(
+      input({ hasAscKey: true, currentCopy: copy({ subtitle: "s".repeat(35) }) }),
+    );
+    const f = got.find((x) => x.id === "subtitle_over_limit")!;
+    expect(`${f.title} ${f.detail}`).toMatch(/35/); // actual
+    expect(`${f.detail} ${f.fix ?? ""}`).toMatch(/\b5\b/); // over by
+  });
+
+  it.each([
+    ["subtitle", "s".repeat(30)],
+    ["keywords", "k".repeat(100)],
+    ["promo", "p".repeat(170)],
+  ])("stays silent on %s exactly AT the limit", (field, value) => {
+    const got = auditFindings(
+      input({ hasAscKey: true, currentCopy: copy({ [field]: value }) as never }),
+    ).map((x) => x.id);
+    expect(got).not.toContain(`${field}_over_limit`);
+  });
+
+  it("flags the app NAME over 30 as well", () => {
+    const got = auditFindings(
+      input({ hasAscKey: true, currentCopy: copy({ name: "n".repeat(31) }) }),
+    ).map((x) => x.id);
+    expect(got).toContain("name_over_limit");
+  });
+
+  /**
+   * Unmeasured ≠ within limits — the rule #404 established. A no-key run cannot
+   * read these fields, so claiming they fit would assert something never seen.
+   */
+  it("says nothing about lengths when the copy was never read", () => {
+    const noKey = auditFindings(
+      input({ hasAscKey: false, currentCopy: { name: "X", description: "y" } }),
+    ).map((x) => x.id);
+    for (const f of ["name", "subtitle", "keywords", "promo"]) {
+      expect(noKey).not.toContain(`${f}_over_limit`);
+    }
+  });
+
+  it("says nothing about a field that is absent", () => {
+    const got = auditFindings(input({ hasAscKey: true, currentCopy: { name: "Heathen" } })).map(
+      (x) => x.id,
+    );
+    expect(got).not.toContain("subtitle_over_limit");
+    expect(got).not.toContain("promo_over_limit");
+  });
+
+  it("never escalates an over-limit field past warn (#41)", () => {
+    const got = auditFindings(
+      input({ hasAscKey: true, currentCopy: copy({ subtitle: "s".repeat(60) }) }),
+    );
+    const f = got.find((x) => x.id === "subtitle_over_limit")!;
+    expect(f.severity).toBe("warn");
+  });
+});
+
+describe("keyword field is audited, not just generated", () => {
+  const copy = (over: Partial<{ name: string; subtitle: string; keywords: string }>) => ({
+    name: "Heathen - Secular Meditation",
+    subtitle: "Stoic calm for atheists",
+    keywords: "mindfulness,sleep,breathe",
+    ...over,
+  });
+
+  it("flags a keyword already indexed by the name or subtitle", () => {
+    // `calm` is in the subtitle: Apple indexes title+subtitle+keywords together,
+    // so the keyword-field copy buys nothing and costs characters.
+    const got = auditFindings(
+      input({ hasAscKey: true, currentCopy: copy({ keywords: "mindfulness,calm,sleep" }) }),
+    );
+    const f = got.find((x) => x.id === "keywords_duplicate_indexed");
+    expect(f, "expected a duplicate-keyword finding").toBeDefined();
+    expect(f!.detail).toMatch(/calm/);
+  });
+
+  it("names every duplicate, not just the first", () => {
+    const got = auditFindings(
+      input({
+        hasAscKey: true,
+        currentCopy: copy({
+          name: "Who Got Cooked",
+          subtitle: "AI-powered argument moderation",
+          keywords: "argument,AITA,receipts,AI",
+        }),
+      }),
+    );
+    const f = got.find((x) => x.id === "keywords_duplicate_indexed")!;
+    expect(f.detail).toMatch(/argument/i);
+    expect(f.detail).toMatch(/\bAI\b/i);
+  });
+
+  it("stays silent when no keyword duplicates the name or subtitle", () => {
+    const got = auditFindings({ ...input({ hasAscKey: true, currentCopy: copy({}) }) });
+    expect(got.map((x) => x.id)).not.toContain("keywords_duplicate_indexed");
+  });
+
+  it("flags spaces around commas, which waste the 100-char budget", () => {
+    const got = auditFindings(
+      input({ hasAscKey: true, currentCopy: copy({ keywords: "mindfulness, sleep, breathe" }) }),
+    );
+    expect(got.map((x) => x.id)).toContain("keywords_wasted_chars");
+  });
+
+  it("stays silent on a correctly comma-separated field", () => {
+    const got = auditFindings(input({ hasAscKey: true, currentCopy: copy({}) }));
+    expect(got.map((x) => x.id)).not.toContain("keywords_wasted_chars");
+  });
+
+  /**
+   * Unmeasured ≠ clean. A no-key run cannot read the keyword field at all, so
+   * claiming it has no duplicates would assert something never looked at —
+   * the same rule the promo finding had to learn.
+   */
+  it("says nothing about the keyword field when it was never read", () => {
+    const noKey = auditFindings(
+      input({ hasAscKey: false, currentCopy: { name: "X", description: "y" } }),
+    ).map((x) => x.id);
+    expect(noKey).not.toContain("keywords_duplicate_indexed");
+    expect(noKey).not.toContain("keywords_wasted_chars");
+  });
+
+  it("says nothing when there is no keyword field at all", () => {
+    const got = auditFindings(
+      input({ hasAscKey: true, currentCopy: { name: "X", subtitle: "Y" } }),
+    ).map((x) => x.id);
+    expect(got).not.toContain("keywords_duplicate_indexed");
+  });
+});
+
+describe("promotional text (unindexed, version-free — flag when unused)", () => {
+  /**
+   * READ AND EMPTY. Only a keyed run can know this: ASC returns the field as
+   * "" when it exists and is unused. That is a measured absence, and the only
+   * case where claiming "unused" is honest.
+   */
+  it("flags promotional text that was read and is empty", () => {
+    expect(ids(input({ hasAscKey: true, currentCopy: { promo: "" } }))).toContain(
+      "promo_text_unused",
+    );
+    expect(ids(input({ hasAscKey: true, currentCopy: { promo: "   " } }))).toContain(
+      "promo_text_unused",
+    );
+  });
+
+  it("does not flag it when the field is in use", () => {
+    expect(
+      ids(
+        input({ hasAscKey: true, currentCopy: { promo: "New: 10 Stoic readings for the new year." } }),
+      ),
+    ).not.toContain("promo_text_unused");
+  });
+
+  /**
+   * NOT READ. The public iTunes lookup does not expose promotional text, so a
+   * no-key run's `currentCopy` has NO `promo` key — the exact shape production
+   * produces (verified on a live Heathen run: keys were ['description','name']).
+   *
+   * An absent key is "we did not look", not "the field is empty". Flagging it
+   * would assert a deficiency in an unseen field — the precise thing
+   * NO_KEY_SURFACE_LOCKS exists to prevent — and would fire identically for an
+   * app with 170 characters of promo text we simply could not read.
+   */
+  it("stays SILENT when the field was never read (no-key run shape)", () => {
+    const noKey = ids(input({ hasAscKey: false, currentCopy: { name: "Heathen", description: "x" } }));
+    expect(noKey).not.toContain("promo_text_unused");
+  });
+
+  it("stays silent when no copy was read at all", () => {
+    expect(ids(input())).not.toContain("promo_text_unused");
+  });
+
+  /**
+   * A keyed run whose copy somehow lacks the key is still unmeasured — do not
+   * infer emptiness from a missing key just because a key was present.
+   */
+  it("stays silent on a keyed run when the promo key is absent", () => {
+    expect(ids(input({ hasAscKey: true, currentCopy: { name: "Heathen" } }))).not.toContain(
+      "promo_text_unused",
+    );
+  });
+
+  /** The blind spot must still be VISIBLE to a no-key run — as a lock, not a flag. */
+  it("declares promotional text a locked surface on a no-key run", () => {
+    const locks = surfaceLocks(input({ hasAscKey: false }));
+    const promo = locks.find((l) => l.surface === "promo");
+    expect(promo, "no-key runs must disclose promo text as unreadable").toBeDefined();
+    expect(promo!.label.toLowerCase()).not.toMatch(/empty|unused|missing/);
+  });
+
+  it("locks nothing on a keyed run", () => {
+    expect(surfaceLocks(input({ hasAscKey: true }))).toEqual([]);
+  });
+
+  it("never recommends keywords in it — the field is not indexed", () => {
+    const f = auditFindings(input({ hasAscKey: true, currentCopy: { promo: "" } })).find(
+      (x) => x.id === "promo_text_unused",
+    );
+    expect(f).toBeDefined();
+    const text = `${f!.title} ${f!.detail}`.toLowerCase();
+    expect(text).toContain("not indexed");
+    expect(text).not.toMatch(/add keywords|keyword field|search terms/);
+  });
+});
+
 describe("Studio grade projection (#26)", () => {
   it("projects a before→after grade for a set with count headroom (C with 3 shots)", () => {
     const got = ids(input({ audit: audit(shot({ iphoneCount: 3, score: 60, grade: "C" })) }));
@@ -1301,5 +1745,128 @@ describe("Studio grade projection (#26)", () => {
   it("is silent for an unreadable set", () => {
     const got = ids(input({ audit: audit(shot({ score: null, grade: "?" })) }));
     expect(got).not.toContain("studio_grade_projection");
+  });
+});
+
+// ── #324 Tier 1: findings deep-link into ASC for THIS app ────────────────────
+//
+// "→ do X in App Store Connect" is an instruction, not an action. Every such
+// finding should carry a link to the app's own ASC area. The honesty constraint
+// is the interesting half: where we have no VERIFIED route, we fall back to the
+// generic console link rather than inventing a plausible sub-path.
+describe("#324 — finding actions (Tier 1 deep links)", () => {
+  const withTrackId = (over: Partial<AuditFindingsInput> = {}) =>
+    input({ audit: { ...audit(), trackId: "6741457652" }, ...over });
+
+  it("an ASC-instruction finding carries an app-scoped deep link when the trackId is known", () => {
+    const snap = healthySnapshot();
+    snap.appInfo = { ...snap.appInfo!, secondaryCategory: undefined };
+    const f = byId(auditFindings(withTrackId({ snapshot: snap })), "secondary_category_missing");
+    expect(f?.action?.url).toBe("https://appstoreconnect.apple.com/apps/6741457652/appstore");
+  });
+
+  it("the action carries a label so the UI never has to invent link text", () => {
+    const snap = healthySnapshot();
+    snap.appInfo = { ...snap.appInfo!, secondaryCategory: undefined };
+    const f = byId(auditFindings(withTrackId({ snapshot: snap })), "secondary_category_missing");
+    expect(f?.action?.label).toBeTruthy();
+  });
+
+  it("falls back to the generic console link (never a fabricated route) with no trackId", () => {
+    const snap = healthySnapshot();
+    snap.appInfo = { ...snap.appInfo!, secondaryCategory: undefined };
+    const f = byId(auditFindings(input({ snapshot: snap })), "secondary_category_missing");
+    expect(f?.action?.url).toBe("https://appstoreconnect.apple.com");
+  });
+
+  it("marks whether the link is app-scoped, so the UI can be honest about precision", () => {
+    const snap = healthySnapshot();
+    snap.appInfo = { ...snap.appInfo!, secondaryCategory: undefined };
+    const scoped = byId(auditFindings(withTrackId({ snapshot: snap })), "secondary_category_missing");
+    const generic = byId(auditFindings(input({ snapshot: snap })), "secondary_category_missing");
+    expect(scoped?.action?.appScoped).toBe(true);
+    expect(generic?.action?.appScoped).toBe(false);
+  });
+
+  it("never attaches an action to a finding with no fix (healthy checks stay clean)", () => {
+    for (const f of auditFindings(withTrackId())) {
+      if (f.fix.trim() === "") expect(f.action).toBeUndefined();
+    }
+  });
+
+  it("every emitted action URL is https on Apple's console host — never anywhere else", () => {
+    const snap = healthySnapshot();
+    snap.appInfo = { ...snap.appInfo!, secondaryCategory: undefined };
+    snap.pricing = {
+      iaps: [{ id: "i", name: "Pro", productId: "p", state: "ACTIVE", promoted: false } as never],
+      pricing: { priceTier: "0.00 USD", baseTerritoryPrice: 0, baseTerritory: "USA" },
+    };
+    for (const f of auditFindings(withTrackId({ snapshot: snap }))) {
+      if (!f.action) continue;
+      expect(f.action.url.startsWith("https://appstoreconnect.apple.com")).toBe(true);
+    }
+  });
+
+  it("is deterministic — the same input yields deep-equal actions", () => {
+    expect(auditFindings(withTrackId())).toEqual(auditFindings(withTrackId()));
+  });
+});
+
+// ── #324 Tier 2: hand off to an existing ShipASO tool ────────────────────────
+describe("#324 — finding actions (Tier 2 in-product handoff)", () => {
+  const withTrackId = (over: Partial<AuditFindingsInput> = {}) =>
+    input({ audit: { ...audit(), trackId: "6741457652" }, ...over });
+
+  it("the PPO finding hands off to the in-product screenshot planner, not just ASC", () => {
+    const snap = healthySnapshot();
+    snap.experiments = { read: true, experiments: [] } as never;
+    const f = byId(auditFindings(withTrackId({ snapshot: snap })), "ppo_never_tested");
+    expect(f?.action?.tool).toBe("screenshots");
+  });
+
+  it("the CPP finding hands off to the in-product CPP set generator", () => {
+    const snap = healthySnapshot();
+    snap.customProductPages = { pages: [] };
+    const f = byId(auditFindings(withTrackId({ snapshot: snap })), "cpp_none");
+    expect(f?.action?.tool).toBe("cpp");
+  });
+
+  it("a finding with no in-product tool carries no tool — absence, never a wrong handoff", () => {
+    const snap = healthySnapshot();
+    snap.appInfo = { ...snap.appInfo!, secondaryCategory: undefined };
+    const f = byId(auditFindings(withTrackId({ snapshot: snap })), "secondary_category_missing");
+    expect(f?.action?.tool).toBeUndefined();
+  });
+});
+
+/**
+ * The finding must actually REACH a real run.
+ *
+ * A finding function can be perfect while no call site passes it the data it
+ * needs — it then never fires in production and no unit test notices, because
+ * the unit tests construct the input directly. That exact shape has bitten this
+ * repo twice: a generated worker that defined a helper it never called (#393),
+ * and a stylesheet guard that asserted selectors the layout did not use (#389).
+ *
+ * Asserted against the call sites' SOURCE, since exercising the real API path
+ * needs a Worker runtime + D1.
+ */
+describe("promo_text_unused is wired into every auditFindings call site", () => {
+  const read = (rel: string) => {
+    const { readFileSync } = require("node:fs") as typeof import("node:fs");
+    const { dirname, resolve } = require("node:path") as typeof import("node:path");
+    return readFileSync(resolve(dirname(__filename), "..", "..", rel), "utf8");
+  };
+
+  it("api/index.ts passes currentCopy wherever it passes proposedCopy", () => {
+    const src = read("src/api/index.ts");
+    const proposed = (src.match(/proposedCopy: result\.proposedCopy/g) ?? []).length;
+    const current = (src.match(/currentCopy: result\.currentCopy/g) ?? []).length;
+    expect(proposed, "expected auditFindings call sites in api/index.ts").toBeGreaterThan(0);
+    expect(current, "a call site passes proposedCopy but not currentCopy").toBe(proposed);
+  });
+
+  it("mcp/tools.ts passes currentCopy too", () => {
+    expect(read("src/mcp/tools.ts")).toMatch(/currentCopy: result\.currentCopy/);
   });
 });

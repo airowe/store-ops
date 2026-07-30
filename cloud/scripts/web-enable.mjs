@@ -1,30 +1,35 @@
 #!/usr/bin/env node
 /**
- * Assemble the combined Pages deploy that ENABLES the UI redesign behind the
- * strangler edge map, for a PREVIEW deploy (production DNS untouched).
+ * Assemble the Pages deploy: the new TanStack app IS the site (#356 Phase 3).
  *
- * Output `dist/`:
- *   • legacy stamped dashboard at the root      (via stamp-assets → dist/)
- *   • the new TanStack app's bundle             (cloud/web/dist/assets → dist/assets,
- *                                                its index.html → dist/_web.html)
- *   • _worker.js (advanced mode)                (serves _web for owned nav paths)
+ * Output `dist/` — a straight copy of the app's own vite build, plus:
+ *   • _web.html      a copy of index.html, which the worker sub-requests for
+ *                    SPA navigations (Pages serves it at the extensionless
+ *                    /_web; see NEW_APP_ENTRY)
+ *   • _worker.js     advanced mode: SPA shell for navigations, static
+ *                    passthrough for assets and the non-SPA static pages
  *
- * The worker embeds the SAME OWNED_PATHS + resolveSurface as cloud/web
- * (parsed from the source so the map never forks) and the pure serveDecision
- * from webEnable.mjs. Preview: `wrangler pages deploy dist --branch <preview>`.
+ * The app's own `public/` supplies everything that is not a route — `_headers`,
+ * `config.js`, `/auth/m` (the framework-free magic-link landing) and
+ * `.well-known/*` (the universal-link association files). Vite copies that
+ * directory verbatim, so those ship without this script knowing about them.
+ *
+ * Previously this stitched the new app INTO the legacy stamped dashboard:
+ * dist/ was legacy, index.html was legacy, and the app lived at _web.html for
+ * owned paths only. Legacy is gone, so the nesting is inverted — the app is the
+ * root and there is no fallback surface behind it.
  *
  * Usage: node scripts/web-enable.mjs
- *   Assumes `npm run build:dashboard` (→ dist/) and the cloud/web build
- *   (→ cloud/web/dist) have already run; this script wires them together.
+ *   Assumes the cloud/web build (→ cloud/web/dist) has already run.
  */
-import { readFileSync, writeFileSync, cpSync, existsSync } from "node:fs";
+import { readFileSync, writeFileSync, cpSync, existsSync, rmSync } from "node:fs";
 import { join, resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { extractOwnedArray, NEW_APP_ENTRY } from "./webEnable.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const cloudRoot = resolve(here, "..");
-const dist = resolve(cloudRoot, "dist"); // legacy stamped dashboard already here
+const dist = resolve(cloudRoot, "dist"); // the deploy root, built from webDist
 const webDist = resolve(cloudRoot, "web", "dist"); // the new app's vite build
 
 function fail(msg) {
@@ -32,27 +37,33 @@ function fail(msg) {
   process.exit(1);
 }
 
-if (!existsSync(join(dist, "index.html"))) {
-  fail("dist/index.html missing — run `npm run build:dashboard` first (legacy root).");
-}
 if (!existsSync(join(webDist, "index.html"))) {
   fail("cloud/web/dist/index.html missing — run the cloud/web build first.");
 }
 
-// 1. New app assets → dist/assets (no legacy collision: legacy uses app.js/styles.css)
-cpSync(join(webDist, "assets"), join(dist, "assets"), { recursive: true });
+// 1. The app's build IS the site. rmSync first so a deleted file cannot survive
+//    from a previous build (cp alone merges, and a stale asset at the root is
+//    exactly the class of bug the old stamped/hashed pipeline existed to avoid).
+//    This carries public/ across too: _headers, config.js, /auth/m and
+//    .well-known/* are all copied there verbatim by vite.
+rmSync(dist, { recursive: true, force: true });
+cpSync(webDist, dist, { recursive: true });
 
-// 2. New app HTML entry → dist/_web.html (NOT index.html; that stays legacy)
+// 2. A COPY of the shell at _web.html. The worker sub-requests NEW_APP_ENTRY
+//    (/_web) for SPA navigations; requesting "/" instead would re-enter the
+//    worker and loop. index.html stays at the root for a direct hit on "/".
 writeFileSync(join(dist, "_web.html"), readFileSync(join(webDist, "index.html")));
 
-// 3. Extract OWNED_PATHS from the single source (cloud/web/src/shell/edgeRoutes.ts)
-//    so the middleware map can never drift from the app's.
+// 3. Parse OWNED_PATHS from the single source (cloud/web/src/shell/edgeRoutes.ts).
+//    The middleware no longer branches on it — every navigation goes to the app
+//    (#356 Phase 3) — but parsing it still proves the file is well-formed and
+//    that the extractor keeps working, which is cheap insurance for the day
+//    edge-level routing is needed again.
 const edgeSrc = readFileSync(
   resolve(cloudRoot, "web", "src", "shell", "edgeRoutes.ts"),
   "utf8",
 );
-const ownedLiteral = extractOwnedArray(edgeSrc);
-if (!ownedLiteral) fail("could not parse OWNED_PATHS from edgeRoutes.ts");
+if (!extractOwnedArray(edgeSrc)) fail("could not parse OWNED_PATHS from edgeRoutes.ts");
 
 // 4. Emit the Pages middleware (plain JS; no bundler). Embeds resolveSurface +
 //    the parsed OWNED_PATHS + the pure serveDecision logic inline.
@@ -62,19 +73,25 @@ if (!ownedLiteral) fail("could not parse OWNED_PATHS from edgeRoutes.ts");
 // fetches static assets via env.ASSETS and rewrites owned navigation paths to
 // the new app's shell.
 const worker = `// @generated by scripts/web-enable.mjs — do not edit.
-// Strangler edge: serve the new TanStack app (${NEW_APP_ENTRY}) for owned
-// navigation paths, pass everything else (legacy pages, /assets/*, files)
-// through to the static asset store.
-const OWNED_PATHS = ${ownedLiteral};
+// Edge: serve the new TanStack app (${NEW_APP_ENTRY}) for EVERY navigation —
+// owned routes render themselves, anything else renders the app's 404 (#356
+// Phase 3). Asset requests (/assets/*, files with an extension, non-HTML
+// Accept) pass through to the static store untouched.
+//
+// This no longer consults OWNED_PATHS: it used to serve the app only for owned
+// paths and fall through to the legacy dashboard for the rest, but the legacy
+// dashboard is gone, and an unowned navigation now belongs to the app's 404.
 
-function resolveSurface(pathname) {
-  const p = pathname.replace(/\\/+$/, "") || "/";
-  const owned = OWNED_PATHS.some((o) => {
-    if (o instanceof RegExp) return o.test(p);
-    const b = o.replace(/\\/+$/, "") || "/";
-    return p === b || p.startsWith(b + "/");
-  });
-  return owned ? "web" : "legacy";
+// Static pages shipped from the app's public/ dir that are NOT SPA routes.
+// Both are navigation-shaped, so without this they would be handed the SPA
+// shell: /auth/m is the framework-free magic-link landing (serving it HTML
+// breaks sign-in by emailed link), and the association file is extensionless
+// and fetched by Apple's CDN with no Accept header (serving it HTML breaks iOS
+// universal links). Exact match, so /authorize stays the SPA's.
+const STATIC_PAGES = new Set(["/auth/m", "/.well-known/apple-app-site-association"]);
+
+function isStaticPage(pathname) {
+  return STATIC_PAGES.has(pathname.replace(/\\/+$/, "") || "/");
 }
 
 function isNavigationRequest(method, pathname, accept) {
@@ -86,23 +103,68 @@ function isNavigationRequest(method, pathname, accept) {
   return true;
 }
 
+// A request for a FILE, not a page. Mirrors webEnable.mjs \`isAssetRequest\`.
+function isAssetRequest(pathname) {
+  if (pathname.startsWith("/assets/")) return true;
+  const last = pathname.split("/").pop() || "";
+  return last.includes(".");
+}
+
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
     const accept = request.headers.get("accept") || "";
-    if (isNavigationRequest(request.method, url.pathname, accept) && resolveSurface(url.pathname) === "web") {
+    // EVERY navigation goes to the new app — owned routes render themselves,
+    // and anything else renders its 404 (#356 Phase 3). Previously an unowned
+    // navigation fell through to dist/index.html, which was the LEGACY
+    // dashboard: a typo or a stale bookmark rendered a whole dashboard shell as
+    // though it had worked. isNavigationRequest already excludes /assets/*,
+    // anything with a file extension, and non-HTML Accept headers, so real
+    // asset requests still reach the store and a genuinely missing FILE still
+    // 404s as a file. The REST API is a separate origin (api.shipaso.com), so
+    // nothing here can shadow it.
+    if (!isStaticPage(url.pathname) && isNavigationRequest(request.method, url.pathname, accept)) {
       // Serve the new app's shell; the SPA router takes the path from there.
       // ${NEW_APP_ENTRY} is extensionless — Pages 308-redirects *.html away.
       return env.ASSETS.fetch(new Request(new URL("${NEW_APP_ENTRY}", url), request));
     }
-    return env.ASSETS.fetch(request);
+
+    const res = await env.ASSETS.fetch(request);
+
+    // #393: an asset MISS must 404 as a file, never be handed the SPA shell.
+    //
+    // Pages has no 404.html for this project, so its asset store answers a miss
+    // with index.html and a **200**. For a page path that is fine — the SPA
+    // renders its own 404 (#356 Phase 3) — but for a FILE it is actively
+    // dangerous: a 200 is cacheable, and \`/assets/* → max-age=31536000,
+    // immutable\` then stores an HTML error as though it were the real bundle.
+    //
+    // That is #392. app.shipaso.com served a blank page for hours because a
+    // cached HTML response sat under the bundle's URL; it would not have
+    // expired until 2027, and recovery needed a full zone purge (a targeted
+    // per-URL purge could not reach it — the entry was keyed on \`Origin\`).
+    //
+    // Detected by content type rather than by re-fetching: the shell is the only
+    // HTML the asset store can return here, and a real .js/.css asset never has
+    // an HTML content type. \`Cache-Control: no-store\` so this 404 cannot itself
+    // become the next poisoned entry.
+    if (isAssetRequest(url.pathname) && res.ok) {
+      const type = res.headers.get("content-type") || "";
+      if (type.includes("text/html")) {
+        return new Response(\`404 Not Found: \${url.pathname}\\n\`, {
+          status: 404,
+          headers: { "content-type": "text/plain; charset=utf-8", "cache-control": "no-store" },
+        });
+      }
+    }
+    return res;
   },
 };
 `;
 writeFileSync(join(dist, "_worker.js"), worker);
 
-console.log("web-enable: combined dist ready.");
-console.log("  legacy root + new app at ${NEW_APP_ENTRY} + _worker.js (advanced mode)");
+console.log("web-enable: dist ready.");
+console.log(`  app at the root + shell copy at ${NEW_APP_ENTRY} + _worker.js (advanced mode)`);
 console.log("  preview (isolated project — never touches production):");
 console.log("    npm run deploy:web-preview");
 console.log("    → wrangler pages deploy dist --project-name store-ops-web-preview");

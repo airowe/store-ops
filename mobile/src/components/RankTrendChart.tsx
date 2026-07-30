@@ -11,7 +11,7 @@
 import React, { useState } from "react";
 import { View } from "react-native";
 import { LineGraph, SelectionDot, type GraphPoint } from "react-native-graph";
-import { palette } from "../theme/index.js";
+import { usePalette } from "../theme/index.js";
 import { toGraphPoints, type RankSeriesPoint } from "../lib/rankSeries.js";
 import { AppText, Card } from "./primitives.js";
 
@@ -20,6 +20,7 @@ const rankOf = (p: GraphPoint) => Math.round(-p.value);
 const dayOf = (p: GraphPoint) => p.date.toISOString().slice(0, 10);
 
 export function RankTrendChart({ points, height = 130 }: { points: readonly RankSeriesPoint[]; height?: number }) {
+  const palette = usePalette();
   const { points: gp, gaps, empty } = toGraphPoints(points);
   const [selected, setSelected] = useState<GraphPoint | null>(null);
   if (empty) return null;

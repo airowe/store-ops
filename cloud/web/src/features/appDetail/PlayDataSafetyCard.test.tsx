@@ -28,6 +28,18 @@ function renderCard(client: ApiClient) {
 }
 
 describe("<PlayDataSafetyCard />", () => {
+  // Same grid-stretch as PlayAuditCard (#344): as a grid item the push action
+  // rendered as a full-bleed bar rather than the inline pill every other
+  // primary action on this page uses.
+  it("renders the push action inline, not stretched by the field grid", async () => {
+    const { client } = makeClient();
+    renderCard(client);
+    const push = await screen.findByTestId("pds-push");
+    const fields = screen.getByTestId("pds-package").parentElement!;
+    expect(fields.style.display).toBe("grid");
+    expect(fields.contains(push)).toBe(false);
+  });
+
   it("push stays disabled until package + CSV + service account + explicit confirm", async () => {
     const { client, post } = makeClient();
     renderCard(client);

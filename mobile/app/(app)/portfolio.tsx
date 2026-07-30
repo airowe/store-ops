@@ -16,9 +16,10 @@ import { EmptyState } from "../../src/components/EmptyState.js";
 import { Screen, AppText, Button, Card, Centered } from "../../src/components/primitives.js";
 import { ApiError } from "../../src/api/errors.js";
 import { useLayout } from "../../src/theme/responsive.js";
-import { palette } from "../../src/theme/index.js";
+import { usePalette } from "../../src/theme/index.js";
 
 export default function Portfolio() {
+  const palette = usePalette();
   const { client } = useAuth();
   const router = useRouter();
   const { columns } = useLayout();

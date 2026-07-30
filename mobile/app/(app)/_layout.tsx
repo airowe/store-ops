@@ -8,9 +8,10 @@ import { Redirect, Stack } from "expo-router";
 import { ActivityIndicator } from "react-native";
 import { useAuth } from "../../src/auth/AuthProvider.js";
 import { Centered } from "../../src/components/primitives.js";
-import { palette } from "../../src/theme/index.js";
+import { usePalette } from "../../src/theme/index.js";
 
 export default function AppLayout() {
+  const palette = usePalette();
   const { status } = useAuth();
 
   if (status === "loading") {

@@ -1,12 +1,31 @@
 #!/usr/bin/env node
 /**
- * PRD 01 spike proof — assert the canonical tokens.json reproduces the palette
- * that lives in the live web stylesheet TODAY, for BOTH themes:
- *   • dark  values  == cloud/public/styles.css  :root { … }
- *   • light values  == cloud/public/styles.css  :root[data-theme="light"] { … }
+ * Token invariants. Exits non-zero on any violation.
  *
- * This is the whole point of the source-of-truth: generating from tokens.json
- * must be a no-op against what's already shipped. Exits non-zero on any drift.
+ * WHAT THIS PROVES, AND WHAT IT NO LONGER DOES
+ *
+ * It used to diff tokens.json against `cloud/public/styles.css` — a
+ * HAND-MAINTAINED stylesheet — so the parity check was real: two independent
+ * artifacts had to agree. That stylesheet was deleted with the legacy dashboard
+ * (#356 Phase 3), and the only remaining palette is `generated/tokens.css`,
+ * which `build.mjs` produces FROM tokens.json.
+ *
+ * So the parity section below is now a TAUTOLOGY: `npm test` runs
+ * `build.mjs && verify.mjs`, so it compares tokens.json against a mechanical
+ * copy of itself and cannot fail. It is kept because it still catches a broken
+ * GENERATOR (a build.mjs change that drops or mangles a key), which is a real
+ * if narrower guarantee — but it is no longer drift detection, and pretending
+ * otherwise would be the kind of check that reassures without checking.
+ *
+ * The sections that DO still carry weight independently:
+ *   • COVERAGE — every theme key is listed in paletteKeys, so no token ships
+ *     unverified (#338 shipped two that way).
+ *   • CONTRAST — every text token clears WCAG AA against its own background,
+ *     in both themes (#318 shipped --faint at 3.5:1).
+ *
+ * The real consumer-side guard now lives in the web app:
+ * `cloud/web/src/tokenSourceOfTruth.test.ts` asserts app.css never redefines a
+ * canonical token, which is what actually went wrong (#339).
  *
  * Usage: node verify.mjs
  */
@@ -16,7 +35,7 @@ import { fileURLToPath } from "node:url";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const tokens = JSON.parse(readFileSync(join(here, "tokens.json"), "utf8"));
-const css = readFileSync(join(here, "../../cloud/public/styles.css"), "utf8");
+const css = readFileSync(join(here, "generated/tokens.css"), "utf8");
 
 /** Slice the `{ … }` body of a selector's block out of the stylesheet. */
 function block(selector) {
@@ -35,7 +54,33 @@ const norm = (v) => v.replace(/\s+/g, " ").trim().toLowerCase();
 const rootBody = block(":root");
 const lightBody = block(':root[data-theme="light"]');
 
+/**
+ * Theme entries that are NOT palette colours and so are exempt from the
+ * coverage check. `color-scheme` is a real CSS property (it tells the UA which
+ * form-control and scrollbar rendering to use), not a token anything reads.
+ */
+const NON_PALETTE = new Set(["color-scheme"]);
+
 let failures = 0;
+
+// 0) COVERAGE — `paletteKeys` drives every check below, so a theme entry missing
+// from that list is GENERATED and SHIPPED but never verified. That is not
+// hypothetical: #338 added --warn-glow/--warn-border to styles.css, app.css and
+// mobile without adding them here, and nothing failed. Assert the list covers
+// the themes so the next token cannot be silently unpinned.
+const themeKeys = Object.keys(tokens.themes.dark).filter((k) => !NON_PALETTE.has(k));
+const unlisted = themeKeys.filter((k) => !tokens.paletteKeys.includes(k));
+if (unlisted.length) {
+  console.error(
+    `  ✗ [coverage] ${unlisted.length} theme key(s) absent from paletteKeys, so unverified: ${unlisted.join(", ")}`,
+  );
+  failures += unlisted.length;
+}
+const orphaned = tokens.paletteKeys.filter((k) => !(k in tokens.themes.dark));
+if (orphaned.length) {
+  console.error(`  ✗ [coverage] paletteKeys names ${orphaned.length} key(s) no theme defines: ${orphaned.join(", ")}`);
+  failures += orphaned.length;
+}
 
 // 1) DARK parity — the hard proof: every palette key in tokens.json must match
 // the value shipping in styles.css :root today. This is a no-op or it's drift.
@@ -111,10 +156,10 @@ for (const themeName of ["dark", "light"]) {
 }
 
 if (failures) {
-  console.error(`\n[tokens] ${failures} check(s) failed against cloud/public/styles.css / WCAG AA`);
+  console.error(`\n[tokens] ${failures} check(s) failed (coverage / generator parity / WCAG AA)`);
   process.exit(1);
 }
 console.log(
-  `[tokens] OK: ${tokens.paletteKeys.length} dark palette values match styles.css` +
+  `[tokens] OK: ${tokens.paletteKeys.length} dark palette values regenerate cleanly` +
     (lightBody ? " (+ light block matches)" : "; light palette complete + swap-compatible"),
 );

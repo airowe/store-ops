@@ -73,10 +73,10 @@ stop at advice. That lane is wide open.
 
 Two surfaces, one engine:
 
-• Free — run the agent yourself in Claude Code (23 skills, MIT)
-• Launch Optimization — $49 one-time, full pass on one app
-• Autopilot — $19/mo, it watches ranks + re-optimizes on its own
-• Fleet Autopilot — $149/mo, both stores, many apps, agencies
+• Free — run the agent yourself in Claude Code (26 skills, MIT)
+• Indie — $7/mo, the loop running on its own, up to 3 apps
+• Startup — $19/mo, up to 10 apps, rank history + competitor watch
+• Scale — $65/mo, up to 50 apps + the portfolio roll-up
 
 ---
 

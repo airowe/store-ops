@@ -8,6 +8,12 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react-native";
 import type { ApiClient } from "../api/client.js";
 import type { ScreenshotPlan, ScreenshotPlanInputs } from "../types/api.js";
+import { useColorScheme } from "react-native";
+import { ThemeProvider, lightPalette, palette } from "../theme/index.js";
+
+jest.mock("react-native/Libraries/Utilities/useColorScheme");
+const mockColorScheme = useColorScheme as unknown as jest.Mock;
+beforeEach(() => mockColorScheme.mockReturnValue("dark"));
 import { ScreenshotPlanCard } from "./ScreenshotPlanCard.js";
 
 const inputs: ScreenshotPlanInputs = {
@@ -68,5 +74,21 @@ describe("ScreenshotPlanCard (mobile)", () => {
     render(<ScreenshotPlanCard client={client} inputs={inputs} />);
     fireEvent.press(screen.getByTestId("plan-screenshots-btn"));
     await waitFor(() => expect(screen.getByTestId("plan-degraded")).toBeTruthy());
+  });
+});
+
+describe("ScreenshotPlanCard theming", () => {
+  it("renders the needs-review badge in the LIGHT warn inside a light provider", async () => {
+    mockColorScheme.mockReturnValue("light");
+    const { client } = fakeClient(basePlan);
+    render(
+      <ThemeProvider>
+        <ScreenshotPlanCard client={client} inputs={inputs} />
+      </ThemeProvider>,
+    );
+    fireEvent.press(screen.getByTestId("plan-screenshots-btn"));
+    await waitFor(() => expect(screen.getByTestId("shot-review-1")).toBeTruthy());
+    expect(screen.getByTestId("shot-review-1")).toHaveStyle({ color: lightPalette.warn });
+    expect(lightPalette.warn).not.toBe(palette.warn);
   });
 });

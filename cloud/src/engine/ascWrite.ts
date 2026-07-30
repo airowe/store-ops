@@ -134,8 +134,6 @@ export type LocalizationPatch = {
     type: "appStoreVersionLocalizations";
     id: string;
     attributes: Partial<{
-      name: string;
-      subtitle: string;
       keywords: string;
       promotionalText: string;
       description: string;
@@ -144,26 +142,63 @@ export type LocalizationPatch = {
   };
 };
 
+/** PATCH body for an appInfoLocalization — where ASC actually stores name +
+ *  subtitle (the app-level layer, NOT the version localization). */
+export type AppInfoLocalizationPatch = {
+  data: {
+    type: "appInfoLocalizations";
+    id: string;
+    attributes: Partial<{
+      name: string;
+      subtitle: string;
+    }>;
+  };
+};
+
 /**
  * Build the PATCH body for an appStoreVersionLocalization from the proposed copy.
  *
- * SAFETY: only non-empty fields are included. A thin proposal (empty subtitle /
- * keywords) must NOT overwrite the user's existing live metadata with blanks —
- * an omitted attribute is left untouched by ASC; an empty string would wipe it.
+ * name + subtitle are DELIBERATELY excluded — App Store Connect rejects them on
+ * this resource (409: "'name' is not an attribute on the resource
+ * 'appStoreVersionLocalizations'"); they live on appInfoLocalizations and are
+ * handled by buildAppInfoLocalizationPatch. Only keywords / promotionalText /
+ * description / whatsNew belong here.
+ *
+ * SAFETY: only non-empty fields are included. A thin proposal (empty keywords)
+ * must NOT overwrite the user's existing live metadata with blanks — an omitted
+ * attribute is left untouched by ASC; an empty string would wipe it.
  */
 export function buildLocalizationPatch(localizationId: string, copy: CopyFields): LocalizationPatch {
   const attributes: LocalizationPatch["data"]["attributes"] = {};
   const set = (key: keyof LocalizationPatch["data"]["attributes"], value: string | undefined) => {
     if (value !== undefined && value.trim() !== "") attributes[key] = value;
   };
-  set("name", copy.name);
-  set("subtitle", copy.subtitle);
   set("keywords", copy.keywords);
   set("promotionalText", copy.promo); // copy.promo → ASC promotionalText
   set("description", copy.description);
   set("whatsNew", copy.whatsNew); // release notes (#46)
   return {
     data: { type: "appStoreVersionLocalizations", id: localizationId, attributes },
+  };
+}
+
+/**
+ * Build the PATCH body for an appInfoLocalization — name + subtitle only. Same
+ * non-empty-only safety rule as buildLocalizationPatch: never overwrite a live
+ * field with a blank.
+ */
+export function buildAppInfoLocalizationPatch(
+  appInfoLocalizationId: string,
+  copy: CopyFields,
+): AppInfoLocalizationPatch {
+  const attributes: AppInfoLocalizationPatch["data"]["attributes"] = {};
+  const set = (key: keyof AppInfoLocalizationPatch["data"]["attributes"], value: string | undefined) => {
+    if (value !== undefined && value.trim() !== "") attributes[key] = value;
+  };
+  set("name", copy.name);
+  set("subtitle", copy.subtitle);
+  return {
+    data: { type: "appInfoLocalizations", id: appInfoLocalizationId, attributes },
   };
 }
 
@@ -183,6 +218,9 @@ export type ApplyAscResult = {
   dryRun?: true;
   /** the exact request body we sent (or would have sent, under dryRun) */
   patchBody?: unknown;
+  /** set when one resource PATCH landed but the other was refused — the honest
+   *  partial-write signal (e.g. keywords pushed, name/subtitle rejected). */
+  partialFailure?: string;
 };
 
 /**
@@ -242,38 +280,107 @@ export async function applyAscMetadata(
   const locs = (await locsRes.json().catch(() => ({}))) as { data?: Localization[] };
   const localization = pickLocalization(locs.data ?? [], opts.locale);
 
-  // 3. PATCH the localization
-  const patch = buildLocalizationPatch(localization.id, opts.copy);
-  if (Object.keys(patch.data.attributes).length === 0) {
+  // 3. Build BOTH patches — the version localization (keywords/promo/desc/whatsNew)
+  //    and, separately, the appInfo localization (name/subtitle). ASC keeps
+  //    name/subtitle on appInfoLocalizations; sending them on the version
+  //    localization is a hard 409 (the bug this path fixes).
+  const versionPatch = buildLocalizationPatch(localization.id, opts.copy);
+  const versionFields = Object.keys(versionPatch.data.attributes);
+
+  // Does the proposal carry a non-empty name/subtitle? Only then do we touch the
+  // appInfo layer (and only then do we pay for the appInfo lookup).
+  const wantsAppInfo =
+    (opts.copy.name !== undefined && opts.copy.name.trim() !== "") ||
+    (opts.copy.subtitle !== undefined && opts.copy.subtitle.trim() !== "");
+
+  // Resolve the appInfoLocalization id for this EXACT locale. Skipped entirely
+  // when there's no name/subtitle to push, so a keywords-only push never needs
+  // appInfo access.
+  let appInfoPatch: AppInfoLocalizationPatch | undefined;
+  if (wantsAppInfo) {
+    const info = await readAscAppInfo(fetchFn, { token: opts.token, appId: opts.appId });
+    // EXACT locale match only — NEVER a base-language or first-locale fallback.
+    // This is a live WRITE: a "nearby" match (es-MX → es-ES, or → the primary
+    // locale via locales[0]) would silently overwrite a DIFFERENT market's real
+    // name/subtitle and report success. The version-localization PATCH already
+    // refuses to guess (pickLocalization is exact-or-throw); the appInfo PATCH
+    // must match that posture. (The READ path tolerates a fallback because it
+    // only shows a baseline a human reviews; a write must not.)
+    const loc = info.locales.find((l) => l.locale === opts.locale);
+    if (!loc || !loc.id) {
+      throw new AscWriteError(
+        `No "${opts.locale}" app-info localization to push name/subtitle to. ` +
+          "Add that locale in App Store Connect first.",
+      );
+    }
+    const built = buildAppInfoLocalizationPatch(loc.id, opts.copy);
+    if (Object.keys(built.data.attributes).length > 0) appInfoPatch = built;
+  }
+  const appInfoFields = appInfoPatch ? Object.keys(appInfoPatch.data.attributes) : [];
+
+  if (versionFields.length === 0 && appInfoFields.length === 0) {
     throw new AscWriteError("Nothing to push — the proposed copy has no non-empty fields.");
   }
 
   // Dry run: every lookup above has run (versions, editable-version pick,
-  // localizations, patch build) — the risky logic — but we stop before the write
-  // and hand back the EXACT body we would have sent. Nothing on ASC is touched.
+  // localizations, appInfo resolve, patch builds) — the risky logic — but we stop
+  // before any write and hand back the EXACT bodies we would have sent.
   if (opts.dryRun) {
     return {
       ok: true,
       versionId: version.id,
       localizationId: localization.id,
-      fieldsPushed: Object.keys(patch.data.attributes),
+      fieldsPushed: [...versionFields, ...appInfoFields],
       dryRun: true,
-      patchBody: patch,
+      patchBody: { versionPatch: versionFields.length ? versionPatch : undefined, appInfoPatch },
     };
   }
 
-  const patchRes = await fetchFn(`${ASC_BASE}/appStoreVersionLocalizations/${localization.id}`, {
-    method: "PATCH",
-    headers: { ...auth, "content-type": "application/json" },
-    body: JSON.stringify(patch),
-  });
-  if (!patchRes.ok) throw await ascError(patchRes, "update localization");
+  const pushed: string[] = [];
+
+  // Version localization PATCH (only if it carries fields). A failure here is
+  // fatal — nothing landed yet, so surface it directly.
+  if (versionFields.length > 0) {
+    const res = await fetchFn(`${ASC_BASE}/appStoreVersionLocalizations/${localization.id}`, {
+      method: "PATCH",
+      headers: { ...auth, "content-type": "application/json" },
+      body: JSON.stringify(versionPatch),
+    });
+    if (!res.ok) throw await ascError(res, "update localization");
+    pushed.push(...versionFields);
+  }
+
+  // AppInfo localization PATCH (name/subtitle). If the version PATCH already
+  // landed and THIS one fails, we must NOT claim a clean success — report what
+  // landed and surface the appInfo failure honestly (partial write).
+  if (appInfoPatch) {
+    const res = await fetchFn(`${ASC_BASE}/appInfoLocalizations/${appInfoPatch.data.id}`, {
+      method: "PATCH",
+      headers: { ...auth, "content-type": "application/json" },
+      body: JSON.stringify(appInfoPatch),
+    });
+    if (!res.ok) {
+      const err = await ascError(res, "update name/subtitle");
+      if (pushed.length > 0) {
+        // Partial: keywords/etc. landed, name/subtitle did not.
+        return {
+          ok: true,
+          versionId: version.id,
+          localizationId: localization.id,
+          fieldsPushed: pushed,
+          partialFailure: err.message,
+        };
+      }
+      throw err; // nothing landed → surface the failure as the whole result
+    }
+    pushed.push(...appInfoFields);
+  }
 
   return {
     ok: true,
     versionId: version.id,
     localizationId: localization.id,
-    fieldsPushed: Object.keys(patch.data.attributes),
+    fieldsPushed: pushed,
   };
 }
 
@@ -407,6 +514,10 @@ type JsonApiResource = {
 /** Clean, typed result of the appInfo layer read. All fields optional (apps vary). */
 export type AppInfoResult = {
   locales: Array<{
+    /** the appInfoLocalization resource id — the PATCH target for name/subtitle.
+     *  Optional only so unrelated read-path test fixtures need not stub it; real
+     *  ASC always provides it, and the write path guards its absence. */
+    id?: string;
     locale: string;
     name?: string | undefined;
     subtitle?: string | undefined;
@@ -486,6 +597,7 @@ export async function readAscAppInfo(
     const locale = asString(a.locale);
     if (!locale) continue; // a localization with no locale is unusable
     locales.push({
+      id: stub.id, // the appInfoLocalization resource id — PATCH target for name/subtitle
       locale,
       name: asString(a.name),
       subtitle: asString(a.subtitle),

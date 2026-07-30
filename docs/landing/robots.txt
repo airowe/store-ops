@@ -1,0 +1,46 @@
+# shipaso.com — the marketing site.
+#
+# Everything here is public product information. We WANT it read, indexed, and
+# cited, by search crawlers and by AI agents alike, so the default is allow.
+#
+# This file previously did not exist. Because Pages served the SPA shell for any
+# unknown path, a request for /robots.txt returned 200 with an HTML body — a
+# malformed robots file, which different crawlers resolve differently (some fall
+# back to permissive, some to restrictive). Existing removes that ambiguity.
+
+User-agent: *
+Allow: /
+
+# Named explicitly rather than relying on the wildcard: several of these check
+# for a specific record, and an explicit Allow is a clearer signal than an
+# absent rule.
+User-agent: GPTBot
+Allow: /
+
+User-agent: OAI-SearchBot
+Allow: /
+
+User-agent: ChatGPT-User
+Allow: /
+
+User-agent: ClaudeBot
+Allow: /
+
+User-agent: Claude-User
+Allow: /
+
+User-agent: PerplexityBot
+Allow: /
+
+User-agent: Google-Extended
+Allow: /
+
+User-agent: Applebot-Extended
+Allow: /
+
+User-agent: CCBot
+Allow: /
+
+# A short index of the machine-readable surfaces, for agents that look here
+# first. See /llms.txt for the full map.
+Sitemap: https://shipaso.com/sitemap.xml

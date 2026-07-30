@@ -1,0 +1,30 @@
+# Cloudflare Pages headers for the marketing site (shipaso.com).
+
+# ── Machine-readable surfaces ────────────────────────────────────────────────
+# These exist for AI agents and crawlers. Content-Type is pinned because Pages
+# would otherwise serve an unknown extension as application/octet-stream, which
+# some clients refuse to parse as text.
+#
+# Short cache: a price correction has to propagate quickly. A stale price quoted
+# confidently to an agent is exactly the kind of wrong-number-stated-as-fact
+# this product refuses to produce anywhere else.
+/llms.txt
+  Content-Type: text/plain; charset=utf-8
+  Cache-Control: public, max-age=3600
+/robots.txt
+  Content-Type: text/plain; charset=utf-8
+  Cache-Control: public, max-age=3600
+/pricing.md
+  Content-Type: text/markdown; charset=utf-8
+  Cache-Control: public, max-age=3600
+/sitemap.xml
+  Content-Type: application/xml; charset=utf-8
+  Cache-Control: public, max-age=3600
+
+# ── HTML: always revalidate ──────────────────────────────────────────────────
+# The landing pages are hand-written and edited in place (no content hashing),
+# so a cached copy is a stale copy.
+/
+  Cache-Control: no-cache
+/index.html
+  Cache-Control: no-cache

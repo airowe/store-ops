@@ -1,6 +1,7 @@
 # `cloud/web` — TanStack web dashboard (PRD 02+)
 
-The re-platformed dashboard that replaces `cloud/public/app.js` **route by route**
+The dashboard. Since #356 Phase 3 this IS the web surface — it replaced the
+legacy vanilla dashboard, which was deleted along with its 114-spec E2E suite
 (see [`docs/prd/web-migration`](../../docs/prd/web-migration/00-overview.md)).
 Vite + React 19 + **TanStack Router** (SPA) + **TanStack Query**, consuming the
 `@shipaso/*` spine.

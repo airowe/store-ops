@@ -14,6 +14,7 @@ import {
   type ChartKind,
 } from "./constants.js";
 import { fetchJson, type FetchFn } from "./itunes.js";
+import { genreNameFor } from "./appStoreGenres.js";
 
 export type ChartRank = {
   genreId: string;
@@ -62,6 +63,39 @@ export function chartRankFromEntries(
   };
   const idx = entries.indexOf(appId);
   return idx >= 0 ? { ...base, ranked: true, position: idx + 1 } : { ...base, ranked: false };
+}
+
+/**
+ * The audit-shaped category rank the run status bar renders (#326).
+ *
+ * `category` is OPTIONAL because a genre id we cannot name is not a category:
+ * absent means "we know the rank but not the category's name", and the bar
+ * renders a bare "#42" rather than the bug-looking "#42 in 6013".
+ */
+export type CategoryRank = { rank: number | null; category?: string };
+
+/**
+ * Narrow a ChartRank into the status bar's `{ rank, category? }` (#326).
+ *
+ * The three rank states stay distinct, which is the whole honesty point:
+ *  - charted        → `rank` is the measured 1-based position.
+ *  - read, unranked → `rank: null` (we READ the chart; the app wasn't in it).
+ *  - never read     → `undefined`, so the bar shows its "#—" placeholder rather
+ *                     than asserting the app doesn't chart.
+ *
+ * The category name resolves in the same measured-or-absent spirit: the feed's
+ * own `genreName` first (a label we actually read), then Apple's verified
+ * id→name map. A miss omits `category` entirely — we never surface the raw id
+ * as a name, because a numeric "category" is a fabricated label, not a
+ * measurement.
+ */
+export function categoryRankFrom(cr: ChartRank | null | undefined): CategoryRank | undefined {
+  if (!cr) return undefined;
+  const category = cr.genreName ?? genreNameFor(cr.genreId);
+  return {
+    rank: cr.ranked ? cr.position : null,
+    ...(category !== undefined ? { category } : {}),
+  };
 }
 
 /**

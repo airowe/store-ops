@@ -14,7 +14,7 @@ import { View } from "react-native";
 import type { ApiClient } from "../api/client.js";
 import { analyzeRejection } from "../api/endpoints.js";
 import type { RejectionAnalysis } from "../types/api.js";
-import { palette, radius, spacing } from "../theme/index.js";
+import { radius, spacing, usePalette } from "../theme/index.js";
 import { AppText, Button, Card } from "./primitives.js";
 import { TextField } from "./TextField.js";
 
@@ -26,6 +26,7 @@ const PATH_LABEL: Record<string, string> = {
 
 /** A bordered, monospace block for a draft reply (placeholders kept verbatim). */
 function DraftBlock({ testID, title, body }: { testID: string; title: string; body: string }) {
+  const palette = usePalette();
   return (
     <View testID={testID} style={{ marginTop: spacing.sm }}>
       <AppText kind="micro">{title}</AppText>
@@ -47,6 +48,7 @@ function DraftBlock({ testID, title, body }: { testID: string; title: string; bo
 }
 
 export function RejectionAssistantCard({ client }: { client: ApiClient }) {
+  const palette = usePalette();
   const [text, setText] = useState("");
   const [result, setResult] = useState<RejectionAnalysis | null>(null);
   const [busy, setBusy] = useState(false);

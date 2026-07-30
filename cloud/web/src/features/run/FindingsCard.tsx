@@ -11,13 +11,14 @@
  * Pure presentational; data arrives from the run detail response.
  */
 import { useState } from "react";
-import type { Finding, FindingsSummary, SurfaceLock } from "@shipaso/api";
+import type { Finding, FindingTool, FindingsSummary, SurfaceLock } from "@shipaso/api";
+import { FindingActionRow } from "./FindingActionRow.js";
 
 const SEVERITY_COLOR: Record<Finding["severity"], string> = {
-  critical: "var(--bad, #f87171)",
-  warn: "var(--warn, #fbbf24)",
-  good: "var(--signal, #34d399)",
-  info: "var(--faint, #828ca3)",
+  critical: "var(--bad)",
+  warn: "var(--warn)",
+  good: "var(--signal)",
+  info: "var(--dim)",
 };
 
 const SEV_RANK: Record<Finding["severity"], number> = { critical: 0, warn: 1, info: 2, good: 3 };
@@ -26,7 +27,7 @@ function isHealthy(f: Finding): boolean {
   return f.severity === "good" || (f.severity === "info" && f.fix.trim() === "");
 }
 
-function FindingRow({ f }: { f: Finding }) {
+function FindingRow({ f, onTool }: { f: Finding; onTool?: ((tool: FindingTool) => void) | undefined }) {
   const [expanded, setExpanded] = useState(false);
   const hasDetail = Boolean(f.detail || f.fix || f.evidence);
 
@@ -82,6 +83,16 @@ function FindingRow({ f }: { f: Finding }) {
           {f.evidence ? <p className="micro muted" style={{ margin: "2px 0 0" }}>{f.evidence}</p> : null}
         </div>
       ) : null}
+
+      {/* #324: where to actually DO it — ASC deep link + any in-product handoff.
+          OUTSIDE the disclosure deliberately. This card already hides noise at
+          the GROUP level: healthy checks sit behind their own toggle, so every
+          row rendered here is something the reader may need to act on. Putting
+          the action behind a second click costs a click on exactly the rows
+          that earned their place, to hide the one element that is already a
+          single line. Progressive disclosure applies to the EXPLANATION
+          (detail/fix/evidence), not to the act. */}
+      <FindingActionRow finding={f} onTool={onTool} />
     </div>
   );
 }
@@ -91,11 +102,14 @@ export function FindingsCard({
   locks = [],
   summary,
   onConnect,
+  onTool,
 }: {
   findings: Finding[];
   locks?: SurfaceLock[];
   summary?: FindingsSummary;
   onConnect?: () => void;
+  /** #324 Tier 2: jump to an existing ShipASO builder for a finding. */
+  onTool?: (tool: FindingTool) => void;
 }) {
   const unlock = findings.find((f) => f.id === "asc_unlock");
   const rest = findings.filter((f) => f.id !== "asc_unlock");
@@ -122,7 +136,7 @@ export function FindingsCard({
         {blockers.length === 0 && healthy.length === 0 ? (
           <p className="micro muted">No fixes found on the surfaces we could read.</p>
         ) : (
-          blockers.map((f) => <FindingRow key={f.id} f={f} />)
+          blockers.map((f) => <FindingRow key={f.id} f={f} onTool={onTool} />)
         )}
         {healthy.length > 0 ? (
           <div className="healthy-block" style={{ marginTop: 8 }}>
@@ -135,7 +149,7 @@ export function FindingsCard({
             >
               {showHealthy ? "▾" : "▸"} {healthy.length} healthy check{healthy.length === 1 ? "" : "s"}
             </button>
-            {showHealthy ? healthy.map((f) => <FindingRow key={f.id} f={f} />) : null}
+            {showHealthy ? healthy.map((f) => <FindingRow key={f.id} f={f} onTool={onTool} />) : null}
           </div>
         ) : null}
       </div>

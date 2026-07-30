@@ -19,8 +19,11 @@ with two surfaces sharing one engine:
   decisions for human approval. Engine ported to TypeScript (45 tests). The
   store-push is a generated-commands handoff (we never hold users' store creds);
   the approval gate is enforced in code (push commands withheld until approved).
-- **`commercial/OFFER.md`** — the AI-native offer + tiers (Free → $49 one-time →
-  $19/mo Autopilot → $149/mo Fleet). **`docs/`** — launch posts + landing page.
+- **`commercial/OFFER.md`** — the AI-native offer. NOTE: it still describes an
+  older scheme ($49 one-time / $19 Autopilot / $149 Fleet); the tiers the code
+  actually bills are Free → $7 Indie → $19 Startup → $65 Scale (see
+  `cloud/src/billing.ts`). Reconciling the two is #380.
+  **`docs/`** — launch posts + landing page.
 
 **Current state (all verified before extraction):**
 - Python: `python3 lib/run_tests.py` → 158 tests pass.

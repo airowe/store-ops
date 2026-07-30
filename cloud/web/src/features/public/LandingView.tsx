@@ -1,13 +1,16 @@
 /**
- * Landing — the public marketing front door at "/". Renders for everyone (no
- * auth branching). Leads with a live inline audit (the value IS the hero), a
- * plain 3-step how-it-works, and REAL measured proof with a graceful empty
- * state — never a fabricated number. Honest voice throughout.
+ * Landing — the public marketing front door at "/". The live audit IS the hero:
+ * a two-column layout puts the pitch + audit field on the left and the real
+ * result card on the right, so the value lands without a signup wall (Public
+ * Audit.dc.html). Below the fold: measured proof with a graceful empty state —
+ * never a fabricated number. Honest voice throughout.
  */
 import { useQuery } from "@tanstack/react-query";
 import type { ApiClient, ProofAggregate } from "@shipaso/api";
 import { getProof } from "@shipaso/api";
-import { ListingAudit } from "./ListingAudit.js";
+import { AuditInput } from "./AuditInput.js";
+import { AuditResultCard } from "./AuditResultCard.js";
+import { useListingAudit } from "./useListingAudit.js";
 import { LaunchSignup } from "./LaunchSignup.js";
 
 function Stat({ label, value, suffix }: { label: string; value: number; suffix?: string }) {
@@ -22,55 +25,57 @@ function Stat({ label, value, suffix }: { label: string; value: number; suffix?:
   );
 }
 
-const STEPS: { title: string; body: string }[] = [
-  { title: "Audit", body: "See your real keyword ranks on live data. No signup." },
-  { title: "Approve", body: "You decide what changes. Nothing auto-ships." },
-  { title: "Run", body: "The fix is pushed — your credentials stay on your machine." },
+const STEPS: { n: string; title: string; body: string }[] = [
+  { n: "01", title: "Audit", body: "Real keyword ranks on live data. No signup." },
+  { n: "02", title: "Approve", body: "You decide every change. Nothing auto-ships." },
+  { n: "03", title: "Run", body: "Push from your machine, your credentials." },
 ];
 
-export function LandingView({
-  client,
-  onSignIn,
-}: {
-  client: ApiClient;
-  onSignIn: () => void;
-}) {
+export function LandingView({ client, onSignIn }: { client: ApiClient; onSignIn: () => void }) {
   const proofQ = useQuery<ProofAggregate>({ queryKey: ["proof"], queryFn: () => getProof(client), retry: false });
   const p = proofQ.data;
   const hasWins = !proofQ.isError && !!p && p.totalWins > 0;
+  const audit = useListingAudit(client);
 
   return (
-    <section>
-      <div data-testid="landing-hero">
-        <h1>Know exactly where your app ranks — then fix it.</h1>
-        <p className="muted" style={{ maxWidth: 560 }}>
-          ShipASO audits your App Store listing on real keyword data, proposes the fix, and runs it —
-          your credentials never leave your machine.
-        </p>
-        <ListingAudit client={client} onSignIn={onSignIn} />
-        <p className="faint" style={{ marginTop: 10 }}>
-          Already have apps connected?{" "}
-          <button type="button" className="btn ghost" data-testid="landing-signin" onClick={onSignIn}>
-            Sign in
-          </button>
-        </p>
-      </div>
-
-      <h2 style={{ marginTop: 36 }}>How it works</h2>
-      <div className="grid" data-testid="how-it-works">
-        {STEPS.map((s, i) => (
-          <div className="card" key={s.title}>
-            <b>
-              {i + 1}. {s.title}
-            </b>
-            <p className="muted" style={{ margin: "6px 0 0" }}>
-              {s.body}
-            </p>
+    <section className="landing">
+      <div className="landing-hero" data-testid="landing-hero">
+        {/* left — pitch + the audit itself */}
+        <div className="hero-pitch">
+          <div className="free-pill">
+            <span className="free-dot" aria-hidden="true" />
+            Free · no signup
           </div>
-        ))}
+          <h1 className="hero-headline">
+            Know exactly where
+            <br />
+            your app ranks.
+            <br />
+            <span className="hero-headline-accent">Then fix it.</span>
+          </h1>
+          <p className="hero-sub">
+            Audit any App Store listing on real keyword data. See your ranks, get the fix — your
+            credentials never leave your machine.
+          </p>
+
+          <AuditInput audit={audit} />
+
+          <div className="steps-strip" data-testid="how-it-works">
+            {STEPS.map((s) => (
+              <div className="step-card" key={s.title}>
+                <div className="step-n mono">{s.n}</div>
+                <div className="step-title">{s.title}</div>
+                <div className="step-body">{s.body}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* right — the live result */}
+        <AuditResultCard result={audit.result} onSignIn={onSignIn} />
       </div>
 
-      <h2 style={{ marginTop: 36 }}>Proof</h2>
+      <h2 style={{ marginTop: 44 }}>Proof</h2>
       {hasWins ? (
         <div className="grid" data-testid="proof-stats">
           <Stat label="apps with wins" value={p.appsWithWins} />
@@ -89,7 +94,7 @@ export function LandingView({
         <p className="muted" style={{ margin: "6px 0 12px" }}>
           Audit any listing free. Sign in only when you want to run the fix.
         </p>
-        <button type="button" className="btn ghost" data-testid="landing-close-signin" onClick={onSignIn}>
+        <button type="button" className="btn ghost" data-testid="landing-signin" onClick={onSignIn}>
           Sign in
         </button>
       </div>

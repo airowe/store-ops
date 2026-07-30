@@ -11,11 +11,12 @@ import { useState } from "react";
 import { View } from "react-native";
 import type { ApiClient } from "../api/client.js";
 import { pushPlayDataSafety } from "../api/endpoints.js";
-import { palette, spacing } from "../theme/index.js";
+import { spacing, usePalette } from "../theme/index.js";
 import { AppText, Button, Card } from "./primitives.js";
 import { TextField } from "./TextField.js";
 
 export function PlayDataSafetyCard({ client, appId }: { client: ApiClient; appId: string }) {
+  const palette = usePalette();
   const [packageName, setPackageName] = useState("");
   const [safetyLabels, setSafetyLabels] = useState("");
   const [serviceAccount, setServiceAccount] = useState("");

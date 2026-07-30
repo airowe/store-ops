@@ -32,8 +32,50 @@ describe("resolveSurface (strangler edge map)", () => {
   });
 
   it("owns /runs/:id (the money screen) — PRD 07 cutover", () => {
-    expect(resolveSurface("/runs/xyz", OWNED_PATHS)).toBe("web");
-    expect(resolveSurface("/runs/xyz/extra", OWNED_PATHS)).toBe("legacy");
+    // A real run id: `uuid()` (cloud/src/d1.ts). Since #359 the pattern is
+    // UUID-shaped, so "xyz" is no longer a stand-in for one.
+    const id = "3f8a1c2e-4b5d-6789-abcd-ef0123456789";
+    expect(resolveSurface(`/runs/${id}`, OWNED_PATHS)).toBe("web");
+    expect(resolveSurface(`/runs/${id}/extra`, OWNED_PATHS)).toBe("legacy");
+  });
+
+  it("owns the three portfolio index screens (#356)", () => {
+    for (const p of ["/runs", "/keywords", "/competitors"]) {
+      expect(resolveSurface(p, OWNED_PATHS)).toBe("web");
+    }
+  });
+
+  /**
+   * The string arm of resolveSurface is a PREFIX match, so listing these as
+   * plain strings would hand every nested API path to the SPA — /runs/:id/asc/
+   * push, /runs/approve-all and the rest would render HTML instead of calling
+   * the Worker. They are RegExps for exactly this reason; this pins it.
+   */
+  it("the index paths never swallow their nested API routes", () => {
+    for (const p of ["/runs/xyz/asc/push", "/keywords/anything", "/competitors/x"]) {
+      expect(resolveSurface(p, OWNED_PATHS)).toBe("legacy");
+    }
+  });
+
+  /**
+   * #359: `/runs/:id` matched ANY single segment, and `approve-all` is shaped
+   * exactly like a run id — so the SPA claimed a Worker API path. Latent (it is
+   * a POST to the API origin, and resolveSurface only routes navigations), but
+   * any future GET-able sibling would inherit it silently, and the failure mode
+   * is HTML served where JSON was expected.
+   *
+   * Run ids are UUIDs (`uuid()` in d1.ts), so the pattern says so.
+   */
+  it("does not claim /runs/approve-all — it is an API path, not a run id", () => {
+    expect(resolveSurface("/runs/approve-all", OWNED_PATHS)).toBe("legacy");
+  });
+
+  it("still owns a real run id, which is a UUID", () => {
+    expect(resolveSurface("/runs/3f8a1c2e-4b5d-6789-abcd-ef0123456789", OWNED_PATHS)).toBe("web");
+    // …and rejects other non-id single segments that could appear later.
+    for (const p of ["/runs/export", "/runs/search"]) {
+      expect(resolveSurface(p, OWNED_PATHS)).toBe("legacy");
+    }
   });
   it("owning '/' does not accidentally own deep paths", () => {
     // "/" matches only the exact root, never /apps/* etc.
@@ -57,5 +99,9 @@ describe("resolveSurface (strangler edge map)", () => {
 
   it("owns /broadcast (owner-only composer)", () => {
     expect(resolveSurface("/broadcast", OWNED_PATHS)).toBe("web");
+  });
+
+  it("owns /onboarding (guided setup stepper)", () => {
+    expect(resolveSurface("/onboarding", OWNED_PATHS)).toBe("web");
   });
 });

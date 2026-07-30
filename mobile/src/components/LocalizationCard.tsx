@@ -17,7 +17,7 @@ import { View, type TextStyle } from "react-native";
 import type { ApiClient } from "../api/client.js";
 import { localizeApprove, localizeGenerate, localizeRemove } from "../api/endpoints.js";
 import type { LocalizedDraft } from "../types/api.js";
-import { palette, spacing } from "../theme/index.js";
+import { spacing, usePalette } from "../theme/index.js";
 import { AppText, Button, Card } from "./primitives.js";
 
 /**
@@ -58,6 +58,7 @@ export function LocalizationCard({
   initialLocales: string[];
 }) {
   const approvedRun = status === "approved" || status === "shipped";
+  const palette = usePalette();
   const [approved, setApproved] = useState<string[]>(initialLocales);
   const [locale, setLocale] = useState("");
   const [draft, setDraft] = useState<LocalizedDraft | null>(null);

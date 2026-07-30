@@ -1,7 +1,30 @@
 # Web migration plan — vanilla dashboard → TanStack Start
 
-_Status: **proposal**. No code committed against it yet. Companion to
-[`ui-review.md`](./ui-review.md)._
+<!-- docpaths:historical -->
+
+> **Status: DELIVERED (#356, 2026-07).** This document is kept as the design
+> record of *why* the migration was done this way — it is no longer a plan, and
+> its present-tense descriptions of `cloud/public/` describe a surface that no
+> longer exists.
+>
+> What actually shipped:
+> - The TanStack app is the site. `cloud/web/` is the only web surface; its Vite
+>   `dist/` is the Pages deploy root.
+> - **`cloud/public/` was deleted** (#356 Phase 3), along with `app.js`,
+>   `styles.css`, `mock.js`, `stamp-assets.mjs` and the 114-spec
+>   `cloud/tests/e2e/` suite whose subject was that dashboard.
+> - Five pieces of production infrastructure moved to `cloud/web/public/` rather
+>   than dying with it: `_headers`, `config.js`, the `/auth/m` magic-link
+>   landing, and the Apple/Android `.well-known/` association files.
+> - The strangler `resolveSurface`/`OWNED_PATHS` seam that routed between old and
+>   new is gone; unknown paths now get the app's own 404 route.
+>
+> The honesty model this plan set out to preserve did survive the move — see
+> `cloud/web/tests-e2e/honestyFlows.e2e.ts` (#369), which re-established
+> end-to-end guards for "nothing auto-watched", "metadata only", "deletes
+> honestly" and "approved ≠ shipped" against the new app.
+
+_Companion to [`ui-review.md`](./ui-review.md)._
 
 ## Why
 

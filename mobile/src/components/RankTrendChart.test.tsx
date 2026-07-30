@@ -1,5 +1,11 @@
 import React from "react";
 import { render } from "@testing-library/react-native";
+import { useColorScheme } from "react-native";
+import { ThemeProvider, lightPalette, palette } from "../theme/index.js";
+
+jest.mock("react-native/Libraries/Utilities/useColorScheme");
+const mockColorScheme = useColorScheme as unknown as jest.Mock;
+beforeEach(() => mockColorScheme.mockReturnValue("dark"));
 import { RankTrendChart } from "./RankTrendChart.js";
 
 // react-native-graph is mocked in jest.setup (it needs Skia at runtime); these
@@ -23,5 +29,20 @@ describe("RankTrendChart", () => {
   it("notes omitted unmeasured points in the caption (honesty)", () => {
     const { getByText } = render(<RankTrendChart points={[p(20, 1), p(null, 2), p(8, 3)]} />);
     expect(getByText(/1 unmeasured point omitted/)).toBeTruthy();
+  });
+});
+
+describe("RankTrendChart theming", () => {
+  it("draws the readout + line in the LIGHT signal inside a light provider", () => {
+    mockColorScheme.mockReturnValue("light");
+    const { getByTestId } = render(
+      <ThemeProvider>
+        <RankTrendChart points={[p(20, 1), p(8, 2)]} />
+      </ThemeProvider>,
+    );
+    // The graph's own colour props go to the mocked react-native-graph, which
+    // doesn't forward them; the readout is the observable proxy for the accent.
+    expect(getByTestId("scrub-readout")).toHaveStyle({ color: lightPalette.signal });
+    expect(lightPalette.signal).not.toBe(palette.signal);
   });
 });

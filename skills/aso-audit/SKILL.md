@@ -29,12 +29,53 @@ Cross-platform — and the Google Play side is the open lane no public tool cove
 
 | Field | Checks |
 |---|---|
-| **Title** | primary keyword present? brand+keyword balance? ≤30 (iOS) / ≤30 (Play)? |
-| **Subtitle / short desc** | DISTINCT keywords from title (no waste)? value prop clear? ≤30 / ≤80? |
-| **Keyword field (iOS)** | no spaces after commas (wastes chars)? no title/subtitle dupes? no filler/stop-words? plurals handled? ≤100? |
+| **Title** | ≤30 (iOS) / ≤30 (Play)? |
+| **Subtitle / short desc** | DISTINCT keywords from title (no waste)? ≤30 / ≤80? |
+| **Keyword field (iOS)** | no spaces after commas (wastes chars)? no title/subtitle dupes? no filler/stop-words? exact plural/singular pairs? ≤100? |
 | **Description** | keyword-rich first 3 lines (the visible part)? feature clarity? Play: keyword density without stuffing? |
+| **Promotional text (iOS)** | **PRESENT AT ALL?** ≤170? time-sensitive rather than evergreen? not duplicating the description's opening? |
 | **Screenshots/preview** | present for required device sizes? caption keywords? first 2 tell the story? |
 | **Reviews** | rating trend, recurring complaint themes (feed back into listing + roadmap) |
+
+### Not checked: "is the primary keyword in the title?"
+
+This was promised here and never implemented, and after building it three ways
+it should stay unimplemented. Every version misfires:
+
+- **against the top tracked keyword** — silent for an app whose keywords are all
+  unranked, which is most of them (#396), so it says nothing precisely when a
+  listing needs the most help;
+- **against any tracked keyword** — flags a deliberate brand name whose subtitle
+  carries the keywords. "Who Got Cooked" + "AI-powered argument moderation" is a
+  correct listing, and a check that calls it broken is worse than no check.
+
+A title is a branding decision with an ASO consequence, not a slot to stuff. The
+honest checks are the ones that remain: length, and whether the subtitle wastes
+characters repeating the title.
+
+### Promotional text — check for ABSENCE, not just quality
+
+An empty field scores nothing and flags nothing unless you look for it. Heathen's
+audit missed this: every populated field was scored, and 170 unused characters at
+the top of the listing went unmentioned because there was no content to critique.
+
+**Always report promotional text as empty when it is empty.** That is a finding,
+not a non-event.
+
+Why the field is worth the flag:
+
+- **It is NOT indexed.** No keyword value, so it costs nothing from the 100-char
+  keyword budget. Do not recommend stuffing it with search terms.
+- **It is the only listing field editable WITHOUT submitting a new version.**
+  That is the whole point: launches, seasonal hooks, press mentions, a response
+  to a competitor — all shippable same-day.
+- **It is therefore a free A/B surface for positioning.** Iterate value props
+  here weekly, then promote the winner into the subtitle, where it *does* get
+  indexed. Testing copy in a field that requires review is slow; testing it here
+  is not.
+
+Flag it as `warn` when empty, `info` when present but evergreen (a permanent
+tagline wastes the one field that can be timely).
 
 ## Output
 

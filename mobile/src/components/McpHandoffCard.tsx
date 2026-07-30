@@ -10,10 +10,11 @@
  */
 import { View } from "react-native";
 import { apiBase } from "../lib/config.js";
-import { palette, radius, spacing } from "../theme/index.js";
+import { radius, spacing, usePalette } from "../theme/index.js";
 import { AppText, Card } from "./primitives.js";
 
 export function McpHandoffCard() {
+  const palette = usePalette();
   const mcpUrl = `${apiBase().replace(/\/+$/, "")}/mcp`;
   const command =
     `claude mcp add shipaso --transport http ${mcpUrl} \\\n` +

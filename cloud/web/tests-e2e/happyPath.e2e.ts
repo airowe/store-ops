@@ -14,7 +14,10 @@ test.beforeEach(async ({ page }) => {
 
 test("dashboard lists connected apps", async ({ page }) => {
   await page.goto("/dashboard");
-  await expect(page.getByRole("heading", { name: "Your apps" })).toBeVisible();
+  // The redesign leads with an editorial greeting, not a "Your apps" heading;
+  // the one awaiting app surfaces in the command center + its tracked row.
+  await expect(page.getByTestId("dashboard")).toBeVisible();
+  await expect(page.getByTestId("hero-card")).toContainText("Weatherly");
   await expect(page.getByTestId("app-card-app1")).toContainText("Weatherly");
   await expect(page.getByTestId("app-card-app1").getByTestId("rank")).toContainText("12");
 });
@@ -56,6 +59,22 @@ test("run detail: the master-detail shell reaches the diff + every measured card
 
   await page.getByRole("button", { name: "PPO test" }).click();
   await expect(page.getByTestId("ppo-treatment-card")).toContainText("free A/B test");
+});
+
+test("the sticky decision bar clears the nav rail (never renders under it)", async ({ page }) => {
+  // Regression: the bar was `left: 0` while the railed shell puts a 236px nav
+  // rail on the left, so the decision — the one irreversible action — rendered
+  // underneath the rail with its buttons pushed out of view.
+  await page.setViewportSize({ width: 1400, height: 1000 });
+  await page.goto("/runs/run1");
+  const bar = await page.getByTestId("decision-bar").boundingBox();
+  const rail = await page.getByTestId("nav-rail").boundingBox();
+  expect(bar, "decision bar should render").toBeTruthy();
+  expect(rail, "nav rail should render").toBeTruthy();
+  expect(bar!.x).toBeGreaterThanOrEqual(rail!.x + rail!.width);
+  // and both decision buttons are actually visible
+  await expect(page.getByTestId("approve")).toBeVisible();
+  await expect(page.getByTestId("reject")).toBeVisible();
 });
 
 test("approving a run reveals the handoff without shipping", async ({ page }) => {
@@ -103,6 +122,6 @@ test("the landing page at / renders the hero and audits inline", async ({ page }
 
 test("the dashboard is reachable at /dashboard", async ({ page }) => {
   await page.goto("/dashboard");
-  await expect(page.getByRole("heading", { name: "Your apps" })).toBeVisible();
+  await expect(page.getByTestId("dashboard")).toBeVisible();
   await expect(page).toHaveTitle("ShipASO · dashboard");
 });

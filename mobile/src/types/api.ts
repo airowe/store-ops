@@ -434,7 +434,7 @@ export type AscCredentialBody = {
 // ── Push to App Store Connect (#270) — Apple's verdict, verbatim ───────────────
 /** POST /runs/:id/asc/push — staged fields, or Apple's refusal verbatim. */
 export type AscPushResult =
-  | { ok: true; versionId: string; localizationId: string; fieldsPushed: string[] }
+  | { ok: true; versionId: string; localizationId: string; fieldsPushed: string[]; partialFailure?: string }
   | { ok: false; reason: string };
 /** POST /runs/:id/asc/create-version (#34) — the created draft, or Apple's refusal verbatim. */
 export type AscCreateVersionResult =
@@ -702,7 +702,13 @@ export type SweepSchedule = {
   hourUtc: number;
 };
 
-export type DeltaDirection = "up" | "down" | "flat" | string;
+/**
+ * "lost" = measured, and the term fell out of the results; distinct from an
+ * unmeasured row, where we have no reading at all (#360). The `string` arm keeps
+ * the wire tolerant of a value a newer server emits, but the members are named
+ * so the vocabulary is discoverable and autocompletes.
+ */
+export type DeltaDirection = "up" | "down" | "flat" | "new" | "lost" | "unmeasured" | (string & {});
 export type DeltaEntry = {
   keyword: string;
   current: number | null;

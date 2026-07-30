@@ -215,7 +215,19 @@ describe("serializeRunResult — no-key run", () => {
     expect(Array.isArray(result.locks)).toBe(true);
     expect((result.locks ?? []).length).toBeGreaterThan(0);
     const surfaces = (result.locks ?? []).map((l: { surface: string }) => l.surface);
-    expect(surfaces).toEqual(["subtitle", "keywords", "screenshots", "previews", "privacy", "category", "locales"]);
+    // "promo" joined the canonical list: promotional text is absent from the
+    // public iTunes payload, so a no-key run cannot see it. It is disclosed as a
+    // LOCK rather than flagged empty — "we did not look" is not "unused".
+    expect(surfaces).toEqual([
+      "subtitle",
+      "keywords",
+      "screenshots",
+      "previews",
+      "promo",
+      "privacy",
+      "category",
+      "locales",
+    ]);
   });
 
   it("lock copy frames opportunity, never a deficiency or raw ASC data", () => {

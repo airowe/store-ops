@@ -31,6 +31,9 @@ import type {
   Me,
   PlayAudit,
   PlayFunnelSurface,
+  PortfolioCompetitorsResponse,
+  PortfolioKeywordsResponse,
+  PortfolioRunsResponse,
   NotificationPrefs,
   RankCadence,
   PreviewResult,
@@ -147,6 +150,16 @@ export const confirmCompetitor = (c: ApiClient, id: string, key: string) =>
   c.post<CompetitorsResponse>(`/apps/${enc(id)}/competitors/${enc(key)}/confirm`);
 export const removeCompetitor = (c: ApiClient, id: string, key: string) =>
   c.request<CompetitorsResponse>(`/apps/${enc(id)}/competitors/${enc(key)}`, { method: "DELETE" });
+
+// ── portfolio screens (#356) — fleet-wide siblings of the per-app reads ───────
+/** Every run across the account's apps, app-first. Gate-first, then newest. */
+export const getPortfolioRuns = (c: ApiClient) => c.get<PortfolioRunsResponse>("/runs");
+/** Rank movement per keyword × app × storefront across the fleet. */
+export const getPortfolioKeywords = (c: ApiClient) =>
+  c.get<PortfolioKeywordsResponse>("/keywords");
+/** The fleet's rivals, grouped by rival; watching stays per (app, rival) pair. */
+export const getPortfolioCompetitors = (c: ApiClient) =>
+  c.get<PortfolioCompetitorsResponse>("/competitors");
 
 /** Analyze a pasted App Review rejection (#178 Phase 4) — guideline + drafts. */
 export const analyzeRejection = (c: ApiClient, text: string) =>

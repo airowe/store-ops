@@ -14,7 +14,7 @@ import { View } from "react-native";
 import type { ApiClient } from "../api/client.js";
 import { getPlayFunnel, ingestPlayFunnel } from "../api/endpoints.js";
 import type { PlayFunnelSurface } from "../types/api.js";
-import { palette, spacing } from "../theme/index.js";
+import { spacing, usePalette } from "../theme/index.js";
 import { AppText, Button, Card } from "./primitives.js";
 import { TextField } from "./TextField.js";
 
@@ -22,6 +22,7 @@ const pct = (rate: number | null): string => (rate === null ? "—" : `${(rate *
 const num = (n: number | null): string => (n === null ? "—" : n.toLocaleString());
 
 export function PlayFunnelCard({ client, appId }: { client: ApiClient; appId: string }) {
+  const palette = usePalette();
   const [surface, setSurface] = useState<PlayFunnelSurface | null>(null);
   const [packageName, setPackageName] = useState("");
   const [accountId, setAccountId] = useState("");

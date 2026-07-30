@@ -38,7 +38,7 @@ export function CompetitorsCard({ client, appId }: { client: ApiClient; appId: s
 
       <div style={{ display: "flex", gap: 8, marginTop: 6 }}>
         <input data-testid="comp-name" placeholder="Add by app name" value={name} onChange={(e) => setName(e.target.value)} />
-        <button type="button" className="btn" data-testid="comp-add" disabled={busy || !name.trim()} onClick={() => add.mutate(name.trim())}>Add</button>
+        <button type="button" className="btn primary" data-testid="comp-add" disabled={busy || !name.trim()} onClick={() => add.mutate(name.trim())}>Add</button>
         <button type="button" className="btn ghost" data-testid="comp-discover" disabled={busy} onClick={() => discover.mutate()}>
           {discover.isPending ? "Discovering…" : "Discover"}
         </button>
@@ -62,7 +62,7 @@ export function CompetitorsCard({ client, appId }: { client: ApiClient; appId: s
           {suggested.map((c) => (
             <div key={c.key} className="setting-row" data-testid={`comp-${c.key}`}>
               <span style={{ flex: 1 }}>{c.name} <span className="micro">({c.source})</span></span>
-              <button type="button" className="btn" data-testid={`comp-confirm-${c.key}`} disabled={busy} onClick={() => confirm.mutate(c.key)}>Confirm</button>
+              <button type="button" className="btn primary" data-testid={`comp-confirm-${c.key}`} disabled={busy} onClick={() => confirm.mutate(c.key)}>Confirm</button>
               <button type="button" className="btn ghost" data-testid={`comp-dismiss-${c.key}`} disabled={busy} onClick={() => remove.mutate(c.key)}>Dismiss</button>
             </div>
           ))}

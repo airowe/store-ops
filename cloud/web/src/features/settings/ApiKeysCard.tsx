@@ -4,7 +4,8 @@
  *
  * Honest, load-bearing:
  *   • the raw key is shown ONCE, right after you generate it — we store only its
- *     hash, so we can never show it again (copy it then),
+ *     hash, so we can never show it again (copy it then). That moment gets an
+ *     amber surface: urgent and unrepeatable, but not an error,
  *   • read/draft only: an agent can audit + propose but can NEVER push —
  *     approving and shipping stay a human action here,
  *   • revoke is immediate and independent of your login (it doesn't touch your
@@ -38,32 +39,35 @@ export function ApiKeysCard({ client }: { client: ApiClient }) {
   const busy = create.isPending || revoke.isPending;
 
   return (
-    <div className="card" data-testid="api-keys-card">
-      <b>Agent access (API keys)</b>
-      <p className="micro">
-        Generate a scoped key so your AI agent can connect to the ShipASO MCP and run the
-        audit → propose loop. Read-only + draft: an agent can never push — approving and
-        shipping stay here. Revoke any time; it can’t touch your login.
+    <section id="agent" className="settings-panel" data-testid="api-keys-card">
+      <div className="settings-panel-head">
+        <h2>Agent access</h2>
+      </div>
+      <p className="settings-panel-sub">
+        Scoped keys so your own AI agent can run the audit → propose loop over MCP. Read and draft only
+        — an agent can never push. Approving and shipping stay here.
       </p>
 
-      <div style={{ display: "flex", gap: 8, marginTop: 6 }}>
+      <div style={{ display: "flex", gap: 8, marginTop: 14 }}>
         <input
+          className="txt"
           data-testid="ak-label"
           placeholder="Label (e.g. Claude Code)"
           value={label}
           onChange={(e) => setLabel(e.target.value)}
         />
-        <button type="button" className="btn" data-testid="ak-create" disabled={busy} onClick={() => create.mutate()}>
+        <button type="button" className="btn primary" data-testid="ak-create" disabled={busy} onClick={() => create.mutate()}>
           {create.isPending ? "Generating…" : "Generate key"}
         </button>
       </div>
 
       {freshKey ? (
-        <div className="card" data-testid="ak-fresh" style={{ marginTop: 8 }}>
-          <p className="micro">
-            Copy your key now — we only show it once (we store just its hash):
-          </p>
-          <pre data-testid="ak-fresh-value" style={{ whiteSpace: "pre-wrap", wordBreak: "break-all" }}>
+        <div className="shown-once" data-testid="ak-fresh">
+          <div className="shown-once-eyebrow" data-testid="ak-fresh-eyebrow">
+            SHOWN ONCE
+          </div>
+          <p className="shown-once-note">Copy it now — we store only its hash.</p>
+          <pre className="shown-once-key" data-testid="ak-fresh-value">
             {freshKey}
           </pre>
         </div>
@@ -72,12 +76,16 @@ export function ApiKeysCard({ client }: { client: ApiClient }) {
       {keys.length > 0 ? (
         <div data-testid="ak-list" style={{ marginTop: 8 }}>
           {keys.map((k) => (
-            <div key={k.id} className="setting-row" data-testid={`ak-${k.id}`}>
-              <span style={{ flex: 1 }} className="mono">
-                {k.prefix}
-                {k.label ? ` · ${k.label}` : ""}
-              </span>
-              <button type="button"
+            <div key={k.id} className="pref-row" data-testid={`ak-${k.id}`}>
+              <div className="pref-row-main">
+                <div className="pref-row-title mono">
+                  {k.prefix}
+                  {k.label ? ` · ${k.label}` : ""}
+                </div>
+                {k.createdAt ? <div className="pref-row-detail">added {k.createdAt.slice(0, 10)}</div> : null}
+              </div>
+              <button
+                type="button"
                 className="btn ghost"
                 data-testid={`ak-revoke-${k.id}`}
                 disabled={busy}
@@ -89,6 +97,6 @@ export function ApiKeysCard({ client }: { client: ApiClient }) {
           ))}
         </div>
       ) : null}
-    </div>
+    </section>
   );
 }

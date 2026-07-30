@@ -9,6 +9,12 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react-nativ
 import * as SecureStore from "expo-secure-store";
 import type { ApiClient } from "../api/client.js";
 import type { PlayFunnelSurface } from "../types/api.js";
+import { useColorScheme } from "react-native";
+import { ThemeProvider, lightPalette, palette } from "../theme/index.js";
+
+jest.mock("react-native/Libraries/Utilities/useColorScheme");
+const mockColorScheme = useColorScheme as unknown as jest.Mock;
+beforeEach(() => mockColorScheme.mockReturnValue("dark"));
 import { PlayFunnelCard } from "./PlayFunnelCard.js";
 
 function fakeClient(
@@ -82,5 +88,31 @@ describe("PlayFunnelCard", () => {
     // the credential is never written to device storage
     expect(SecureStore.setItemAsync).not.toHaveBeenCalled();
     await waitFor(() => expect(screen.getByTestId("pf-success")).toHaveTextContent(/2 row/));
+  });
+});
+
+describe("PlayFunnelCard theming", () => {
+  it("renders the error line in the LIGHT bad inside a light provider", async () => {
+    mockColorScheme.mockReturnValue("light");
+    const client = {
+      get: async () => MEASURED,
+      post: async () => {
+        throw new Error("ingest exploded");
+      },
+      request: async () => ({}),
+    } as unknown as ApiClient;
+    render(
+      <ThemeProvider>
+        <PlayFunnelCard client={client} appId="app-1" />
+      </ThemeProvider>,
+    );
+    await waitFor(() => expect(screen.getByTestId("pf-row-2026-07-us")).toBeTruthy());
+    fireEvent.changeText(screen.getByTestId("pf-package"), "com.acme.app");
+    fireEvent.changeText(screen.getByTestId("pf-account"), "1234567890");
+    fireEvent.changeText(screen.getByTestId("pf-sa"), '{"type":"service_account"}');
+    fireEvent.press(screen.getByTestId("pf-ingest"));
+    await waitFor(() => expect(screen.getByTestId("pf-error")).toBeTruthy());
+    expect(screen.getByTestId("pf-error")).toHaveStyle({ color: lightPalette.bad });
+    expect(lightPalette.bad).not.toBe(palette.bad);
   });
 });

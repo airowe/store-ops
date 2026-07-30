@@ -10,6 +10,21 @@ import type { ApiClient } from "../api/client.js";
 import type { ApiKeyCreated, ApiKeyMeta } from "../types/api.js";
 import { ApiKeysCard } from "./ApiKeysCard.js";
 
+import { useColorScheme } from "react-native";
+import { ThemeProvider } from "../theme/index.js";
+import { lightPalette, palette } from "../theme/tokens.js";
+
+jest.mock("react-native/Libraries/Utilities/useColorScheme");
+const mockColorScheme = useColorScheme as unknown as jest.Mock;
+
+/** Flatten RN's style prop (array | object) into one resolved object. */
+function flatStyle(node: { props: { style?: unknown } }): Record<string, unknown> {
+  const flatten = (s: unknown): Record<string, unknown> =>
+    Array.isArray(s) ? Object.assign({}, ...s.map(flatten)) : ((s ?? {}) as Record<string, unknown>);
+  return flatten(node.props.style);
+}
+
+
 function fakeClient(initial: ApiKeyMeta[]): { client: ApiClient; events: string[] } {
   let keys = [...initial];
   const events: string[] = [];
@@ -42,6 +57,8 @@ function fakeClient(initial: ApiKeyMeta[]): { client: ApiClient; events: string[
   } as unknown as ApiClient;
   return { client, events };
 }
+
+beforeEach(() => mockColorScheme.mockReturnValue("dark")); // every other test in this file assumes the dark default
 
 describe("ApiKeysCard", () => {
   it("gates generate on a label, mints a key, and reveals the raw secret exactly once", async () => {
@@ -82,5 +99,22 @@ describe("ApiKeysCard", () => {
     fireEvent.press(screen.getByTestId("ak-revoke-k1"));
     await waitFor(() => expect(events).toContain("DELETE /account/api-keys/k1"));
     await waitFor(() => expect(screen.queryByTestId("ak-k1")).toBeNull());
+  });
+
+  it("paints the fresh-key box border from the LIVE palette (light provider → light line)", async () => {
+    mockColorScheme.mockReturnValue("light");
+    const { client } = fakeClient([]);
+    render(
+      <ThemeProvider>
+        <ApiKeysCard client={client} />
+      </ThemeProvider>,
+    );
+    await waitFor(() => expect(screen.getByTestId("ak-label")).toBeTruthy());
+    fireEvent.changeText(screen.getByTestId("ak-label"), "ci");
+    fireEvent.press(screen.getByTestId("ak-create"));
+    await waitFor(() => expect(screen.getByTestId("ak-fresh")).toBeTruthy());
+
+    expect(flatStyle(screen.getByTestId("ak-fresh")).borderColor).toBe(lightPalette.line);
+    expect(lightPalette.line).not.toBe(palette.line);
   });
 });

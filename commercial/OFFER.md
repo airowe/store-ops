@@ -1,5 +1,17 @@
 # store-ops — the commercial offer (AI-native)
 
+> **⚠️ This document describes an offer the code does not implement (#380).**
+>
+> The tiers below — Launch Optimization $49 one-time, Autopilot $19/mo, Fleet
+> Autopilot $149/mo — are **not** what ShipASO bills. `cloud/src/billing.ts`
+> gates on `free / indie $7 / startup $19 / scale $65`, `checkoutRoute` rejects
+> any other tier name, and there is no one-time plan in the system at all.
+>
+> The pricing page, `README.md` and the machine-readable surfaces were corrected
+> to match the code. This file was deliberately left alone, because changing the
+> OFFER is a business decision, not a documentation fix. Until #380 is settled,
+> treat this as **the intended direction**, not a description of what is live.
+
 The revenue model, the offers, and the proof. This is the spec the pricing page
 and the sales conversation work from.
 

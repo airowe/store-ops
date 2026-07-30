@@ -6,6 +6,10 @@
  * Honest: the installation id + repo are not secrets (we say so); the card is
  * inert when the deployment hasn't configured the GitHub App, and disconnect is
  * immediate. Read-only status drives what's shown — never an optimistic guess.
+ *
+ * Renders as a connection row inside the Connections panel: chip / name + meta /
+ * status pill / action. All three states (unconfigured, not connected,
+ * connected) share that one shape.
  */
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -17,6 +21,7 @@ export function GithubCard({ client }: { client: ApiClient }) {
   const statusQ = useQuery({ queryKey: ["github", "status"], queryFn: () => getGithubStatus(client), retry: false });
   const [installationId, setInstallationId] = useState("");
   const [repo, setRepo] = useState("");
+  const [revealed, setRevealed] = useState(false);
 
   const connect = useMutation({
     mutationFn: (body: { installation_id?: string; repo?: string }) => connectGithub(client, body),
@@ -26,12 +31,24 @@ export function GithubCard({ client }: { client: ApiClient }) {
   if (statusQ.isLoading || !statusQ.data) return null;
   const { appConfigured, connected, repo: linkedRepo } = statusQ.data;
 
-  // The GitHub App isn't set up on this deployment — the path is inert.
+  // The GitHub App isn't set up on this deployment — the path is inert, but the
+  // row keeps its shape so Connections doesn't develop a hole.
   if (!appConfigured) {
     return (
-      <div className="card" data-testid="github-card">
-        <b>GitHub</b>
-        <p className="micro" data-testid="gh-unconfigured">
+      <div data-testid="github-card">
+        <div className="conn-row">
+          <span className="conn-chip" aria-hidden="true">
+            ⎇
+          </span>
+          <div className="conn-main">
+            <div className="conn-name">GitHub</div>
+            <div className="conn-meta">Not configured on this deployment</div>
+          </div>
+          <span className="status-pill" data-testid="gh-status-pill">
+            Optional
+          </span>
+        </div>
+        <p className="conn-note" data-testid="gh-unconfigured">
           The metadata-PR path isn’t configured on this deployment. Use the Fastlane download instead.
         </p>
       </div>
@@ -39,14 +56,27 @@ export function GithubCard({ client }: { client: ApiClient }) {
   }
 
   return (
-    <div className="card" data-testid="github-card">
-      <b>GitHub</b>
-      {connected ? (
-        <>
-          <p className="micro" data-testid="gh-connected">
-            Connected to <span className="mono">{linkedRepo}</span>. Approved runs can open a metadata PR.
-          </p>
-          <button type="button"
+    <div data-testid="github-card">
+      <div className="conn-row">
+        <span className="conn-chip" aria-hidden="true">
+          ⎇
+        </span>
+        <div className="conn-main">
+          <div className="conn-name">GitHub</div>
+          {connected ? (
+            <div className="conn-meta" data-testid="gh-connected">
+              Connected to <span className="mono">{linkedRepo}</span>
+            </div>
+          ) : (
+            <div className="conn-meta">Not connected · installation id + repo</div>
+          )}
+        </div>
+        <span className={`status-pill${connected ? " is-on" : ""}`} data-testid="gh-status-pill">
+          {connected ? "Connected" : "Optional"}
+        </span>
+        {connected ? (
+          <button
+            type="button"
             className="btn bad"
             data-testid="gh-disconnect"
             disabled={connect.isPending}
@@ -54,25 +84,53 @@ export function GithubCard({ client }: { client: ApiClient }) {
           >
             {connect.isPending ? "…" : "Disconnect"}
           </button>
-        </>
+        ) : (
+          <button
+            type="button"
+            className="btn ghost"
+            data-testid="gh-reveal"
+            onClick={() => setRevealed((v) => !v)}
+          >
+            Connect
+          </button>
+        )}
+      </div>
+
+      {connected ? (
+        <p className="conn-note">Approved runs can open a metadata PR.</p>
       ) : (
         <>
-          <p className="micro">
+          <p className="conn-note">
             Link your ShipASO GitHub App installation and a target repo to open metadata PRs from an
             approved run. Neither the installation id nor the repo name is a secret.
           </p>
-          <div style={{ display: "grid", gap: 8 }}>
-            <input data-testid="gh-installation" placeholder="Installation ID" value={installationId} onChange={(e) => setInstallationId(e.target.value)} />
-            <input data-testid="gh-repo" placeholder="Repo (owner/name)" value={repo} onChange={(e) => setRepo(e.target.value)} />
-            <button type="button"
-              className="btn primary"
-              data-testid="gh-connect"
-              disabled={connect.isPending || !installationId.trim() || !/^[^/\s]+\/[^/\s]+$/.test(repo.trim())}
-              onClick={() => connect.mutate({ installation_id: installationId.trim(), repo: repo.trim() })}
-            >
-              {connect.isPending ? "Connecting…" : "Connect"}
-            </button>
-          </div>
+          {revealed ? (
+            <div className="conn-form">
+              <input
+                className="txt"
+                data-testid="gh-installation"
+                placeholder="Installation ID"
+                value={installationId}
+                onChange={(e) => setInstallationId(e.target.value)}
+              />
+              <input
+                className="txt"
+                data-testid="gh-repo"
+                placeholder="Repo (owner/name)"
+                value={repo}
+                onChange={(e) => setRepo(e.target.value)}
+              />
+              <button
+                type="button"
+                className="btn primary"
+                data-testid="gh-connect"
+                disabled={connect.isPending || !installationId.trim() || !/^[^/\s]+\/[^/\s]+$/.test(repo.trim())}
+                onClick={() => connect.mutate({ installation_id: installationId.trim(), repo: repo.trim() })}
+              >
+                {connect.isPending ? "Connecting…" : "Connect"}
+              </button>
+            </div>
+          ) : null}
         </>
       )}
     </div>

@@ -11,9 +11,10 @@ import { createApiClient } from "../../src/api/client.js";
 import { proof } from "../../src/api/endpoints.js";
 import { Screen, AppText, Card, Centered } from "../../src/components/primitives.js";
 import { apiBase } from "../../src/lib/config.js";
-import { palette, spacing } from "../../src/theme/index.js";
+import { spacing, usePalette } from "../../src/theme/index.js";
 
 export default function Proof() {
+  const palette = usePalette();
   // Public route — a token-free client (proof needs no auth).
   const client = useMemo(() => createApiClient({ baseUrl: apiBase(), fetch: globalThis.fetch }), []);
   const p = useQuery({ queryKey: ["proof"], queryFn: () => proof(client) });
@@ -49,6 +50,7 @@ export default function Proof() {
 }
 
 function Stat({ label, value }: { label: string; value: string }) {
+  const palette = usePalette();
   return (
     <Card>
       <AppText kind="micro">{label}</AppText>

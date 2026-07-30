@@ -18,7 +18,7 @@ import { View } from "react-native";
 import type { ApiClient } from "../api/client.js";
 import { ascCreateVersion, ascPush } from "../api/endpoints.js";
 import type { AscPushResult, AscCreateVersionResult } from "../types/api.js";
-import { palette, spacing } from "../theme/index.js";
+import { spacing, usePalette } from "../theme/index.js";
 import { AppText, Button, Card } from "./primitives.js";
 import { TextField } from "./TextField.js";
 
@@ -33,6 +33,7 @@ export function AscPushCard({
   approved: boolean;
   storedKeyId: string | null;
 }) {
+  const palette = usePalette();
   const [result, setResult] = useState<AscPushResult | null>(null);
   const [versionString, setVersionString] = useState("");
   const [cvResult, setCvResult] = useState<AscCreateVersionResult | null>(null);
@@ -86,10 +87,15 @@ export function AscPushCard({
         <AppText
           kind="micro"
           testID="push-result"
-          style={{ color: result.ok ? palette.signal : palette.bad, marginTop: spacing.sm }}
+          style={{
+            color: result.ok && !result.partialFailure ? palette.signal : palette.bad,
+            marginTop: spacing.sm,
+          }}
         >
           {result.ok
-            ? `Staged on your editable version: ${result.fieldsPushed.join(", ")}.`
+            ? result.partialFailure
+              ? `Partly staged: ${result.fieldsPushed.join(", ")}. App Store Connect refused the rest: ${result.partialFailure}`
+              : `Staged on your editable version: ${result.fieldsPushed.join(", ")}.`
             : `App Store Connect refused the push: ${result.reason}`}
         </AppText>
       ) : null}

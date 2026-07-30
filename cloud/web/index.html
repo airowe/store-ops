@@ -10,10 +10,23 @@
     <title>ShipASO</title>
     <meta name="description" content="Audit your App Store listing on real keyword data, then fix it — your credentials never leave your machine." />
     <script>
-      // Apply the saved theme before paint (shared key with the legacy app).
+      // Apply the theme before paint (shared key with the legacy app). Inline
+      // and synchronous on purpose: deferring this to the bundle would paint
+      // one frame of the wrong theme first.
+      //
+      // Mirrors shell/theme.ts — an unrecognised or absent preference means
+      // "follow the OS" (#362), NOT dark. Keep the two in step; the module is
+      // the tested one, this is the pre-paint copy.
       try {
         var t = localStorage.getItem("store-ops:theme");
-        if (t === "light" || t === "dark") document.documentElement.setAttribute("data-theme", t);
+        var mode = t === "light" || t === "dark" || t === "system" ? t : "system";
+        var scheme =
+          mode === "system"
+            ? window.matchMedia && window.matchMedia("(prefers-color-scheme: light)").matches
+              ? "light"
+              : "dark"
+            : mode;
+        document.documentElement.setAttribute("data-theme", scheme);
       } catch (e) {}
     </script>
   </head>

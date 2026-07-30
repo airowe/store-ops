@@ -5,12 +5,41 @@
  * small here to prove the client shape typechecks end to end.
  */
 
+/**
+ * Mirrors schema.sql's `runs.status` CHECK constraint and the server's
+ * `RUN_STATUSES` (cloud/src/engine/constants.ts) — the union must admit every
+ * status a real row can carry, or the client is typed against a lie.
+ *
+ * `superseded` is terminal: an older awaiting_approval run replaced by a newer
+ * one for the same app. It is written by `setRunStatus` and reaches the client
+ * on any run list, so it belongs here.
+ */
 export type RunStatus =
   | "detected" | "researching" | "awaiting_approval"
-  | "approved" | "rejected" | "shipped";
+  | "approved" | "rejected" | "shipped" | "superseded";
 
 export type RankSummary = { lead_keyword: string; lead_rank: number | null };
-export type FindingsSummary = { label: string; critical: number };
+/**
+ * The findings roll-up as the engine actually sends it.
+ *
+ * This was declared as `{ label, critical }` while `summarizeFindings` has
+ * always emitted all seven fields — verified against a live run:
+ * `{critical:0, warn:0, good:0, info:4, total:4, topImpact:"completeness",
+ * label:"No fixes found"}`. The narrow type meant the web could not tell
+ * "4 info notes" from "4 fixes" without re-counting the findings array itself.
+ *
+ * `critical + warn` are the actionable ones; `info`/`good` are context and must
+ * never be presented as work.
+ */
+export type FindingsSummary = {
+  label: string;
+  critical: number;
+  warn: number;
+  good: number;
+  info: number;
+  total: number;
+  topImpact: string | null;
+};
 
 export type AppListItem = {
   id: string;
@@ -31,7 +60,14 @@ export type DeltaEntry = {
   previous: number | null;
   current: number | null;
   delta: number | null;
-  direction: "up" | "down" | "same" | "new" | "unmeasured";
+  /**
+   * "lost" means we measured and the term fell out of the results — a real,
+   * bad-news event. It is NOT "unmeasured", which means we have no current
+   * reading at all. The engine has always emitted "lost" (digest.ts) but the
+   * union omitted it, so the value shipped off-contract and the UI rendered it
+   * as neutral silence (#360).
+   */
+  direction: "up" | "down" | "same" | "new" | "lost" | "unmeasured";
 };
 export type DeltasResponse = { entries: DeltaEntry[] };
 
@@ -101,6 +137,30 @@ export type Finding = {
   evidence?: string;
   /** true = status/context fact (rendered apart), absent = actionable fix. */
   context?: true;
+  /**
+   * #324: where to actually DO this. Absent on findings with no fix, and on
+   * runs persisted before #324.
+   */
+  action?: FindingAction;
+};
+
+/** an existing ShipASO builder a finding can hand off to (#324 Tier 2). */
+export type FindingTool = "screenshots" | "cpp";
+/**
+ * #324: the action attached to a finding that would otherwise read as
+ * "→ do X in App Store Connect".
+ *
+ * `url` is always on Apple's console host but is not always precise: Apple does
+ * not document the console's route structure, so `appScoped` says whether we
+ * reached THIS app's page or only the generic console. The UI states which,
+ * rather than implying a precision we don't have. `tool` is present only where a
+ * real in-product builder continues the finding — never a guessed handoff.
+ */
+export type FindingAction = {
+  url: string;
+  label: string;
+  appScoped: boolean;
+  tool?: FindingTool;
 };
 /** A surface the run could NOT read — an honest 🔒 "unlock to see + improve". */
 export type SurfaceLock = { surface: string; label: string; unlockCopy: string };
@@ -154,11 +214,37 @@ export type FieldFill = {
   /** false = the field was unseen (a 0 here is UNKNOWN, never "empty"). */
   seen: boolean;
 };
+/** the three ranking fields, in canonical order. */
+export type CoverageField = "name" | "subtitle" | "keywords";
 /** one itemized source of wasted metadata budget. */
 export type CoverageWaste = {
   kind: "duplicate" | "brand_repeat" | "filler" | "unused";
   detail: string;
   chars: number;
+  /**
+   * #322: WHICH field(s) the waste lives in, name → subtitle → keywords. Always
+   * measured (the term was tokenized out of that field), never inferred.
+   * Optional so runs persisted before #322 still render.
+   */
+  fields?: CoverageField[];
+  /**
+   * #322: true only for filler confined to the KEYWORD field, where Apple
+   * ignores it for ranking — removing it reclaims chars with no readability
+   * cost. Name/subtitle filler, duplicates and brand repeats are all false:
+   * those are human judgement calls.
+   */
+  safeToStrip?: boolean;
+};
+/**
+ * #322: the safe, reversible keyword-field tightening — before/after so the
+ * change is SHOWN and reviewable, never applied silently. Absent when nothing
+ * is safely strippable or the keyword field was never read.
+ */
+export type KeywordFieldStrip = {
+  before: string;
+  after: string;
+  removed: string[];
+  reclaimedChars: number;
 };
 /**
  * Metadata coverage report (PRD 03) — how hard the 30/30/100 char budget is
@@ -169,6 +255,8 @@ export type CoverageReport = {
   fieldFill: FieldFill[];
   distinctTerms: number;
   waste: CoverageWaste[];
+  /** #322: the safe keyword-field tightening, when there is one to show. */
+  keywordFieldStrip?: KeywordFieldStrip;
   topMissingValue?: string;
 };
 
@@ -190,6 +278,32 @@ export type RunAudit = {
   app?: string;
   bundleId?: string;
   liveName?: string;
+  /**
+   * The live version string, when the run's listing read returned one (#326).
+   * Absent = unread. The status bar shows "v—", never a plausible "1.0".
+   */
+  liveVersion?: string;
+  /**
+   * The measured star rating (#326). Each half is independently measured, so a
+   * read average with an unread count is `{ average, count: null }` — never a
+   * fabricated count. Absent when neither half was readable; an unrated app is
+   * absent, never a 0-star app.
+   *
+   * `source` names the App Store surface the pair was read from: the lookup API
+   * wins whenever it read either half, and the public listing page backs up a
+   * lookup that carried no rating at all. The surfaces can disagree, so halves
+   * are never merged across them — a pair always describes ONE surface.
+   */
+  rating?: { average: number | null; count: number | null; source: "lookup" | "storefront" };
+  /**
+   * The app's CATEGORY chart position (#326). `rank: null` means the chart WAS
+   * read and the app is not in it; the field is absent when the chart was never
+   * read (unknown), so the bar falls back to its "#—" placeholder.
+   *
+   * `category` is optional: a genre id we cannot name is NOT a category name,
+   * so it is omitted and the bar renders a bare "#42" rather than "#42 in 6013".
+   */
+  categoryRank?: { rank: number | null; category?: string };
   /** null = couldn't read screenshots (unmeasured, never "zero"). */
   screenshots?: {
     grade: string;
@@ -234,9 +348,13 @@ export type LocalizedDraft = {
 /** POST /runs/:id/localize/approve · DELETE …/:locale — the approved-locale set. */
 export type LocalizeResult = { approved: string[] };
 
-/** POST /runs/:id/asc/push — Apple's verdict, verbatim; never a silent failure. */
+/** POST /runs/:id/asc/push — Apple's verdict, verbatim; never a silent failure.
+ *  name/subtitle and keywords/description live on DIFFERENT ASC resources, so a
+ *  push can land one and be refused on the other: `partialFailure` carries the
+ *  refusal for the fields that did NOT land, while `fieldsPushed` lists those
+ *  that did. Honesty invariant: a refused field is never reported as pushed. */
 export type AscPushResult =
-  | { ok: true; versionId: string; localizationId: string; fieldsPushed: string[] }
+  | { ok: true; versionId: string; localizationId: string; fieldsPushed: string[]; partialFailure?: string }
   | { ok: false; reason: string };
 /** POST /apps/:id/run-asc — the keyed (Mode-A) run. */
 export type RunAscResult = { id: string; status: string; digest: string; ascRead: boolean };
@@ -251,6 +369,62 @@ export type ApproveAllResult = { approved: string[]; approvedCount: number; skip
 /** A watched/suggested competitor. status: "confirmed" feeds runs; "suggested" waits. */
 export type Competitor = { key: string; name: string; source: string; status: string };
 export type CompetitorsResponse = { competitors: Competitor[]; discovered?: number; note?: string };
+
+// ── portfolio screens (#356) — the fleet-wide siblings of the per-app views ───
+
+/**
+ * GET /runs. A run, app-first: `app_name` is REQUIRED because a run id means
+ * nothing on a fleet screen without the app it belongs to.
+ *
+ * `findings_summary` is the same shape `AppListItem` carries. `null` = this run
+ * has no summary (an older trace, or a run path that never computed findings),
+ * and the UI renders NO chip. It is never 0 — a zero would claim "audited, and
+ * nothing was critical", which is a different and unearned statement.
+ *
+ * Ordering is server-side: runs at the human gate lead at ANY age, then
+ * created_at descending.
+ */
+export type PortfolioRunRow = RunRow & {
+  app_id: string;
+  app_name: string;
+  findings_summary: FindingsSummary | null;
+};
+export type PortfolioRunsResponse = { runs: PortfolioRunRow[] };
+
+/**
+ * GET /keywords. One row per keyword × app × STOREFRONT — a rank belongs to one
+ * app in one storefront, so a keyword-only row would have to pick or average,
+ * and either fabricates. `country` names the storefront the rank was read in.
+ */
+export type PortfolioDeltaEntry = DeltaEntry & {
+  app_id: string;
+  app_name: string;
+  /** the storefront the rank was read in (lowercased ISO, e.g. "us", "jp"). */
+  country: string;
+};
+export type PortfolioKeywordsResponse = { entries: PortfolioDeltaEntry[] };
+
+/**
+ * GET /competitors. Grouped by RIVAL, because one rival typically competes with
+ * several of your apps — but watching stays PER-PAIR: `status` and `source` are
+ * facts about (this app, this rival), so confirming a rival for one app never
+ * silently confirms it for another.
+ *
+ * There is deliberately NO `sharedTerms` count. Measuring "how many of this
+ * app's tracked keywords the rival also ranks for" would need rival-vs-our-
+ * keyword rank data that is never persisted (the war room live-fetches it per
+ * request), so the number could only be estimated — and an absent count is
+ * honest where a guessed one is not.
+ */
+export type PortfolioRivalPair = {
+  app_id: string;
+  app_name: string;
+  /** same values as `Competitor.status`. */
+  status: string;
+  source: string;
+};
+export type PortfolioRival = { key: string; name: string; pairs: PortfolioRivalPair[] };
+export type PortfolioCompetitorsResponse = { rivals: PortfolioRival[] };
 
 // ── locale-native keyword ideas (#180 Phase 3) ───────────────────────────────
 /** A keyword term measured from the top apps in a target storefront. */
@@ -472,6 +646,17 @@ export type StoredCredential = {
   createdAt: string;
   lastUsedAt: string | null;
   kekVersion: number;
+  /**
+   * #372: false when the stored key can no longer be DECRYPTED — the row is
+   * present but the key-encryption key it was sealed under is not the one
+   * configured (e.g. CRED_KEK_V1 replaced instead of rotated to V2).
+   *
+   * Optional so an older API response (which omits it) is treated as readable
+   * rather than a fleet of keys silently reading as broken. The UI must withhold
+   * push affordances when it is explicitly false: metadata listing never
+   * decrypts, so without this a dead key looks perfectly healthy.
+   */
+  readable?: boolean;
 };
 
 /** A scoped agent/MCP API key — metadata only; the raw key is never in here. */

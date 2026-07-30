@@ -119,13 +119,79 @@ export function isNavigationRequest(method, pathname, accept = "") {
 }
 
 /**
- * The middleware decision, pure and dependency-free.
- * @param req {{method:string, pathname:string, accept?:string}}
- * @param resolveSurface (pathname) => "web" | "legacy"
- * @returns {"rewrite-web"|"passthrough"} rewrite-web ⇒ serve NEW_APP_ENTRY;
- *          passthrough ⇒ let Pages serve the static asset (legacy or /assets/*).
+ * A request is for a FILE, not a page — so a miss must 404 as a file rather
+ * than be handed the SPA shell (#393).
+ *
+ * Pages' asset store falls back to index.html with a **200** for anything it
+ * cannot find, because the app build ships no 404.html. That turns every
+ * mistyped or missing bundle into a "successful" HTML response — and a 200 is
+ * CACHEABLE. Under `/assets/* → max-age=31536000, immutable` one bad response
+ * is stored as though it were the real bundle: exactly #392, where
+ * app.shipaso.com served a blank page for hours from a cached HTML error that
+ * would not have expired until 2027.
+ *
+ * Deliberately the same shape test as `isNavigationRequest`'s exclusions
+ * (/assets/* prefix, or a last segment containing a dot) rather than a
+ * content-type sniff: the Accept header is exactly what proved unreliable —
+ * Apple's CDN sends none, browsers send `*​/*` for `crossorigin` bundles.
+ *
+ * Extensionless static pages (/auth/m, the Apple association file) do NOT match,
+ * which is correct: they are real files that must be served, and 404ing them
+ * would break sign-in by emailed link and iOS universal links.
  */
-export function serveDecision(req, resolveSurface) {
-  if (!isNavigationRequest(req.method, req.pathname, req.accept)) return "passthrough";
-  return resolveSurface(req.pathname) === "web" ? "rewrite-web" : "passthrough";
+export function isAssetRequest(pathname) {
+  if (pathname.startsWith("/assets/")) return true;
+  const last = pathname.split("/").pop() ?? "";
+  return last.includes(".");
+}
+
+/**
+ * Paths that are STATIC PAGES shipped from the app's public/ directory, not SPA
+ * routes (#356 Phase 3). They are navigation-shaped, so without this the
+ * "every navigation goes to the app" rule would hand them the SPA shell.
+ *
+ *  • `/auth/m` — the magic-link sign-in landing. Deliberately framework-free:
+ *    it runs before any bundle, from an email client, on an unknown device, and
+ *    must NOT auto-redirect (that would consume the magic link before the app
+ *    could hand off). Serving it the SPA shell breaks sign-in by emailed link.
+ *  • `/.well-known/apple-app-site-association` — extensionless, so it looks
+ *    exactly like a page path, and Apple's CDN fetches it with no Accept header
+ *    (or `*​/*`), both of which pass the navigation sniff. Serving it HTML
+ *    breaks iOS universal links.
+ *
+ * Matched EXACTLY, not by prefix, so `/authorize` and `/auth-something` stay
+ * the SPA's.
+ */
+const STATIC_PAGES = new Set(["/auth/m", "/.well-known/apple-app-site-association"]);
+
+export function isStaticPage(pathname) {
+  const p = pathname.replace(/\/+$/, "") || "/";
+  return STATIC_PAGES.has(p);
+}
+
+/**
+ * The middleware decision, pure and dependency-free.
+ *
+ * EVERY navigation goes to the new app (#356 Phase 3): owned routes render
+ * themselves, and anything else renders the app's 404. Previously an unowned
+ * navigation passed through to `dist/index.html` — the LEGACY dashboard — so a
+ * typo or a stale bookmark rendered a whole dashboard shell as though the
+ * navigation had worked. Retiring `cloud/public/` removes that fallback, so the
+ * new app has to answer for these paths or nothing does.
+ *
+ * Only NAVIGATIONS are affected: `isNavigationRequest` already excludes
+ * /assets/*, anything with a file extension, non-GET/HEAD, and non-HTML Accept
+ * headers — so real asset requests still reach the store, and a genuinely
+ * missing FILE still 404s as a file rather than being handed an HTML shell. The
+ * REST API is a separate origin (api.shipaso.com), so nothing here shadows it.
+ *
+ * @param req {{method:string, pathname:string, accept?:string}}
+ * @param _resolveSurface unused since #356 Phase 3; kept so the generated
+ *        middleware and the callers keep a stable signature.
+ * @returns {"rewrite-web"|"passthrough"} rewrite-web ⇒ serve NEW_APP_ENTRY;
+ *          passthrough ⇒ let Pages serve the static asset (/assets/*, files).
+ */
+export function serveDecision(req, _resolveSurface) {
+  if (isStaticPage(req.pathname)) return "passthrough";
+  return isNavigationRequest(req.method, req.pathname, req.accept) ? "rewrite-web" : "passthrough";
 }

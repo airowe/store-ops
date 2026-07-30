@@ -11,7 +11,7 @@ import { View } from "react-native";
 import type { ApiClient } from "../api/client.js";
 import { getLocaleKeywords } from "../api/endpoints.js";
 import type { LocaleKeywordsResult } from "../types/api.js";
-import { palette, spacing } from "../theme/index.js";
+import { spacing, usePalette } from "../theme/index.js";
 import { AppText, Button, Card } from "./primitives.js";
 import { TextField } from "./TextField.js";
 
@@ -37,6 +37,7 @@ function parseSeeds(raw: string): string[] {
 }
 
 export function LocaleKeywordsCard({ client, appId }: { client: ApiClient; appId: string }) {
+  const palette = usePalette();
   const [market, setMarket] = useState("");
   const [seeds, setSeeds] = useState("");
   const [result, setResult] = useState<LocaleKeywordsResult | null>(null);

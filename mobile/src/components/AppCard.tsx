@@ -4,9 +4,9 @@
  * is "—" (never a guessed number), and the findings badge only appears when the
  * server actually returned a summary.
  */
-import React from "react";
+import React, { useMemo } from "react";
 import { Pressable, StyleSheet, View } from "react-native";
-import { palette, radius, spacing } from "../theme/index.js";
+import { radius, spacing, usePalette, type Palette } from "../theme/index.js";
 import { formatRank, humanizeStatus, timeAgo } from "../lib/format.js";
 import type { AppListItem } from "../types/api.js";
 import { AppText, Card } from "./primitives.js";
@@ -20,24 +20,37 @@ export function AppCard({
   now: number;
   onPress: (id: string) => void;
 }) {
+  const palette = usePalette();
+  const styles = useMemo(() => makeStyles(palette), [palette]);
   const rank = app.rank_summary;
   const findings = app.findings_summary;
   return (
     <Pressable accessibilityRole="button" testID={`app-card-${app.id}`} onPress={() => onPress(app.id)}>
       <Card>
         <View style={styles.headerRow}>
-          <AppText kind="lead" numberOfLines={1}>{app.name}</AppText>
+          <View style={styles.iconChip} testID={`app-chip-${app.id}`}>
+            <AppText kind="lead" style={{ color: palette.signal, fontWeight: "700" }}>
+              {(app.name.trim()[0] ?? "·").toUpperCase()}
+            </AppText>
+          </View>
+          <View style={styles.identity}>
+            <AppText kind="lead" numberOfLines={1}>{app.name}</AppText>
+            <AppText kind="dim" numberOfLines={1}>{app.bundle_id}</AppText>
+          </View>
           {app.latest_run ? <StatusBadge status={app.latest_run.status} /> : null}
         </View>
-        <AppText kind="dim" numberOfLines={1}>{app.bundle_id}</AppText>
 
-        <View style={styles.metaRow}>
+        {/* divider row — the keyword and its rank, the two facts worth a glance */}
+        <View style={styles.rankRow}>
           {rank ? (
-            <AppText kind="mono">
-              {rank.lead_keyword}: <AppText kind="mono" style={{ color: palette.signal }}>{formatRank(rank.lead_rank)}</AppText>
-            </AppText>
+            <>
+              <AppText kind="dim" numberOfLines={1} style={{ flex: 1 }}>{rank.lead_keyword}</AppText>
+              <AppText kind="mono" style={{ color: palette.signal, fontWeight: "700" }}>
+                {formatRank(rank.lead_rank)}
+              </AppText>
+            </>
           ) : (
-            <AppText kind="micro">no ranks checked yet</AppText>
+            <AppText kind="micro" style={{ flex: 1 }}>no ranks checked yet</AppText>
           )}
           {app.latest_run ? (
             <AppText kind="micro">{timeAgo(app.latest_run.created_at, now)}</AppText>
@@ -55,6 +68,8 @@ export function AppCard({
 }
 
 function StatusBadge({ status }: { status: string }) {
+  const palette = usePalette();
+  const styles = useMemo(() => makeStyles(palette), [palette]);
   const awaiting = status === "awaiting_approval";
   return (
     <View style={[styles.badge, awaiting ? styles.badgeWarn : styles.badgeDim]}>
@@ -65,10 +80,19 @@ function StatusBadge({ status }: { status: string }) {
   );
 }
 
-const styles = StyleSheet.create({
-  headerRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: spacing.sm },
-  metaRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: spacing.sm, marginTop: spacing.xs },
-  badge: { paddingHorizontal: spacing.sm, paddingVertical: 2, borderRadius: radius.base, maxWidth: 160 },
-  badgeWarn: { backgroundColor: palette.warn },
-  badgeDim: { backgroundColor: palette.panel2, borderColor: palette.line, borderWidth: 1 },
-});
+const makeStyles = (p: Palette) =>
+  StyleSheet.create({
+    headerRow: { flexDirection: "row", alignItems: "center", gap: spacing.md },
+    identity: { flex: 1, minWidth: 0 },
+    iconChip: {
+      width: 42, height: 42, borderRadius: 11, alignItems: "center", justifyContent: "center",
+      backgroundColor: p.signalGlow, borderColor: p.signalDim, borderWidth: 1,
+    },
+    rankRow: {
+      flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: spacing.sm,
+      marginTop: spacing.sm, paddingTop: spacing.sm, borderTopWidth: 1, borderTopColor: p.lineSoft,
+    },
+    badge: { paddingHorizontal: spacing.sm, paddingVertical: 2, borderRadius: radius.base, maxWidth: 160 },
+    badgeWarn: { backgroundColor: p.warn },
+    badgeDim: { backgroundColor: p.panel2, borderColor: p.line, borderWidth: 1 },
+  });

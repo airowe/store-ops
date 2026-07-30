@@ -61,7 +61,7 @@ export function ScreenshotPlanCard({ client, inputs }: { client: ApiClient; inpu
                   <span
                     data-testid={`shot-review-${i}`}
                     className="micro"
-                    style={{ marginLeft: 6, color: "#d97706" }}
+                    style={{ marginLeft: 6, color: "var(--warn)" }}
                   >
                     ⚠ review{s.headlineIssue ? `: ${s.headlineIssue}` : ""}
                   </span>

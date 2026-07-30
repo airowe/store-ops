@@ -33,7 +33,9 @@ describe("<GithubCard />", () => {
   it("configured + not connected: Connect is gated on an installation id + owner/name repo", async () => {
     const { client, post } = makeClient({ appConfigured: true, connected: false, repo: null });
     renderCard(client);
-    await waitFor(() => expect(screen.getByTestId("gh-connect")).toBeDisabled());
+    await waitFor(() => screen.getByTestId("gh-reveal"));
+    fireEvent.click(screen.getByTestId("gh-reveal"));
+    expect(screen.getByTestId("gh-connect")).toBeDisabled();
     fireEvent.change(screen.getByTestId("gh-installation"), { target: { value: "12345" } });
     fireEvent.change(screen.getByTestId("gh-repo"), { target: { value: "not-a-repo" } });
     expect(screen.getByTestId("gh-connect")).toBeDisabled(); // repo must be owner/name
@@ -41,6 +43,28 @@ describe("<GithubCard />", () => {
     expect(screen.getByTestId("gh-connect")).toBeEnabled();
     fireEvent.click(screen.getByTestId("gh-connect"));
     await waitFor(() => expect(post).toHaveBeenCalledWith("/github/connect", { installation_id: "12345", repo: "airowe/store-ops" }));
+  });
+
+  it("status pill tracks the connection: Optional when not connected, Connected when linked", async () => {
+    const { client } = makeClient({ appConfigured: true, connected: false, repo: null });
+    const { unmount } = renderCard(client);
+    await waitFor(() => expect(screen.getByTestId("gh-status-pill")).toHaveTextContent(/Optional/i));
+    expect(screen.getByTestId("gh-status-pill")).not.toHaveClass("is-on");
+    unmount();
+
+    const { client: linked } = makeClient({ appConfigured: true, connected: true, repo: "airowe/store-ops" });
+    renderCard(linked);
+    await waitFor(() => expect(screen.getByTestId("gh-status-pill")).toHaveTextContent(/Connected/i));
+    expect(screen.getByTestId("gh-status-pill")).toHaveClass("is-on");
+  });
+
+  it("unconfigured deployment keeps the row shape with an Optional pill and no action button", async () => {
+    const { client } = makeClient({ appConfigured: false, connected: false, repo: null });
+    renderCard(client);
+    await waitFor(() => expect(screen.getByTestId("gh-unconfigured")).toBeInTheDocument());
+    expect(screen.getByTestId("gh-status-pill")).toHaveTextContent(/Optional/i);
+    expect(screen.queryByTestId("gh-connect")).toBeNull();
+    expect(screen.queryByTestId("gh-reveal")).toBeNull();
   });
 
   it("connected: shows the linked repo and disconnects", async () => {
