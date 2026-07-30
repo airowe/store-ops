@@ -86,7 +86,10 @@ export default function Preview({ client: injected }: { client?: ApiClient } = {
   return (
     <Screen>
       <Stack.Screen options={{ title: "Try it", headerShown: false }} />
-      <AppText kind="title">Try it — free, no signup</AppText>
+      {/* No price language: this screen is captured into an App Store
+          screenshot, and Apple counts "free" as a price reference (2.3.7).
+          "No signup" is friction, not price — it stays. */}
+      <AppText kind="title">Audit any listing — no signup</AppText>
       <AppText kind="dim">
         Audit any live App Store listing on real data. Sign in only when you want to run the fix.
       </AppText>

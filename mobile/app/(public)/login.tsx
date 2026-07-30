@@ -54,7 +54,10 @@ export default function Login() {
           logged-out visitor (and App Review) reaches the real value without a
           sign-in wall — mirrors the web landing. */}
       <Card>
-        <AppText kind="lead">Try it free — no signup</AppText>
+        {/* No price language (Guideline 2.3.7) — see preview.tsx. Worded
+            differently from the body line below so the card does not say
+            "audit any listing" twice. */}
+        <AppText kind="lead">Start with any listing — no signup</AppText>
         <AppText kind="dim">Audit any App Store listing on real keyword data. Sign in only to run the fix.</AppText>
         <Button label="Audit any listing" testID="audit-free" onPress={() => router.push("/(public)/preview")} />
       </Card>
