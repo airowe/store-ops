@@ -35,6 +35,8 @@ import {
   setLastSweepAt,
 } from "../d1.js";
 import { canRunCron } from "../billing.js";
+import { appIsLive } from "../engine/appIsLive.js";
+import { fetchForEnv } from "../fetchAdapter.js";
 import { type DigestAppInput, planDigests } from "../digest.js";
 import { emailSenderForEnv } from "../emailSender.js";
 import { mintUnsubToken, resolveSessionSecret } from "../auth.js";
@@ -60,6 +62,8 @@ export type CronReport = {
   /** #52: apps skipped because their schedule says this hour isn't their slot.
    *  Not listed in perApp (an hourly tick would flood it) — count only. */
   skippedNotDue: number;
+  /** apps skipped because they are not in the App Store — nothing to rank. */
+  skippedNotLive: number;
   perApp: Array<{
     appId: string;
     bundleId: string;
@@ -70,6 +74,8 @@ export type CronReport = {
     skippedTier?: boolean;
     /** true when skipped: owner paused the autonomous sweep (#51). No run, no digest. */
     skippedPaused?: boolean;
+    /** true when skipped: the app is not in the App Store, so there is no rank to read. */
+    skippedNotLive?: boolean;
     reasons: string[];
     error?: string;
   }>;
@@ -90,7 +96,7 @@ export async function runWeeklySweep(
   opts: { enforceSchedule?: boolean; now?: Date } = {},
 ): Promise<CronReport> {
   const apps = await listAllApps(env.DB);
-  const report: CronReport = { appsProcessed: 0, runsOpened: 0, skippedTier: 0, skippedPaused: 0, skippedNotDue: 0, perApp: [] };
+  const report: CronReport = { appsProcessed: 0, runsOpened: 0, skippedTier: 0, skippedPaused: 0, skippedNotDue: 0, skippedNotLive: 0, perApp: [] };
   const now = opts.now ?? new Date();
 
   for (const app of apps) {
@@ -138,6 +144,29 @@ export async function runWeeklySweep(
           skippedOpenRun: false,
           skippedPaused: true,
           reasons: ["skipped — agent paused by owner"],
+        });
+        continue;
+      }
+
+      // IN THE STORE? An app that was never published cannot rank, so sweeping
+      // it produces an empty result indistinguishable from a live app nobody
+      // found — the same "—" for two entirely different facts. Checked against
+      // the public listing (no credentials, works on every tier) and never
+      // stored, because apps launch and get pulled.
+      //
+      // Deliberately AFTER the tier and pause gates: those are free local
+      // reads, and a free-tier app should report as skippedTier rather than
+      // spending a network call to learn something we will not act on.
+      if (!(await appIsLive(fetchForEnv(env), app.bundle_id))) {
+        report.skippedNotLive++;
+        report.perApp.push({
+          appId: app.id,
+          bundleId: app.bundle_id,
+          crossed: false,
+          runId: null,
+          skippedOpenRun: false,
+          skippedNotLive: true,
+          reasons: ["skipped — not in the store, so there is no rank to read"],
         });
         continue;
       }
