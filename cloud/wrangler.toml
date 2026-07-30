@@ -92,6 +92,21 @@ API_ORIGIN = "https://api.shipaso.com"
 # and API (api.shipaso.com) subdomains, with SameSite=None so it rides cross-site
 # fetches. Leave unset for single-origin / local dev (→ host-only, SameSite=Lax).
 COOKIE_DOMAIN = ".shipaso.com"
+# MAGIC_LINK_BASE — the host the sign-in email links to. Must be the host the
+# iOS app declares in `applinks:` (ASSOCIATED_HOST in mobile/app.config.ts), so
+# the link is a UNIVERSAL LINK that opens the app; it falls back to the cookie
+# flow in a browser.
+#
+# A plain public URL — it appears in the email body — so it belongs here in
+# [vars] and NOT in `wrangler secret`. Declared here it deploys with the worker;
+# as a secret it would be a manual step someone has to remember, which is how it
+# came to be unset in production in the first place.
+#
+# Unset ⇒ links fall back to `${requestOrigin}/auth/callback` on api.shipaso.com,
+# which is NOT an associated domain — so the link opens Safari and stays there.
+# That is exactly what App Review hit: "The sign in link does not link user back
+# to the app" (Guideline 2.1(a), submission a64749cd, 2026-07-29).
+MAGIC_LINK_BASE = "https://shipaso.com"
 # ASC_WRITE_ENABLED — opt-in direct App Store Connect writes (#11/#179): the
 # approve → push routes (metadata, create-version, per-locale). Off/unset →
 # those routes 403 and the credential-free Fastlane handoff is the only path.
