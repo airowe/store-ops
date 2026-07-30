@@ -10,7 +10,6 @@ import type {
   AppList,
   AuthExchangeResult,
   AuthRequestResult,
-  CheckoutResult,
   AnalyticsIngestResult,
   AnalyticsState,
   ApiKeyCreated,
@@ -235,8 +234,10 @@ export const shareCardUrl = (base: string, appId: string, size: "wide" | "square
 
 export const portfolio = (c: ApiClient) => c.get<PortfolioSummary>("/portfolio");
 export const proof = (c: ApiClient) => c.get<ProofAggregate>("/proof");
-export const billingCheckout = (c: ApiClient, tier: string) =>
-  c.post<CheckoutResult>("/billing/checkout", { tier });
+// No billingCheckout here on purpose. The iOS app sells nothing — offering a
+// purchase outside In-App Purchase is what App Review rejected under Guideline
+// 3.1.1 (submission a64749cd). Subscribing happens on the web; the app reads
+// the resulting tier. The endpoint still exists server-side for the dashboard.
 
 // ── settings (comms-prefs Phase 4) ─────────────────────────────────────────────
 // No GET helper: settings reads the current prefs off the `me` payload and
