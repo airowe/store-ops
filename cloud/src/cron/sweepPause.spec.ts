@@ -42,7 +42,8 @@ vi.mock("../d1.js", () => ({
 vi.mock("../engine/index.js", () => ({ runAgent: (input: unknown) => runAgent(input) }));
 vi.mock("../api/runConfig.js", () => ({ buildAppInput: vi.fn(async () => ({})), descriptionFromTrace: () => undefined }));
 vi.mock("../api/aiReasoner.js", () => ({ reasonerForEnv: () => null }));
-vi.mock("../fetchAdapter.js", () => ({ fetchForEnv: () => fetch }));
+import { liveLookupFetch } from "./testLiveLookup.js";
+vi.mock("../fetchAdapter.js", () => ({ fetchForEnv: () => liveLookupFetch() }));
 vi.mock("../emailSender.js", () => ({ emailSenderForEnv: () => ({ send: (msg: unknown) => send(msg) }) }));
 
 import { runWeeklySweep, sendWeeklyDigests } from "./scheduled.js";
@@ -128,6 +129,7 @@ describe("sendWeeklyDigests — suppresses paused targets", () => {
       skippedTier: 0,
       skippedPaused: 1,
     skippedNotDue: 0,
+    skippedNotLive: 0,
       perApp: [
         {
           appId: "app-1",

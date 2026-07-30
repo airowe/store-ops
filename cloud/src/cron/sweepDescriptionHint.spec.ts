@@ -39,7 +39,8 @@ vi.mock("../api/runConfig.js", async (importOriginal) => ({
   buildAppInput: (...a: unknown[]) => buildAppInput(...a),
 }));
 vi.mock("../api/aiReasoner.js", () => ({ reasonerForEnv: () => null }));
-vi.mock("../fetchAdapter.js", () => ({ fetchForEnv: () => fetch }));
+import { liveLookupFetch } from "./testLiveLookup.js";
+vi.mock("../fetchAdapter.js", () => ({ fetchForEnv: () => liveLookupFetch() }));
 vi.mock("../emailSender.js", () => ({ emailSenderForEnv: () => ({ send: async () => undefined }) }));
 vi.mock("../push.js", () => ({ notifyRunAwaitingApproval: async () => undefined }));
 
