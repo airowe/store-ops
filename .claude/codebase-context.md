@@ -107,6 +107,15 @@ Pages projects.
   Overwriting orphans every stored credential — see `docs/prd/credential-storage/00-design.md`.
 - **Check secrets by name**: `npx wrangler secret list | grep CRED_KEK`. The
   bare list is long enough to scroll past, which is how an incident started.
+- **The iOS app is built with FASTLANE, not EAS.** `mobile/eas.json` exists and
+  `eas whoami` succeeds, so `eas build` looks like the path — it is not. The
+  real pipeline is `mobile/fastlane/Fastfile` (#247):
+  `bundle exec fastlane build` (expo prebuild → pod install → match signing →
+  `build_app` → `mobile/fastlane/builds/ShipASO.ipa`) then
+  `bundle exec fastlane upload` (`upload_to_testflight`, and deliberately **no**
+  review submit). Build numbers are minute-stamped `%Y%m%d%H%M`, chosen to avoid
+  colliding with the leftover EAS-era remote numbers. Signing is `match`
+  (readonly) with API-key auth, so no 2FA prompt.
 - **Stale docs beat stale code.** Several modules have described work as
   unbuilt long after it shipped. Verify against the source before trusting a
   comment, an issue, or this file.
