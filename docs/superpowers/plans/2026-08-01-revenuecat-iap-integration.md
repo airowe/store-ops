@@ -68,10 +68,12 @@ Mobile (Expo 57 / RN 0.86)                         Cloudflare Worker + D1
 - [ ] **B3.** Build `Paywall.tsx` (offerings → purchase → success/error/restore) with tests mocking the SDK. Copy depends on D1/D2.
 - [ ] **B4.** Replace the `portfolio.tsx` "sell nothing" gate and the `localization-locked` card with paywall CTAs; add Restore Purchases to `settings.tsx`. Keep honesty invariants green.
 
-### Workstream C — Cloud entitlement sync
-- [ ] **C1.** D1 migration: add `revenuecat_app_user_id`, `iap_product_id`, `iap_period_end`; extend the users column list + `setTier` writer.
-- [ ] **C2.** `revenuecatWebhook.ts`: verify auth, dedup event id, map `INITIAL_PURCHASE`/`RENEWAL`/`CANCELLATION`/`EXPIRATION` + product → `Tier` via new `tierForIapProduct`, call `setTier`. Route it in `index.ts`. Tests mirror `webhookReceiver.spec.ts`.
-- [ ] **C3.** Implement the D2 effective-tier resolution (highest active tier across Stripe + RevenueCat) and test the both-sources case.
+### Workstream C — Cloud entitlement sync ✅ (this branch)
+- [x] **C1.** D1 migration `0012_revenuecat_iap.sql`: adds `stripe_tier`, `iap_tier`, `iap_status`, `iap_product_id`, `iap_period_end`, `revenuecat_app_user_id` (migration-only, kept out of `USER_COLS` per the repo rule) + backfills `stripe_tier = tier`; `setTier` extended with the IAP/source writers.
+- [x] **C2.** `revenuecatWebhook` handler in `api/index.ts` (+ `revenuecatOutcome` pure decision in `billing.ts`): constant-time Authorization check, `app_user_id` → user (no customer map), map product → `Tier` via `tierForIapProduct`, `setTier` + recompute. Routed at `POST /billing/revenuecat`. Tested in `api/revenuecatWebhook.spec.ts`.
+- [x] **C3.** Effective-tier resolution (`effectiveTier` + `recomputeEffectiveTier`, highest active tier wins) wired into BOTH the Stripe and RevenueCat webhook paths. Reconciliation + both-sources cases tested in `d1.revenuecatIap.spec.ts`; pure logic in `billing.spec.ts`. Full cloud suite green (2355 passing).
+
+> Note (follow-up): surface `REVENUECAT_WEBHOOK_AUTH` in `readiness.ts` alongside `STRIPE_WEBHOOK_SECRET` so an operator sees when the IAP webhook is unconfigured.
 
 ### Workstream D — Resubmit
 - [ ] **D1.** Ensure the paywall is reachable by App Review (sandbox account note); update screenshots if the paywall is shown.

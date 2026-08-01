@@ -189,6 +189,7 @@ import {
   setSchedule,
   setThresholds,
   setTier,
+  recomputeEffectiveTier,
   unsubscribeSubscriber,
   updateRunCopy,
   upsertCompetitor,
@@ -213,6 +214,7 @@ import {
   verifyUnsubToken,
   verifyListUnsubToken,
   verifySessionToken,
+  constantTimeEqual,
 } from "../auth.js";
 import { emailSenderForEnv } from "../emailSender.js";
 import { rankDeltasView } from "../digest.js";
@@ -226,6 +228,8 @@ import {
   createCheckoutSession,
   dunningEmail,
   dunningOutcome,
+  type RevenuecatProductEnv,
+  revenuecatOutcome,
   type StripePriceEnv,
   tierForPriceId,
   verifyStripeSignature,
@@ -4548,13 +4552,16 @@ async function billingWebhook(req: Request, env: Env, origin: string | null): Pr
     if (customer) {
       const u = await getUserByStripeCustomer(env.DB, customer);
       if (u) {
+        // Write the STRIPE source tier (not `tier` directly) then recompute the
+        // effective tier — a user may also hold an IAP sub (highest active wins).
         await setTier(env.DB, {
           userId: u.id,
-          ...(tier ? { tier } : {}),
+          ...(tier ? { stripeTier: tier } : {}),
           ...(obj.status ? { status: obj.status } : {}),
           ...(obj.id ? { stripeSubscriptionId: obj.id } : {}),
           currentPeriodEnd: isoFromUnix(obj.current_period_end),
         });
+        await recomputeEffectiveTier(env.DB, u.id);
       }
     }
   } else if (event.type === "customer.subscription.deleted") {
@@ -4562,13 +4569,16 @@ async function billingWebhook(req: Request, env: Env, origin: string | null): Pr
     if (customer) {
       const u = await getUserByStripeCustomer(env.DB, customer);
       if (u) {
+        // The web sub ended: the Stripe source now grants nothing. Recompute so
+        // an active IAP sub (if any) still keeps the user on its tier.
         await setTier(env.DB, {
           userId: u.id,
-          tier: "free",
+          stripeTier: "free",
           status: "canceled",
           stripeSubscriptionId: null,
           currentPeriodEnd: null,
         });
+        await recomputeEffectiveTier(env.DB, u.id);
       }
     }
   } else if (
@@ -4598,6 +4608,67 @@ async function billingWebhook(req: Request, env: Env, origin: string | null): Pr
         }
       }
     }
+  }
+
+  return json({ received: true }, 200, origin, env);
+}
+
+function rcProductEnv(env: Env): RevenuecatProductEnv {
+  const products: RevenuecatProductEnv = {};
+  if (env.REVENUECAT_PRODUCT_INDIE !== undefined)
+    products.REVENUECAT_PRODUCT_INDIE = env.REVENUECAT_PRODUCT_INDIE;
+  if (env.REVENUECAT_PRODUCT_STARTUP !== undefined)
+    products.REVENUECAT_PRODUCT_STARTUP = env.REVENUECAT_PRODUCT_STARTUP;
+  if (env.REVENUECAT_PRODUCT_SCALE !== undefined)
+    products.REVENUECAT_PRODUCT_SCALE = env.REVENUECAT_PRODUCT_SCALE;
+  return products;
+}
+
+/**
+ * POST /billing/revenuecat — apply a RevenueCat (in-app purchase) event to the
+ * user's IAP source tier, then recompute the effective tier. Mirrors the Stripe
+ * webhook, with two differences:
+ *   - Auth is a shared secret in the `Authorization` header (constant-time
+ *     compared), the value configured in the RevenueCat dashboard — RC does not
+ *     HMAC-sign the body the way Stripe does.
+ *   - `app_user_id` IS our user id (the app calls Purchases.logIn(userId)), so we
+ *     resolve the user directly — no customer-map lookup.
+ * The pure `revenuecatOutcome` decides what to persist; unknown/unmappable events
+ * are acknowledged (200) and ignored so RevenueCat doesn't retry them forever.
+ */
+async function revenuecatWebhook(req: Request, env: Env, origin: string | null): Promise<Response> {
+  const secret = env.REVENUECAT_WEBHOOK_AUTH;
+  if (!secret) return json({ error: "webhook not configured" }, 503, origin, env);
+
+  const header = req.headers.get("Authorization");
+  if (!header || !constantTimeEqual(header, secret)) {
+    return json({ error: "invalid signature" }, 401, origin, env);
+  }
+
+  const raw = await req.text();
+  let evt: unknown;
+  try {
+    evt = JSON.parse(raw);
+  } catch {
+    return json({ error: "invalid body" }, 400, origin, env);
+  }
+
+  const outcome = revenuecatOutcome(evt as Parameters<typeof revenuecatOutcome>[0], rcProductEnv(env));
+  if (!outcome) return json({ received: true }, 200, origin, env);
+
+  // app_user_id == our user id (set via Purchases.logIn). An anonymous or unknown
+  // id (a purchase before sign-in) has no local user — acknowledge and move on.
+  const user = await getUser(env.DB, outcome.appUserId);
+  if (user) {
+    await setTier(env.DB, {
+      userId: user.id,
+      revenuecatAppUserId: outcome.appUserId,
+      ...(outcome.iapTier !== undefined ? { iapTier: outcome.iapTier } : {}),
+      ...(outcome.iapStatus !== undefined ? { iapStatus: outcome.iapStatus } : {}),
+      ...(outcome.iapProductId !== undefined ? { iapProductId: outcome.iapProductId } : {}),
+      ...(outcome.iapPeriodEnd !== undefined ? { iapPeriodEnd: outcome.iapPeriodEnd } : {}),
+    });
+    await recomputeEffectiveTier(env.DB, user.id);
   }
 
   return json({ received: true }, 200, origin, env);
@@ -4673,6 +4744,16 @@ export async function handleApi(req: Request, env: Env, ctx?: ExecutionContext):
       method === "POST"
     ) {
       return billingWebhook(req, env, origin);
+    }
+    // RevenueCat calls this server-to-server with NO cookie — auth is the shared
+    // secret in the Authorization header (verified inside revenuecatWebhook).
+    if (
+      seg[0] === "billing" &&
+      seg[1] === "revenuecat" &&
+      seg.length === 2 &&
+      method === "POST"
+    ) {
+      return revenuecatWebhook(req, env, origin);
     }
     // Apple calls this server-to-server with NO cookie — auth is the HMAC
     // signature over the raw body (verified inside handleWebhookReceive).

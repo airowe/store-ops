@@ -46,6 +46,7 @@ import {
   type VaultContext,
 } from "./crypto/credentialVault.js";
 import { currentKek, kekForVersion } from "./credentialStore.js";
+import { effectiveTier } from "./billing.js";
 import type { Env } from "./index.js";
 
 // ── Row types (mirror schema.sql) ────────────────────────────────────────────
@@ -275,6 +276,12 @@ const now = (): string => new Date().toISOString().replace("T", " ").slice(0, 19
 
 // ── users ────────────────────────────────────────────────────────────────────
 
+// NOTE: the migration-0012 columns (stripe_tier, iap_tier, iap_status,
+// iap_product_id, iap_period_end, revenuecat_app_user_id) are deliberately NOT in
+// USER_COLS — like `asc_write_opt_in` (0011), a migration-only column stays out of
+// the shared SELECT so a schema.sql-only test DB (and any not-yet-migrated read)
+// doesn't 'no such column'. They're written by setTier's targeted UPDATE and read
+// by recomputeEffectiveTier's own SELECT.
 const USER_COLS =
   "id, email, created_at, tier, status, stripe_customer_id, stripe_subscription_id, current_period_end, github_installation_id, github_repo, agent_paused, rlhf_opt_out, rank_cadence, email_digest, push_run_ready";
 
@@ -389,6 +396,15 @@ export async function setTier(
     stripeCustomerId?: string | null;
     stripeSubscriptionId?: string | null;
     currentPeriodEnd?: string | null;
+    /** Tier granted by the Stripe (web) source. Prefer this over `tier` for the
+     *  Stripe webhook — `tier` is now the materialized effective value that
+     *  `recomputeEffectiveTier` derives from `stripe_tier` + `iap_tier`. */
+    stripeTier?: Tier;
+    iapTier?: Tier | null;
+    iapStatus?: string | null;
+    iapProductId?: string | null;
+    iapPeriodEnd?: string | null;
+    revenuecatAppUserId?: string | null;
   },
 ): Promise<void> {
   const sets: string[] = [];
@@ -413,12 +429,56 @@ export async function setTier(
     sets.push("current_period_end = ?");
     binds.push(args.currentPeriodEnd);
   }
+  if (args.stripeTier !== undefined) {
+    sets.push("stripe_tier = ?");
+    binds.push(args.stripeTier);
+  }
+  if (args.iapTier !== undefined) {
+    sets.push("iap_tier = ?");
+    binds.push(args.iapTier);
+  }
+  if (args.iapStatus !== undefined) {
+    sets.push("iap_status = ?");
+    binds.push(args.iapStatus);
+  }
+  if (args.iapProductId !== undefined) {
+    sets.push("iap_product_id = ?");
+    binds.push(args.iapProductId);
+  }
+  if (args.iapPeriodEnd !== undefined) {
+    sets.push("iap_period_end = ?");
+    binds.push(args.iapPeriodEnd);
+  }
+  if (args.revenuecatAppUserId !== undefined) {
+    sets.push("revenuecat_app_user_id = ?");
+    binds.push(args.revenuecatAppUserId);
+  }
   if (sets.length === 0) return;
   binds.push(args.userId);
   await db
     .prepare(`UPDATE users SET ${sets.join(", ")} WHERE id = ?`)
     .bind(...binds)
     .run();
+}
+
+/**
+ * Recompute and persist a user's effective `tier` — the highest active of their
+ * Stripe (web) and RevenueCat (IAP) source tiers (policy: highest active tier
+ * wins). Call after either billing webhook mutates a source. A no-op when the
+ * effective tier is unchanged. Returns the effective tier.
+ */
+export async function recomputeEffectiveTier(db: D1Database, userId: string): Promise<Tier> {
+  // Dedicated SELECT (not USER_COLS): the source columns are migration-0012-only.
+  const row = await db
+    .prepare("SELECT tier, stripe_tier, iap_tier FROM users WHERE id = ?")
+    .bind(userId)
+    .first<{ tier: Tier; stripe_tier: Tier | null; iap_tier: Tier | null }>();
+  if (!row) return "free";
+  const eff = effectiveTier(row.stripe_tier, row.iap_tier);
+  if (eff !== row.tier) {
+    await db.prepare("UPDATE users SET tier = ? WHERE id = ?").bind(eff, userId).run();
+  }
+  return eff;
 }
 
 /**
