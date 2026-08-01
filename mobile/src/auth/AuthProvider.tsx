@@ -15,6 +15,12 @@ import * as Linking from "expo-linking";
 import { createApiClient, type ApiClient } from "../api/client.js";
 import { authRequest } from "../api/endpoints.js";
 import { apiBase } from "../lib/config.js";
+import {
+  configurePurchases,
+  loginPurchases,
+  logoutPurchases,
+  onCustomerInfoUpdate,
+} from "../lib/purchases.js";
 import type { Me } from "../types/api.js";
 import * as session from "./session.js";
 
@@ -116,6 +122,7 @@ export function AuthProvider({
       refresh,
       signOut: async () => {
         await session.signOut();
+        await logoutPurchases();
         setMe(null);
         setStatus("unauthed");
       },
@@ -127,6 +134,24 @@ export function AuthProvider({
   useEffect(() => {
     void refresh();
   }, [refresh]);
+
+  // Link the RevenueCat (IAP) identity once we know the user id: configure the
+  // SDK, alias its appUserID to our user id (so the IAP webhook's app_user_id
+  // resolves to this user), and refresh `me` whenever the entitlement changes
+  // (purchase/renewal/expiry) so the tier unlocks. All no-ops until RevenueCat is
+  // provisioned (no API key), so this is safe before Workstream A.
+  const purchasesListenerBound = useRef(false);
+  useEffect(() => {
+    if (status !== "authed" || !me?.id) return;
+    configurePurchases(me.id);
+    void loginPurchases(me.id);
+    if (!purchasesListenerBound.current) {
+      purchasesListenerBound.current = true;
+      onCustomerInfoUpdate(() => {
+        void refresh();
+      });
+    }
+  }, [status, me?.id, refresh]);
 
   // Capture a magic-link token from the launch URL + subsequent deep links.
   useEffect(() => {

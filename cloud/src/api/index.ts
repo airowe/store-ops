@@ -968,7 +968,12 @@ async function authMe(req: Request, env: Env, origin: string | null): Promise<Re
         {
           authed: true,
           via: "session",
+          // `id` + `tier` power the mobile IAP client: the app sets `id` as the
+          // RevenueCat appUserID (the webhook resolves app_user_id → this id) and
+          // reads `tier` to gate features + show the paywall's current-plan state.
+          id: user.id,
           email: user.email,
+          tier: user.tier,
           paused: user.agent_paused,
           rlhf_opt_out: user.rlhf_opt_out === 1,
           rank_cadence: user.rank_cadence,
@@ -989,7 +994,9 @@ async function authMe(req: Request, env: Env, origin: string | null): Promise<Re
         {
           authed: true,
           via: "demo",
+          id: user.id,
           email,
+          tier: user.tier,
           paused: user.agent_paused,
           rlhf_opt_out: user.rlhf_opt_out === 1,
           rank_cadence: user.rank_cadence,
