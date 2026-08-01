@@ -97,6 +97,139 @@ export function tierForPriceId(priceId: string, prices: StripePriceEnv): Tier | 
   return null;
 }
 
+// ── effective tier across payment sources (Stripe web + RevenueCat IAP) ───────────
+//
+// A user can hold BOTH a web (Stripe) subscription and an in-app (RevenueCat)
+// subscription. Policy (decided 2026-08-01): the HIGHEST active tier wins. Each
+// source records the tier it currently grants ('free' when its sub ends); the
+// effective tier every gate reads is the higher-ranked of the two. No status
+// coupling is needed here — each webhook path sets ITS OWN source tier to 'free'
+// when that subscription cancels/expires, so a paid source tier always means active.
+
+const TIER_RANK: Record<Tier, number> = { free: 0, indie: 1, startup: 2, scale: 3 };
+
+/** Numeric rank for ordering tiers (free < indie < startup < scale). */
+export function tierRank(tier: Tier): number {
+  return TIER_RANK[tier];
+}
+
+/**
+ * The effective tier a user gets from their two possible subscription sources:
+ * the higher-ranked of the Stripe-granted and IAP-granted tiers. A `null`/absent
+ * source counts as 'free' (that source grants nothing).
+ */
+export function effectiveTier(
+  stripeTier: Tier | null | undefined,
+  iapTier: Tier | null | undefined,
+): Tier {
+  const a = stripeTier ?? "free";
+  const b = iapTier ?? "free";
+  return tierRank(a) >= tierRank(b) ? a : b;
+}
+
+// ── tier ⇄ RevenueCat product mapping ─────────────────────────────────────────────
+
+export type RevenuecatProductEnv = {
+  REVENUECAT_PRODUCT_INDIE?: string;
+  REVENUECAT_PRODUCT_STARTUP?: string;
+  REVENUECAT_PRODUCT_SCALE?: string;
+};
+
+/**
+ * Reverse map a store product id (App Store / Play) to a tier — the IAP webhook's
+ * tier resolution, mirroring `tierForPriceId` on the Stripe side.
+ */
+export function tierForIapProduct(
+  productId: string,
+  products: RevenuecatProductEnv,
+): Tier | null {
+  if (productId && productId === products.REVENUECAT_PRODUCT_INDIE) return "indie";
+  if (productId && productId === products.REVENUECAT_PRODUCT_STARTUP) return "startup";
+  if (productId && productId === products.REVENUECAT_PRODUCT_SCALE) return "scale";
+  return null;
+}
+
+// ── RevenueCat webhook event → the pure tier/status decision ───────────────────────
+//
+// RevenueCat POSTs `{ event: { type, app_user_id, product_id, expiration_at_ms } }`.
+// The app calls `Purchases.logIn(userId)`, so `app_user_id` IS our user id — no
+// customer-map lookup (unlike Stripe). This is the testable brain; the HTTP handler
+// in api/index.ts does the auth + DB writes. `null` ⇒ acknowledge (200) but ignore.
+
+export type RevenuecatEvent = {
+  event?: {
+    type?: string;
+    app_user_id?: string;
+    product_id?: string;
+    expiration_at_ms?: number | null;
+  };
+};
+
+/**
+ * What the IAP webhook should persist for a user. Omitted fields are left
+ * untouched; `iapTier: 'free'` revokes the IAP grant.
+ */
+export type RevenuecatDecision = {
+  appUserId: string;
+  iapTier?: Tier | null;
+  iapStatus?: string;
+  iapProductId?: string | null;
+  iapPeriodEnd?: string | null;
+};
+
+const RC_GRANT_TYPES = new Set([
+  "INITIAL_PURCHASE",
+  "RENEWAL",
+  "PRODUCT_CHANGE",
+  "UNCANCELLATION",
+  "NON_RENEWING_PURCHASE",
+]);
+
+/** RevenueCat sends `expiration_at_ms` in unix MILLISECONDS (Stripe uses seconds). */
+function isoFromMs(ms: number | null | undefined): string | null {
+  if (typeof ms !== "number" || !Number.isFinite(ms)) return null;
+  return new Date(ms).toISOString();
+}
+
+/**
+ * Decide the IAP state change for a RevenueCat event.
+ *   INITIAL_PURCHASE / RENEWAL / PRODUCT_CHANGE / UNCANCELLATION / NON_RENEWING
+ *                       → grant the product's tier (status 'active')
+ *   CANCELLATION        → keep the tier (access runs to expiration), mark 'cancelled'
+ *   EXPIRATION          → revoke: tier 'free', mark 'expired'
+ *   BILLING_ISSUE       → keep the tier (grace), mark 'billing_issue'
+ *   SUBSCRIPTION_PAUSED → keep the tier (RC fires EXPIRATION when access is truly
+ *                         lost), mark 'paused'
+ *   unknown type / unmappable product → null (acknowledge + ignore)
+ */
+export function revenuecatOutcome(
+  evt: RevenuecatEvent,
+  products: RevenuecatProductEnv,
+): RevenuecatDecision | null {
+  const e = evt.event;
+  if (!e || typeof e.type !== "string" || !e.app_user_id) return null;
+  const appUserId = e.app_user_id;
+  const type = e.type.toUpperCase();
+
+  if (RC_GRANT_TYPES.has(type)) {
+    const tier = e.product_id ? tierForIapProduct(e.product_id, products) : null;
+    if (!tier) return null; // unknown product — acknowledge but change nothing
+    return {
+      appUserId,
+      iapTier: tier,
+      iapStatus: "active",
+      iapProductId: e.product_id ?? null,
+      iapPeriodEnd: isoFromMs(e.expiration_at_ms),
+    };
+  }
+  if (type === "CANCELLATION") return { appUserId, iapStatus: "cancelled" };
+  if (type === "EXPIRATION")
+    return { appUserId, iapTier: "free", iapStatus: "expired", iapPeriodEnd: null };
+  if (type === "BILLING_ISSUE") return { appUserId, iapStatus: "billing_issue" };
+  if (type === "SUBSCRIPTION_PAUSED") return { appUserId, iapStatus: "paused" };
+  return null;
+}
+
 // ── Dunning (failed-payment recovery) — PURE decision + email composer ────────────
 //
 // The webhook I/O lives in api/index.ts; these two functions are the testable

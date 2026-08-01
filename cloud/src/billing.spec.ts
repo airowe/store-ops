@@ -11,10 +11,15 @@ import {
   createCheckoutSession,
   dunningEmail,
   dunningOutcome,
+  effectiveTier,
+  revenuecatOutcome,
   signStripePayload,
   stripeCheckoutParams,
+  tierForIapProduct,
   tierForPriceId,
+  tierRank,
   verifyStripeSignature,
+  type RevenuecatProductEnv,
   type StripePriceEnv,
 } from "./billing.js";
 
@@ -22,6 +27,12 @@ const PRICES: StripePriceEnv = {
   STRIPE_PRICE_INDIE: "price_indie",
   STRIPE_PRICE_STARTUP: "price_startup",
   STRIPE_PRICE_SCALE: "price_scale",
+};
+
+const RC_PRODUCTS: RevenuecatProductEnv = {
+  REVENUECAT_PRODUCT_INDIE: "rc_indie",
+  REVENUECAT_PRODUCT_STARTUP: "rc_startup",
+  REVENUECAT_PRODUCT_SCALE: "rc_scale",
 };
 
 describe("appLimitForTier", () => {
@@ -306,3 +317,120 @@ describe("dunningEmail (recovery email composer, pure)", () => {
 function escapeRegExp(s: string): string {
   return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
+
+// ── RevenueCat (in-app purchase) — the second payment source ───────────────────────
+
+describe("tierRank", () => {
+  it("orders the tiers free < indie < startup < scale", () => {
+    expect(tierRank("free")).toBeLessThan(tierRank("indie"));
+    expect(tierRank("indie")).toBeLessThan(tierRank("startup"));
+    expect(tierRank("startup")).toBeLessThan(tierRank("scale"));
+  });
+});
+
+describe("effectiveTier (highest active tier wins across sources)", () => {
+  it("returns free when neither source grants anything", () => {
+    expect(effectiveTier(null, null)).toBe("free");
+    expect(effectiveTier("free", "free")).toBe("free");
+    expect(effectiveTier(undefined, undefined)).toBe("free");
+  });
+
+  it("returns the only paying source's tier", () => {
+    expect(effectiveTier("startup", null)).toBe("startup");
+    expect(effectiveTier(null, "indie")).toBe("indie");
+    expect(effectiveTier("free", "scale")).toBe("scale");
+  });
+
+  it("picks the HIGHER of the two when both sources are active", () => {
+    // web on indie, IAP on scale → scale
+    expect(effectiveTier("indie", "scale")).toBe("scale");
+    // web on scale, IAP on indie → scale (order-independent)
+    expect(effectiveTier("scale", "indie")).toBe("scale");
+    expect(effectiveTier("startup", "indie")).toBe("startup");
+  });
+
+  it("treats equal tiers as that tier", () => {
+    expect(effectiveTier("startup", "startup")).toBe("startup");
+  });
+});
+
+describe("tierForIapProduct (IAP webhook reverse-map)", () => {
+  it("maps each configured product id back to its tier", () => {
+    expect(tierForIapProduct("rc_indie", RC_PRODUCTS)).toBe("indie");
+    expect(tierForIapProduct("rc_startup", RC_PRODUCTS)).toBe("startup");
+    expect(tierForIapProduct("rc_scale", RC_PRODUCTS)).toBe("scale");
+  });
+  it("returns null for an unknown product id", () => {
+    expect(tierForIapProduct("rc_nope", RC_PRODUCTS)).toBeNull();
+  });
+});
+
+describe("revenuecatOutcome (IAP webhook event → tier/status decision, pure)", () => {
+  const evt = (type: string, extra: Record<string, unknown> = {}) => ({
+    event: { type, app_user_id: "user-1", ...extra },
+  });
+
+  it("grants the product's tier (active) on an initial purchase, with the period end", () => {
+    const ms = 1893456000000; // 2030-01-01T00:00:00Z
+    const out = revenuecatOutcome(
+      evt("INITIAL_PURCHASE", { product_id: "rc_scale", expiration_at_ms: ms }),
+      RC_PRODUCTS,
+    );
+    expect(out).toEqual({
+      appUserId: "user-1",
+      iapTier: "scale",
+      iapStatus: "active",
+      iapProductId: "rc_scale",
+      iapPeriodEnd: new Date(ms).toISOString(),
+    });
+  });
+
+  it("treats RENEWAL / PRODUCT_CHANGE / UNCANCELLATION / NON_RENEWING as grants too", () => {
+    for (const type of ["RENEWAL", "PRODUCT_CHANGE", "UNCANCELLATION", "NON_RENEWING_PURCHASE"]) {
+      const out = revenuecatOutcome(evt(type, { product_id: "rc_indie" }), RC_PRODUCTS);
+      expect(out, type).toMatchObject({ iapTier: "indie", iapStatus: "active" });
+    }
+  });
+
+  it("is case-insensitive on the event type", () => {
+    const out = revenuecatOutcome(evt("initial_purchase", { product_id: "rc_indie" }), RC_PRODUCTS);
+    expect(out).toMatchObject({ iapTier: "indie", iapStatus: "active" });
+  });
+
+  it("keeps the tier on CANCELLATION (access runs to expiration), only marks cancelled", () => {
+    const out = revenuecatOutcome(evt("CANCELLATION", { product_id: "rc_scale" }), RC_PRODUCTS);
+    expect(out).toEqual({ appUserId: "user-1", iapStatus: "cancelled" });
+    expect(out).not.toHaveProperty("iapTier");
+  });
+
+  it("revokes the tier (free) on EXPIRATION", () => {
+    const out = revenuecatOutcome(evt("EXPIRATION"), RC_PRODUCTS);
+    expect(out).toEqual({
+      appUserId: "user-1",
+      iapTier: "free",
+      iapStatus: "expired",
+      iapPeriodEnd: null,
+    });
+  });
+
+  it("keeps the tier on BILLING_ISSUE (grace) and SUBSCRIPTION_PAUSED", () => {
+    expect(revenuecatOutcome(evt("BILLING_ISSUE"), RC_PRODUCTS)).toEqual({
+      appUserId: "user-1",
+      iapStatus: "billing_issue",
+    });
+    expect(revenuecatOutcome(evt("SUBSCRIPTION_PAUSED"), RC_PRODUCTS)).toEqual({
+      appUserId: "user-1",
+      iapStatus: "paused",
+    });
+  });
+
+  it("ignores (null) a grant for an unmappable product — acknowledge but change nothing", () => {
+    expect(revenuecatOutcome(evt("INITIAL_PURCHASE", { product_id: "rc_nope" }), RC_PRODUCTS)).toBeNull();
+  });
+
+  it("ignores (null) unknown event types and malformed events", () => {
+    expect(revenuecatOutcome(evt("TRANSFER"), RC_PRODUCTS)).toBeNull();
+    expect(revenuecatOutcome({ event: { type: "RENEWAL" } }, RC_PRODUCTS)).toBeNull(); // no app_user_id
+    expect(revenuecatOutcome({}, RC_PRODUCTS)).toBeNull();
+  });
+});

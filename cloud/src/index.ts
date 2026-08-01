@@ -55,6 +55,12 @@ export type Env = {
   STRIPE_PRICE_INDIE?: string; // $7/mo
   STRIPE_PRICE_STARTUP?: string; // $19/mo
   STRIPE_PRICE_SCALE?: string; // $65/mo
+  // RevenueCat (in-app purchase) — the second payment source (migration 0012).
+  REVENUECAT_WEBHOOK_AUTH?: string; // exact Authorization header value verifying POST /billing/revenuecat
+  // Store product ids per tier (App Store / Play) → tier map for the IAP webhook.
+  REVENUECAT_PRODUCT_INDIE?: string; // $7/mo
+  REVENUECAT_PRODUCT_STARTUP?: string; // $19/mo
+  REVENUECAT_PRODUCT_SCALE?: string; // $65/mo
   // When set, iTunes calls route through TinyFish Fetch (clean egress) to dodge
   // Apple's 403 on Cloudflare datacenter IPs. Unset → direct fetch (local/dev).
   TINYFISH_API_KEY?: string;
