@@ -6,9 +6,32 @@ read the rank back.**
 
 This file is the front door for coding agents. It is deliberately not
 Claude-specific: the 29 skills in `skills/` are plain Markdown instructions over
-plain CLI tools, and the engine in `lib/` is **standard-library Python with no
-third-party dependencies**. Any agent that can read a file and run a command can
-drive this repo.
+plain CLI tools, and the engine in `lib/` is **standard-library Python** for the
+whole audit → research → optimize → verify loop. Any agent that can read a file
+and run a command can drive this repo.
+
+Two skills reach beyond the stdlib, and only for image work: screenshot scoring
+(`lib/aso_screenshot_score.py`) and screenshot rendering
+(`lib/render_localized_shots.py`) need **Pillow**, and the orchestrator reads a
+YAML config if **PyYAML** is present. All three are lazy imports behind
+`try/except ImportError` — absent, those paths degrade or skip; nothing else in
+the loop is affected, and `lib/run_tests.py` stays green either way.
+
+## Which file your agent reads
+
+Same content, several front doors — `AGENTS.md` is the source of truth and the
+rest point at it:
+
+| Agent | Reads |
+|---|---|
+| Codex, Amp, Jules, Cursor (2025+), most others | `AGENTS.md` natively |
+| Claude Code | `CLAUDE.md` → defers here; `.claude-plugin/` installs the skills |
+| Gemini CLI | `GEMINI.md` (symlink to this file) |
+| Cursor (rules) | `.cursor/rules/shipaso.mdc` |
+| GitHub Copilot | `.github/copilot-instructions.md` |
+
+No agent needs a plugin system. Clone the repo, read this file, run the
+commands.
 
 ## Two invariants — these override convenience everywhere
 
