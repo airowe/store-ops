@@ -53,6 +53,29 @@ test("the upload lane uploads but does not submit for review", () => {
 });
 
 /**
+ * Where the .ipa actually lands.
+ *
+ * `output_directory: "./builds"` is relative to fastlane's working directory,
+ * which is `mobile/` — so the artifact is `mobile/builds/ShipASO.ipa`, NOT
+ * `mobile/fastlane/builds/`. The lane's own success message prints the wrong
+ * path, and this doc repeated it until a real build was run and the artifact
+ * was found somewhere else. Anyone looking for the .ipa follows this line.
+ */
+test("the build lane writes the .ipa to mobile/builds/", () => {
+  const src = read("mobile/fastlane/Fastfile");
+  assert.match(
+    src,
+    /output_directory:\s*"\.\/builds"/,
+    'the build lane should keep output_directory: "./builds" (resolved from mobile/) — if this moves, fix the path named in .claude/codebase-context.md too',
+  );
+  assert.doesNotMatch(
+    read(".claude/codebase-context.md"),
+    /mobile\/fastlane\/builds/,
+    "the context names a builds directory that does not exist — the .ipa lands in mobile/builds/, because output_directory is relative to mobile/, not fastlane/",
+  );
+});
+
+/**
  * The trap itself: eas.json exists and will mislead. Keep the correction
  * written down somewhere an agent reads before touching the build.
  */

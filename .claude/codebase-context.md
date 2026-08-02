@@ -111,7 +111,9 @@ Pages projects.
   `eas whoami` succeeds, so `eas build` looks like the path — it is not. The
   real pipeline is `mobile/fastlane/Fastfile` (#247):
   `bundle exec fastlane build` (expo prebuild → pod install → match signing →
-  `build_app` → `mobile/fastlane/builds/ShipASO.ipa`) then
+  `build_app` → **`mobile/builds/ShipASO.ipa`** — the lane's `output_directory:
+  "./builds"` is relative to `mobile/`, not to `fastlane/`, and the lane's own
+  success message misreports this) then
   `bundle exec fastlane upload` (`upload_to_testflight`, and deliberately **no**
   review submit). Build numbers are minute-stamped `%Y%m%d%H%M`, chosen to avoid
   colliding with the leftover EAS-era remote numbers. Signing is `match`
