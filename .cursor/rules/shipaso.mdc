@@ -1,0 +1,28 @@
+---
+description: ShipASO — ASO loop for App Store and Google Play. Read AGENTS.md before working in this repo.
+alwaysApply: true
+---
+
+# ShipASO
+
+Read **`AGENTS.md`** at the repo root first. It is the full agent guide: the
+skills index, the credential rules, and how to run the engine. This file exists
+only to point you there — it is deliberately not a copy, so the two cannot drift
+apart.
+
+Two invariants override convenience everywhere in this codebase:
+
+1. **Measured or nothing.** Every displayed number is measured or absent — `—`,
+   never a placeholder, never `0` standing in for "unknown". A fabricated number
+   is worse than a missing one.
+2. **Approval is the terminus.** Nothing here publishes to a store on its own.
+   Skills draft copy and *print* push commands; a human runs them. Approving is
+   not shipping.
+
+Before any store write, read the "Before any write to a store" section of
+`AGENTS.md`. The short version: ask which API key profile owns the app, and
+never handle `.p8` key material — it is passed by path, never pasted.
+
+The 29 runbooks live in `skills/<name>/SKILL.md`.
+`skills/store-ops/SKILL.md` is the router: it maps a goal to the right skill.
+Read the one you need rather than all of them.
