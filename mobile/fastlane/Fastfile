@@ -9,6 +9,20 @@
 
 default_platform(:ios)
 
+# The one place the .ipa path is written down.
+#
+# `build_app`'s `output_directory: "./builds"` resolves against fastlane's
+# WORKING directory, which is `mobile/` — so the artifact is
+# `mobile/builds/ShipASO.ipa`. It is NOT `mobile/fastlane/builds/`, which is
+# what `__dir__` would give and what the build's own success message used to
+# claim. Both lanes read this rather than each spelling the path out, so they
+# cannot disagree about where the binary is.
+# Anchored to this file's PARENT (mobile/) rather than Dir.pwd, so the path is
+# the same no matter which directory fastlane was invoked from.
+def ipa_path
+  File.expand_path("../builds/ShipASO.ipa", __dir__)
+end
+
 # App Store Connect API key — used for match, gym signing, and uploads.
 def load_api_key
   key_file = File.expand_path("AuthKey_NC235A8728.p8", File.dirname(__FILE__))
@@ -75,12 +89,18 @@ platform :ios do
     # 3b) expo prebuild generates the project with automatic signing and no team,
     #     so archiving fails with "requires a development team". Force MANUAL
     #     signing onto the match-provided profile (same as the sibling apps).
+    # match exports the profile name it just synced; gym needs the SAME name in
+    # `export_options` below, or the archive builds and the export silently
+    # produces no .ipa (fastlane still exits 0).
+    profile_name = ENV["sigh_com.shipaso.app_appstore_profile-name"]
+    UI.user_error!("match did not export a profile name — cannot sign") if profile_name.to_s.empty?
+
     update_code_signing_settings(
       use_automatic_signing: false,
       path: "ios/ShipASO.xcodeproj",
       team_id: "7WWYCV9VT8",
       code_sign_identity: "Apple Distribution",
-      profile_name: ENV["sigh_com.shipaso.app_appstore_profile-name"],
+      profile_name: profile_name,
       targets: ["ShipASO"],
     )
 
@@ -91,7 +111,9 @@ platform :ios do
       xcodeproj: "ios/ShipASO.xcodeproj",
     )
 
-    # 5) Archive + export the signed .ipa.
+    # 5) Archive + export the signed .ipa. `export_options.provisioningProfiles`
+    #    is REQUIRED under manual signing — without it the archive succeeds and
+    #    the export step yields no .ipa while fastlane still reports success.
     build_app(
       workspace: "ios/ShipASO.xcworkspace",
       scheme: "ShipASO",
@@ -99,18 +121,43 @@ platform :ios do
       output_directory: "./builds",
       output_name: "ShipASO.ipa",
       clean: true,
+      export_options: {
+        provisioningProfiles: {
+          "com.shipaso.app" => profile_name,
+        },
+      },
     )
-    UI.success("Built signed .ipa → mobile/fastlane/builds/ShipASO.ipa")
+
+    # Trust the artifact, not the exit code.
+    #
+    # NOTE the path. `output_directory: "./builds"` is relative to fastlane's
+    # WORKING directory (mobile/), not to this file's directory
+    # (mobile/fastlane/). Using __dir__ here checks mobile/fastlane/builds/,
+    # which has never existed — the guard would fail every successful build.
+    ipa = ipa_path
+    UI.user_error!("build_app reported success but produced no .ipa at #{ipa}") unless File.exist?(ipa)
+    UI.success("Built signed .ipa → mobile/builds/ShipASO.ipa")
   end
 
   desc "Upload the built .ipa to App Store Connect / TestFlight (no review submit)"
   lane :upload do
     api_key = load_api_key
+    ipa = ipa_path
+    UI.user_error!("No .ipa at #{ipa} — run `fastlane ios build` first") unless File.exist?(ipa)
     upload_to_testflight(
       api_key: api_key,
       ipa: "./builds/ShipASO.ipa",
       skip_waiting_for_build_processing: true,
     )
     UI.success("Uploaded to App Store Connect. Attach to version 1.0 in ASC when processed.")
+  end
+
+  # The sibling apps (Heathen/Mangia/snagg) ship via a single `beta` lane rather
+  # than build-then-upload, so the binary that was just verified is the exact one
+  # that gets uploaded — no stale .ipa can slip through from an earlier run.
+  desc "Build and upload to TestFlight in one pass (the sibling-app pattern)"
+  lane :beta do
+    build
+    upload
   end
 end
