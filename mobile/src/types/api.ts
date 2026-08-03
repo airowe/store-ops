@@ -30,11 +30,20 @@ export type NotificationPrefs = {
 /** How often the cron snapshots ranks (data collection, NOT email frequency). */
 export type RankCadence = "daily" | "weekly";
 
+/** Subscription tiers (mirrors cloud `Tier`). */
+export type Tier = "free" | "indie" | "startup" | "scale";
+
 export type Me = {
   authed: boolean;
   /** how the caller was identified. "demo" is the X-User-Email stub (dev only). */
   via?: "session" | "demo";
+  /** stable user id — used as the RevenueCat appUserID (the IAP webhook resolves
+   *  app_user_id → this id). Present when authed. */
+  id?: string;
   email?: string;
+  /** the user's effective subscription tier (highest active of web + IAP). Present
+   *  when authed; gates features + drives the paywall's current-plan state. */
+  tier?: Tier;
   /** present when authed (comms-prefs Phase 1 puts these on /auth/me). */
   email_digest?: NotificationPrefs["email_digest"];
   push_run_ready?: boolean;

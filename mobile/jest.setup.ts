@@ -79,3 +79,23 @@ jest.mock("expo-linking", () => ({
   addEventListener: jest.fn(() => ({ remove: jest.fn() })),
   openURL: jest.fn(async () => true),
 }));
+
+// RevenueCat native SDK: a benign default so any transitive import (the purchases
+// wrapper, AuthProvider) stays headless. No entitlements + no offering by default;
+// the wrapper/paywall tests drive behavior by mocking the wrapper or these fns.
+jest.mock("react-native-purchases", () => {
+  const emptyInfo = { entitlements: { active: {}, all: {} } };
+  return {
+    __esModule: true,
+    default: {
+      configure: jest.fn(),
+      logIn: jest.fn(async () => ({ customerInfo: emptyInfo, created: false })),
+      logOut: jest.fn(async () => emptyInfo),
+      getOfferings: jest.fn(async () => ({ current: null, all: {} })),
+      purchasePackage: jest.fn(async () => ({ customerInfo: emptyInfo, productIdentifier: "" })),
+      restorePurchases: jest.fn(async () => emptyInfo),
+      getCustomerInfo: jest.fn(async () => emptyInfo),
+      addCustomerInfoUpdateListener: jest.fn(),
+    },
+  };
+});

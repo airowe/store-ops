@@ -119,6 +119,19 @@ describe("POST /agent/pause | /agent/resume (#51)", () => {
     expect(me).toMatchObject({ authed: true, paused: false });
   });
 
+  // The mobile IAP client reads `id` (→ RevenueCat appUserID; the webhook resolves
+  // app_user_id → this id) and `tier` (→ gating + paywall current-plan state).
+  it("carries the user id + tier for the mobile IAP client", async () => {
+    const env = makeEnv();
+    const me = (await (await handleApi(req("GET", "/auth/me", EMAIL), env)).json()) as {
+      id?: string;
+      tier?: string;
+    };
+    expect(typeof me.id).toBe("string");
+    expect(me.id!.length).toBeGreaterThan(0);
+    expect(me.tier).toBe("free");
+  });
+
   it("is auth-gated — no email yields 401, never a silent pause", async () => {
     const env = makeEnv();
     const res = await handleApi(req("POST", "/agent/pause"), env);

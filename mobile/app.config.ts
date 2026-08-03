@@ -73,6 +73,9 @@ const config: ExpoConfig = {
     "expo-router",
     "expo-secure-store",
     "expo-font",
+    // RevenueCat (in-app purchase) config plugin — links the native SDK at build
+    // time (managed/CNG, so EAS build picks it up; no manual pods).
+    "react-native-purchases",
     ["expo-notifications", { icon: "./assets/notification-icon.png", color: "#34d399" }],
     [
       "expo-splash-screen",
@@ -84,6 +87,13 @@ const config: ExpoConfig = {
     apiBase: API_BASE,
     // @airowe/shipaso on expo.dev (created via `eas init`).
     eas: { projectId: process.env.EAS_PROJECT_ID ?? "8eb364b9-0afc-49af-8393-5feccc7111c3" },
+    // RevenueCat PUBLIC SDK keys per platform (not secrets). Empty until the
+    // RevenueCat project exists (Workstream A) → the paywall shows an
+    // "unavailable" state and the SDK stays unconfigured, rather than crashing.
+    revenueCat: {
+      ios: process.env.REVENUECAT_IOS_KEY ?? "",
+      android: process.env.REVENUECAT_ANDROID_KEY ?? "",
+    },
   },
 };
 
