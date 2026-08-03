@@ -15,9 +15,11 @@
  * only the app-shaped wrapper in `../lib/purchases.js`.
  */
 import React, { useCallback, useEffect, useState } from "react";
-import { ActivityIndicator } from "react-native";
+import { ActivityIndicator, Linking } from "react-native";
 import { AppText, Button, Card } from "./primitives.js";
 import type { Tier } from "../types/api.js";
+import { legalUrls } from "../lib/legalUrls.js";
+import { renewalSentence } from "../lib/subscriptionPeriod.js";
 import {
   fetchOfferingPackages,
   hasActiveIapEntitlement,
@@ -107,17 +109,32 @@ export function Paywall({ tier, onDone }: { tier?: Tier; onDone?: () => void }) 
     );
   }
 
+  const legal = legalUrls();
+
   return (
     <Card>
       <AppText kind="title">Upgrade</AppText>
       {state.packages.map((p) => (
-        <Button
-          key={p.id}
-          testID={`paywall-buy-${p.id}`}
-          label={`${p.title} — ${p.priceString}`}
-          onPress={() => void buy(p.id)}
-          disabled={busy}
-        />
+        <React.Fragment key={p.id}>
+          <Button
+            testID={`paywall-buy-${p.id}`}
+            label={`${p.title} — ${p.priceString}`}
+            onPress={() => void buy(p.id)}
+            disabled={busy}
+          />
+          {/* 3.1.2(c): what the subscriber gets, straight from the store
+              listing — so it cannot drift from the text Apple reviewed. */}
+          {p.description ? (
+            <AppText kind="dim" testID={`paywall-includes-${p.id}`}>
+              {p.description}
+            </AppText>
+          ) : null}
+          {/* Duration, auto-renewal, and where to cancel. The rate clause
+              disappears when the store did not report a period. */}
+          <AppText kind="micro" testID={`paywall-terms-${p.id}`}>
+            {renewalSentence(p.priceString, p.subscriptionPeriod)}
+          </AppText>
+        </React.Fragment>
       ))}
       <Button
         testID="paywall-restore"
@@ -126,6 +143,25 @@ export function Paywall({ tier, onDone }: { tier?: Tier; onDone?: () => void }) 
         onPress={() => void restore()}
         disabled={busy}
       />
+      {/* Apple requires both to be reachable from a screen that sells a
+          subscription. An unset URL renders NO control — a link to a 404 on a
+          purchase screen is its own rejection. */}
+      {legal.terms ? (
+        <Button
+          testID="paywall-terms-link"
+          variant="ghost"
+          label="Terms of Use"
+          onPress={() => void Linking.openURL(legal.terms as string)}
+        />
+      ) : null}
+      {legal.privacy ? (
+        <Button
+          testID="paywall-privacy-link"
+          variant="ghost"
+          label="Privacy Policy"
+          onPress={() => void Linking.openURL(legal.privacy as string)}
+        />
+      ) : null}
       {error ? (
         <AppText kind="dim" testID="paywall-error">
           {error}

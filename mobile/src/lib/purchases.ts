@@ -60,6 +60,21 @@ export type PaywallPackage = {
   priceString: string;
   /** Localized product title. */
   title: string;
+  /**
+   * Localized store description — what the subscriber gets, as configured in
+   * App Store Connect / Play Console. This is the 3.1.2(c) "clearly describe
+   * what the user will get for the price" surface, and it comes from the store
+   * rather than from app copy so it cannot drift from what was reviewed.
+   * Empty when unset.
+   */
+  description: string;
+  /**
+   * ISO 8601 subscription period ("P1M", "P1Y"), or null when the store does
+   * not report one — StoreKit 1 on iOS cannot always determine it and Amazon
+   * never provides it. Required for the 3.1.2(c) duration disclosure, and
+   * deliberately nullable so the paywall omits the clause instead of guessing.
+   */
+  subscriptionPeriod: string | null;
 };
 
 function toPaywallPackage(p: PurchasesPackage): PaywallPackage {
@@ -68,6 +83,8 @@ function toPaywallPackage(p: PurchasesPackage): PaywallPackage {
     productId: p.product.identifier,
     priceString: p.product.priceString,
     title: p.product.title,
+    description: p.product.description ?? "",
+    subscriptionPeriod: p.product.subscriptionPeriod ?? null,
   };
 }
 

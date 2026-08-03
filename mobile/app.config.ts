@@ -73,9 +73,11 @@ const config: ExpoConfig = {
     "expo-router",
     "expo-secure-store",
     "expo-font",
-    // RevenueCat (in-app purchase) config plugin — links the native SDK at build
-    // time (managed/CNG, so EAS build picks it up; no manual pods).
-    "react-native-purchases",
+    // NOTE: react-native-purchases is deliberately NOT listed here. It ships no
+    // `app.plugin.js`, so naming it makes Expo load the package's main entry as
+    // a config plugin and throw `PluginError: Unexpected token 'typeof'` —
+    // `expo config --type prebuild` exits 1, which breaks `fastlane build` at
+    // the prebuild step. The SDK autolinks natively; no plugin entry is needed.
     ["expo-notifications", { icon: "./assets/notification-icon.png", color: "#34d399" }],
     [
       "expo-splash-screen",
@@ -93,6 +95,15 @@ const config: ExpoConfig = {
     revenueCat: {
       ios: process.env.REVENUECAT_IOS_KEY ?? "",
       android: process.env.REVENUECAT_ANDROID_KEY ?? "",
+    },
+    // Terms of Use (EULA) + privacy policy. Apple requires both to be reachable
+    // from a screen that sells a subscription. Empty until the pages are
+    // published — neither URL exists on shipaso.com yet (both 404 today), and
+    // shipping a link to a 404 from a purchase screen is its own rejection, so
+    // the paywall renders no link rather than a broken one. See issue #430.
+    legal: {
+      terms: process.env.LEGAL_TERMS_URL ?? "",
+      privacy: process.env.LEGAL_PRIVACY_URL ?? "",
     },
   },
 };
