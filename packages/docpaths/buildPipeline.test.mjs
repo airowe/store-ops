@@ -76,6 +76,34 @@ test("the build lane writes the .ipa to mobile/builds/", () => {
 });
 
 /**
+ * The Fastfile must not describe the artifact as living under fastlane/.
+ *
+ * A draft of the artifact-existence check used
+ * `File.expand_path("builds/ShipASO.ipa", __dir__)` — `__dir__` is
+ * `mobile/fastlane/`, so it looked for a file in a directory that has never
+ * existed. Being a post-build assertion, it would have failed EVERY successful
+ * build: the exact inverse of the silent-success bug it was written to catch.
+ */
+test("the Fastfile does not look for the .ipa under fastlane/", () => {
+  // Ruby comments stripped: the Fastfile explains this very trap in prose, and
+  // matching raw source flagged the explanation as the violation.
+  const src = read("mobile/fastlane/Fastfile")
+    .split("\n")
+    .filter((l) => !l.trim().startsWith("#"))
+    .join("\n");
+  assert.doesNotMatch(
+    src,
+    /expand_path\(\s*"builds\/[^"]*"\s*,\s*__dir__/,
+    'this resolves to mobile/fastlane/builds/, which does not exist. The .ipa is at mobile/builds/ — anchor to __dir__\'s PARENT: File.expand_path("../builds/ShipASO.ipa", __dir__).',
+  );
+  assert.doesNotMatch(
+    src,
+    /mobile\/fastlane\/builds/,
+    "the Fastfile names mobile/fastlane/builds/ — no such directory; the success message used to claim this and sent people looking in the wrong place",
+  );
+});
+
+/**
  * The trap itself: eas.json exists and will mislead. Keep the correction
  * written down somewhere an agent reads before touching the build.
  */
