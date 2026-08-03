@@ -20,6 +20,22 @@ type Sdk = {
 const emptyInfo = { entitlements: { active: {}, all: {} } };
 const rcPkg = {
   identifier: "scale_monthly",
+  product: {
+    identifier: "com.shipaso.scale.monthly",
+    priceString: "$65.00",
+    title: "Scale",
+    description: "Unlimited apps and weekly autonomous runs.",
+    subscriptionPeriod: "P1M",
+  },
+};
+
+/**
+ * The same package as a store that reports neither a description nor a period.
+ * Not hypothetical: StoreKit 1 on iOS cannot always determine the period, and
+ * Amazon never provides it. The mapper must surface that as absence.
+ */
+const rcPkgNoPeriod = {
+  identifier: "scale_monthly",
   product: { identifier: "com.shipaso.scale.monthly", priceString: "$65.00", title: "Scale" },
 };
 const offeringOf = (pkgs: unknown[]) => ({
@@ -91,8 +107,25 @@ describe("purchases wrapper — configured", () => {
         productId: "com.shipaso.scale.monthly",
         priceString: "$65.00",
         title: "Scale",
+        description: "Unlimited apps and weekly autonomous runs.",
+        subscriptionPeriod: "P1M",
       },
     ]);
+  });
+
+  /**
+   * The paywall's 3.1.2(c) disclosure keys off these two fields. A store that
+   * omits them must yield null/"" so the UI omits the clause — never a
+   * fabricated period beside a real price.
+   */
+  it("maps a missing description/period to absence, not a guess", async () => {
+    const sdk = makeSdk({ getOfferings: jest.fn(async () => offeringOf([rcPkgNoPeriod])) });
+    const w = await loadWrapper("appl_key", sdk);
+    w.configurePurchases("u1");
+    const packages = await w.fetchOfferingPackages();
+    expect(packages).toHaveLength(1);
+    expect(packages[0]?.subscriptionPeriod).toBeNull();
+    expect(packages[0]?.description).toBe("");
   });
 
   it("purchase → 'purchased' on success", async () => {
