@@ -12,13 +12,14 @@ import { warRoom } from "../../../src/api/endpoints.js";
 import { WarRoomGrid } from "../../../src/components/WarRoomGrid.js";
 import { EmptyState } from "../../../src/components/EmptyState.js";
 import { Screen, AppText, Centered } from "../../../src/components/primitives.js";
+import { TierGate } from "../../../src/components/TierGate.js";
 import { ApiError } from "../../../src/api/errors.js";
 import { usePalette } from "../../../src/theme/index.js";
 
 export default function WarRoomScreen() {
   const palette = usePalette();
   const { id } = useLocalSearchParams<{ id: string }>();
-  const { client } = useAuth();
+  const { client, me } = useAuth();
 
   const wr = useQuery({ queryKey: ["war-room", id], queryFn: () => warRoom(client, id!), enabled: !!id });
 
@@ -26,11 +27,27 @@ export default function WarRoomScreen() {
 
   if (wr.isError) {
     const upsell = wr.error instanceof ApiError && wr.error.status === 402;
+    if (upsell) {
+      // Below Scale → offer the upgrade in-app (native IAP) rather than a dead
+      // end. See the note in TierGate for why this is not the 3.1.1 path.
+      return (
+        <>
+          <Stack.Screen options={{ title: "War room", headerShown: true }} />
+          <TierGate
+            feature="War room"
+            requires="scale"
+            {...(me?.tier ? { tier: me.tier } : {})}
+            {...(wr.error instanceof Error ? { detail: wr.error.message } : {})}
+            onUnlocked={() => void wr.refetch()}
+          />
+        </>
+      );
+    }
     return (
       <EmptyState
-        title={upsell ? "War room is a Scale feature" : "Couldn’t load the war room"}
+        title="Couldn’t load the war room"
         detail={wr.error instanceof Error ? wr.error.message : "Try again."}
-        {...(upsell ? {} : { cta: { label: "Retry", onPress: () => void wr.refetch() } })}
+        cta={{ label: "Retry", onPress: () => void wr.refetch() }}
       />
     );
   }

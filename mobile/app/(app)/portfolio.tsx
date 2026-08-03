@@ -2,17 +2,17 @@
  * Portfolio — the Scale-tier roll-up across all apps. Below Scale → a clean 402
  * explanation (never a crash).
  *
- * The app SELLS NOTHING. It used to open the web Stripe checkout in the system
- * browser, which App Review rejected under Guideline 3.1.1 (submission
- * a64749cd, 2026-07-29): paid digital content offered outside In-App Purchase.
- * Apple permits three fixes — implement IAP, use the US External Purchase Link
- * entitlement, or sell nothing in the app (3.1.3(b): an app may ACCESS content
- * acquired elsewhere). We take the third: subscribing happens on the web, and
- * the app reads the resulting tier.
+ * The gate sells through NATIVE IAP. This screen once opened the web Stripe
+ * checkout in the system browser, which App Review rejected under Guideline
+ * 3.1.1 (submission a64749cd, 2026-07-29): paid digital content offered outside
+ * In-App Purchase. The interim fix was to sell nothing and name shipaso.com,
+ * which 3.1.3(b) permits. RevenueCat replaced that: the upgrade now happens
+ * in-app via StoreKit, so `<TierGate>` renders the paywall here.
  *
- * So this screen explains the gate and stops. Do not add an upgrade button —
- * that is precisely what was rejected, and there is a guard for it
- * (packages/docpaths/noIapPurchasePath.test.mjs).
+ * What is still forbidden is the WEB checkout — `billingCheckout`,
+ * `openBrowserAsync(url)`, `ExternalPurchaseLink`. Those are the paths 3.1.1
+ * and 3.1.3 object to, and `packages/docpaths/noIapPurchasePath.test.mjs` still
+ * fails on them. Native IAP is not one of them.
  */
 import React from "react";
 import { ActivityIndicator } from "react-native";
@@ -24,13 +24,14 @@ import { PortfolioRow } from "../../src/components/Portfolio.js";
 import { Grid } from "../../src/components/Grid.js";
 import { EmptyState } from "../../src/components/EmptyState.js";
 import { Screen, AppText, Card, Centered } from "../../src/components/primitives.js";
+import { TierGate } from "../../src/components/TierGate.js";
 import { ApiError } from "../../src/api/errors.js";
 import { useLayout } from "../../src/theme/responsive.js";
 import { usePalette } from "../../src/theme/index.js";
 
 export default function Portfolio() {
   const palette = usePalette();
-  const { client } = useAuth();
+  const { client, me } = useAuth();
   const router = useRouter();
   const { columns } = useLayout();
 
@@ -42,19 +43,18 @@ export default function Portfolio() {
     const upsell = pf.error instanceof ApiError && pf.error.status === 402;
     if (upsell) {
       return (
-        <Screen topInset={false}>
+        <>
           <Stack.Screen options={{ title: "Portfolio", headerShown: true }} />
-          <Card>
-            <AppText kind="title">Portfolio is a Scale feature</AppText>
-            <AppText kind="dim">
-              {pf.error instanceof Error ? pf.error.message : "The fleet roll-up needs the Scale plan."}
-            </AppText>
-            {/* No purchase here — see the note at the top of this file. Naming
-                where plans are managed is allowed (3.1.3(b)); offering to sell
-                is not. */}
-            <AppText kind="dim">Plans are managed at shipaso.com.</AppText>
-          </Card>
-        </Screen>
+          <TierGate
+            feature="Portfolio"
+            requires="scale"
+            {...(me?.tier ? { tier: me.tier } : {})}
+            detail={
+              pf.error instanceof Error ? pf.error.message : "The fleet roll-up needs the Scale plan."
+            }
+            onUnlocked={() => void pf.refetch()}
+          />
+        </>
       );
     }
     return (
