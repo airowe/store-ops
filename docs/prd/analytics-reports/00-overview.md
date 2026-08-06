@@ -129,6 +129,15 @@ storefront-page JSON we already parse, and the public top-charts RSS feed we do
 NOT yet use), and where each honestly substitutes for — or falls short of — the
 keyed data. That map is the cheaper, top-of-funnel complement to this PRD.
 
+## The artifact — see `05-audit-card.md`
+
+The data above is the *input* to a finding; `05-audit-card.md` plans the
+**shareable card** that carries it — the answer to "our audits are better
+analysis than AppKittie's and nobody will ever screenshot one." It consumes
+Phase 1's pending state and Phase 2's download numbers, and it renders `—`
+(never a modeled estimate) until they land. Its metadata + ASO half has no
+blockers and is buildable today.
+
 ## Open questions
 
 1. Where does the Phase-1 "ensure a report request exists" run — on first
