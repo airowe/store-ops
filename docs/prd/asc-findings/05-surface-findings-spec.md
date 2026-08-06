@@ -10,8 +10,8 @@ Legend — severity: `crit`/`warn`/`good`/`info`; impact: `rank`/`conv`/`trust`/
 ## screenshots (`snapshot.screenshots` → existing ShotScore; KEEP)
 | id | trigger | sev | impact | title / fix | slice |
 |----|---------|-----|--------|-------------|-------|
-| `screenshots_grade_low` | grade D/F (real, dataReliable) | crit | conv | "Screenshots are hurting conversion (grade {G})" / "Add 4+ tall-phone screenshots; first 2–3 carry most installs." | launch |
-| `screenshots_thin` | 1–3 iPhone shots | warn | conv | "Only {n} screenshots" / "Use more slots; the first 2–3 convert hardest." | launch |
+| `screenshots_grade_low` | grade D/F (real, dataReliable) | crit | conv | "Screenshots are hurting conversion (grade {G})" / "Add 4+ tall-phone screenshots; first 2–3 are what search shows today." | launch |
+| `screenshots_thin` | 1–3 iPhone shots | warn | conv | "Only {n} screenshots" / "Use more slots; the first 2–3 are what search shows today." | launch |
 | `screenshots_no_ipad` | universal app, 0 iPad | info | conv | "No iPad screenshots" / "Add them if you ship iPad." | ff |
 | `screenshots_unknown` | grade "?" (no key / public-only) | info | conv | "Couldn't read screenshots from public data" / "Connect ASC for a real grade." | launch |
 

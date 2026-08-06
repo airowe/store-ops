@@ -207,7 +207,7 @@ export function shotLevers(s: ShotScore): Lever[] {
     add(
       "count",
       `Add ${GOOD_MIN}+ screenshots`,
-      `An empty deck can't convert. Fill at least ${GOOD_MIN} of your ${MAX_SLOTS} slots — the first ${KEY_SLOTS} carry most installs.`,
+      `An empty deck can't convert. Fill at least ${GOOD_MIN} of your ${MAX_SLOTS} slots — the first ${KEY_SLOTS} are what search shows today.`,
       40,
       true,
     );
@@ -215,7 +215,7 @@ export function shotLevers(s: ShotScore): Lever[] {
     add(
       "count",
       `Fill up to ${GOOD_MIN}–5 slots`,
-      `You're using ${n} of ${MAX_SLOTS} slots — reaching ${GOOD_MIN}–5 jumps the count tier. The first ${KEY_SLOTS} carry most installs.`,
+      `You're using ${n} of ${MAX_SLOTS} slots — reaching ${GOOD_MIN}–5 jumps the count tier. The first ${KEY_SLOTS} are what search shows today.`,
       20,
       true,
     );
@@ -309,7 +309,7 @@ export function score(app: string, listing: Listing): ShotScore {
   } else if (n < GOOD_MIN) {
     findings.push(
       `⚠ Only ${n} iPhone screenshots — add up to ${MAX_SLOTS}; ` +
-        `the first ${KEY_SLOTS} carry most installs.`,
+        `the first ${KEY_SLOTS} are what search shows today.`,
     );
   } else {
     findings.push(`✓ ${n} iPhone screenshots (good — slots well used).`);
@@ -460,7 +460,7 @@ export function scoreScreenshotGroups(
   } else if (primaryCount < GOOD_MIN) {
     findings.push(
       `⚠ Only ${primaryCount} ${label} screenshots — add up to ${MAX_SLOTS}; ` +
-        `the first ${KEY_SLOTS} carry most installs.`,
+        `the first ${KEY_SLOTS} are what search shows today.`,
     );
   } else {
     findings.push(`✓ ${primaryCount} ${label} screenshots (good — slots well used).`);

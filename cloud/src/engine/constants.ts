@@ -80,7 +80,11 @@ export const RETRY_STATUS = new Set([403, 429, 500, 502, 503, 504]);
 export const SCREENSHOT = {
   MAX_SLOTS: 10,
   GOOD_MIN: 4, // below this → warn
-  KEY_SLOTS: 3, // first N carry most installs
+  // The first N are what search shows TODAY. Apple's creative assets (fall 2026)
+  // add a dedicated search-results asset that displaces these in search — so this
+  // is a positional fact, not a causal claim about installs. Mirrored in
+  // lib/aso_screenshot_score.py (KEY_SLOTS); keep both in sync.
+  KEY_SLOTS: 3,
   TALL_RATIO: 2.0, // h/w >= 2.0 → modern tall phone, scores higher
 } as const;
 

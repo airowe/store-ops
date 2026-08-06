@@ -31,10 +31,14 @@ from dataclasses import dataclass, asdict, field
 
 LOOKUP_URL = "https://itunes.apple.com/lookup"
 USER_AGENT = "Mozilla/5.0 (Macintosh; aso-screenshot-score)"
-# Apple allows up to 10 screenshots; the first ~3 carry most of the conversion.
+# Apple allows up to 10 screenshots; the first ~3 are what search surfaces today.
 MAX_SLOTS = 10
 GOOD_MIN = 4          # below this, you're leaving conversion on the table
-KEY_SLOTS = 3         # the first N are what most users see
+# The first N are what search shows TODAY. Apple's creative assets (fall 2026)
+# add a dedicated search-results asset that displaces these in search — so this
+# is a positional fact, not a causal claim about installs. Mirrored in
+# cloud/src/engine/constants.ts (SCREENSHOT.KEY_SLOTS); keep both in sync.
+KEY_SLOTS = 3
 
 
 @dataclass
@@ -119,7 +123,7 @@ def score(app: str, listing: dict, *, fetch: bool = False) -> ShotScore:
         findings.append("✗ No iPhone screenshots — the listing can't convert. Add 4+.")
     elif n < GOOD_MIN:
         findings.append(f"⚠ Only {n} iPhone screenshots — add up to {MAX_SLOTS}; "
-                        f"the first {KEY_SLOTS} carry most installs.")
+                        f"the first {KEY_SLOTS} are what search shows today.")
         pts += 20
     else:
         findings.append(f"✓ {n} iPhone screenshots (good — slots well used).")
