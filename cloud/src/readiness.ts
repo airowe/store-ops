@@ -120,6 +120,37 @@ export function auditReadiness(env: Env): ReadinessReport {
         : `Missing Stripe price id(s): ${missingPrices.join(", ")} — those tiers can't be purchased.`,
   });
 
+  // ── warns: in-app purchase (RevenueCat) ───────────────────────────────────
+  // The IAP webhook (POST /billing/revenuecat) returns 503 when the auth secret
+  // is unset, so a missing value means IAP tier updates silently never apply.
+  checks.push({
+    name: "revenuecat_webhook_auth",
+    ok: isSet(env.REVENUECAT_WEBHOOK_AUTH),
+    severity: "warn",
+    detail: isSet(env.REVENUECAT_WEBHOOK_AUTH)
+      ? "REVENUECAT_WEBHOOK_AUTH is set."
+      : "REVENUECAT_WEBHOOK_AUTH is missing — /billing/revenuecat returns 503, so in-app purchases never update the tier.",
+  });
+
+  const missingRcProducts = (
+    [
+      ["REVENUECAT_PRODUCT_INDIE", env.REVENUECAT_PRODUCT_INDIE],
+      ["REVENUECAT_PRODUCT_STARTUP", env.REVENUECAT_PRODUCT_STARTUP],
+      ["REVENUECAT_PRODUCT_SCALE", env.REVENUECAT_PRODUCT_SCALE],
+    ] as const
+  )
+    .filter(([, value]) => !isSet(value))
+    .map(([name]) => name);
+  checks.push({
+    name: "revenuecat_products",
+    ok: missingRcProducts.length === 0,
+    severity: "warn",
+    detail:
+      missingRcProducts.length === 0
+        ? "All RevenueCat product ids (indie, startup, scale) are set."
+        : `Missing RevenueCat product id(s): ${missingRcProducts.join(", ")} — an IAP event for those tiers can't be mapped, so the purchase won't apply.`,
+  });
+
   // ── warns: egress (TinyFish) ──────────────────────────────────────────────
   checks.push({
     name: "tinyfish_api_key",

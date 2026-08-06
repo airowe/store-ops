@@ -32,6 +32,10 @@ function prodEnv(over: EnvOverrides = {}): Env {
     STRIPE_PRICE_INDIE: "price_indie",
     STRIPE_PRICE_STARTUP: "price_startup",
     STRIPE_PRICE_SCALE: "price_scale",
+    REVENUECAT_WEBHOOK_AUTH: "Bearer rc_secret",
+    REVENUECAT_PRODUCT_INDIE: "rc_indie",
+    REVENUECAT_PRODUCT_STARTUP: "rc_startup",
+    REVENUECAT_PRODUCT_SCALE: "rc_scale",
     TINYFISH_API_KEY: "tf_123",
     RESEND_API_KEY: "re_123",
     RESEND_FROM: "store-ops <login@mail.shipaso.com>",
@@ -133,6 +137,8 @@ describe("auditReadiness — prod missing only warn-level config", () => {
         STRIPE_TEST_KEY: undefined,
         STRIPE_WEBHOOK_SECRET: undefined,
         STRIPE_PRICE_STARTUP: undefined,
+        REVENUECAT_WEBHOOK_AUTH: undefined,
+        REVENUECAT_PRODUCT_SCALE: undefined,
         TINYFISH_API_KEY: undefined,
         RESEND_API_KEY: undefined,
         RESEND_FROM: undefined,
@@ -151,6 +157,8 @@ describe("auditReadiness — prod missing only warn-level config", () => {
         "stripe_secret_key",
         "stripe_webhook_secret",
         "stripe_prices",
+        "revenuecat_webhook_auth",
+        "revenuecat_products",
         "tinyfish_api_key",
         "email_delivery",
         "dashboard_origin",
@@ -173,6 +181,49 @@ describe("auditReadiness — Stripe price completeness", () => {
 
   it("passes only when all three price ids are present", () => {
     expect(check(auditReadiness(prodEnv()), "stripe_prices").ok).toBe(true);
+  });
+});
+
+describe("auditReadiness — RevenueCat (in-app purchase)", () => {
+  it("warns when the IAP webhook auth secret is missing", () => {
+    const report = auditReadiness(prodEnv({ REVENUECAT_WEBHOOK_AUTH: undefined }));
+    const c = check(report, "revenuecat_webhook_auth");
+    expect(c.ok).toBe(false);
+    expect(c.severity).toBe("warn");
+    expect(c.detail).toContain("REVENUECAT_WEBHOOK_AUTH");
+  });
+
+  it("passes when the IAP webhook auth secret is set", () => {
+    expect(check(auditReadiness(prodEnv()), "revenuecat_webhook_auth").ok).toBe(true);
+  });
+
+  it("warns and names any missing RevenueCat product id", () => {
+    const report = auditReadiness(prodEnv({ REVENUECAT_PRODUCT_STARTUP: undefined }));
+    const c = check(report, "revenuecat_products");
+    expect(c.ok).toBe(false);
+    expect(c.severity).toBe("warn");
+    expect(c.detail).toContain("REVENUECAT_PRODUCT_STARTUP");
+  });
+
+  it("passes only when all three product ids are present", () => {
+    expect(check(auditReadiness(prodEnv()), "revenuecat_products").ok).toBe(true);
+  });
+
+  // A missing IAP config must never block the deploy — it's a degraded feature,
+  // not an auth-integrity failure.
+  it("stays ready (warn-only) when all RevenueCat config is absent", () => {
+    const report = auditReadiness(
+      prodEnv({
+        REVENUECAT_WEBHOOK_AUTH: undefined,
+        REVENUECAT_PRODUCT_INDIE: undefined,
+        REVENUECAT_PRODUCT_STARTUP: undefined,
+        REVENUECAT_PRODUCT_SCALE: undefined,
+      }),
+    );
+    expect(report.ready).toBe(true);
+    expect(errorFailures(report)).toHaveLength(0);
+    expect(check(report, "revenuecat_webhook_auth").severity).toBe("warn");
+    expect(check(report, "revenuecat_products").severity).toBe("warn");
   });
 });
 
