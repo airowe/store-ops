@@ -64,6 +64,11 @@ these are ordered strongest-first.
 
 ## 6. Purchases / IAP (review-risk — from STORE.md §3)
 
+> **SUPERSEDED (2026-08).** This describes 0.1.0, which sold nothing in-app.
+> 0.1.1 sells subscriptions **via in-app purchase (RevenueCat)** — use
+> **`resubmit-0.1.1-checklist.md`** for the current IAP steps, App Privacy delta,
+> and review notes. The text below is kept only as 0.1.0 history.
+
 - Purchasing is handled on the **web** (Stripe Checkout in the system browser) —
   **no IAP** in the app. ⚠️ Known review risk: Apple may push back on "digital
   goods." Fallback: gate purchasing entirely off-app and present tier state
