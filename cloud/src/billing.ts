@@ -327,6 +327,12 @@ export async function createCheckoutSession(
   form.set("customer_email", args.customerEmail);
   form.set("line_items[0][price]", priceId);
   form.set("line_items[0][quantity]", "1");
+  // Render the "Add promotion code" field. Stripe defaults this to false, so a
+  // promotion code created in the dashboard/API is silently unredeemable — the
+  // buyer is never offered anywhere to type it. Mutually exclusive with
+  // `discounts` (Stripe rejects a session carrying both), which we never send:
+  // a code the customer enters is the only discount path.
+  form.set("allow_promotion_codes", "true");
 
   const resp = await fetchFn(STRIPE_SESSIONS_URL, {
     method: "POST",
