@@ -195,6 +195,57 @@ describe("createCheckoutSession", () => {
     expect(body).toContain(encodeURIComponent("price_startup"));
   });
 
+  // A promotion code is unredeemable unless the session opts in: Stripe Checkout
+  // defaults `allow_promotion_codes` to false, which renders NO code field at all.
+  // A live 100%-off code (SHIPASOLAUNCH) existed in Stripe while every checkout
+  // silently refused it — the coupon looked created and was in fact unusable.
+  it.each(["indie", "startup", "scale"] as const)(
+    "lets the %s buyer enter a promotion code",
+    async (tier) => {
+      const fetchMock = vi.fn(async (_url: string, _init: RequestInit) => ({
+        ok: true,
+        status: 200,
+        json: async () => ({ url: "https://checkout/x" }),
+        text: async () => "",
+      } as unknown as Response));
+
+      await createCheckoutSession(fetchMock as unknown as typeof fetch, {
+        secretKey: "sk_test_abc",
+        tier,
+        prices: PRICES,
+        customerEmail: "buyer@example.com",
+        successUrl: "https://app/ok",
+        cancelUrl: "https://app/cancel",
+        clientReferenceId: "user-1",
+      });
+
+      const body = new URLSearchParams(String(fetchMock.mock.calls[0]![1].body));
+      expect(body.get("allow_promotion_codes")).toBe("true");
+    },
+  );
+
+  it("never sends `discounts` alongside it — Stripe rejects a session with both", async () => {
+    const fetchMock = vi.fn(async (_url: string, _init: RequestInit) => ({
+      ok: true,
+      status: 200,
+      json: async () => ({ url: "https://checkout/x" }),
+      text: async () => "",
+    } as unknown as Response));
+
+    await createCheckoutSession(fetchMock as unknown as typeof fetch, {
+      secretKey: "sk_test_abc",
+      tier: "indie",
+      prices: PRICES,
+      customerEmail: "buyer@example.com",
+      successUrl: "https://app/ok",
+      cancelUrl: "https://app/cancel",
+      clientReferenceId: "user-1",
+    });
+
+    const body = String(fetchMock.mock.calls[0]![1].body);
+    expect(body).not.toContain("discounts");
+  });
+
   it("throws when Stripe returns a non-2xx", async () => {
     const fetchMock = vi.fn(async () => ({
       ok: false,
