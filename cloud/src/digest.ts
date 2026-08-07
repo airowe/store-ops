@@ -639,6 +639,8 @@ export type DigestAppInput = {
   hasPendingApproval: boolean;
   /** flat RankSnapshotRow[] for this app, as getRankHistory returns it. */
   rankHistory: RankSnapshotRow[];
+  /** optional visual card from the public listing; absent → text-only digest. */
+  card?: DigestCard | undefined;
   /** per-recipient unsubscribe URL (minted by the cron; absent → no footer/headers). */
   unsubscribeUrl?: string | undefined;
 };
@@ -668,6 +670,7 @@ export function planDigests(
       dashboardUrl: opts.dashboardUrl,
       hasPendingApproval: app.hasPendingApproval,
       unsubscribeUrl: app.unsubscribeUrl,
+      card: app.card,
     };
     const mover = digest.topMover ? ` — ${describeEntry(digest.topMover)}` : "";
     const subject = digest.anyMovement

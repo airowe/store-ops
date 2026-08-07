@@ -599,6 +599,43 @@ describe("renderDigestHtml — the card", () => {
     expect(imgs.length).toBeLessThanOrEqual(5);
   });
 
+  it("planDigests threads an app's card into its rendered html", () => {
+    const [msg] = planDigests(
+      [
+        {
+          appId: "a1",
+          appName: "Swoop",
+          email: "dev@example.com",
+          tier: "indie",
+          hasPendingApproval: false,
+          rankHistory: [snap("no login chat", 64, WEEK1), snap("no login chat", 31, WEEK2)],
+          card: { developer: "Swoopchat LLC", iconUrl: "https://cdn/icon.png" },
+        },
+      ],
+      { dashboardUrl },
+    );
+    expect(msg!.html).toContain("Swoopchat LLC");
+    expect(msg!.html).toContain("https://cdn/icon.png");
+  });
+
+  it("planDigests still renders a text-only digest for an app with no card", () => {
+    const [msg] = planDigests(
+      [
+        {
+          appId: "a1",
+          appName: "Swoop",
+          email: "dev@example.com",
+          tier: "indie",
+          hasPendingApproval: false,
+          rankHistory: [snap("no login chat", 64, WEEK1), snap("no login chat", 31, WEEK2)],
+        },
+      ],
+      { dashboardUrl },
+    );
+    expect(msg!.html).not.toContain("<img");
+    expect(msg!.html).toContain("#31");
+  });
+
   it("still frames a first run as a baseline when card data is present", () => {
     const first = buildDigest([snap("irl", 119, WEEK1)], { appName: "Swoop" });
     const html = renderDigestHtml(first, { ...base, card });
