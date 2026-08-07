@@ -220,8 +220,8 @@ schedule.
 | The 29 skills + full loop | ✅ all of it | ✅ same engine |
 | Real volume data | BYO Apple/Google keys | guided setup |
 | Rank tracking | run `aso-rank-check` by hand | **scheduled** weekly + history + delta alerts |
-| Standing autonomy (weekly cron) | ❌ you re-run it | ✅ Autopilot / Fleet |
-| Apps | unlimited (it's local) | 1 (Launch) · 3 (Autopilot) · 50 (Fleet) |
+| Standing autonomy (weekly cron) | ❌ you re-run it | ✅ Indie / Startup / Scale |
+| Apps | unlimited (it's local) | 1 (Free) · 3 (Indie) · 10 (Startup) · 50 (Scale) |
 | Approval gate | you run the push | enforced in code — commands withheld until you approve |
 
 The tiers:
