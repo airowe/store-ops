@@ -486,6 +486,127 @@ describe("renderDigestHtml / renderDigestText — content + CTA", () => {
   });
 });
 
+// ── the card: identity, chips, grades, screenshots ───────────────────────────
+//
+// The digest was text + inline CSS with no images at all. The card adds the
+// visual layer (app icon, chips, grade tiles, screenshot strip) modelled on the
+// app-intelligence cards people actually screenshot — but built ONLY from
+// measured data. AppKittie's equivalent leads with ESTIMATED downloads and
+// revenue; we have neither, and inventing them would break the first invariant.
+// Ours leads with rank + coverage, which are measured.
+//
+// Every card field is optional: absent → that piece is omitted, never a
+// placeholder. Email clients block remote images by default, so nothing the
+// reader NEEDS may live in an image — ranks, grades and chips are text.
+
+describe("renderDigestHtml — the card", () => {
+  const dashboardUrl = "https://app.shipaso.com/dashboard";
+  const base = { appName: "Swoop", dashboardUrl, hasPendingApproval: false };
+
+  function digest() {
+    return buildDigest(
+      [snap("no login chat", 64, WEEK1), snap("no login chat", 31, WEEK2)],
+      { appName: "Swoop" },
+    );
+  }
+
+  const card = {
+    iconUrl: "https://is1-ssl.mzstatic.com/image/thumb/icon.png/256x256bb.jpg",
+    developer: "Swoopchat LLC",
+    version: "1.0.33",
+    category: "Social Networking",
+    price: "Free",
+    rating: { average: 5, count: 2 },
+    grades: [
+      { label: "Screenshots", grade: "B" },
+      { label: "Keywords", grade: "C" },
+      { label: "Description", grade: "D" },
+    ],
+    screenshotUrls: ["https://cdn/1.png", "https://cdn/2.png", "https://cdn/3.png"],
+  };
+
+  it("renders the identity row: icon, developer and version", () => {
+    const html = renderDigestHtml(digest(), { ...base, card });
+    expect(html).toContain(card.iconUrl);
+    expect(html).toContain("Swoopchat LLC");
+    expect(html).toContain("1.0.33");
+  });
+
+  it("renders the metadata chips", () => {
+    const html = renderDigestHtml(digest(), { ...base, card });
+    expect(html).toContain("Social Networking");
+    expect(html).toContain("Free");
+    expect(html).toContain("5.0");
+    expect(html).toContain("(2)");
+  });
+
+  it("renders a tile per audit grade", () => {
+    const html = renderDigestHtml(digest(), { ...base, card });
+    for (const g of card.grades) expect(html).toContain(g.label);
+  });
+
+  it("renders the screenshot strip", () => {
+    const html = renderDigestHtml(digest(), { ...base, card });
+    for (const u of card.screenshotUrls) expect(html).toContain(u);
+  });
+
+  it("gives every image alt text — clients block images by default", () => {
+    const html = renderDigestHtml(digest(), { ...base, card });
+    const imgs = html.match(/<img[^>]*>/g) ?? [];
+    expect(imgs.length).toBeGreaterThan(0);
+    for (const img of imgs) expect(img).toMatch(/alt="[^"]*"/);
+  });
+
+  it("keeps the result readable with every image stripped", () => {
+    const html = renderDigestHtml(digest(), { ...base, card });
+    const noImages = html.replace(/<img[^>]*>/g, "");
+    expect(noImages).toContain("#31");
+    expect(noImages).toContain("no login chat");
+    expect(noImages).toContain(dashboardUrl);
+  });
+
+  it("omits the card entirely when no card data is supplied", () => {
+    const html = renderDigestHtml(digest(), base);
+    expect(html).not.toContain("<img");
+    expect(html).toContain("#31");
+    expect(html).toContain(dashboardUrl);
+  });
+
+  it("omits only the pieces that are missing, never a placeholder", () => {
+    const html = renderDigestHtml(digest(), {
+      ...base,
+      card: { developer: "Swoopchat LLC" },
+    });
+    expect(html).toContain("Swoopchat LLC");
+    expect(html).not.toContain("<img");
+    expect(html).not.toContain("undefined");
+    expect(html).not.toContain("null");
+  });
+
+  it("escapes card values", () => {
+    const html = renderDigestHtml(digest(), {
+      ...base,
+      card: { developer: "<script>x</script>", category: "<b>c</b>" },
+    });
+    expect(html).not.toContain("<script>x</script>");
+    expect(html).not.toContain("<b>c</b>");
+  });
+
+  it("caps the screenshot strip so a 10-shot set can't blow up the email", () => {
+    const many = Array.from({ length: 10 }, (_, i) => `https://cdn/${i}.png`);
+    const html = renderDigestHtml(digest(), { ...base, card: { screenshotUrls: many } });
+    const imgs = html.match(/<img[^>]*>/g) ?? [];
+    expect(imgs.length).toBeLessThanOrEqual(5);
+  });
+
+  it("still frames a first run as a baseline when card data is present", () => {
+    const first = buildDigest([snap("irl", 119, WEEK1)], { appName: "Swoop" });
+    const html = renderDigestHtml(first, { ...base, card });
+    expect(html).not.toContain("▲");
+    expect(html).toContain("Swoopchat LLC");
+  });
+});
+
 // ── first-run baseline: a starting position is NOT a result ───────────────────
 //
 // A first snapshot has no prior, so every ranked keyword classifies as "new".
