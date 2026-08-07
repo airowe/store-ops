@@ -56,6 +56,8 @@ image/video MCP tools — higgsfield, pika, etc. — worth evaluating vs. buildi
 | [`01-fix-this-linkout.md`](./01-fix-this-linkout.md) | A (now) | "Fix this" panels on visual findings: curated tools + the ASO-aware brief |
 | [`02-screenshot-brief.md`](./02-screenshot-brief.md) | A (now) | The generated brief — what to show, per shot, from keywords + audit |
 | [`03-studio-generation.md`](./03-studio-generation.md) | B (later) | The #26 Studio tier — generate screenshots/graphics in-product (evaluate MCP image tools vs. build) |
+| [`04-screenshot-localization.md`](./04-screenshot-localization.md) | A (now) | Localized screenshot rendering + the font-coverage / RTL / reflow review gate |
+| [`05-creative-assets.md`](./05-creative-assets.md) | A (now) + C (gated) | Apple's creative assets + Asset Library (#436): the brief now, the API lane blocked until Apple publishes endpoints |
 
 ## Sequencing recommendation
 **Phase A first (PRD 01 + 02)** — it's nearly free, ships real value on top of

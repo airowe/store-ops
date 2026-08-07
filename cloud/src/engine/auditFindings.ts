@@ -212,7 +212,7 @@ function screenshotFindings(input: AuditFindingsInput): Finding[] {
         title: `Screenshots are hurting conversion (grade ${grade})`,
         detail:
           "Weak screenshots cost installs — they're the first thing a shopper judges.",
-        fix: "Add 4+ tall-phone screenshots; the first 2–3 carry most installs.",
+        fix: "Add 4+ tall-phone screenshots; the first 2–3 are what search shows today.",
         evidence: `grade ${grade}`,
       }),
     );
@@ -227,7 +227,7 @@ function screenshotFindings(input: AuditFindingsInput): Finding[] {
         impact: "conversion",
         title: `Only ${iphone} screenshot${iphone === 1 ? "" : "s"}`,
         detail: "You're leaving conversion on the table by not filling the slots.",
-        fix: "Use more slots; the first 2–3 convert hardest.",
+        fix: "Use more slots; the first 2–3 are what search shows today.",
         evidence: `${iphone} iPhone shots`,
       }),
     );
