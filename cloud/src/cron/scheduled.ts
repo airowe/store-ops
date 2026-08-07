@@ -38,6 +38,7 @@ import { canRunCron } from "../billing.js";
 import { appIsLive } from "../engine/appIsLive.js";
 import { fetchForEnv } from "../fetchAdapter.js";
 import { type DigestAppInput, planDigests } from "../digest.js";
+import { digestCardFor } from "../engine/digestCardSource.js";
 import { emailSenderForEnv } from "../emailSender.js";
 import { mintUnsubToken, resolveSessionSecret } from "../auth.js";
 import type { Env } from "../index.js";
@@ -303,6 +304,11 @@ export async function sendWeeklyDigests(env: Env, report: CronReport): Promise<n
       // opened in a PRIOR week is a 'detected' snapshot, not a pending gate.)
       hasPendingApproval: await hasOpenRun(env.DB, app.id),
       rankHistory: await getRankHistory(env.DB, app.id),
+      // The email's visual card (icon, chips, screenshots) from the app's public
+      // listing — free iTunes Lookup, no credentials, so every tier gets it.
+      // Returns undefined on any failure and the digest sends as text: a
+      // decorative card is never worth losing the rank report.
+      card: await digestCardFor(fetch, app.bundle_id, app.country),
     });
   }
 

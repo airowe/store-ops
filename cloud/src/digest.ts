@@ -60,10 +60,45 @@ export type Digest = {
 
 export type BuildDigestOpts = { appName: string };
 
+/**
+ * The visual layer of the digest: app identity, metadata chips, audit grades and
+ * a screenshot strip — the app-intelligence card shape people screenshot.
+ *
+ * EVERY field is optional and independently omitted when absent. That is the
+ * measured-or-nothing rule in layout form: a missing grade shows no tile, never
+ * a "—" tile pretending to be data. The competitors' equivalent card leads with
+ * ESTIMATED downloads and revenue; we have neither, so ours leads with rank and
+ * coverage, which are measured.
+ *
+ * Images are ENHANCEMENT ONLY. Mail clients block remote images by default, so
+ * the rank, grades and chips are all text — the email must read completely with
+ * every <img> stripped (there is a test pinning exactly that).
+ */
+export type DigestCard = {
+  /** App Store icon URL (public CDN). */
+  iconUrl?: string;
+  developer?: string;
+  version?: string;
+  category?: string;
+  /** Display price, e.g. "Free" or "$4.99". */
+  price?: string;
+  rating?: { average: number; count: number };
+  /** Audit grades to tile, e.g. [{ label: "Screenshots", grade: "B" }]. */
+  grades?: Array<{ label: string; grade: string }>;
+  /** Public screenshot URLs; the strip is capped at MAX_STRIP. */
+  screenshotUrls?: string[];
+};
+
+/** Screenshots shown in the strip. Beyond this the email gets heavy and mail
+ * clients start clipping (Gmail truncates around 102KB). */
+const MAX_STRIP = 5;
+
 export type RenderOpts = {
   appName: string;
   dashboardUrl: string;
   hasPendingApproval: boolean;
+  /** Optional visual layer; omitted entirely when absent (degrades to text). */
+  card?: DigestCard | undefined;
   /**
    * Absolute unsubscribe URL for THIS recipient (comms-prefs Phase 2). Optional:
    * absent when API_ORIGIN is unconfigured — the digest then renders without a
@@ -333,6 +368,86 @@ function coverage(digest: Digest): { ranked: number; total: number; best: Digest
   return { ranked: rankedEntries.length, total: digest.entries.length, best };
 }
 
+// ── card fragments (each returns "" when its data is absent) ─────────────────
+
+const CHIP =
+  "display:inline-block;font:500 11px/1 -apple-system,Segoe UI,Roboto,sans-serif;" +
+  "color:#97a1b6;background:#171c26;border-radius:4px;padding:5px 9px;margin:0 5px 5px 0";
+
+/** Icon + app name + developer/version. */
+function identityRow(appName: string, card: DigestCard): string {
+  const icon = card.iconUrl
+    ? `<img src="${escapeHtml(card.iconUrl)}" width="44" height="44" alt="${appName} app icon" ` +
+      `style="width:44px;height:44px;border-radius:10px;display:block;border:1px solid #222a3b">`
+    : "";
+  const sub = [card.developer, card.version ? `v${card.version}` : ""]
+    .filter(Boolean)
+    .map((s) => escapeHtml(String(s)))
+    .join(" · ");
+  if (!icon && !sub) return "";
+  return (
+    `<table role="presentation" cellpadding="0" cellspacing="0" style="margin:0 0 14px"><tr>` +
+    (icon ? `<td style="padding-right:12px;vertical-align:middle">${icon}</td>` : "") +
+    `<td style="vertical-align:middle">` +
+    `<div style="font:600 16px/1.2 Georgia,serif;color:#eef1f7">${appName}</div>` +
+    (sub
+      ? `<div style="font:13px/1.4 -apple-system,Segoe UI,Roboto,sans-serif;color:#828ca3;margin-top:3px">${sub}</div>`
+      : "") +
+    `</td></tr></table>`
+  );
+}
+
+/** Category / price / rating chips. */
+function chipRow(card: DigestCard): string {
+  const chips: string[] = [];
+  if (card.category) chips.push(escapeHtml(card.category));
+  if (card.price) chips.push(escapeHtml(card.price));
+  if (card.rating) {
+    chips.push(`${card.rating.average.toFixed(1)} ★ (${card.rating.count})`);
+  }
+  if (!chips.length) return "";
+  return `<div style="margin:0 0 16px">${chips
+    .map((c) => `<span style="${CHIP}">${c}</span>`)
+    .join("")}</div>`;
+}
+
+/** One tile per audit grade. */
+function gradeRow(card: DigestCard): string {
+  const grades = card.grades ?? [];
+  if (!grades.length) return "";
+  const cells = grades
+    .map(
+      (g) =>
+        `<td style="padding:10px 8px;background:#171c26;border-radius:6px;text-align:center">` +
+        `<div style="font:500 10px/1 -apple-system,Segoe UI,Roboto,sans-serif;color:#828ca3;` +
+        `letter-spacing:.08em;text-transform:uppercase;margin-bottom:6px">${escapeHtml(g.label)}</div>` +
+        `<div style="font:600 19px/1 Georgia,serif;color:#eef1f7">${escapeHtml(g.grade)}</div></td>`,
+    )
+    .join(`<td style="width:8px"></td>`);
+  return (
+    `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" ` +
+    `style="margin:16px 0 0;table-layout:fixed"><tr>${cells}</tr></table>`
+  );
+}
+
+/** Screenshot strip, capped at MAX_STRIP. */
+function screenshotStrip(appName: string, card: DigestCard): string {
+  const shots = (card.screenshotUrls ?? []).slice(0, MAX_STRIP);
+  if (!shots.length) return "";
+  const cells = shots
+    .map(
+      (u, i) =>
+        `<td style="padding-right:6px"><img src="${escapeHtml(u)}" width="86" ` +
+        `alt="${appName} screenshot ${i + 1}" ` +
+        `style="width:86px;border-radius:6px;display:block;border:1px solid #222a3b"></td>`,
+    )
+    .join("");
+  return (
+    `<table role="presentation" cellpadding="0" cellspacing="0" ` +
+    `style="margin:16px 0 0"><tr>${cells}</tr></table>`
+  );
+}
+
 export function renderDigestText(digest: Digest, opts: RenderOpts): string {
   const lines: string[] = [];
   const moved = movedEntries(digest);
@@ -466,6 +581,14 @@ export function renderDigestHtml(digest: Digest, opts: RenderOpts): string {
     }
   }
 
+  // The optional visual layer. An absent card yields four empty strings, so the
+  // markup below is byte-identical to the text-only digest.
+  const c = opts.card ?? {};
+  const identity = identityRow(appName, c);
+  const chips = chipRow(c);
+  const grades = gradeRow(c);
+  const strip = screenshotStrip(appName, c);
+
   // "See the full trend" is a lie on a first run — there is no trend yet.
   const ctaText = opts.hasPendingApproval
     ? "Review the pending optimization →"
@@ -485,7 +608,10 @@ export function renderDigestHtml(digest: Digest, opts: RenderOpts): string {
     `<span style="font:12px/1 -apple-system,Segoe UI,Roboto,sans-serif;color:#828ca3;margin-left:8px">weekly rank report · ${appName}</span>`,
     `</div>`,
     // hero
-    `<div style="padding:24px 22px 8px">${hero}${movesList}</div>`,
+    // card: identity + chips above the hero; grades + screenshots below it.
+    // Each fragment is "" when its data is absent, so an empty card collapses
+    // to exactly the previous text-only layout.
+    `<div style="padding:24px 22px 8px">${identity}${chips}${hero}${movesList}${grades}${strip}</div>`,
     // CTA
     `<div style="padding:8px 22px 24px">`,
     ctaNote,
@@ -513,6 +639,8 @@ export type DigestAppInput = {
   hasPendingApproval: boolean;
   /** flat RankSnapshotRow[] for this app, as getRankHistory returns it. */
   rankHistory: RankSnapshotRow[];
+  /** optional visual card from the public listing; absent → text-only digest. */
+  card?: DigestCard | undefined;
   /** per-recipient unsubscribe URL (minted by the cron; absent → no footer/headers). */
   unsubscribeUrl?: string | undefined;
 };
@@ -542,6 +670,7 @@ export function planDigests(
       dashboardUrl: opts.dashboardUrl,
       hasPendingApproval: app.hasPendingApproval,
       unsubscribeUrl: app.unsubscribeUrl,
+      card: app.card,
     };
     const mover = digest.topMover ? ` — ${describeEntry(digest.topMover)}` : "";
     const subject = digest.anyMovement
