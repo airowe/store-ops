@@ -45,6 +45,17 @@ export type Digest = {
   /** the single most notable move (biggest numeric improvement, else a new/lost event). */
   topMover: DigestEntry | null;
   anyMovement: boolean;
+  /**
+   * True when NO entry has a prior snapshot — i.e. this is the first-ever run
+   * and every rank is a starting position, not a movement.
+   *
+   * A first snapshot classifies every ranked keyword as "new", which the HTML
+   * hero used to render with the same green ▲ as a real improvement — so a
+   * baseline read as "we moved you to #64" when nothing had moved. Renderers
+   * MUST branch on this and frame a first run as a baseline. See the
+   * "first-run baseline" block in digest.spec.ts.
+   */
+  isFirstRun: boolean;
 };
 
 export type BuildDigestOpts = { appName: string };
@@ -159,8 +170,11 @@ export function buildDigest(
 
   const anyMovement = entries.some((e) => e.direction !== "same");
   const topMover = pickTopMover(entries);
+  // First run = nothing has a prior snapshot to move FROM. An empty history is
+  // not a first run (there is no baseline to report either).
+  const isFirstRun = entries.length > 0 && entries.every((e) => e.previous === null);
 
-  return { appName: opts.appName, entries, topMover, anyMovement };
+  return { appName: opts.appName, entries, topMover, anyMovement, isFirstRun };
 }
 
 // ── delta view: the dashboard's animated rank-movement payload ────────────────
@@ -304,12 +318,50 @@ function movedEntries(digest: Digest): DigestEntry[] {
     .sort((a, b) => order[a.direction] - order[b.direction]);
 }
 
+/**
+ * First-run coverage: how many tracked keywords returned a rank at all, and the
+ * best (lowest) of them. This is the honest headline for a baseline — "found
+ * for 3 of 5" is a real measurement, where "▲ #64" is a movement claim we
+ * cannot make without a prior snapshot.
+ */
+function coverage(digest: Digest): { ranked: number; total: number; best: DigestEntry | null } {
+  const rankedEntries = digest.entries.filter((e) => e.current !== null);
+  const best = rankedEntries.reduce<DigestEntry | null>(
+    (acc, e) => (acc === null || e.current! < acc.current! ? e : acc),
+    null,
+  );
+  return { ranked: rankedEntries.length, total: digest.entries.length, best };
+}
+
 export function renderDigestText(digest: Digest, opts: RenderOpts): string {
   const lines: string[] = [];
+  const moved = movedEntries(digest);
+
+  if (digest.isFirstRun) {
+    const { ranked, total, best } = coverage(digest);
+    lines.push(`Starting position for ${opts.appName}`);
+    lines.push("");
+    lines.push(`Found for ${ranked} of ${total} keywords tracked.`);
+    if (best) lines.push(`Best rank: #${best.current} for "${best.keyword}".`);
+    lines.push("");
+    lines.push("This is your baseline — next week's report compares against it.");
+    lines.push("");
+    if (opts.hasPendingApproval) {
+      lines.push(`A new optimization is waiting for your approval -> ${opts.dashboardUrl}`);
+    } else {
+      lines.push(`See the full picture in your dashboard -> ${opts.dashboardUrl}`);
+    }
+    if (opts.unsubscribeUrl) {
+      lines.push("");
+      lines.push(`Stop this weekly digest (for every app on this account): ${opts.unsubscribeUrl}`);
+      lines.push("ShipASO keeps working either way - runs still open in your dashboard.");
+    }
+    return lines.join("\n");
+  }
+
   lines.push(`What moved this week for ${opts.appName}`);
   lines.push("");
 
-  const moved = movedEntries(digest);
   if (!digest.anyMovement || moved.length === 0) {
     lines.push(HELD_STEADY);
   } else {
@@ -349,8 +401,24 @@ export function renderDigestHtml(digest: Digest, opts: RenderOpts): string {
   const moved = movedEntries(digest);
 
   // ── hero: the top mover as a big before→after, or the held-steady note ──
+  //
+  // A FIRST RUN has no "before" — every entry classifies as "new". Rendering
+  // that with the movement arrow + signal green reads as a win the data does
+  // not support, so a baseline gets its own neutral hero: coverage first (a
+  // real measurement), the best starting rank in plain white, no arrow.
   let hero: string;
-  if (digest.anyMovement && digest.topMover) {
+  if (digest.isFirstRun) {
+    const { ranked, total, best } = coverage(digest);
+    const bestLine = best
+      ? `<div style="font:600 34px/1 Georgia,serif;color:#eef1f7;margin:0 0 6px">#${best.current}` +
+        `<span style="font:14px/1 -apple-system,Segoe UI,Roboto,sans-serif;color:#97a1b6;margin-left:10px">${escapeHtml(best.keyword)}</span></div>`
+      : `<div style="font:600 34px/1 Georgia,serif;color:#eef1f7;margin:0 0 6px">—</div>`;
+    hero =
+      `<div style="font:13px/1.4 -apple-system,Segoe UI,Roboto,sans-serif;color:#97a1b6;text-transform:uppercase;letter-spacing:.06em;margin:0 0 6px">Baseline · found for ${ranked} of ${total} keywords</div>` +
+      `<div style="font:13px/1.4 -apple-system,Segoe UI,Roboto,sans-serif;color:#97a1b6;margin:0 0 6px">Best rank</div>` +
+      bestLine +
+      `<div style="font:13px/1.5 -apple-system,Segoe UI,Roboto,sans-serif;color:#828ca3;margin:10px 0 0">This is your starting position — next week's report compares against it.</div>`;
+  } else if (digest.anyMovement && digest.topMover) {
     const m = digest.topMover;
     const cur = m.current === null ? "—" : `#${m.current}`;
     const prev = m.previous === null ? "—" : `#${m.previous}`;
@@ -366,8 +434,26 @@ export function renderDigestHtml(digest: Digest, opts: RenderOpts): string {
   }
 
   // ── the rest of the moves (skip the one already shown as the hero) ──
+  //
+  // On a first run these rows would read "entered the top 200 at #116" — a
+  // movement claim. List the other starting ranks plainly instead.
   let movesList = "";
-  if (digest.anyMovement && moved.length > 0) {
+  if (digest.isFirstRun) {
+    const { best } = coverage(digest);
+    const rest = digest.entries
+      .filter((e) => e.current !== null && e.keyword !== best?.keyword)
+      .sort((a, b) => a.current! - b.current!);
+    if (rest.length) {
+      const rows = rest
+        .map(
+          (e) =>
+            `<tr><td style="padding:6px 0;border-top:1px solid #222a3b;font:14px/1.5 -apple-system,Segoe UI,Roboto,sans-serif;color:#97a1b6">${escapeHtml(e.keyword)}</td>` +
+            `<td align="right" style="padding:6px 0;border-top:1px solid #222a3b;font:14px/1.5 -apple-system,Segoe UI,Roboto,sans-serif;color:#eef1f7">#${e.current}</td></tr>`,
+        )
+        .join("");
+      movesList = `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:18px 0 0">${rows}</table>`;
+    }
+  } else if (digest.anyMovement && moved.length > 0) {
     const rest = digest.topMover ? moved.filter((e) => e.keyword !== digest.topMover!.keyword) : moved;
     if (rest.length) {
       const rows = rest
@@ -380,9 +466,12 @@ export function renderDigestHtml(digest: Digest, opts: RenderOpts): string {
     }
   }
 
+  // "See the full trend" is a lie on a first run — there is no trend yet.
   const ctaText = opts.hasPendingApproval
     ? "Review the pending optimization →"
-    : "See the full trend →";
+    : digest.isFirstRun
+      ? "See the full picture →"
+      : "See the full trend →";
   const ctaNote = opts.hasPendingApproval
     ? `<div style="font:13px/1.5 -apple-system,Segoe UI,Roboto,sans-serif;color:#97a1b6;margin:0 0 14px">A new optimization is ready and waiting for your approval.</div>`
     : "";

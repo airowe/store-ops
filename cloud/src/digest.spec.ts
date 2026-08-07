@@ -486,6 +486,113 @@ describe("renderDigestHtml / renderDigestText — content + CTA", () => {
   });
 });
 
+// ── first-run baseline: a starting position is NOT a result ───────────────────
+//
+// A first snapshot has no prior, so every ranked keyword classifies as "new".
+// The HTML hero used to render `new` with the same green ▲ as a real
+// improvement — so a baseline read as "ShipASO moved you to #64 this week"
+// when nothing had moved at all. The TEXT render was always honest ("entered
+// the top 200 at #64"); only the visual overstated it, and the visual is the
+// part people screenshot. Baseline framing is now explicit.
+
+describe("renderDigestHtml — first-run baseline is never dressed as a win", () => {
+  const dashboardUrl = "https://app.shipaso.com/dashboard";
+  const opts = { appName: "Swoop", dashboardUrl, hasPendingApproval: false };
+
+  /** A first-ever snapshot: three ranked keywords, no prior history. */
+  function firstRun() {
+    return buildDigest(
+      [
+        snap("no login chat", 64, WEEK1),
+        snap("make friends irl", 116, WEEK1),
+        snap("irl", 119, WEEK1),
+        snap("meet people", null, WEEK1),
+        snap("make friends", null, WEEK1),
+      ],
+      { appName: "Swoop" },
+    );
+  }
+
+  it("flags a digest whose every entry lacks a prior snapshot as firstRun", () => {
+    expect(firstRun().isFirstRun).toBe(true);
+  });
+
+  it("does NOT flag a digest with real week-over-week movement as firstRun", () => {
+    const d = buildDigest(
+      [snap("budget tracker", 40, WEEK1), snap("budget tracker", 12, WEEK2)],
+      { appName: "Acme" },
+    );
+    expect(d.isFirstRun).toBe(false);
+  });
+
+  it("renders no movement arrow on a first run", () => {
+    const html = renderDigestHtml(firstRun(), opts);
+    expect(html).not.toContain("▲");
+    expect(html).not.toContain("▼");
+  });
+
+  it("does not paint the first-run hero in the movement-signal colour", () => {
+    const html = renderDigestHtml(firstRun(), opts);
+    // #34d399 is the "improved" green; it may still appear on the CTA button,
+    // but never inside the hero number.
+    const hero = html.slice(html.indexOf("Best rank"), html.indexOf("</div>", html.indexOf("Best rank")) + 220);
+    expect(hero).not.toContain("#34d399");
+  });
+
+  it("labels the first-run hero as a baseline, not a 'top mover'", () => {
+    const html = renderDigestHtml(firstRun(), opts);
+    expect(html.toLowerCase()).not.toContain("top mover");
+    expect(html).toContain("Best rank");
+  });
+
+  it("leads with coverage — how many of the tracked keywords rank at all", () => {
+    const html = renderDigestHtml(firstRun(), opts);
+    // 3 of the 5 tracked keywords returned a rank.
+    expect(html).toContain("3 of 5");
+  });
+
+  it("never claims a keyword 'entered' anything on a first run", () => {
+    const html = renderDigestHtml(firstRun(), opts);
+    expect(html.toLowerCase()).not.toContain("entered the top");
+  });
+
+  it("still shows the real starting rank and the single CTA", () => {
+    const html = renderDigestHtml(firstRun(), opts);
+    expect(html).toContain("#64");
+    expect(html).toContain(dashboardUrl);
+  });
+
+  it("does not promise a 'trend' in the CTA when there is only one snapshot", () => {
+    const html = renderDigestHtml(firstRun(), opts);
+    expect(html).not.toContain("See the full trend");
+    expect(html).toContain("See the full picture");
+  });
+
+  it("lists the other starting ranks as plain positions, not movements", () => {
+    const html = renderDigestHtml(firstRun(), opts);
+    expect(html).toContain("make friends irl");
+    expect(html).toContain("#116");
+    expect(html).not.toContain("entered");
+  });
+
+  it("keeps the green ▲ hero for a genuine improvement (week 2+ unchanged)", () => {
+    const d = buildDigest(
+      [snap("budget tracker", 40, WEEK1), snap("budget tracker", 12, WEEK2)],
+      { appName: "Acme" },
+    );
+    const html = renderDigestHtml(d, { ...opts, appName: "Acme" });
+    expect(html).toContain("▲");
+    expect(html).toContain("#34d399");
+    expect(html.toLowerCase()).toContain("top mover");
+  });
+
+  it("text render also frames a first run as a baseline", () => {
+    const text = renderDigestText(firstRun(), opts);
+    expect(text.toLowerCase()).not.toContain("top mover");
+    expect(text).toContain("3 of 5");
+  });
+});
+
 // ── EmailSender.send (generic primitive) ───────────────────────────────────────
 
 describe("EmailSender.send — generic primitive", () => {
