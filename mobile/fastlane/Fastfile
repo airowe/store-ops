@@ -149,7 +149,7 @@ platform :ios do
       ipa: "./builds/ShipASO.ipa",
       skip_waiting_for_build_processing: true,
     )
-    UI.success("Uploaded to App Store Connect. Attach to version 1.0 in ASC when processed.")
+    UI.success("Uploaded to App Store Connect. Attach to the pending version in ASC when processed.")
   end
 
   # The sibling apps (Heathen/Mangia/snagg) ship via a single `beta` lane rather
