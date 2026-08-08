@@ -1,0 +1,259 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="dark">
+<title>Journey — ShipASO, built in public | Shipaton 2026</title>
+<meta name="description" content="The public build journey of ShipASO: an AI agent that ships App Store metadata, shipping its own app for RevenueCat Shipaton 2026. Rejections, fixes, and rank wins — published whichever way it goes, receipts included.">
+<meta property="og:title" content="ShipASO — built in public, receipts included">
+<meta property="og:description" content="An AI agent that ships apps, shipping its own app. The whole journey — rejections, fixes, and measured rank wins — published whichever way it goes.">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://shipaso.com/journey">
+<!-- og:image deliberately absent until the first posted win card lands in
+     journey/cards/ — we don't unfurl a receipt we don't have yet. -->
+<link rel="canonical" href="https://shipaso.com/journey">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%230b0e14'/%3E%3Cg fill='%2334d399'%3E%3Cpath d='M16 6 L8.5 17 h15 Z'/%3E%3Cpath d='M5.5 19 h21 l-3 5 H8.5 Z'/%3E%3C/g%3E%3Cline x1='16' y1='8' x2='16' y2='17' stroke='%230b0e14' stroke-width='1.5'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&family=Fraunces:opsz,wght@9..144,500;9..144,600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #07090e;
+    --bg-2: #0b0e14;
+    --panel: #11151f;
+    --line: #222a3b;
+    --line-soft: #1a2130;
+    --ink: #eef1f7;
+    --dim: #97a1b6;
+    --faint: #626c83;
+    --signal: #34d399;
+    --signal-dim: #1f8f66;
+    --signal-glow: rgba(52, 211, 153, 0.18);
+    --mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
+    --sans: "Space Grotesk", -apple-system, "Segoe UI", Roboto, sans-serif;
+    --display: "Fraunces", Georgia, serif;
+  }
+  * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    margin: 0; font-family: var(--sans); font-size: 17px; line-height: 1.6;
+    color: var(--ink); background: var(--bg);
+    -webkit-font-smoothing: antialiased;
+    background-image:
+      radial-gradient(900px 500px at 12% -8%, var(--signal-glow), transparent 60%),
+      linear-gradient(var(--line-soft) 1px, transparent 1px),
+      linear-gradient(90deg, var(--line-soft) 1px, transparent 1px);
+    background-size: 100% 100%, 46px 46px, 46px 46px;
+    background-position: 0 0, -1px -1px, -1px -1px;
+  }
+  body::before {
+    content: ""; position: fixed; inset: 0; pointer-events: none; z-index: 0; opacity: 0.025;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  }
+  .wrap { max-width: 820px; margin: 0 auto; padding: 0 24px; position: relative; z-index: 1; }
+  a { color: inherit; }
+  a:focus-visible { outline: 2px solid var(--signal); outline-offset: 3px; border-radius: 3px; }
+
+  @keyframes rise { from { opacity: 0; transform: translateY(14px); } to { opacity: 1; transform: none; } }
+  .reveal { opacity: 0; animation: rise .7s cubic-bezier(.2,.7,.2,1) forwards; }
+  .d1 { animation-delay: .05s; } .d2 { animation-delay: .15s; } .d3 { animation-delay: .25s; }
+  .d4 { animation-delay: .35s; } .d5 { animation-delay: .45s; }
+  @media (prefers-reduced-motion: reduce) { .reveal { animation: none; opacity: 1; } }
+
+  .topbar { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 22px 0 8px; }
+  .mark { display: inline-flex; align-items: center; gap: 10px; font-weight: 700; letter-spacing: .2px; }
+  .mark .tick { width: 26px; height: 26px; border-radius: 7px; background: var(--bg-2); display: inline-flex; align-items: center; justify-content: center; }
+  .mark .tick svg { width: 17px; height: 17px; }
+  .nav { display: flex; gap: 18px; font-size: 14.5px; color: var(--dim); flex-wrap: wrap; }
+  .nav a { text-decoration: none; }
+  .nav a:hover { color: var(--ink); }
+
+  header { padding: 46px 0 8px; }
+  .kicker { display: inline-flex; align-items: center; gap: 9px; font-family: var(--mono); font-size: 12.5px; letter-spacing: .6px; text-transform: uppercase; color: var(--signal); }
+  .kicker .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--signal); box-shadow: 0 0 10px var(--signal); }
+  h1 { font-family: var(--display); font-weight: 600; font-size: clamp(30px, 5.4vw, 46px); line-height: 1.14; margin: 14px 0 14px; letter-spacing: -0.5px; }
+  h1 .hl { color: var(--signal); }
+  .lede { color: var(--dim); font-size: 18px; max-width: 640px; margin: 0 0 10px; }
+
+  /* Live proof strip — hidden until the aggregate has real movement. */
+  .proof { display: flex; flex-wrap: wrap; gap: 12px; margin: 26px 0 6px; }
+  /* `display: flex` would defeat the hidden attribute — restate it, or the
+     strip shows "—" placeholders, which is exactly what this page must never do. */
+  .proof[hidden], .proof-note[hidden] { display: none; }
+  .proof .cell { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 14px 18px; min-width: 130px; }
+  .proof .v { font-family: var(--mono); font-size: 24px; font-weight: 700; color: var(--signal); }
+  .proof .k { font-size: 12.5px; color: var(--faint); letter-spacing: .4px; text-transform: uppercase; margin-top: 2px; }
+  .proof-note { font-size: 13px; color: var(--faint); margin: 4px 0 0; }
+
+  /* Timeline */
+  .timeline { margin: 44px 0 20px; padding: 0; list-style: none; position: relative; }
+  .timeline::before { content: ""; position: absolute; left: 7px; top: 6px; bottom: 6px; width: 1px; background: var(--line); }
+  .entry { position: relative; padding: 0 0 34px 34px; }
+  .entry::before { content: ""; position: absolute; left: 2.5px; top: 7px; width: 10px; height: 10px; border-radius: 50%; background: var(--bg-2); border: 2px solid var(--faint); }
+  .entry.win::before { background: var(--signal); border-color: var(--signal); box-shadow: 0 0 10px var(--signal-glow); }
+  .entry .meta { display: flex; align-items: center; gap: 10px; font-family: var(--mono); font-size: 12.5px; color: var(--faint); }
+  .entry .chip { border: 1px solid var(--line); border-radius: 999px; padding: 1px 9px; letter-spacing: .5px; text-transform: uppercase; font-size: 11px; }
+  .entry.win .chip { color: var(--signal); border-color: var(--signal-dim); }
+  .entry h2 { font-size: 19.5px; margin: 8px 0 6px; line-height: 1.3; }
+  .entry p { color: var(--dim); font-size: 15.5px; margin: 0; max-width: 620px; }
+  .entry .numbers { font-family: var(--mono); font-size: 15px; margin: 10px 0 0; color: var(--ink); }
+  .entry .numbers .to { color: var(--signal); font-weight: 700; }
+  .entry .card-img { display: block; margin-top: 14px; max-width: 460px; width: 100%; border-radius: 12px; border: 1px solid var(--line); }
+  .entry .links { margin-top: 10px; display: flex; gap: 16px; font-size: 14px; }
+  .entry .links a { color: var(--signal); text-decoration: none; }
+  .entry .links a:hover { text-decoration: underline; }
+  .timeline-state { color: var(--faint); font-size: 15px; padding-left: 34px; }
+
+  /* Follow CTA */
+  .follow { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 22px 24px; margin: 18px 0 0; }
+  .follow h2 { margin: 0 0 6px; font-size: 18px; }
+  .follow p { color: var(--dim); font-size: 15px; margin: 0 0 12px; }
+  .follow .btns { display: flex; gap: 12px; flex-wrap: wrap; }
+  .btn { display: inline-flex; align-items: center; gap: 8px; border-radius: 10px; padding: 9px 16px; font-size: 14.5px; font-weight: 600; text-decoration: none; }
+  .btn-primary { background: var(--signal); color: #06251a; }
+  .btn-ghost { border: 1px solid var(--line); color: var(--ink); }
+  .btn-ghost:hover { border-color: var(--dim); }
+
+  footer { margin: 60px 0 50px; padding-top: 26px; border-top: 1px solid var(--line-soft); color: var(--faint); font-size: 13.5px; display: flex; flex-wrap: wrap; gap: 8px 22px; align-items: center; }
+  footer a { color: var(--dim); text-decoration: none; }
+  footer a:hover { color: var(--ink); }
+  footer .sep { color: var(--line); }
+  footer .mono { font-family: var(--mono); }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="topbar reveal d1">
+    <span class="mark">
+      <span class="tick"><svg viewBox="0 0 24 24" fill="none"><g fill="#34d399"><path d="M12 4 L6.5 12.5 h11 Z"/><path d="M4 14.5 h16 l-2.2 4 H6.2 Z"/></g></svg></span>
+      ShipASO
+    </span>
+    <nav class="nav">
+      <a href="https://shipaso.com/">Home</a>
+      <a href="https://shipaso.com/tracking-heathen">Live rank log</a>
+      <a href="https://github.com/airowe/store-ops">GitHub</a>
+      <a href="https://app.shipaso.com">Dashboard</a>
+    </nav>
+  </div>
+
+  <header>
+    <span class="kicker reveal d1"><span class="dot"></span> Shipaton 2026 · #BuildInPublic</span>
+    <h1 class="reveal d2">An AI agent that ships apps, shipping its own app — <span class="hl">in public.</span></h1>
+    <p class="lede reveal d3">ShipASO moves real App Store ranks for a living. For RevenueCat
+    Shipaton 2026 it is doing the whole thing to itself: building, getting rejected, fixing,
+    shipping — and posting the receipts. This page is the journey, published whichever way it goes.</p>
+  </header>
+
+  <!-- Live aggregate — same source as the landing's proof strip. Hidden until
+       the numbers are real; we never render zeros as social proof. -->
+  <div id="proof" class="proof reveal d4" hidden>
+    <div class="cell"><div class="v" id="proof-wins">—</div><div class="k">measured rank wins</div></div>
+    <div class="cell"><div class="v" id="proof-apps">—</div><div class="k">apps with wins</div></div>
+    <div class="cell"><div class="v" id="proof-best">—</div><div class="k">best improvement</div></div>
+  </div>
+  <p class="proof-note reveal d4" id="proof-note" hidden>Live from the API — the same aggregate the product reports. Only measured movement is shown.</p>
+
+  <ol class="timeline reveal d5" id="timeline">
+    <noscript><li class="timeline-state">The timeline needs JavaScript — the raw ledger is at <a href="journey/feed.json">journey/feed.json</a>.</noscript>
+  </ol>
+
+  <div class="follow reveal d5">
+    <h2>Follow along</h2>
+    <p>Every entry above really happened — rejections included. New wins land here with their
+    proof cards the moment the agent posts them.</p>
+    <div class="btns">
+      <!-- When the X account goes live, its link belongs first here. -->
+      <a class="btn btn-primary" href="https://github.com/airowe/store-ops">Watch the code ship</a>
+      <a class="btn btn-ghost" href="https://shipaso.com/tracking-heathen">See a live rank log</a>
+    </div>
+  </div>
+
+  <footer>
+    <span class="mono">ShipASO</span>
+    <span class="sep">·</span>
+    <span>Built in public for RevenueCat Shipaton 2026</span>
+    <span class="sep">·</span>
+    <a href="https://shipaso.com/">shipaso.com</a>
+    <span class="sep">·</span>
+    <a href="https://app.shipaso.com">app.shipaso.com</a>
+  </footer>
+
+</div>
+<script>
+  // The timeline: rendered from the checked-in ledger (journey/feed.json).
+  // Everything in it is guarded at build time (packages/docpaths) — real dates,
+  // existing card assets, measured numbers. Here we only sort and display.
+  (function () {
+    var months = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+    function fmtDate(iso) {
+      var p = iso.split("-");
+      return months[Number(p[1]) - 1] + " " + Number(p[2]) + ", " + p[0];
+    }
+    function el(tag, cls, text) {
+      var n = document.createElement(tag);
+      if (cls) n.className = cls;
+      if (text) n.textContent = text;
+      return n;
+    }
+    var list = document.getElementById("timeline");
+    fetch("journey/feed.json").then(function (r) { return r.json(); }).then(function (feed) {
+      var entries = (feed && feed.entries) || [];
+      entries.sort(function (a, b) { return a.date < b.date ? 1 : a.date > b.date ? -1 : 0; });
+      if (!entries.length) {
+        list.appendChild(el("li", "timeline-state", "The journey starts here."));
+        return;
+      }
+      entries.forEach(function (e) {
+        var li = el("li", "entry" + (e.kind === "win" ? " win" : ""));
+        var meta = el("div", "meta");
+        meta.appendChild(el("span", null, fmtDate(e.date)));
+        meta.appendChild(el("span", "chip", e.kind));
+        li.appendChild(meta);
+        li.appendChild(el("h2", null, e.title));
+        li.appendChild(el("p", null, e.body));
+        if (e.numbers) {
+          var n = el("div", "numbers");
+          n.appendChild(el("span", null, "“" + e.numbers.keyword + "”  #" + e.numbers.from + " → "));
+          n.appendChild(el("span", "to", "#" + e.numbers.to));
+          li.appendChild(n);
+        }
+        if (e.card) {
+          var img = el("img", "card-img");
+          img.src = "journey/" + e.card;
+          img.alt = "Proof card: “" + (e.numbers ? e.numbers.keyword : e.title) + "” rank move";
+          img.loading = "lazy";
+          li.appendChild(img);
+        }
+        var links = e.links || {};
+        var names = Object.keys(links);
+        if (names.length) {
+          var row = el("div", "links");
+          names.forEach(function (k) {
+            var a = el("a", null, k === "x" ? "View the post ↗" : k === "pr" ? "The code ↗" : k + " ↗");
+            a.href = links[k];
+            a.rel = "noopener";
+            row.appendChild(a);
+          });
+          li.appendChild(row);
+        }
+        list.appendChild(li);
+      });
+    }).catch(function () {
+      list.appendChild(el("li", "timeline-state", "Couldn’t load the ledger — the raw file is at journey/feed.json."));
+    });
+
+    // Live proof strip — identical honesty rule to the landing page.
+    fetch("https://api.shipaso.com/proof").then(function (r) { return r.json(); }).then(function (p) {
+      if (!p || !p.totalWins || p.appsWithWins < 1) return; // stay hidden until real
+      document.getElementById("proof-wins").textContent = p.totalWins;
+      document.getElementById("proof-apps").textContent = p.appsWithWins;
+      document.getElementById("proof-best").textContent = "+" + p.bestImprovement + " spots";
+      document.getElementById("proof").hidden = false;
+      document.getElementById("proof-note").hidden = false;
+    }).catch(function () {});
+  })();
+</script>
+</body>
+</html>

@@ -1,0 +1,29 @@
+{
+  "version": 1,
+  "entries": [
+    {
+      "date": "2026-08-08",
+      "kind": "milestone",
+      "title": "The posting edge: proof cards become pixels, wins become posts",
+      "body": "The last two slices of the growth loop shipped: the proof card rasterizes to PNG where the post is sent, and a confirmed rank win now triggers the post automatically — once, with retry if X is down. A win that is really a hold or a slip posts nothing. The agent only ever brags with receipts."
+    },
+    {
+      "date": "2026-08-08",
+      "kind": "milestone",
+      "title": "The app learned to write its own announcements",
+      "body": "When ShipASO moves a real organic App Store rank, it now composes the public update itself: the measured move (#40 → #12, up 28 spots), the store link, and a branded proof card rendered from the same data the dashboard shows. No genuine win, no post — the same honesty bar the product enforces everywhere."
+    },
+    {
+      "date": "2026-08-03",
+      "kind": "milestone",
+      "title": "Subscriptions became real in-app purchases",
+      "body": "The compliant answer to the payments rejection: RevenueCat-powered subscriptions, bought in-app through StoreKit, with every required disclosure on the paywall. The server stays the source of truth — a verified webhook maps the purchase to a tier, and the highest active entitlement wins, so someone who already subscribed on the web can never be double-charged."
+    },
+    {
+      "date": "2026-07-29",
+      "kind": "story",
+      "title": "Apple rejected 0.1.0 — on four guidelines at once",
+      "body": "The first App Store submission came back with four rejections: an Apple trademark in the app name, no way to buy anything (we had removed purchasing instead of building IAP), a magic link that opened a 404 instead of the app, and price text baked into screenshots. All four are fixed in 0.1.1, and the payments fix became the RevenueCat integration this whole journey runs on. Published here whichever way it goes — that is the point of this page."
+    }
+  ]
+}

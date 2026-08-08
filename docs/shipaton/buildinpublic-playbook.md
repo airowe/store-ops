@@ -48,8 +48,16 @@ die.
 - When a public suggestion ships, say so in the PR body AND link the PR back in
   the thread — that closes the loop both directions and feeds the Sep roundup.
 
-## Evidence ledger (paste into Devpost at submission)
+## Evidence ledger
 
-| Date | Platform | Link | Beat | Sparked (replies/ideas worth noting) | Feedback that shipped? (PR) |
-|---|---|---|---|---|---|
-| — | — | — | — | — | — |
+**The ledger is `docs/landing/journey/feed.json`** — the same file that renders
+the public journey page at shipaso.com/journey (see
+`docs/landing/journey.html`). Win entries are appended automatically by the
+posting edge (`--journal`, only on a successful post); story/milestone beats
+are committed by hand. `packages/docpaths/journeyFeed.test.mjs` guards every
+entry: real past dates, existing card assets, measured-or-absent numbers,
+https links. At submission, the Devpost post-links field is compiled from the
+feed's `links.x` values.
+
+Feedback-that-shipped notes (the Sep roundup's raw material) go in the entry
+`body` when the change ships, with the PR linked in `links.pr`.
