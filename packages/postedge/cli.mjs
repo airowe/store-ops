@@ -8,9 +8,14 @@
  * skill's poster), which is invoked as `<cmd> <post.txt> <card.png>`. Only a
  * successful post consumes the win.
  *
+ * With --journal <dir> (point it at docs/landing/journey), a POSTED win is
+ * also appended to the public /journey ledger with its proof card. If the post
+ * command prints the created post's URL (`url=https://x.com/…`, or a bare
+ * https URL) on stdout, the ledger entry links to it; no URL printed → no link.
+ *
  *   SHIPASO_API_KEY=shipaso_… shipaso-postedge \
  *     --app <appId> --store-url https://apps.apple.com/us/app/id… \
- *     [--post-cmd bird-post]
+ *     [--post-cmd bird-post] [--journal docs/landing/journey]
  */
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
@@ -22,7 +27,10 @@ async function main() {
   const opts = parseCliArgs(process.argv.slice(2), process.env);
   const post = opts.postCmd
     ? async (textPath, pngPath) => {
-        await execFileAsync(opts.postCmd, [textPath, pngPath]);
+        // stdout rides back so runPostEdge can pick up a `url=…` line for the
+        // journal's "View the post" link.
+        const { stdout } = await execFileAsync(opts.postCmd, [textPath, pngPath]);
+        return stdout;
       }
     : null;
   const out = await runPostEdge(opts, post ? { post } : {});
@@ -41,7 +49,10 @@ async function main() {
       );
       break;
     case "posted":
-      console.log(`[postedge] ${opts.appId}: posted. Evidence kept in ${out.outboxDir}`);
+      console.log(
+        `[postedge] ${opts.appId}: posted. Evidence kept in ${out.outboxDir}` +
+          (out.journaled ? ` and journaled to ${opts.journalDir}` : ""),
+      );
       break;
   }
 }

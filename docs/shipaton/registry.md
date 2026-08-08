@@ -13,7 +13,7 @@
 | **Workstream A** — RevenueCat dashboard + store config | ⬜ **yours** | Paid Apps Agreement, products, keys/secrets |
 | **Ship 0.1.1 live in-window** (the hard gate) | ⬜ **yours** | build 0.1.1 → sandbox test → submit → live |
 | #BuildInPublic playbook (cadence + beats + evidence ledger) | ✅ | `docs/shipaton/buildinpublic-playbook.md` |
-| Public /journey page on shipaso.com | 🔵 planned | `docs/superpowers/plans/2026-08-08-shipaso-journey-page.md` |
+| Public /journey page on shipaso.com | ✅ built | `docs/landing/journey.html` + `docs/landing/journey/feed.json` (guard: `packages/docpaths/journeyFeed.test.mjs`); wins auto-journal via postedge `--journal` |
 | Build-log thread composer (weekly cadence floor) | ✅ | `packages/postedge/buildlog.mjs` |
 | Demo video ≤3 min | 🔵 script drafted | `docs/shipaton/devpost-draft.md` — recording needs a device + live 0.1.1 |
 | Devpost submission + #BuildInPublic post links | 🔵 draft ready | `docs/shipaton/devpost-draft.md` + the playbook's ledger; final facts land at submission |

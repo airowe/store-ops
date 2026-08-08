@@ -168,7 +168,7 @@ test("outbox dirs are per-win, so a new win never clobbers the last one", async 
 
 test("parseCliArgs: full happy path", () => {
   const parsed = parseCliArgs(
-    ["--app", "app-1", "--store-url", "https://apps.apple.com/us/app/id123", "--state", "s.json", "--out", "o", "--post-cmd", "bird-post"],
+    ["--app", "app-1", "--store-url", "https://apps.apple.com/us/app/id123", "--state", "s.json", "--out", "o", "--post-cmd", "bird-post", "--journal", "docs/landing/journey"],
     { SHIPASO_API_KEY: "shipaso_k", SHIPASO_API_BASE: "https://api.example.test" },
   );
   assert.deepEqual(parsed, {
@@ -179,6 +179,7 @@ test("parseCliArgs: full happy path", () => {
     statePath: "s.json",
     outDir: "o",
     postCmd: "bird-post",
+    journalDir: "docs/landing/journey",
   });
 });
 
@@ -191,6 +192,7 @@ test("parseCliArgs: defaults — production API, local state/outbox, no post cmd
   assert.equal(parsed.statePath, "postedge-state.json");
   assert.equal(parsed.outDir, "postedge-out");
   assert.equal(parsed.postCmd, null);
+  assert.equal(parsed.journalDir, null);
 });
 
 test("parseCliArgs: the api key comes from the environment only, and is required", () => {

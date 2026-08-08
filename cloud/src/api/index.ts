@@ -219,7 +219,7 @@ import {
 import { emailSenderForEnv } from "../emailSender.js";
 import { rankDeltasView } from "../digest.js";
 import { pickShareWin, renderShareCardSvg } from "../shareCard.js";
-import { buildInPublicPostFromDeltas } from "../buildInPublicPost.js";
+import { composeBuildInPublicPost } from "../buildInPublicPost.js";
 import { aggregateProof, extractWins } from "../proof.js";
 import { type AppCard, summarizePortfolio } from "../portfolio.js";
 import { type RunRef, planBulkApprove } from "../bulkApprove.js";
@@ -3534,9 +3534,12 @@ async function buildInPublicPostRoute(
   }
   const history = await getRankHistory(env.DB, appId, {});
   const view = rankDeltasView(history, { appName: app.name });
-  const post = buildInPublicPostFromDeltas(view, { appName: app.name, storeUrl });
-  if (!post) throw new HttpError(404, "no rank win to post yet");
-  return json({ text: post.text, hashtags: post.hashtags, cardSvg: post.cardSvg }, 200, origin, env);
+  const win = pickShareWin(view);
+  if (!win) throw new HttpError(404, "no rank win to post yet");
+  const post = composeBuildInPublicPost(win, { appName: app.name, storeUrl });
+  // `win` rides along so the posting edge can journal MEASURED numbers to the
+  // public /journey ledger instead of parsing them back out of the text.
+  return json({ text: post.text, hashtags: post.hashtags, cardSvg: post.cardSvg, win }, 200, origin, env);
 }
 
 /** GET /runs/:id — full run view (scoped to the owner). */

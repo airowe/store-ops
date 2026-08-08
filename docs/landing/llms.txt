@@ -52,6 +52,7 @@ Full table: https://shipaso.com/pricing.md
 - Home: https://shipaso.com/
 - Free listing audit: https://shipaso.com/check-your-rank.html
 - Install the open-source plugin: https://shipaso.com/install.html
+- Build journey (Shipaton 2026, built in public): https://shipaso.com/journey.html
 - Dashboard: https://app.shipaso.com/
 - Source: https://github.com/airowe/store-ops
 

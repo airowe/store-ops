@@ -71,6 +71,18 @@ describe("GET /apps/:id/buildinpublic-post", () => {
     expect(body.cardSvg).toContain("<svg");
   });
 
+  it("includes the structured win, so the posting edge can journal MEASURED numbers", async () => {
+    const res = await get(`/apps/app-1/buildinpublic-post?storeUrl=${STORE}`);
+    const body = (await res.json()) as { win: Record<string, unknown> };
+    expect(body.win).toEqual({
+      keyword: "budget tracker",
+      current: 12,
+      previous: 40,
+      delta: -28,
+      direction: "up",
+    });
+  });
+
   it("404s (post nothing) when there is no genuine win", async () => {
     view = holdView;
     const res = await get(`/apps/app-1/buildinpublic-post?storeUrl=${STORE}`);
