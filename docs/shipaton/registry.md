@@ -15,6 +15,7 @@
 | **Ship 0.1.1 live in-window** (the hard gate) | ⬜ **yours** — version bumped, pipeline corrected | `docs/shipaton/gates-runsheet.md` Gate 2; `mobile/app.config.ts` now 0.1.1; checklist Part 5 fixed to the real Fastlane pipeline |
 | #BuildInPublic playbook (cadence + beats + evidence ledger) | ✅ | `docs/shipaton/buildinpublic-playbook.md` |
 | Public /journey page on shipaso.com | ✅ built | `docs/landing/journey.html` + `docs/landing/journey/feed.json` (guard: `packages/docpaths/journeyFeed.test.mjs`); wins auto-journal via postedge `--journal` |
+| Claude brain Phase 1 (reasoning + authored subtitles) | ✅ code; needs `ANTHROPIC_API_KEY` Worker secret (**yours**) | `cloud/src/api/aiReasoner.ts` (Claude > Workers AI > deterministic) + `cloud/src/engine/copyAuthor.ts`; `/health` `claude_reasoner` warn shows which brain is live |
 | Build-log thread composer (weekly cadence floor) | ✅ | `packages/postedge/buildlog.mjs` |
 | Demo video ≤3 min | 🔵 script drafted | `docs/shipaton/devpost-draft.md` — recording needs a device + live 0.1.1 |
 | Devpost submission + #BuildInPublic post links | 🔵 draft ready | `docs/shipaton/devpost-draft.md` + the playbook's ledger; final facts land at submission |

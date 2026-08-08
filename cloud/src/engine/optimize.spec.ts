@@ -202,6 +202,40 @@ describe("optimizeCopy — compose-from-scratch authoring", () => {
     expect(copy.subtitle).toBe(strong);
   });
 
+  // Claude-authored subtitles (pre-validated upstream by copyAuthor) take the
+  // compose slot when the live subtitle is weak — mode "authored" so the run
+  // page can say who wrote it.
+  it("prefers a pre-validated authored subtitle over composition when the live one is weak", () => {
+    const copy = optimizeCopy(
+      scored,
+      { name: "Heathen", subtitle: "", keywords: "" },
+      { canWriteSubtitleKeywords: true, authoredSubtitle: "Calm, stoic focus daily" },
+    );
+    expect(copy.subtitle).toBe("Calm, stoic focus daily");
+    expect(copy.optimization?.subtitleMode).toBe("authored");
+  });
+
+  it("an authored subtitle NEVER overrides a strong live one (#30 still wins)", () => {
+    const strong = "Stoic calm for atheists";
+    const copy = optimizeCopy(
+      scored,
+      { name: "Heathen", subtitle: strong, keywords: "" },
+      { canWriteSubtitleKeywords: true, authoredSubtitle: "Calm, stoic focus daily" },
+    );
+    expect(copy.subtitle).toBe(strong);
+    expect(copy.optimization?.subtitleMode).toBe("preserved");
+  });
+
+  it("without ASC read, an authored subtitle is ignored like everything else (#30)", () => {
+    const copy = optimizeCopy(
+      scored,
+      { name: "Heathen", subtitle: "", keywords: "" },
+      { canWriteSubtitleKeywords: false, authoredSubtitle: "Calm, stoic focus daily" },
+    );
+    expect(copy.subtitle).toBe("");
+    expect(copy.optimization?.subtitleMode).toBeUndefined();
+  });
+
   // Defect 2: gap terms make it into the keyword field when there is room.
   it("adds new gap terms to the keyword field when the live field has spare room", () => {
     const copy = optimizeCopy(

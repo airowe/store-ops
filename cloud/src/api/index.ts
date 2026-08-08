@@ -470,7 +470,7 @@ async function attachReviews(env: Env, app: AppRow, result: AgentResult): Promis
   } catch {
     reviews = []; // honest: a read limitation degrades to "no reviews", never an error.
   }
-  result.reviews = await analyzeSentiment(reviews, reasonerForEnv(env.AI));
+  result.reviews = await analyzeSentiment(reviews, reasonerForEnv(env));
   // Bridge review vocabulary onto the keyword surface, labeled source:'reviews'.
   const candidates = reviewKeywordCandidates(reviews);
   if (candidates.length > 0) {
@@ -1295,9 +1295,9 @@ async function runPreview(req: Request, env: Env): Promise<unknown> {
 
   // Build a throwaway app row (never persisted) just to drive the engine.
   const appRow = { id: "preview", user_id: "preview", bundle_id: bundleId, name, country } as AppRow;
-  const reasoner = reasonerForEnv(env.AI);
+  const reasoner = reasonerForEnv(env);
   const input = await buildAppInput(appRow, reasoner ? { reasoner } : {}, {});
-  const result = await runAgent(fetchForEnv(env), input);
+  const result = await runAgent(fetchForEnv(env), input, { copywriter: reasoner });
   return { preview: buildPreview(result), bundleId, country };
 }
 
@@ -1324,9 +1324,9 @@ async function reportByAppId(appId: string, url: URL, env: Env): Promise<unknown
     const name = [r?.trackName ?? "", (r?.genres ?? []).join(" ")].filter(Boolean).join(" ").trim() || bundleId;
 
     const appRow = { id: "report", user_id: "report", bundle_id: bundleId, name, country } as AppRow;
-    const reasoner = reasonerForEnv(env.AI);
+    const reasoner = reasonerForEnv(env);
     const input = await buildAppInput(appRow, reasoner ? { reasoner } : {}, {});
-    const result = await runAgent(fetchForEnv(env), input);
+    const result = await runAgent(fetchForEnv(env), input, { copywriter: reasoner });
     return { preview: buildPreview(result), appId, bundleId, country };
   } catch (e) {
     if (e instanceof HttpError) throw e;
@@ -1760,7 +1760,7 @@ async function runApp(
     if (confirmed.length) overrides.competitors = confirmed;
   }
   if (body.baseCopy) overrides.baseCopy = body.baseCopy;
-  const runReasoner = reasonerForEnv(env.AI);
+  const runReasoner = reasonerForEnv(env);
   if (runReasoner) overrides.reasoner = runReasoner;
   // A bare "run now" has no baseCopy, so the keyword reasoner would have no
   // description and would tokenize the name. Thread the prior run's stored
@@ -1772,7 +1772,7 @@ async function runApp(
   }
 
   const input = await buildAppInput(app, overrides, previous);
-  const result = await runAgent(fetchForEnv(env), input);
+  const result = await runAgent(fetchForEnv(env), input, { copywriter: runReasoner });
   // PRD 03 / #95: PUBLIC review sentiment + topics + review-sourced keyword
   // candidates. Best-effort; computed BEFORE findings so the audit can surface
   // the reviews section. Never strands the run.
@@ -2037,11 +2037,11 @@ export async function keyedAscPass(
     ...(liveDescription !== undefined ? { description: liveDescription } : {}),
     ...(extra.baseCopy ?? {}),
   };
-  const ascReasoner = reasonerForEnv(env.AI);
+  const ascReasoner = reasonerForEnv(env);
   if (ascReasoner) overrides.reasoner = ascReasoner;
 
   const input = await buildAppInput(app, overrides, previous);
-  const result = await runAgent(fetchForEnv(env), input);
+  const result = await runAgent(fetchForEnv(env), input, { copywriter: ascReasoner });
   const ascListing = ascScreenshotsToListing(ascSnapshot?.screenshots);
   if (ascListing) result.audit.screenshots = scoreScreenshots(input.app, ascListing);
   await attachReviews(env, app, result);
@@ -3014,7 +3014,7 @@ async function planScreenshotsRoute(req: Request, env: Env): Promise<unknown> {
 
   // reasonerForEnv returns undefined without an AI binding → planScreenshots
   // degrades deterministically; a model error degrades too. Never throws here.
-  return await planScreenshots(inputs, reasonerForEnv(env.AI));
+  return await planScreenshots(inputs, reasonerForEnv(env));
 }
 
 /**
@@ -3056,7 +3056,7 @@ async function cppSetsRoute(req: Request, env: Env): Promise<unknown> {
       brandPalette: asStrings(body.brandPalette),
       recommendedCount: typeof body.recommendedCount === "number" ? body.recommendedCount : 6,
     },
-    reasonerForEnv(env.AI),
+    reasonerForEnv(env),
   );
 }
 

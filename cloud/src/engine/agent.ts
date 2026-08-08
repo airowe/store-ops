@@ -29,7 +29,9 @@ import {
 } from "./competitorWatch.js";
 import { bucketize, type KeywordInput, type ScoredKeyword } from "./keywords.js";
 import { findKeywordGaps, type KeywordGap } from "./keywordGap.js";
-import { optimizeCopy, type ProposedCopy } from "./optimize.js";
+import { isStrongSubtitle, optimizeCopy, type ProposedCopy } from "./optimize.js";
+import { authorSubtitle } from "./copyAuthor.js";
+import type { Reasoner } from "./keywordReasoner.js";
 import { type Rank, ranksFor } from "./rankCheck.js";
 import { score as scoreScreenshots, type ShotScore } from "./screenshotScore.js";
 import { fetchStorefrontListing, type StorefrontListing } from "./storefrontListing.js";
@@ -379,11 +381,20 @@ export function buildPushCommands(bundleId: string, copy: ProposedCopy): PushCom
 }
 
 /**
- * Run the full loop for one app. PURE except for the injected `fetchFn`.
+ * Run the full loop for one app. PURE except for the injected `fetchFn` (and
+ * the optional `deps.copywriter` — a Reasoner used to AUTHOR a subtitle
+ * candidate, guardrailed by engine/copyAuthor; absent → the deterministic
+ * composer, exactly as before).
  * Order: audit → rank-check → competitor watch+diff → keyword reasoning →
  * propose copy (within limits) → PREPARE push commands (not executed).
  */
-export async function runAgent(fetchFn: FetchFn, input: AppInput): Promise<AgentResult> {
+export async function runAgent(
+  fetchFn: FetchFn,
+  input: AppInput,
+  // `| undefined` so call sites can pass `reasonerForEnv(env)` directly under
+  // exactOptionalPropertyTypes — an undefined copywriter means "none".
+  deps: { copywriter?: Reasoner | undefined } = {},
+): Promise<AgentResult> {
   const country = input.country ?? "US";
 
   // 1. audit (live listing + screenshot score)
@@ -435,6 +446,22 @@ export async function runAgent(fetchFn: FetchFn, input: AppInput): Promise<Agent
     ...(input.baseCopy?.promo !== undefined ? { promo: input.baseCopy.promo } : {}),
     ...(description !== undefined ? { description } : {}),
   };
+  // Claude-authored subtitle candidate (Phase 1 of the Claude brain): spent
+  // only when it could actually be USED — the subtitle is writable (ASC read)
+  // and the live value is weak enough that the compose branch would run.
+  // copyAuthor guardrails the output; null keeps the deterministic composer.
+  let authoredSubtitle: string | undefined;
+  if (deps.copywriter && input.ascMetadataRead === true && !isStrongSubtitle(input.baseCopy?.subtitle ?? "")) {
+    const authored = await authorSubtitle(deps.copywriter, {
+      appName: input.baseCopy?.name ?? auditResult.liveName,
+      description: description ?? "",
+      targets: reasoning
+        .filter((k) => k.bucket === "Secondary" || k.bucket === "Primary")
+        .map((k) => k.keyword),
+    });
+    if (authored !== null) authoredSubtitle = authored;
+  }
+
   const proposedCopy = optimizeCopy(
     reasoning,
     {
@@ -445,7 +472,10 @@ export async function runAgent(fetchFn: FetchFn, input: AppInput): Promise<Agent
       ...(description !== undefined ? { description } : {}),
     },
     // Only allow subtitle/keyword proposals when we actually read them from ASC.
-    { canWriteSubtitleKeywords: input.ascMetadataRead === true },
+    {
+      canWriteSubtitleKeywords: input.ascMetadataRead === true,
+      ...(authoredSubtitle !== undefined ? { authoredSubtitle } : {}),
+    },
   );
 
   // 6. PREPARE (do not execute) the push command handoff

@@ -77,7 +77,7 @@ export async function runDailySnapshot(env: Env): Promise<SnapshotReport> {
   };
 
   const fetchFn = fetchForEnv(env);
-  const reasoner = reasonerForEnv(env.AI);
+  const reasoner = reasonerForEnv(env);
 
   for (const app of apps) {
     report.appsProcessed++;

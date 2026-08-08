@@ -151,6 +151,19 @@ export function auditReadiness(env: Env): ReadinessReport {
         : `Missing RevenueCat product id(s): ${missingRcProducts.join(", ")} — an IAP event for those tiers can't be mapped, so the purchase won't apply.`,
   });
 
+  // ── warns: Claude reasoning (Anthropic API) ───────────────────────────────
+  // Optional by design: unset degrades to the Workers AI binding, then to the
+  // deterministic classifiers — a run never breaks. The warn exists so an
+  // operator can see at a glance which brain the agent is running on.
+  checks.push({
+    name: "claude_reasoner",
+    ok: isSet(env.ANTHROPIC_API_KEY),
+    severity: "warn",
+    detail: isSet(env.ANTHROPIC_API_KEY)
+      ? "ANTHROPIC_API_KEY is set — keyword reasoning + subtitle authoring run on Claude."
+      : "ANTHROPIC_API_KEY is missing — reasoning falls back to Workers AI / deterministic; no Claude-authored copy.",
+  });
+
   // ── warns: egress (TinyFish) ──────────────────────────────────────────────
   checks.push({
     name: "tinyfish_api_key",
