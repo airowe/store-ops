@@ -92,7 +92,7 @@ async function journalWin(journalDir, { win, text, key, pngPath, postUrl, date }
     kind: "win",
     title: `“${win.keyword}” ${move}`,
     body: text,
-    ...(postUrl ? { links: { x: postUrl } } : {}),
+    ...(postUrl ? { links: { post: postUrl } } : {}),
     card,
     numbers: {
       keyword: win.keyword,

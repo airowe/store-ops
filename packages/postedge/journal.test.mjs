@@ -67,7 +67,8 @@ test("a posted win is journaled: entry + copied card, measured numbers, exact te
   assert.match(e.title, /#40 → #12/);
   assert.equal(e.body, POST.text);
   assert.deepEqual(e.numbers, { keyword: "budget tracker", from: 40, to: 12 });
-  assert.equal(e.links.x, "https://x.com/shipaso/status/123");
+  // Platform-neutral field: the poster may be X, Bluesky, or anything else.
+  assert.equal(e.links.post, "https://x.com/shipaso/status/123");
   assert.match(e.card, /^cards\/[0-9a-f]{12}\.png$/);
   const png = await readFile(join(dir, "journey", e.card));
   assert.deepEqual(png.subarray(0, 8), Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]));
@@ -177,7 +178,7 @@ test("mark-posted flow: a claiming post fn (no real posting) consumes + journals
     now: NOW,
   });
   assert.equal(first.status, "posted");
-  assert.equal((await feed()).entries[0].links.x, "https://x.com/shipaso/status/777");
+  assert.equal((await feed()).entries[0].links.post, "https://x.com/shipaso/status/777");
   const again = await runPostEdge(opts(), {
     fetchImpl: async () => jsonResponse(POST),
     post: claim,
