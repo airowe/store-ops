@@ -9,18 +9,21 @@ is following, not deciding. Cross-checked against `cloud/src/readiness.ts`,
 pre-submit checklist — this runsheet is the do-it-now ordering).
 
 **The clock:** the app must be live + downloadable ≥1 week before Sep 30.
-Gate 1 starts today because the Paid Applications Agreement and subscription-
-product review add calendar days nothing else can compress.
+Gate 1 starts today because subscription-product review adds calendar days
+nothing else can compress. (The Paid Applications Agreement — the usual
+longest-lead item — is already in place on this account; see 1a.)
 
 ---
 
 ## Gate 1 — Workstream A (≈45 min of clicking + wait time)
 
-### 1a. Paid Applications Agreement (DO FIRST — longest lead time)
-App Store Connect → Business (Agreements, Tax, Banking):
-- [ ] Accept the **Paid Applications Agreement**; complete banking + tax until
-  status reads **Active**. Until then `getOfferings()` returns empty → the
-  paywall shows "unavailable" → App Review fails 0.1.1 on the spot.
+### 1a. Paid Applications Agreement — already in place (owner-confirmed 2026-08-08)
+The agreement is per developer account, not per app, and the owner confirms
+it's handled — so this is a 10-second glance, not a task:
+- [ ] ASC → Business (Agreements, Tax, Banking): status reads **Active**.
+  (Worth the glance because an inactive agreement fails silently as exactly
+  the review-killer: `getOfferings()` returns empty → the paywall shows
+  "unavailable" → App Review fails 0.1.1 on the spot.)
 
 ### 1b. Subscription products in ASC
 App Store Connect → ShipASO: Keyword Ranks → Monetization → Subscriptions:
