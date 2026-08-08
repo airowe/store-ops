@@ -17,13 +17,15 @@
  * command warns (exit 0); a genuinely missing one fails (exit 1).
  *
  * Requires `asc` and/or `gplay` on PATH — it builds the command tree from their
- * live `--help` output. If a CLI is absent, its commands are skipped (so this is
- * a LOCAL check, not a CI gate unless the runner installs the CLIs).
+ * live `--help` output. If a CLI is absent, its commands are skipped by default,
+ * so a plain run on a machine without `asc` reports "0 missing" having checked
+ * nothing. Pass --require in CI to turn that silent skip into a failure.
  *
  * Usage:
  *   node scripts/lint-skill-commands.mjs            # lint all skills/
  *   node scripts/lint-skill-commands.mjs asc-id-resolver
- * Exit code 1 if any documented command is missing.
+ *   node scripts/lint-skill-commands.mjs --require=asc   # CI: absent CLI = fail
+ * Exit codes: 1 = a documented command is missing, 2 = a --require'd CLI absent.
  */
 import { execFileSync } from "node:child_process";
 import { readFileSync, readdirSync, existsSync } from "node:fs";
@@ -160,7 +162,13 @@ function toolPresent(tool) {
 }
 
 // ── main ─────────────────────────────────────────────────────────────────────
-const only = process.argv[2];
+const argv = process.argv.slice(2);
+// --require=asc,gplay — treat a missing CLI as a hard failure (see exit logic).
+const requireArg = argv.find((a) => a.startsWith("--require"));
+const required = requireArg
+  ? (requireArg.split("=")[1] || "asc").split(",").map((s) => s.trim()).filter(Boolean)
+  : [];
+const only = argv.find((a) => !a.startsWith("-"));
 const dirs = readdirSync(SKILLS).filter(
   (d) => existsSync(join(SKILLS, d, "SKILL.md")) && (!only || d === only),
 );
@@ -216,4 +224,18 @@ console.log(
   `\n${missing} missing command(s), ${deprecated} deprecated across ${dirs.length} skill(s).`,
 );
 if (skipped.size) console.log(`(skipped ${[...skipped].join(", ")} — CLI not installed)`);
+
+// In --require mode, an absent CLI is a FAILURE, not a skip. Without this the
+// linter prints "0 missing" and exits 0 on a runner that has no `asc` — a green
+// check that verified nothing, which is worse than no check at all.
+if (required.length) {
+  const absent = required.filter((t) => !present[t]);
+  if (absent.length) {
+    console.error(
+      `\n✗ --require=${required.join(",")} but not installed: ${absent.join(", ")}.` +
+        `\n  Refusing to report a pass for commands that were never checked.`,
+    );
+    process.exit(2);
+  }
+}
 process.exit(missing > 0 ? 1 : 0);

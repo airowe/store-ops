@@ -98,6 +98,40 @@ jobs:
       - name: Test (token parity + honesty + typecheck)
         run: npm test
 
+  # Skill commands (#241): every `asc …` command our skills document must exist
+  # in the real CLI. Three stale commands (`asc pre-release-versions list`,
+  # `asc app-info set`, `asc app-infos list`) shipped documented-as-deprecated
+  # while actually being absent — a first-time user hits `Unknown command`.
+  #
+  # The linter builds its command tree from the CLI's live --help, so the runner
+  # must actually have `asc`. --require makes an absent CLI exit 2: without it
+  # the linter skips silently and reports "0 missing" having checked nothing.
+  #
+  # Pinned deliberately. A float would turn an upstream release into a surprise
+  # red check on an unrelated PR; bumping this pin is how we notice the CLI moved.
+  skill-commands:
+    runs-on: ubuntu-latest
+    env:
+      ASC_VERSION: 3.6.1
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install asc ${{ env.ASC_VERSION }}
+        run: |
+          set -euo pipefail
+          url="https://github.com/rorkai/App-Store-Connect-CLI/releases/download/${ASC_VERSION}/asc_${ASC_VERSION}_linux_amd64"
+          curl -fsSL --retry 3 -o /usr/local/bin/asc "$url"
+          chmod +x /usr/local/bin/asc
+          asc --version
+
+      # No credentials needed: --help is read from the binary, never the network.
+      - name: Lint documented skill commands
+        run: node scripts/lint-skill-commands.mjs --require=asc
+
   # The TanStack web dashboard (PRD 02+) — since #356 Phase 3 this IS the site:
   # cloud/public/ and the strangler edge map are gone, and this build's dist/ is
   # the Pages deploy root. Consumes the @shipaso spine by path alias. Its own
