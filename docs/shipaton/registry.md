@@ -7,7 +7,7 @@
 | Mandatory gate: RevenueCat SDK powers an IAP | ✅ merged | plan Workstream B/C (#426, #427, #431, #432) |
 | `/health` audits RevenueCat config | ✅ merged (#434) | `cloud/src/readiness.ts` |
 | Resubmit checklist (0.1.1) | ✅ merged (#435) | `marketing/aso/shipaso/resubmit-0.1.1-checklist.md` |
-| #BuildInPublic engine (composer + emitter) | 🔵 in review (#445) | `cloud/src/buildInPublicPost.ts`, `GET /apps/:id/buildinpublic-post` |
+| #BuildInPublic engine (composer + emitter) | 🔵 in review (#445) | `buildInPublicPost.ts` composer + `GET /apps/:id/buildinpublic-post` (paths land when #445 merges) |
 | SVG→PNG rasterization (posting edge) | ⬜ not started | edge/agent, needs a rasterizer dep |
 | `bird` auto-post to X | ⬜ blocked | needs the X account connected |
 | **Workstream A** — RevenueCat dashboard + store config | ⬜ **yours** | Paid Apps Agreement, products, keys/secrets |
