@@ -11,8 +11,8 @@
 | SVG→PNG rasterization (posting edge) | ✅ | `packages/postedge/rasterize.mjs` (`@resvg/resvg-js`) |
 | Posting to X | ✅ manual-paste loop (decided) | `packages/postedge/cli.mjs` — prepare → paste into X → `--mark-posted <url>` records + journals. X API auto-post skipped: no free write tier, and we're not paying for one |
 | Posting to Bluesky | ✅ automated | `packages/postedge/bsky-post.mjs` (`--post-cmd`, AT Protocol, no deps) — needs the ShipASO Bluesky account + an app password (**yours**) |
-| **Workstream A** — RevenueCat dashboard + store config | ⬜ **yours** | Paid Apps Agreement, products, keys/secrets |
-| **Ship 0.1.1 live in-window** (the hard gate) | ⬜ **yours** | build 0.1.1 → sandbox test → submit → live |
+| **Workstream A** — RevenueCat dashboard + store config | ⬜ **yours** — runsheet ready | `docs/shipaton/gates-runsheet.md` Gate 1: exact product ids, secrets, webhook value, /health proof |
+| **Ship 0.1.1 live in-window** (the hard gate) | ⬜ **yours** — version bumped, pipeline corrected | `docs/shipaton/gates-runsheet.md` Gate 2; `mobile/app.config.ts` now 0.1.1; checklist Part 5 fixed to the real Fastlane pipeline |
 | #BuildInPublic playbook (cadence + beats + evidence ledger) | ✅ | `docs/shipaton/buildinpublic-playbook.md` |
 | Public /journey page on shipaso.com | ✅ built | `docs/landing/journey.html` + `docs/landing/journey/feed.json` (guard: `packages/docpaths/journeyFeed.test.mjs`); wins auto-journal via postedge `--journal` |
 | Build-log thread composer (weekly cadence floor) | ✅ | `packages/postedge/buildlog.mjs` |

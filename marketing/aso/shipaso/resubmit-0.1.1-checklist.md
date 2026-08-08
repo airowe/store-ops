@@ -114,25 +114,33 @@ now ships in the binary. Update the ASC **App Privacy** questionnaire:
 
 ## Part 5 — Build & submit sequence (updated from `submission-prep.md §7`)
 
+> ⚠️ **The iOS pipeline is FASTLANE, not EAS** (`mobile/fastlane/Fastfile`,
+> #247). `mobile/eas.json` exists and `eas whoami` succeeds, so EAS looks like
+> the path — it is not: EAS previously generated orphan signing certs. The
+> `beta` lane builds AND uploads the same verified binary; signing is `match`
+> (readonly) with ASC API-key auth (no 2FA), and build numbers are
+> minute-stamped automatically by the lane.
+
 ```bash
-# A. Build 0.1.1 with the RevenueCat native module (config plugin auto-links).
-cd mobile && npx eas-cli build --platform ios --profile production
-#    (CI path needs the EXPO_TOKEN repo secret — see submission-prep §8.)
+# A. Build + upload 0.1.1 to TestFlight in one pass (runs on a Mac with Xcode;
+#    needs fastlane/AuthKey_NC235A8728.p8 in place, git-ignored).
+#    REVENUECAT_IOS_KEY MUST be exported: mobile/app.config.ts reads it at
+#    `expo prebuild` time — without it the binary ships an empty SDK key and
+#    the paywall shows its "unavailable" state (a guaranteed re-rejection).
+cd mobile && REVENUECAT_IOS_KEY="appl_…" bundle exec fastlane ios beta
+#    Artifact: mobile/builds/ShipASO.ipa; upload_to_testflight does NOT submit
+#    for review (deliberate).
 
-# B. Submit the processed build to App Store Connect.
-npx eas-cli submit --platform ios --profile production
-
-# C. In ASC on the 0.1.1 version:
+# B. In ASC on the 0.1.1 version:
 #    - ATTACH the 3 subscription products to this version (first-time subs go WITH the binary)
 #    - upload the RE-CAPTURED screenshots (no "free"/price text)
 #    - App Privacy: add the Purchases/Identifiers declarations (Part 3)
 #    - Age Rating + encryption: unchanged (submission-prep §4–5)
 #    - Notes for Review: paste Part 4
+#    (version is already 0.1.1 in mobile/app.config.ts; the build number is
+#    minute-stamped by the lane, so every build is NEW — no manual bump)
 
-# D. Bump the marketing/build version so this is a NEW build, not a resubmit of the
-#    rejected binary (buildNumber in app.config / eas autoIncrement).
-
-# E. Final "Submit for Review" — a deliberate human click in ASC.
+# C. Final "Submit for Review" — a deliberate human click in ASC.
 ```
 
 ---
