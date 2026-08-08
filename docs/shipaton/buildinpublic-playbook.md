@@ -12,11 +12,15 @@ die.
 
 ## The three post engines (least → most manual)
 
-1. **Win posts (automated).** The agent moves a real rank → the engine composes
-   the post + proof card (`cloud/src/buildInPublicPost.ts`), and the posting
-   edge (`packages/postedge/cli.mjs`) rasterizes + posts via `bird` once the X
-   account is connected. The meta-story writes itself: *an AI agent that ships
-   apps, shipping its own app, posting its own receipts.*
+1. **Win posts (composed + prepared automatically, pasted by hand).** The agent
+   moves a real rank → the engine composes the post + proof card
+   (`cloud/src/buildInPublicPost.ts`), and the posting edge
+   (`packages/postedge/cli.mjs`) rasterizes them into the outbox. X no longer
+   has a free write API and we're not paying for one, so the loop is: paste the
+   prepared post into X (30 seconds), then `--mark-posted <url>` — which
+   consumes the win and journals it to the public /journey page exactly as an
+   automated post would. The meta-story survives intact: *the agent writes its
+   own announcements; a human presses send.*
 2. **Build-log threads (semi-automated).** Weekly "what shipped" thread drafted
    from the real merge history by `packages/postedge/buildlog.mjs` — run it,
    edit for voice, post. Cadence is the hardest axis to sustain by hand; this

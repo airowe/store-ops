@@ -9,7 +9,7 @@
 | Resubmit checklist (0.1.1) | ✅ merged (#435) | `marketing/aso/shipaso/resubmit-0.1.1-checklist.md` |
 | #BuildInPublic engine (composer + emitter) | ✅ merged (#445) | `cloud/src/buildInPublicPost.ts` composer + `GET /apps/:id/buildinpublic-post` |
 | SVG→PNG rasterization (posting edge) | ✅ | `packages/postedge/rasterize.mjs` (`@resvg/resvg-js`) |
-| `bird` auto-post to X | 🔵 code ready, posting blocked | `packages/postedge/cli.mjs` — prepares outbox + dedups wins now; actual posting needs the X account connected (`--post-cmd`) |
+| Posting to X | ✅ manual-paste loop (decided) | `packages/postedge/cli.mjs` — prepare → paste into X → `--mark-posted <url>` records + journals. X API auto-post (`--post-cmd`) skipped: no free write tier, and we're not paying for one |
 | **Workstream A** — RevenueCat dashboard + store config | ⬜ **yours** | Paid Apps Agreement, products, keys/secrets |
 | **Ship 0.1.1 live in-window** (the hard gate) | ⬜ **yours** | build 0.1.1 → sandbox test → submit → live |
 | #BuildInPublic playbook (cadence + beats + evidence ledger) | ✅ | `docs/shipaton/buildinpublic-playbook.md` |

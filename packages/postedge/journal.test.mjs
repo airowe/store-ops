@@ -165,6 +165,27 @@ test("no structured win from the emitter → posted but NOT journaled (never gue
   await assert.rejects(access(join(dir, "journey", "feed.json")));
 });
 
+test("mark-posted flow: a claiming post fn (no real posting) consumes + journals the win with the human's URL", async () => {
+  // This is exactly what `--mark-posted <url>` wires up: the human pasted the
+  // post into X themselves (no API subscription); the CLI supplies a post fn
+  // that does nothing but report the URL. Dedup + journal behave as if bird
+  // had posted it.
+  const claim = async () => "url=https://x.com/shipaso/status/777";
+  const first = await runPostEdge(opts(), {
+    fetchImpl: async () => jsonResponse(POST),
+    post: claim,
+    now: NOW,
+  });
+  assert.equal(first.status, "posted");
+  assert.equal((await feed()).entries[0].links.x, "https://x.com/shipaso/status/777");
+  const again = await runPostEdge(opts(), {
+    fetchImpl: async () => jsonResponse(POST),
+    post: claim,
+    now: NOW,
+  });
+  assert.equal(again.status, "duplicate");
+});
+
 test("without --journal nothing changes (opt-in)", async () => {
   const out = await runPostEdge(opts({ journalDir: null }), {
     fetchImpl: async () => jsonResponse(POST),
