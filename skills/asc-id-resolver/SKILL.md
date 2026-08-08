@@ -32,9 +32,9 @@ Use this skill to map names to IDs needed by other commands.
   - `asc testflight testers list --app "APP_ID" --paginate`
 
 ## Pre-release version IDs
-- `asc pre-release-versions list --app "APP_ID" --platform IOS --paginate`
-  - Note: `pre-release-versions` still works but is **deprecated**; TestFlight
-    build IDs are usually more reliably found via `asc builds list`.
+- `asc builds list --app "APP_ID" --paginate`
+  - Note: there is no `pre-release-versions` command — TestFlight build IDs come
+    from `asc builds list`. Each build carries its pre-release version string.
 
 ## Review submission IDs
 - `asc review submissions-list --app "APP_ID" --paginate`

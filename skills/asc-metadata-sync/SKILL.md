@@ -98,13 +98,12 @@ The full flag set on `asc localizations update`: `--name`, `--subtitle`,
 > at least once.
 
 An alternative for the version fields is `asc apps info edit` (`--description`,
-`--keywords`, `--support-url`, `--marketing-url`, `--promotional-text`); the
-older `asc app-info set` / `asc app-infos list` still work but are **deprecated**
-in favour of the `apps info` forms.
+`--keywords`, `--support-url`, `--marketing-url`, `--promotional-text`), with
+`asc apps info list` to read them back.
 
-> The older `asc app-info set` / `asc app-infos list` still work but are
-> **deprecated** — they now redirect to `asc apps info edit` / `asc apps info list`.
-> Prefer the `apps info` forms.
+> Older docs elsewhere refer to singular/plural "app-info" spellings of these
+> commands. Those do not exist in the CLI (verified against 3.6.1; absent in
+> 3.3.0 too). Use `asc apps info edit` / `asc apps info list`.
 
 ## Legacy (Fastlane) Metadata Format Workflow
 
