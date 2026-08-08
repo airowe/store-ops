@@ -7,9 +7,9 @@
 | Mandatory gate: RevenueCat SDK powers an IAP | ✅ merged | plan Workstream B/C (#426, #427, #431, #432) |
 | `/health` audits RevenueCat config | ✅ merged (#434) | `cloud/src/readiness.ts` |
 | Resubmit checklist (0.1.1) | ✅ merged (#435) | `marketing/aso/shipaso/resubmit-0.1.1-checklist.md` |
-| #BuildInPublic engine (composer + emitter) | 🔵 in review (#445) | `buildInPublicPost.ts` composer + `GET /apps/:id/buildinpublic-post` (paths land when #445 merges) |
-| SVG→PNG rasterization (posting edge) | ⬜ not started | edge/agent, needs a rasterizer dep |
-| `bird` auto-post to X | ⬜ blocked | needs the X account connected |
+| #BuildInPublic engine (composer + emitter) | ✅ merged (#445) | `cloud/src/buildInPublicPost.ts` composer + `GET /apps/:id/buildinpublic-post` |
+| SVG→PNG rasterization (posting edge) | ✅ | `packages/postedge/rasterize.mjs` (`@resvg/resvg-js`) |
+| `bird` auto-post to X | 🔵 code ready, posting blocked | `packages/postedge/cli.mjs` — prepares outbox + dedups wins now; actual posting needs the X account connected (`--post-cmd`) |
 | **Workstream A** — RevenueCat dashboard + store config | ⬜ **yours** | Paid Apps Agreement, products, keys/secrets |
 | **Ship 0.1.1 live in-window** (the hard gate) | ⬜ **yours** | build 0.1.1 → sandbox test → submit → live |
 | Demo video ≤3 min | ⬜ not started | |

@@ -8,16 +8,18 @@
     "tokens",
     "honesty",
     "api",
-    "docpaths"
+    "docpaths",
+    "postedge"
   ],
   "scripts": {
     "build:tokens": "node tokens/build.mjs",
     "verify:tokens": "node tokens/verify.mjs",
     "test:honesty": "cd honesty && node --test",
     "typecheck": "tsc -p tsconfig.json",
-    "test": "npm run build:tokens && npm run verify:tokens && npm run test:honesty && npm run test:docpaths:unit && npm run test:docpaths && npm run typecheck",
+    "test": "npm run build:tokens && npm run verify:tokens && npm run test:honesty && npm run test:docpaths:unit && npm run test:docpaths && npm run test:postedge && npm run typecheck",
     "test:docpaths": "node docpaths/lint.mjs",
-    "test:docpaths:unit": "cd docpaths && node --test"
+    "test:docpaths:unit": "cd docpaths && node --test",
+    "test:postedge": "cd postedge && node --test"
   },
   "devDependencies": {
     "typescript": "5.7.3"
