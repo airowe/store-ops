@@ -10,6 +10,7 @@ framework-agnostic packages both surfaces will import, so consistency is
 | `@shipaso/tokens` | Canonical `tokens.json` → generates web CSS custom properties + RN palette | **real + verified**: `verify.mjs` regenerates the dark+light palettes from `tokens.json` (30/30). It used to diff them against the legacy dashboard's hand-written stylesheet, deleted in #356 Phase 3, so the real cross-surface guard is now `mobile/src/theme/tokens.test.ts`, whose palette is hand-written and genuinely independent |
 | `@shipaso/honesty` | Pure `formatRank` / `classifyDelta` / `buildSparkGeometry` (+ `format`, `timeAgo`) | **real + tested**: `node --test` (5 suites), logic ported verbatim from the mobile app |
 | `@shipaso/api` | Transport-agnostic REST client + types (injected `fetch` + auth) | **typed shape**: compiles under `packages/tsconfig.json`; types are a representative subset |
+| `@shipaso/postedge` | The #BuildInPublic posting edge (Shipaton): fetches the composed post from `GET /apps/:id/buildinpublic-post`, rasterizes the proof card SVG→PNG (`@resvg/resvg-js`), dedups by win, and invokes the connected post command (`bird`) — prepared-only until the X account is connected | **real + tested**: `node --test` (16), all deps injected |
 
 ## Run it
 ```bash

@@ -1,0 +1,17 @@
+{
+  "name": "@shipaso/postedge",
+  "version": "0.0.0",
+  "private": true,
+  "description": "The #BuildInPublic posting edge: fetches the composed post from the API, rasterizes the proof-card SVG to PNG, and hands a confirmed win to the posting command (the bird skill). The server never touches X — this is the piece that does.",
+  "type": "module",
+  "main": "./postedge.mjs",
+  "bin": {
+    "shipaso-postedge": "./cli.mjs"
+  },
+  "scripts": {
+    "test": "node --test"
+  },
+  "dependencies": {
+    "@resvg/resvg-js": "^2.6.2"
+  }
+}
