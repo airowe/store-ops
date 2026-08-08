@@ -219,6 +219,7 @@ import {
 import { emailSenderForEnv } from "../emailSender.js";
 import { rankDeltasView } from "../digest.js";
 import { pickShareWin, renderShareCardSvg } from "../shareCard.js";
+import { buildInPublicPostFromDeltas } from "../buildInPublicPost.js";
 import { aggregateProof, extractWins } from "../proof.js";
 import { type AppCard, summarizePortfolio } from "../portfolio.js";
 import { type RunRef, planBulkApprove } from "../bulkApprove.js";
@@ -3507,6 +3508,37 @@ async function shareCardRoute(
   });
 }
 
+/**
+ * GET /apps/:id/buildinpublic-post?storeUrl=… — the ready-to-post #BuildInPublic
+ * update for the app's top honest rank win: the composed `text` (move + store
+ * link + #BuildInPublic/#Shipaton) plus the proof-card `cardSvg`. Owner-scoped.
+ * 404 when there's no genuine win — the same honesty bar as the share card
+ * (never dress up a hold or a slip), so the poster simply posts nothing.
+ *
+ * `storeUrl` is REQUIRED and supplied by the caller: the `apps` row carries no
+ * App Store numeric id, so the public listing URL can't be derived here. The
+ * posting edge (a cron/agent + the `bird` skill) rasterizes `cardSvg` → PNG and
+ * posts it — the server never touches X.
+ */
+async function buildInPublicPostRoute(
+  env: Env,
+  userId: string,
+  appId: string,
+  url: URL,
+  origin: string | null,
+): Promise<Response> {
+  const app = await requireOwnedApp(env, appId, userId);
+  const storeUrl = (url.searchParams.get("storeUrl") ?? "").trim();
+  if (!/^https:\/\/\S+$/.test(storeUrl)) {
+    throw new HttpError(400, "storeUrl query param (https) is required");
+  }
+  const history = await getRankHistory(env.DB, appId, {});
+  const view = rankDeltasView(history, { appName: app.name });
+  const post = buildInPublicPostFromDeltas(view, { appName: app.name, storeUrl });
+  if (!post) throw new HttpError(404, "no rank win to post yet");
+  return json({ text: post.text, hashtags: post.hashtags, cardSvg: post.cardSvg }, 200, origin, env);
+}
+
 /** GET /runs/:id — full run view (scoped to the owner). */
 async function getRunRoute(env: Env, userId: string, runId: string): Promise<unknown> {
   const run = await getRun(env.DB, runId);
@@ -5090,6 +5122,9 @@ export async function handleApi(req: Request, env: Env, ctx?: ExecutionContext):
       }
       if (seg.length === 3 && seg[1] && seg[2] === "share-card.svg" && method === "GET") {
         return await shareCardRoute(env, user.id, seg[1], url, origin);
+      }
+      if (seg.length === 3 && seg[1] && seg[2] === "buildinpublic-post" && method === "GET") {
+        return await buildInPublicPostRoute(env, user.id, seg[1], url, origin);
       }
     }
 
