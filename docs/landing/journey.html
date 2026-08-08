@@ -231,7 +231,7 @@
         if (names.length) {
           var row = el("div", "links");
           names.forEach(function (k) {
-            var a = el("a", null, k === "x" ? "View the post ↗" : k === "pr" ? "The code ↗" : k + " ↗");
+            var a = el("a", null, k === "post" || k === "x" ? "View the post ↗" : k === "pr" ? "The code ↗" : k + " ↗");
             a.href = links[k];
             a.rel = "noopener";
             row.appendChild(a);

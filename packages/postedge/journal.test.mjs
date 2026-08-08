@@ -67,7 +67,8 @@ test("a posted win is journaled: entry + copied card, measured numbers, exact te
   assert.match(e.title, /#40 → #12/);
   assert.equal(e.body, POST.text);
   assert.deepEqual(e.numbers, { keyword: "budget tracker", from: 40, to: 12 });
-  assert.equal(e.links.x, "https://x.com/shipaso/status/123");
+  // Platform-neutral field: the poster may be X, Bluesky, or anything else.
+  assert.equal(e.links.post, "https://x.com/shipaso/status/123");
   assert.match(e.card, /^cards\/[0-9a-f]{12}\.png$/);
   const png = await readFile(join(dir, "journey", e.card));
   assert.deepEqual(png.subarray(0, 8), Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]));
@@ -163,6 +164,27 @@ test("no structured win from the emitter → posted but NOT journaled (never gue
   assert.equal(out.status, "posted");
   assert.equal(out.journaled, false);
   await assert.rejects(access(join(dir, "journey", "feed.json")));
+});
+
+test("mark-posted flow: a claiming post fn (no real posting) consumes + journals the win with the human's URL", async () => {
+  // This is exactly what `--mark-posted <url>` wires up: the human pasted the
+  // post into X themselves (no API subscription); the CLI supplies a post fn
+  // that does nothing but report the URL. Dedup + journal behave as if bird
+  // had posted it.
+  const claim = async () => "url=https://x.com/shipaso/status/777";
+  const first = await runPostEdge(opts(), {
+    fetchImpl: async () => jsonResponse(POST),
+    post: claim,
+    now: NOW,
+  });
+  assert.equal(first.status, "posted");
+  assert.equal((await feed()).entries[0].links.post, "https://x.com/shipaso/status/777");
+  const again = await runPostEdge(opts(), {
+    fetchImpl: async () => jsonResponse(POST),
+    post: claim,
+    now: NOW,
+  });
+  assert.equal(again.status, "duplicate");
 });
 
 test("without --journal nothing changes (opt-in)", async () => {

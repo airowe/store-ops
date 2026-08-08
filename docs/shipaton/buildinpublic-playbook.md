@@ -12,11 +12,18 @@ die.
 
 ## The three post engines (least → most manual)
 
-1. **Win posts (automated).** The agent moves a real rank → the engine composes
-   the post + proof card (`cloud/src/buildInPublicPost.ts`), and the posting
-   edge (`packages/postedge/cli.mjs`) rasterizes + posts via `bird` once the X
-   account is connected. The meta-story writes itself: *an AI agent that ships
-   apps, shipping its own app, posting its own receipts.*
+1. **Win posts.** The agent moves a real rank → the engine composes the post +
+   proof card (`cloud/src/buildInPublicPost.ts`), and the posting edge
+   (`packages/postedge/cli.mjs`) rasterizes them into the outbox. Two legs:
+   - **Bluesky — fully automated.** `--post-cmd packages/postedge/bsky-post.mjs`
+     posts text + card via the free AT Protocol API (app password, never the
+     account password) and journals the win with its bsky.app link.
+   - **X — manual paste.** X has no free write API and we're not paying for
+     one: paste the prepared post (30 seconds), then `--mark-posted <url>`
+     consumes + journals the win exactly as an automated post would.
+   One win, one journal entry — whichever leg runs first consumes it; add the
+   other platform's link to the entry by hand if you post there too. The
+   meta-story survives intact: *the agent writes its own announcements.*
 2. **Build-log threads (semi-automated).** Weekly "what shipped" thread drafted
    from the real merge history by `packages/postedge/buildlog.mjs` — run it,
    edit for voice, post. Cadence is the hardest axis to sustain by hand; this
@@ -57,7 +64,8 @@ posting edge (`--journal`, only on a successful post); story/milestone beats
 are committed by hand. `packages/docpaths/journeyFeed.test.mjs` guards every
 entry: real past dates, existing card assets, measured-or-absent numbers,
 https links. At submission, the Devpost post-links field is compiled from the
-feed's `links.x` values.
+feed entries' post links (`links.post` — X, Bluesky, or wherever the post
+lives).
 
 Feedback-that-shipped notes (the Sep roundup's raw material) go in the entry
 `body` when the change ships, with the PR linked in `links.pr`.

@@ -6,7 +6,8 @@
   "type": "module",
   "main": "./postedge.mjs",
   "bin": {
-    "shipaso-postedge": "./cli.mjs"
+    "shipaso-postedge": "./cli.mjs",
+    "bsky-post": "./bsky-post.mjs"
   },
   "scripts": {
     "test": "node --test"

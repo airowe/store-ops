@@ -13,9 +13,16 @@
  * command prints the created post's URL (`url=https://x.com/…`, or a bare
  * https URL) on stdout, the ledger entry links to it; no URL printed → no link.
  *
+ * No X API subscription? The manual-paste loop: run with no --post-cmd (the
+ * outbox gets post.txt + card.png), paste them into X yourself, then run again
+ * with --mark-posted <the post's URL>. That records the win exactly as an
+ * automated post would — consumed (never re-posted), journaled with your URL —
+ * without this tool ever touching X.
+ *
  *   SHIPASO_API_KEY=shipaso_… shipaso-postedge \
  *     --app <appId> --store-url https://apps.apple.com/us/app/id… \
- *     [--post-cmd bird-post] [--journal docs/landing/journey]
+ *     [--post-cmd bird-post | --mark-posted https://x.com/…/status/…] \
+ *     [--journal docs/landing/journey]
  */
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
@@ -25,14 +32,19 @@ const execFileAsync = promisify(execFile);
 
 async function main() {
   const opts = parseCliArgs(process.argv.slice(2), process.env);
-  const post = opts.postCmd
-    ? async (textPath, pngPath) => {
-        // stdout rides back so runPostEdge can pick up a `url=…` line for the
-        // journal's "View the post" link.
-        const { stdout } = await execFileAsync(opts.postCmd, [textPath, pngPath]);
-        return stdout;
-      }
-    : null;
+  let post = null;
+  if (opts.postCmd) {
+    post = async (textPath, pngPath) => {
+      // stdout rides back so runPostEdge can pick up a `url=…` line for the
+      // journal's "View the post" link.
+      const { stdout } = await execFileAsync(opts.postCmd, [textPath, pngPath]);
+      return stdout;
+    };
+  } else if (opts.markPostedUrl) {
+    // The human already posted (manual-paste loop) — this "post" only claims
+    // the URL, so state + journal record the win exactly like an automated post.
+    post = async () => `url=${opts.markPostedUrl}`;
+  }
   const out = await runPostEdge(opts, post ? { post } : {});
 
   switch (out.status) {
@@ -50,7 +62,8 @@ async function main() {
       break;
     case "posted":
       console.log(
-        `[postedge] ${opts.appId}: posted. Evidence kept in ${out.outboxDir}` +
+        `[postedge] ${opts.appId}: ${opts.markPostedUrl ? "win recorded as posted (by you)" : "posted"}. ` +
+          `Evidence kept in ${out.outboxDir}` +
           (out.journaled ? ` and journaled to ${opts.journalDir}` : ""),
       );
       break;

@@ -180,6 +180,7 @@ test("parseCliArgs: full happy path", () => {
     outDir: "o",
     postCmd: "bird-post",
     journalDir: "docs/landing/journey",
+    markPostedUrl: null,
   });
 });
 
@@ -199,6 +200,25 @@ test("parseCliArgs: the api key comes from the environment only, and is required
   assert.throws(
     () => parseCliArgs(["--app", "a", "--store-url", "https://x.test"], {}),
     /SHIPASO_API_KEY/,
+  );
+});
+
+test("parseCliArgs: --mark-posted takes the manually-posted URL (https only)", () => {
+  const env = { SHIPASO_API_KEY: "k" };
+  const base = ["--app", "a", "--store-url", "https://x.test"];
+  const parsed = parseCliArgs([...base, "--mark-posted", "https://x.com/shipaso/status/9"], env);
+  assert.equal(parsed.markPostedUrl, "https://x.com/shipaso/status/9");
+  assert.throws(() => parseCliArgs([...base, "--mark-posted", "http://x.com/1"], env), /https/);
+});
+
+test("parseCliArgs: --mark-posted and --post-cmd are mutually exclusive", () => {
+  assert.throws(
+    () =>
+      parseCliArgs(
+        ["--app", "a", "--store-url", "https://x.test", "--post-cmd", "bird", "--mark-posted", "https://x.com/1"],
+        { SHIPASO_API_KEY: "k" },
+      ),
+    /mutually exclusive|either/i,
   );
 });
 

@@ -92,7 +92,7 @@ async function journalWin(journalDir, { win, text, key, pngPath, postUrl, date }
     kind: "win",
     title: `“${win.keyword}” ${move}`,
     body: text,
-    ...(postUrl ? { links: { x: postUrl } } : {}),
+    ...(postUrl ? { links: { post: postUrl } } : {}),
     card,
     numbers: {
       keyword: win.keyword,
@@ -165,7 +165,8 @@ export async function runPostEdge(opts, deps = {}) {
 
 const USAGE =
   "usage: shipaso-postedge --app <appId> --store-url <https://…> " +
-  "[--state <file>] [--out <dir>] [--post-cmd <cmd>] [--journal <dir>]   (SHIPASO_API_KEY required in env)";
+  "[--state <file>] [--out <dir>] [--post-cmd <cmd> | --mark-posted <url>] [--journal <dir>]   " +
+  "(SHIPASO_API_KEY required in env)";
 
 /**
  * Parse CLI args + env into runPostEdge options. The API key is environment-
@@ -189,6 +190,12 @@ export function parseCliArgs(argv, env) {
   if (!/^https:\/\//.test(flags["store-url"])) {
     throw new Error(`--store-url must be https (got "${flags["store-url"]}"). ${USAGE}`);
   }
+  if (flags["post-cmd"] && flags["mark-posted"]) {
+    throw new Error(`--post-cmd and --mark-posted are mutually exclusive — either bird posts, or you already did. ${USAGE}`);
+  }
+  if (flags["mark-posted"] && !/^https:\/\//.test(flags["mark-posted"])) {
+    throw new Error(`--mark-posted must be the https URL of the post you published. ${USAGE}`);
+  }
   return {
     base: env.SHIPASO_API_BASE ?? "https://api.shipaso.com",
     apiKey,
@@ -198,5 +205,6 @@ export function parseCliArgs(argv, env) {
     outDir: flags.out ?? "postedge-out",
     postCmd: flags["post-cmd"] ?? null,
     journalDir: flags.journal ?? null,
+    markPostedUrl: flags["mark-posted"] ?? null,
   };
 }
