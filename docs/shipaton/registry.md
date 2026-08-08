@@ -12,7 +12,9 @@
 | `bird` auto-post to X | 🔵 code ready, posting blocked | `packages/postedge/cli.mjs` — prepares outbox + dedups wins now; actual posting needs the X account connected (`--post-cmd`) |
 | **Workstream A** — RevenueCat dashboard + store config | ⬜ **yours** | Paid Apps Agreement, products, keys/secrets |
 | **Ship 0.1.1 live in-window** (the hard gate) | ⬜ **yours** | build 0.1.1 → sandbox test → submit → live |
-| Demo video ≤3 min | ⬜ not started | |
-| Devpost submission + #BuildInPublic post links | ⬜ not started | |
+| #BuildInPublic playbook (cadence + beats + evidence ledger) | ✅ | `docs/shipaton/buildinpublic-playbook.md` |
+| Build-log thread composer (weekly cadence floor) | ✅ | `packages/postedge/buildlog.mjs` |
+| Demo video ≤3 min | 🔵 script drafted | `docs/shipaton/devpost-draft.md` — recording needs a device + live 0.1.1 |
+| Devpost submission + #BuildInPublic post links | 🔵 draft ready | `docs/shipaton/devpost-draft.md` + the playbook's ledger; final facts land at submission |
 
 Legend: ✅ done · 🔵 in review · ⬜ not started. "yours" = needs a console/device only you have.
