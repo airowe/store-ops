@@ -1,0 +1,1 @@
+ShipASO's agent now has a Claude brain: it writes the subtitle proposals, deterministic guardrails validate them — hard 30-char limit, no price claims, must carry a target keyword. Model writes, reality validates. Every run still ends at a human's approval. #BuildInPublic
