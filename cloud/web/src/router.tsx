@@ -16,7 +16,7 @@ import { PortfolioKeywordsRoute } from "./routes/portfolioKeywords.js";
 import { PortfolioCompetitorsRoute } from "./routes/portfolioCompetitors.js";
 import { OnboardingRoute } from "./routes/onboarding.js";
 import { NotFoundRoute } from "./routes/notFound.js";
-import { LandingRoute, LoginRoute, PreviewRoute, ProofRoute, BroadcastRoute, PrivacyRoute } from "./routes/public.js";
+import { LandingRoute, LoginRoute, PreviewRoute, ProofRoute, BroadcastRoute, PrivacyRoute, TermsRoute } from "./routes/public.js";
 
 const rootRoute = createRootRoute({ component: ShellLayout });
 
@@ -38,6 +38,9 @@ const loginRoute = createRoute({ getParentRoute: () => rootRoute, path: "/login"
 const previewRoute = createRoute({ getParentRoute: () => rootRoute, path: "/preview", component: PreviewRoute });
 const proofRoute = createRoute({ getParentRoute: () => rootRoute, path: "/proof", component: ProofRoute });
 const privacyRoute = createRoute({ getParentRoute: () => rootRoute, path: "/privacy", component: PrivacyRoute });
+// Terms of Use (EULA). Apple requires a FUNCTIONAL link from any screen selling
+// an auto-renewable subscription; 0.1.0 ate a 2.1(a) for a legal link that 404'd.
+const termsRoute = createRoute({ getParentRoute: () => rootRoute, path: "/terms", component: TermsRoute });
 const broadcastRoute = createRoute({ getParentRoute: () => rootRoute, path: "/broadcast", component: BroadcastRoute });
 
 const routeTree = rootRoute.addChildren([
@@ -56,6 +59,7 @@ const routeTree = rootRoute.addChildren([
   previewRoute,
   proofRoute,
   privacyRoute,
+  termsRoute,
   broadcastRoute,
 ]);
 

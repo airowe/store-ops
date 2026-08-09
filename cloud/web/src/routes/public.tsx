@@ -8,6 +8,7 @@ import { LoginView } from "../features/public/LoginView.js";
 import { PreviewView } from "../features/public/PreviewView.js";
 import { ProofView } from "../features/public/ProofView.js";
 import { PrivacyView } from "../features/public/PrivacyView.js";
+import { TermsView } from "../features/public/TermsView.js";
 import { BroadcastView } from "../features/broadcast/BroadcastView.js";
 import { client } from "../api.js";
 
@@ -36,6 +37,10 @@ export function ProofRoute() {
 
 export function PrivacyRoute() {
   return <PrivacyView />;
+}
+
+export function TermsRoute() {
+  return <TermsView />;
 }
 
 export function BroadcastRoute() {
