@@ -103,9 +103,14 @@ export default function AppDetail() {
       <Stack.Screen options={{ title: a.name, headerShown: true }} />
       <AppText kind="dim">{a.bundle_id} · {a.country}</AppText>
 
-      <View style={{ flexDirection: "row", gap: spacing.sm }}>
+      <View style={{ flexDirection: "row", gap: spacing.sm, flexWrap: "wrap" }}>
         <Button label="War room" variant="ghost" onPress={() => router.push(`/(app)/war-room/${a.id}`)} />
         <Button label="Share a win" variant="ghost" onPress={() => void shareWin(a.id)} />
+        <Button
+          label="Capture kit"
+          variant="ghost"
+          onPress={() => router.push(`/(app)/capture-kit?appName=${encodeURIComponent(a.name)}`)}
+        />
       </View>
 
       {ranks.data?.points ? <RankTrendChart points={ranks.data.points} /> : null}

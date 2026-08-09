@@ -16,17 +16,38 @@ import type { ApiClient } from "../api/client.js";
 import { planScreenshots } from "../api/endpoints.js";
 import type { ScreenshotPlan, ScreenshotPlanInputs } from "../types/api.js";
 import { spacing, usePalette } from "../theme/index.js";
+import { ColorPicker } from "./ColorPicker.js";
+import { FramePicker, type FrameChoice } from "./FramePicker.js";
 import { AppText, Button, Card } from "./primitives.js";
 
-export function ScreenshotPlanCard({ client, inputs }: { client: ApiClient; inputs: ScreenshotPlanInputs }) {
+export function ScreenshotPlanCard({
+  client,
+  inputs,
+  onPlan,
+}: {
+  client: ApiClient;
+  inputs: ScreenshotPlanInputs;
+  /** called with each fresh plan, so a parent can hand it to the renderer. */
+  onPlan?: ((plan: ScreenshotPlan) => void) | undefined;
+}) {
   const palette = usePalette();
   const [plan, setPlan] = useState<ScreenshotPlan | null>(null);
   const [busy, setBusy] = useState(false);
+  // "auto" = let ShipASO pick per shot; a catalog id locks every shot's frame.
+  const [frame, setFrame] = useState<FrameChoice>("auto");
+  // brand colors → brandPalette (accents come only from here; empty = neutral).
+  const [colors, setColors] = useState<string[]>([]);
 
   const run = async () => {
     setBusy(true);
     try {
-      setPlan(await planScreenshots(client, inputs));
+      const fresh = await planScreenshots(client, {
+        ...inputs,
+        ...(frame !== "auto" ? { templatePreference: frame } : {}),
+        ...(colors.length > 0 ? { brandPalette: colors } : {}),
+      });
+      setPlan(fresh);
+      onPlan?.(fresh);
     } finally {
       setBusy(false);
     }
@@ -38,6 +59,8 @@ export function ScreenshotPlanCard({ client, inputs }: { client: ApiClient; inpu
       <AppText kind="micro">
         Turn this run’s screenshot findings into a shot-by-shot plan you render locally.
       </AppText>
+      <FramePicker client={client} choice={frame} onChoose={setFrame} />
+      <ColorPicker colors={colors} onChange={setColors} />
       <Button testID="plan-screenshots-btn" label={busy ? "Planning…" : "Plan screenshots"} onPress={run} disabled={busy} />
 
       {plan ? (

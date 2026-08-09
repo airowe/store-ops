@@ -30,6 +30,7 @@
     "wrangler": "^3.114.17"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.116.0",
     "@modelcontextprotocol/sdk": "^1.29.0"
   }
 }

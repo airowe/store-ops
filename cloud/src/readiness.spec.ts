@@ -39,6 +39,7 @@ function prodEnv(over: EnvOverrides = {}): Env {
     TINYFISH_API_KEY: "tf_123",
     RESEND_API_KEY: "re_123",
     RESEND_FROM: "store-ops <login@mail.shipaso.com>",
+    ANTHROPIC_API_KEY: "sk-ant-test",
     ...over,
     // `over` may carry explicit `undefined` for optional secrets (that's the
     // point); the cast keeps the required base fields' types intact.
@@ -212,6 +213,7 @@ describe("auditReadiness — RevenueCat (in-app purchase)", () => {
   // A missing IAP config must never block the deploy — it's a degraded feature,
   // not an auth-integrity failure.
   it("stays ready (warn-only) when all RevenueCat config is absent", () => {
+    // (see claude_reasoner below for the same warn-only guarantee on the LLM key)
     const report = auditReadiness(
       prodEnv({
         REVENUECAT_WEBHOOK_AUTH: undefined,
@@ -291,5 +293,23 @@ describe("auditReadiness — cookie domain vs dashboard origin", () => {
 
   it("is satisfied when both the https origin and the cookie domain are set", () => {
     expect(check(auditReadiness(prodEnv()), "cookie_domain").ok).toBe(true);
+  });
+});
+
+describe("auditReadiness — Claude reasoning (Anthropic API)", () => {
+  it("warns when ANTHROPIC_API_KEY is unset — the agent runs on the fallback brain", () => {
+    const report = auditReadiness(prodEnv({ ANTHROPIC_API_KEY: undefined }));
+    const c = check(report, "claude_reasoner");
+    expect(c.ok).toBe(false);
+    expect(c.severity).toBe("warn");
+    expect(c.detail).toContain("ANTHROPIC_API_KEY");
+    // never blocks a deploy — degraded reasoning, not an integrity failure
+    expect(report.ready).toBe(true);
+  });
+
+  it("passes when the key is set", () => {
+    const c = check(auditReadiness(prodEnv({ ANTHROPIC_API_KEY: "sk-ant-x" })), "claude_reasoner");
+    expect(c.ok).toBe(true);
+    expect(c.detail).toContain("Claude");
   });
 });

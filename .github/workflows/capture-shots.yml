@@ -1,0 +1,150 @@
+# capture-shots — agent-driven App Store screenshot + preview-footage capture.
+#
+# A Claude Code agent (`claude -p`) drives the iOS Simulator with AXe, following
+# the plan at marketing/screenshots/capture/PLAN.md: build the app, walk the real
+# UI, capture raw PNGs + an optional walkthrough video, and write an honest
+# manifest of what it could and could not capture. Raw captures feed the
+# deterministic renderer (`scripts/render-shipshots.py` — filename stem is the
+# sourceScreen id); the agent drives, but every pixel is a genuine app render.
+#
+# workflow_dispatch ONLY, on purpose: macOS runners bill at 10x and each run
+# spends Anthropic tokens, so this never runs per-PR. Needs the
+# ANTHROPIC_API_KEY *Actions* secret (a separate store from the Worker's
+# wrangler secret of the same name).
+#
+# The verify step is deterministic and trusts the artifact, not the agent: a
+# manifest must exist, at least 3 raw PNGs must exist, and every PNG must be an
+# App-Store-accepted portrait size (1320x2868 or 1290x2796). Guard test
+# packages/docpaths/captureContract.test.mjs keeps those sizes in sync with
+# PLAN.md.
+
+name: capture-shots
+
+on:
+  workflow_dispatch:
+    inputs:
+      record_video:
+        description: "Also record a simulator walkthrough video (raw app-preview footage)"
+        type: boolean
+        default: true
+
+concurrency:
+  group: capture-shots
+  cancel-in-progress: false
+
+jobs:
+  capture:
+    runs-on: macos-15
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: mobile/package-lock.json
+
+      - name: Install JS deps
+        working-directory: mobile
+        run: npm ci
+
+      # Mirrors the Fastfile `build` lane minus signing — a Debug simulator
+      # build needs no match/certs, so no ASC API key lives on this runner.
+      - name: expo prebuild
+        working-directory: mobile
+        run: npx expo prebuild --platform ios --no-install
+
+      - name: pod install
+        working-directory: mobile/ios
+        run: pod install
+
+      # Same seeding the Fastfile does: the RN/Expo SDK ships React-Core
+      # prebuilt as an xcframework that must be extracted from its release
+      # tarball before the build validates vendored_frameworks.
+      - name: Seed React prebuilt xcframeworks
+        working-directory: mobile
+        run: |
+          set -euo pipefail
+          DEST="ios/Pods/React-Core-prebuilt/React.xcframework"
+          TARBALL=$(ls ios/Pods/ReactNativeCore-artifacts/*-release.tar.gz 2>/dev/null | head -1 || true)
+          if [ -n "$TARBALL" ] && [ ! -f "$DEST/Info.plist" ]; then
+            mkdir -p "$DEST"; tar -xf "$TARBALL" --strip-components=1 -C "$DEST"
+            echo "Extracted $TARBALL"
+          else echo "React-Core-prebuilt already seeded or no tarball — skipping."; fi
+          DEST="ios/Pods/ReactNativeDependencies/framework/packages/react-native/ReactNativeDependencies.xcframework"
+          TARBALL=$(ls ios/Pods/ReactNativeDependencies-artifacts/*-release.tar.gz 2>/dev/null | head -1 || true)
+          if [ -n "$TARBALL" ] && [ ! -f "$DEST/Info.plist" ]; then
+            mkdir -p "$DEST"; tar -xf "$TARBALL" --strip-components=4 -C "$DEST"
+            echo "Extracted $TARBALL"
+          else echo "ReactNativeDependencies already seeded or no tarball — skipping."; fi
+
+      - name: Build for simulator
+        working-directory: mobile
+        run: |
+          set -euo pipefail
+          xcodebuild \
+            -workspace ios/ShipASO.xcworkspace \
+            -scheme ShipASO \
+            -configuration Debug \
+            -destination 'generic/platform=iOS Simulator' \
+            -derivedDataPath .build/DerivedData \
+            build
+          # Trust the artifact, not the exit code (same rule as the Fastfile).
+          APP=".build/DerivedData/Build/Products/Debug-iphonesimulator/ShipASO.app"
+          test -d "$APP" || { echo "xcodebuild reported success but produced no .app at $APP"; exit 1; }
+
+      - name: Install AXe + Claude Code
+        run: |
+          set -euo pipefail
+          brew install cameroncooke/axe/axe
+          npm install -g @anthropic-ai/claude-code
+          axe --version
+          claude --version
+
+      - name: Agent capture (claude -p drives the simulator)
+        timeout-minutes: 40
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          RECORD_VIDEO: ${{ inputs.record_video }}
+        run: |
+          set -euo pipefail
+          test -n "$ANTHROPIC_API_KEY" || { echo "ANTHROPIC_API_KEY Actions secret is not set"; exit 1; }
+          mkdir -p marketing/screenshots/capture/raw marketing/screenshots/capture/video
+          claude -p "$(cat marketing/screenshots/capture/PLAN.md)" \
+            --model claude-sonnet-5 \
+            --allowedTools "Bash,Read,Glob,Grep,Write" \
+            --max-turns 150
+
+      - name: Verify captures (deterministic — trust the artifact, not the agent)
+        run: |
+          set -euo pipefail
+          raw=marketing/screenshots/capture/raw
+          test -f "$raw/capture-manifest.json" || { echo "no capture-manifest.json — the run must state what it did"; exit 1; }
+          n=$(ls "$raw"/*.png 2>/dev/null | wc -l | tr -d ' ')
+          echo "captured $n raw PNGs"
+          [ "$n" -ge 3 ] || { echo "expected at least 3 raw captures (login, search, audit-result)"; exit 1; }
+          for f in "$raw"/*.png; do
+            size=$(sips -g pixelWidth -g pixelHeight "$f" | awk '/pixel(Width|Height)/ {print $2}' | paste -sd x -)
+            case "$size" in
+              1320x2868|1290x2796) echo "$f  $size  ok" ;;
+              *) echo "$f is ${size} — not an accepted App Store portrait size"; exit 1 ;;
+            esac
+          done
+
+      - name: Upload raw captures
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: raw-captures
+          path: |
+            marketing/screenshots/capture/raw/
+          if-no-files-found: warn
+
+      - name: Upload walkthrough video
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: walkthrough-video
+          path: marketing/screenshots/capture/video/
+          if-no-files-found: ignore

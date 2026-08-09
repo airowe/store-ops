@@ -779,8 +779,11 @@ export type CheckoutResult = { url: string };
 
 // ── ShipShots (#153) — mirrors the shared @shipaso/api ScreenshotPlan types ───
 
-/** The fixed ShipShots template library — matches the engine's TEMPLATE_IDS. */
-export type TemplateId = "headline-top" | "headline-bottom" | "full-bleed" | "duo";
+/** A ShipShots frame id. The catalog (GET /screenshot-templates) is the
+ *  runtime truth — a literal union here froze at four ids while the catalog
+ *  grew, so the type stays open and consumers resolve ids against the fetched
+ *  catalog (unknown → the first frame, the same safe default everywhere). */
+export type TemplateId = string;
 
 /**
  * One planned shot (mirrors the engine's PlannedShot). A "MISSING" sourceScreen
@@ -805,6 +808,8 @@ export type ScreenshotPlan = {
   shots: PlannedShot[];
   label: string;
   degraded: boolean;
+  /** the brand palette echoed from the request, for the render step. */
+  palette?: string[];
 };
 
 /** Request body for POST /plan/screenshots. */
@@ -815,4 +820,22 @@ export type ScreenshotPlanInputs = {
   rawScreens?: string[];
   audit: { grade?: string; recommendedCount: number; findings: string[] };
   brandPalette?: string[];
+  /** a locked catalog frame id; absent or "auto" = let ShipASO pick per shot. */
+  templatePreference?: string;
+};
+
+/** One marketing frame from GET /screenshot-templates (geometry in canvas fractions). */
+export type FrameBox = { fx: number; fy: number; fw: number; fh: number; align?: string };
+export type FrameTemplate = {
+  id: string;
+  name: string;
+  /** why this frame converts — the picker's one-line pitch. */
+  sell: string;
+  slots: Record<string, FrameBox>;
+  deviceFrame: FrameBox;
+};
+export type FrameCatalog = {
+  version: number;
+  auto: { id: "auto"; name: string; sell: string };
+  templates: FrameTemplate[];
 };

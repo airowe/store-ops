@@ -214,6 +214,9 @@ def render_locale(plan: DrawPlan, background, out_path,
     W, H = plan.canvas.width, plan.canvas.height
     if background is None:
         img = Image.new("RGB", (W, H), (14, 16, 22))
+    elif isinstance(background, tuple):
+        # a solid brand color (r, g, b) — the user-picked background
+        img = Image.new("RGB", (W, H), background)
     else:
         src = background if isinstance(background, Image.Image) else Image.open(background)
         img = src.convert("RGB").resize((W, H))

@@ -144,7 +144,7 @@ export async function runKeyedSweepForApp(
   // sweep). The stored key's plaintext is a transient here, never persisted
   // onto the run.
   const previous = await getLatestCompetitorMap(env.DB, app.id);
-  const cronReasoner = reasonerForEnv(env.AI);
+  const cronReasoner = reasonerForEnv(env);
   const confirmed = await confirmedCompetitorKeys(env.DB, app.id);
   let passed: { result: AgentResult; resultWithSnapshot: AgentResult } | null = null;
   if (credentialsEnabled(env)) {
@@ -187,7 +187,7 @@ export async function runKeyedSweepForApp(
       },
       previous,
     );
-    const r = await runAgent(fetchForEnv(env), input);
+    const r = await runAgent(fetchForEnv(env), input, { copywriter: cronReasoner });
     passed = { result: r, resultWithSnapshot: r };
   }
   const result = passed.result;

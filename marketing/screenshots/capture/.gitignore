@@ -1,0 +1,4 @@
+# CI capture outputs — surfaced as workflow artifacts, never committed. What
+# gets committed is the curated result after local review + rendering.
+raw/
+video/

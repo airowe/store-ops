@@ -30,7 +30,7 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO / "lib"))
 from render_localized_shots import Canvas, render_locale  # noqa: E402
-from shipshots_render import plan_to_render_jobs  # noqa: E402
+from shipshots_render import parse_hex, plan_to_render_jobs  # noqa: E402
 
 _IMG_EXTS = (".png", ".jpg", ".jpeg", ".webp")
 
@@ -59,20 +59,38 @@ def main() -> int:
     ap.add_argument("--canvas", default="1290x2796", help="device size WxH (default iPhone 6.7\")")
     ap.add_argument("--out", required=True, help="output dir for the PNGs")
     ap.add_argument("--locale", default="en")
+    ap.add_argument("--bg", default=None,
+                    help="solid background color (#rrggbb). Unlocks brand accents: "
+                         "captions use the measured ink for it and each shot's "
+                         "planned accent colors the headline when readable.")
     args = ap.parse_args()
+
+    background = None
+    if args.bg is not None:
+        background = parse_hex(args.bg)
+        if background is None:
+            print(f"--bg must be #rrggbb, got {args.bg!r}", file=sys.stderr)
+            return 2
 
     plan = json.loads(Path(args.plan).read_text())
     canvas = _parse_canvas(args.canvas)
     screen_paths = _screen_paths(Path(args.screens)) if args.screens else {}
     out_dir = Path(args.out)
 
-    jobs = plan_to_render_jobs(plan, canvas, screen_paths, locale=args.locale)
+    # The plan echoes the user's brand palette; accents only paint over a KNOWN
+    # solid background, so say so instead of silently rendering neutral.
+    if background is None and plan.get("palette"):
+        print(f"note: plan carries brand palette {plan['palette']} — "
+              "pass --bg '#rrggbb' to paint captions and accents against it.")
+
+    jobs = plan_to_render_jobs(plan, canvas, screen_paths, locale=args.locale,
+                               background=background)
     if plan.get("degraded"):
         print("note: this plan came from the deterministic fallback (no model shaped it).")
 
     review = 0
     for job in jobs:
-        render_locale(job.draw_plan, None, out_dir / job.out_name,
+        render_locale(job.draw_plan, background, out_dir / job.out_name,
                       device_screen=job.device_screen, device_frame=job.device_frame)
         flag = "  ⚠ needs review" if job.draw_plan.needs_review else ""
         src = job.device_screen or "MISSING (placeholder)"

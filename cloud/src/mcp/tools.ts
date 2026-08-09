@@ -121,7 +121,7 @@ async function resolveAndRun(
       .join("; ");
     throw new Error(`"${out.query}" is ambiguous — re-call with one bundleId. Candidates: ${list}`);
   }
-  const reasoner = reasonerForEnv(ctx.env.AI);
+  const reasoner = reasonerForEnv(ctx.env);
   const result = await runReadOnlyAgent(fetchFn, {
     app: out.app,
     ...(reasoner ? { reasoner } : {}),

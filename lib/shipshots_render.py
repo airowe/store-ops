@@ -21,7 +21,7 @@ Honesty, load-bearing (mirrors the engine):
 """
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Optional
 
 from render_localized_shots import (
@@ -37,6 +37,53 @@ DEFAULT_LINE_HEIGHT = 1.2
 _FONT_FLOOR = 0.7  # mirror fitCaption's minSize default (70% of the base size)
 _HEADLINE_BASE = 96
 _SUBLINE_BASE = 64
+
+# ── brand color handling (measured-or-nothing, applied to pixels) ────────────
+# WCAG large-text AA. An accent below this against the KNOWN background never
+# ships — it falls back to the measured ink for that background.
+MIN_ACCENT_CONTRAST = 3.0
+_DARK_INK = (17, 22, 33)    # near-black ink for light backgrounds
+_LIGHT_INK = (255, 255, 255)
+
+
+def parse_hex(value) -> Optional[tuple]:
+    """'#rrggbb' → (r, g, b); anything else → None (a malformed color is
+    ignored, never guessed at)."""
+    if not isinstance(value, str):
+        return None
+    v = value.strip().lstrip("#")
+    if len(v) != 6:
+        return None
+    try:
+        return tuple(int(v[i:i + 2], 16) for i in (0, 2, 4))
+    except ValueError:
+        return None
+
+
+def _rel_luminance(rgb: tuple) -> float:
+    """WCAG relative luminance."""
+    def chan(c: float) -> float:
+        c = c / 255.0
+        return c / 12.92 if c <= 0.04045 else ((c + 0.055) / 1.055) ** 2.4
+    r, g, b = (chan(c) for c in rgb)
+    return 0.2126 * r + 0.7152 * g + 0.0722 * b
+
+
+def contrast_ratio(a: tuple, b: tuple) -> float:
+    """WCAG contrast ratio between two RGB colors (1..21)."""
+    la, lb = _rel_luminance(a), _rel_luminance(b)
+    lighter, darker = max(la, lb), min(la, lb)
+    return (lighter + 0.05) / (darker + 0.05)
+
+
+def ink_for(background: tuple) -> tuple:
+    """The measured readable ink for a solid background: whichever of
+    white/near-black contrasts harder. Deterministic; never mid-gray."""
+    return (
+        _LIGHT_INK
+        if contrast_ratio(_LIGHT_INK, background) >= contrast_ratio(_DARK_INK, background)
+        else _DARK_INK
+    )
 
 
 def _wrapped_line_count(text: str, chars_per_line: int, per_char: bool) -> int:
@@ -106,6 +153,7 @@ def plan_to_render_jobs(
     screen_paths: dict,
     *,
     locale: str = "en",
+    background: Optional[tuple] = None,
 ) -> list:
     """Map a ScreenshotPlan (the planner's JSON) to a list of RenderJobs the
     renderer draws.
@@ -114,12 +162,32 @@ def plan_to_render_jobs(
     template has that slot) to the caption box, and resolve the source screen to a
     real path or None. A MISSING source, or one absent from `screen_paths`, is
     rendered as a labeled placeholder (its missingReason becomes the caption) and
-    forced needs_review — never a fabricated screen."""
+    forced needs_review — never a fabricated screen.
+
+    Colors are measured-or-nothing. With a solid `background` (r, g, b), captions
+    use the measured readable ink for it, and a shot's planned `accent` colors the
+    HEADLINE only when its contrast against that background clears
+    MIN_ACCENT_CONTRAST — an unreadable or malformed accent falls back to the
+    ink, never ships. Without a solid background (background art, or none), the
+    contrast is unmeasurable, so accents are NOT applied and captions keep the
+    default ink — never a color we couldn't verify."""
+    default_ink = ink_for(background) if background is not None else _LIGHT_INK
     jobs: list = []
     shots = plan.get("shots") or []
     for i, shot in enumerate(shots):
         template_id = _coerce_template(shot.get("templateId"))
         layout = template_layout(template_id, canvas)
+
+        headline_color = default_ink
+        accent = parse_hex(shot.get("accent"))
+        if accent is not None and background is not None and \
+                contrast_ratio(accent, background) >= MIN_ACCENT_CONTRAST:
+            headline_color = accent
+        slots = {
+            sid: replace(box, color=headline_color if sid == "headline" else default_ink)
+            for sid, box in layout.slots.items()
+        }
+        layout = replace(layout, slots=slots)
 
         source = shot.get("sourceScreen")
         real_path = screen_paths.get(source) if isinstance(source, str) else None

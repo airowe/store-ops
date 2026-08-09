@@ -41,6 +41,8 @@
  *                           JSON → 200). Idempotent on email; no auth.
  *   GET  /proof             public anonymized aggregate proof (rank-win numbers
  *                           for the landing). No app/user data. Cached 1h.
+ *   GET  /screenshot-templates  public marketing-frame catalog (picker metadata +
+ *                           preview geometry) + the "auto" let-ShipASO-pick option.
  *   GET  /health            authed production-readiness audit (200 ready / 503
  *                           when an error-severity check fails). Not public.
  *   GET  /portfolio         Scale-tier roll-up: every app's grade / lead rank /
@@ -129,6 +131,7 @@ import { readLocaleKeywords } from "../engine/localeKeywords.js";
 import { analyzeRejection } from "../engine/rejectionAssistant.js";
 import { localizeScreenshots, type LayeredSource, type TextSlot } from "../engine/localizeScreenshots.js";
 import { planScreenshots, type PlannerInputs, type Grade } from "../engine/screenshotPlanner.js";
+import { FRAME_CATALOG, FRAME_CATALOG_VERSION, TEMPLATE_IDS, isTemplateId } from "../engine/shotCatalog.js";
 import { buildCppSets } from "../engine/cppSets.js";
 import { localizerForEnv } from "./aiLocalizer.js";
 import { credentialsEnabled, deleteCredential, listCredentialMeta, saveCredential, useCredential } from "../credentialStore.js";
@@ -470,7 +473,7 @@ async function attachReviews(env: Env, app: AppRow, result: AgentResult): Promis
   } catch {
     reviews = []; // honest: a read limitation degrades to "no reviews", never an error.
   }
-  result.reviews = await analyzeSentiment(reviews, reasonerForEnv(env.AI));
+  result.reviews = await analyzeSentiment(reviews, reasonerForEnv(env));
   // Bridge review vocabulary onto the keyword surface, labeled source:'reviews'.
   const candidates = reviewKeywordCandidates(reviews);
   if (candidates.length > 0) {
@@ -1295,9 +1298,9 @@ async function runPreview(req: Request, env: Env): Promise<unknown> {
 
   // Build a throwaway app row (never persisted) just to drive the engine.
   const appRow = { id: "preview", user_id: "preview", bundle_id: bundleId, name, country } as AppRow;
-  const reasoner = reasonerForEnv(env.AI);
+  const reasoner = reasonerForEnv(env);
   const input = await buildAppInput(appRow, reasoner ? { reasoner } : {}, {});
-  const result = await runAgent(fetchForEnv(env), input);
+  const result = await runAgent(fetchForEnv(env), input, { copywriter: reasoner });
   return { preview: buildPreview(result), bundleId, country };
 }
 
@@ -1324,9 +1327,9 @@ async function reportByAppId(appId: string, url: URL, env: Env): Promise<unknown
     const name = [r?.trackName ?? "", (r?.genres ?? []).join(" ")].filter(Boolean).join(" ").trim() || bundleId;
 
     const appRow = { id: "report", user_id: "report", bundle_id: bundleId, name, country } as AppRow;
-    const reasoner = reasonerForEnv(env.AI);
+    const reasoner = reasonerForEnv(env);
     const input = await buildAppInput(appRow, reasoner ? { reasoner } : {}, {});
-    const result = await runAgent(fetchForEnv(env), input);
+    const result = await runAgent(fetchForEnv(env), input, { copywriter: reasoner });
     return { preview: buildPreview(result), appId, bundleId, country };
   } catch (e) {
     if (e instanceof HttpError) throw e;
@@ -1760,7 +1763,7 @@ async function runApp(
     if (confirmed.length) overrides.competitors = confirmed;
   }
   if (body.baseCopy) overrides.baseCopy = body.baseCopy;
-  const runReasoner = reasonerForEnv(env.AI);
+  const runReasoner = reasonerForEnv(env);
   if (runReasoner) overrides.reasoner = runReasoner;
   // A bare "run now" has no baseCopy, so the keyword reasoner would have no
   // description and would tokenize the name. Thread the prior run's stored
@@ -1772,7 +1775,7 @@ async function runApp(
   }
 
   const input = await buildAppInput(app, overrides, previous);
-  const result = await runAgent(fetchForEnv(env), input);
+  const result = await runAgent(fetchForEnv(env), input, { copywriter: runReasoner });
   // PRD 03 / #95: PUBLIC review sentiment + topics + review-sourced keyword
   // candidates. Best-effort; computed BEFORE findings so the audit can surface
   // the reviews section. Never strands the run.
@@ -2037,11 +2040,11 @@ export async function keyedAscPass(
     ...(liveDescription !== undefined ? { description: liveDescription } : {}),
     ...(extra.baseCopy ?? {}),
   };
-  const ascReasoner = reasonerForEnv(env.AI);
+  const ascReasoner = reasonerForEnv(env);
   if (ascReasoner) overrides.reasoner = ascReasoner;
 
   const input = await buildAppInput(app, overrides, previous);
-  const result = await runAgent(fetchForEnv(env), input);
+  const result = await runAgent(fetchForEnv(env), input, { copywriter: ascReasoner });
   const ascListing = ascScreenshotsToListing(ascSnapshot?.screenshots);
   if (ascListing) result.audit.screenshots = scoreScreenshots(input.app, ascListing);
   await attachReviews(env, app, result);
@@ -2982,6 +2985,7 @@ async function planScreenshotsRoute(req: Request, env: Env): Promise<unknown> {
     rawScreens?: unknown;
     audit?: unknown;
     brandPalette?: unknown;
+    templatePreference?: unknown;
   };
 
   if (typeof body.appName !== "string" || body.appName.trim() === "") {
@@ -3003,6 +3007,17 @@ async function planScreenshotsRoute(req: Request, env: Env): Promise<unknown> {
     ? (audit.grade as Grade)
     : "?";
 
+  // "auto" (or absent) = let ShipASO pick, frame by frame. Anything else must
+  // be a real catalog id — an unknown frame is a caller bug and 400s loudly
+  // rather than silently degrading to auto.
+  const pref = body.templatePreference;
+  if (pref !== undefined && pref !== "auto" && !isTemplateId(pref)) {
+    throw new HttpError(
+      400,
+      `unknown templatePreference — must be "auto" or one of: ${TEMPLATE_IDS.join(", ")}`,
+    );
+  }
+
   const inputs: PlannerInputs = {
     appName: body.appName,
     ...(typeof body.subtitle === "string" ? { subtitle: body.subtitle } : {}),
@@ -3010,11 +3025,30 @@ async function planScreenshotsRoute(req: Request, env: Env): Promise<unknown> {
     rawScreens: asStrings(body.rawScreens),
     audit: { grade, recommendedCount: audit.recommendedCount, findings: asStrings(audit.findings) },
     brandPalette: asStrings(body.brandPalette),
+    ...(isTemplateId(pref) ? { templatePreference: pref } : {}),
   };
 
   // reasonerForEnv returns undefined without an AI binding → planScreenshots
   // degrades deterministically; a model error degrades too. Never throws here.
-  return await planScreenshots(inputs, reasonerForEnv(env.AI));
+  return await planScreenshots(inputs, reasonerForEnv(env));
+}
+
+/**
+ * GET /screenshot-templates — the marketing-frame catalog, verbatim from the
+ * shared SoT (shotCatalog.ts ⇄ lib/shot_catalog.json), plus "auto" as a
+ * first-class picker option: auto is the ABSENCE of a templatePreference on
+ * POST /plan/screenshots, where the planner assigns a frame per shot.
+ */
+function frameCatalog(): unknown {
+  return {
+    version: FRAME_CATALOG_VERSION,
+    auto: {
+      id: "auto",
+      name: "Let ShipASO pick",
+      sell: "The planner matches a frame to each shot — hook up top first, story frames after.",
+    },
+    templates: FRAME_CATALOG,
+  };
 }
 
 /**
@@ -3056,7 +3090,7 @@ async function cppSetsRoute(req: Request, env: Env): Promise<unknown> {
       brandPalette: asStrings(body.brandPalette),
       recommendedCount: typeof body.recommendedCount === "number" ? body.recommendedCount : 6,
     },
-    reasonerForEnv(env.AI),
+    reasonerForEnv(env),
   );
 }
 
@@ -4825,6 +4859,11 @@ export async function handleApi(req: Request, env: Env, ctx?: ExecutionContext):
     // Public anonymized proof stat for the landing.
     if (seg[0] === "proof" && seg.length === 1 && method === "GET") {
       return proofStats(env, origin);
+    }
+    // Public marketing-frame catalog for the shot pickers (mobile capture kit /
+    // web). Static data mirrored from lib/shot_catalog.json; no user data.
+    if (seg[0] === "screenshot-templates" && seg.length === 1 && method === "GET") {
+      return json(frameCatalog(), 200, origin, env);
     }
     // Public try-before-signup: resolve a query → candidates (read-only).
     if (seg[0] === "resolve" && seg.length === 1 && method === "POST") {

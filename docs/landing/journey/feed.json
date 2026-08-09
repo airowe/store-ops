@@ -4,6 +4,12 @@
     {
       "date": "2026-08-08",
       "kind": "milestone",
+      "title": "The agent's brain is now Claude",
+      "body": "ShipASO's reasoning and copywriting now run on Claude (Opus 5) when configured — keyword classification and, new today, genuinely authored subtitle proposals. The trust model is unchanged: the model writes, deterministic guardrails validate (hard 30-char limit, no brand words, no price claims, must carry a target keyword), and any miss falls back to the deterministic composer. An AI agent with an AI brain, still ending every run at a human's approval."
+    },
+    {
+      "date": "2026-08-08",
+      "kind": "milestone",
       "title": "The posting edge: proof cards become pixels, wins become posts",
       "body": "The last two slices of the growth loop shipped: the proof card rasterizes to PNG where the post is sent, and a confirmed rank win now triggers the post automatically — once, with retry if X is down. A win that is really a hold or a slip posts nothing. The agent only ever brags with receipts."
     },

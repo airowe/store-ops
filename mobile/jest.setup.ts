@@ -60,6 +60,7 @@ jest.mock("expo-file-system/legacy", () => ({
   writeAsStringAsync: jest.fn(async () => undefined),
   deleteAsync: jest.fn(async () => undefined),
   downloadAsync: jest.fn(async (_u: string, t: string) => ({ status: 200, uri: t, headers: {} })),
+  copyAsync: jest.fn(async () => undefined),
 }));
 
 // Notifications: default to granted + a stable token; tests override per-case.

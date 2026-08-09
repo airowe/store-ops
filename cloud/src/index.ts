@@ -20,10 +20,16 @@ export type Env = {
   DB: D1Database;
   DEFAULT_COUNTRY: string;
   APP_ENV: string;
-  // Workers AI binding (#57) — powers the keyword-reasoning step. OPTIONAL: when
+  // Workers AI binding (#57) — the FALLBACK reasoning backend. OPTIONAL: when
   // unset (local dev / not provisioned) the run derives keywords with the
   // deterministic classifier instead. A missing binding NEVER breaks a run.
   AI?: Ai;
+  // Claude (Anthropic API) — the PREFERRED reasoning + copy-authoring backend
+  // when set (see api/aiReasoner.ts for the priority). A Worker secret, never a
+  // var. Optional: unset degrades to the AI binding, then deterministic.
+  ANTHROPIC_API_KEY?: string;
+  // Override the Claude model id (defaults in aiReasoner.ts).
+  ANTHROPIC_MODEL?: string;
   // Public base URL of the dashboard (for magic-link callback + CORS origin echo).
   // Optional: falls back to the request Origin when unset.
   DASHBOARD_ORIGIN?: string;

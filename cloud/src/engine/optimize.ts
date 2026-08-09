@@ -37,7 +37,7 @@ export type CopyFields = {
  *     surfaces it for the human to adopt.
  */
 export type OptimizationNotes = {
-  subtitleMode?: "composed" | "preserved";
+  subtitleMode?: "composed" | "preserved" | "authored";
   droppedKeywords?: string;
   nameFill?: NameFill;
 };
@@ -232,7 +232,7 @@ export function composeSubtitle(terms: string[], opts: { ban?: string } = {}): s
  * keyword is WEAK → author from scratch (#38/#37.1). A human-authored two-word
  * phrase ("Calm mind") is strong regardless of length — never regress it.
  */
-function isStrongSubtitle(value: string): boolean {
+export function isStrongSubtitle(value: string): boolean {
   const trimmed = value.trim();
   if (!trimmed) return false;
   const wordCount = trimmed.split(/\s+/).filter(Boolean).length;
@@ -252,7 +252,16 @@ export type ProposedCopy = CopyFields & {
 export function optimizeCopy(
   scored: ScoredKeyword[],
   base: { name: string; subtitle?: string; keywords?: string; promo?: string; description?: string },
-  opts: { canWriteSubtitleKeywords?: boolean } = {},
+  opts: {
+    canWriteSubtitleKeywords?: boolean;
+    /**
+     * A Claude-authored subtitle candidate, ALREADY validated by
+     * engine/copyAuthor (limits, brand ban, price-claim ban, target-carry).
+     * Used only in the compose branch — a strong live subtitle still wins
+     * (#30), and without an ASC read it is ignored like every other write.
+     */
+    authoredSubtitle?: string;
+  } = {},
 ): ProposedCopy {
   // #30: only propose subtitle/keywords when we could actually READ the live
   // values (ASC-connected). The public iTunes API can't return them, so without
@@ -282,6 +291,12 @@ export function optimizeCopy(
     if (isStrongSubtitle(liveSubtitle)) {
       subtitle = fitToLimit(liveSubtitle, "subtitle");
       notes.subtitleMode = "preserved";
+    } else if (opts.authoredSubtitle) {
+      // A Claude-written candidate that already passed copyAuthor's guardrails
+      // takes the compose slot: real copy beats a joined term list, and the
+      // mode is surfaced so the run page can say who wrote it.
+      subtitle = fitToLimit(opts.authoredSubtitle, "subtitle");
+      notes.subtitleMode = "authored";
     } else {
       // Author from the highest-value distinct terms. The brand name's words are
       // BANNED (#42): Apple already ranks the title, so a subtitle that repeats a

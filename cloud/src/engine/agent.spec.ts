@@ -491,3 +491,61 @@ describe("audit — storefront ratings back up the lookup (#326)", () => {
     expect(r.audit.rating).toBeUndefined();
   });
 });
+
+// Phase 1 of the Claude brain: an injected copywriter authors the subtitle
+// candidate; copyAuthor guardrails it; optimizeCopy only uses it where the
+// compose branch would run. The deps are optional — everything above this
+// describe ran without them, which is itself the no-copywriter regression test.
+describe("runAgent — injected copywriter authors the subtitle", () => {
+  const weakSubtitleInput = (): AppInput => ({
+    ...baseInput(),
+    ascMetadataRead: true,
+    baseCopy: { name: "Acme", subtitle: "", keywords: "", description: "Build better habits daily." },
+  });
+
+  it("uses a validated authored subtitle and marks the mode", async () => {
+    const fetchFn = stubFetch({ trackName: "Acme", description: "Build better habits daily." });
+    const copywriter = async () => '{"subtitle": "Build daily habits gently"}';
+    const r = await runAgent(fetchFn as never, weakSubtitleInput(), { copywriter });
+    expect(r.proposedCopy.subtitle).toBe("Build daily habits gently");
+    expect(r.proposedCopy.optimization?.subtitleMode).toBe("authored");
+  });
+
+  it("never spends a model call when the live subtitle is strong (#30)", async () => {
+    let called = false;
+    const copywriter = async () => {
+      called = true;
+      return '{"subtitle": "Build daily habits gently"}';
+    };
+    const fetchFn = stubFetch({ trackName: "Acme", description: "d" });
+    const input: AppInput = {
+      ...baseInput(),
+      ascMetadataRead: true,
+      baseCopy: { name: "Acme", subtitle: "Gentle daily habit nudges", keywords: "", description: "d" },
+    };
+    const r = await runAgent(fetchFn as never, input, { copywriter });
+    expect(called).toBe(false);
+    expect(r.proposedCopy.subtitle).toBe("Gentle daily habit nudges");
+    expect(r.proposedCopy.optimization?.subtitleMode).toBe("preserved");
+  });
+
+  it("never spends a model call without an ASC metadata read (#30)", async () => {
+    let called = false;
+    const copywriter = async () => {
+      called = true;
+      return "{}";
+    };
+    const fetchFn = stubFetch({ trackName: "Acme", description: "d" });
+    const r = await runAgent(fetchFn as never, { ...baseInput(), ascMetadataRead: false }, { copywriter });
+    expect(called).toBe(false);
+    expect(r.proposedCopy.subtitle).toBe("");
+  });
+
+  it("guardrail-rejected output degrades to the deterministic composer", async () => {
+    const fetchFn = stubFetch({ trackName: "Acme", description: "Build better habits daily." });
+    // over-limit AND price claim — copyAuthor must reject it
+    const copywriter = async () => '{"subtitle": "The best free habit tracking app you will ever find"}';
+    const r = await runAgent(fetchFn as never, weakSubtitleInput(), { copywriter });
+    expect(r.proposedCopy.optimization?.subtitleMode).toBe("composed");
+  });
+});

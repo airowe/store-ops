@@ -31,6 +31,9 @@ const ALLOWED = new Set<string>([
   "src/theme/tokens.ts",
   "src/theme/index.ts",
   "src/theme/ThemeProvider.tsx",
+  // Brand-swatch DATA for the screenshot ColorPicker: user-facing candidate
+  // colors for THEIR store creative, not UI theme colors. No React in the file.
+  "src/lib/brandSwatches.ts",
 ]);
 
 /** Every source file under src/ and app/, excluding tests. */

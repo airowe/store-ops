@@ -28,10 +28,25 @@ def _within_canvas(box, canvas: Canvas) -> bool:
             box.y + box.height <= canvas.height)
 
 
-# ── the library covers exactly the planner's templateIds ─────────────────────
-def test_library_covers_the_planner_template_ids():
-    # the same four ids the engine's TEMPLATE_IDS declares
-    assert set(TEMPLATE_IDS) == {"headline-top", "headline-bottom", "full-bleed", "duo"}
+# ── the library IS the catalog (lib/shot_catalog.json is the SoT) ────────────
+def test_library_covers_exactly_the_catalog_ids_in_order():
+    import json
+    catalog = json.loads((Path(__file__).resolve().parent / "shot_catalog.json").read_text())
+    assert TEMPLATE_IDS == tuple(t["id"] for t in catalog["templates"])
+    # the original four survive (planner compat), plus the marketing frames
+    assert {"headline-top", "headline-bottom", "full-bleed", "duo",
+            "editorial", "spotlight", "full-bleed-top", "duo-bottom"} <= set(TEMPLATE_IDS)
+
+
+def test_every_catalog_entry_carries_picker_metadata():
+    # the catalog doubles as the product's frame picker: every entry needs a
+    # human name and a why-it-converts blurb, and ids must be kebab-case stems.
+    import json, re
+    catalog = json.loads((Path(__file__).resolve().parent / "shot_catalog.json").read_text())
+    for t in catalog["templates"]:
+        assert re.fullmatch(r"[a-z0-9]+(-[a-z0-9]+)*", t["id"]), f"bad id {t['id']!r}"
+        assert t["name"].strip(), f"{t['id']} has no display name"
+        assert len(t["sell"].strip()) >= 20, f"{t['id']} needs a real why-it-converts blurb"
 
 
 def test_every_template_resolves():
@@ -101,6 +116,45 @@ def test_duo_headline_band_clears_the_subline_and_device():
     head, sub, dev = layout.slots["headline"], layout.slots["subline"], layout.device_frame
     assert head.y + head.height <= sub.y, "duo headline band overlaps its subline"
     assert sub.y + sub.height <= dev.y, "duo captions overlap the device frame"
+
+
+def test_editorial_left_aligns_copy_clear_of_the_device():
+    # editorial: left-aligned feature-card copy; both captions clear the device.
+    layout = template_layout("editorial", CANVAS)
+    head, sub, dev = layout.slots["headline"], layout.slots["subline"], layout.device_frame
+    assert head.align == "left" and sub.align == "left"
+    assert head.y + head.height <= sub.y
+    assert sub.y + sub.height <= dev.y
+
+
+def test_spotlight_headline_band_is_the_tallest_and_clears_the_device():
+    # spotlight: the oversized-claim frame — its headline band beats every other
+    # template's, and still never touches the device.
+    layout = template_layout("spotlight", CANVAS)
+    head, dev = layout.slots["headline"], layout.device_frame
+    assert head.y + head.height <= dev.y
+    for tid in TEMPLATE_IDS:
+        if tid == "spotlight":
+            continue
+        other = template_layout(tid, CANVAS).slots["headline"]
+        assert head.height >= other.height, f"spotlight headline shorter than {tid}'s"
+
+
+def test_full_bleed_top_overlays_the_caption_high():
+    # same immersive coverage as full-bleed, caption at the top instead.
+    layout = template_layout("full-bleed-top", CANVAS)
+    dev = layout.device_frame
+    coverage = (dev.width * dev.height) / (CANVAS.width * CANVAS.height)
+    assert coverage >= 0.6
+    head = layout.slots["headline"]
+    assert head.y + head.height <= CANVAS.height * 0.25, "caption must sit in the top quarter"
+
+
+def test_duo_bottom_tells_the_story_below_the_device():
+    layout = template_layout("duo-bottom", CANVAS)
+    head, sub, dev = layout.slots["headline"], layout.slots["subline"], layout.device_frame
+    assert dev.y + dev.height <= head.y, "device must clear the headline band"
+    assert head.y + head.height <= sub.y, "headline band overlaps its subline"
 
 
 def test_layouts_are_deterministic():

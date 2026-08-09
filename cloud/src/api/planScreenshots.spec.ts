@@ -107,3 +107,50 @@ describe("POST /plan/screenshots", () => {
     expect((await handleApi(req(INPUTS, ""), makeEnv())).status).toBe(401);
   });
 });
+
+describe("templatePreference on POST /plan/screenshots", () => {
+  it("locks every shot to the user's frame (over the model's picks)", async () => {
+    reasonerReturns = CANNED_PLAN; // model picked three different frames
+    const res = await handleApi(req({ ...INPUTS, templatePreference: "spotlight" }), makeEnv());
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { shots: Array<{ templateId: string }> };
+    expect(body.shots.every((s) => s.templateId === "spotlight")).toBe(true);
+  });
+
+  it('"auto" means let ShipASO pick — same as omitting it', async () => {
+    const res = await handleApi(req({ ...INPUTS, templatePreference: "auto" }), makeEnv());
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { shots: Array<{ templateId: string }> };
+    expect(new Set(body.shots.map((s) => s.templateId)).size).toBeGreaterThan(1);
+  });
+
+  it("400 on a frame the renderer doesn't have (never silently auto)", async () => {
+    const res = await handleApi(req({ ...INPUTS, templatePreference: "spinny-3d-carousel" }), makeEnv());
+    expect(res.status).toBe(400);
+    const body = (await res.json()) as { error: string };
+    expect(body.error).toContain("templatePreference");
+  });
+});
+
+describe("GET /screenshot-templates (public catalog)", () => {
+  it("serves the catalog + the auto option without auth", async () => {
+    const res = await handleApi(
+      new Request("https://api.test/screenshot-templates"),
+      makeEnv(),
+    );
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as {
+      version: number;
+      auto: { id: string; name: string };
+      templates: Array<{ id: string; name: string; sell: string; slots: object; deviceFrame: object }>;
+    };
+    expect(body.version).toBe(1);
+    expect(body.auto.id).toBe("auto");
+    expect(body.templates.length).toBeGreaterThanOrEqual(8);
+    for (const t of body.templates) {
+      expect(t.name).not.toBe("");
+      expect(t.sell).not.toBe("");
+      expect(t.deviceFrame).toBeTruthy();
+    }
+  });
+});
