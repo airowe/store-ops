@@ -122,6 +122,64 @@ def test_render_jobs_produce_pngs_smoke():
         assert out.exists() and out.stat().st_size > 0
 
 
+
+
+# ── brand colors (measured-or-nothing, applied to pixels) ────────────────────
+def test_accent_colors_the_headline_when_readable_on_a_solid_background():
+    from shipshots_render import MIN_ACCENT_CONTRAST, contrast_ratio
+    bg = (7, 9, 14)  # near-black
+    accent = (52, 211, 153)  # the signal green — high contrast on dark
+    assert contrast_ratio(accent, bg) >= MIN_ACCENT_CONTRAST
+    plan = _plan([{"sourceScreen": "home", "headline": "Track your rank",
+                   "templateId": "duo", "subline": "One dashboard", "accent": "#34d399"}])
+    [job] = plan_to_render_jobs(plan, CANVAS, {"home": "/shots/home.png"}, background=bg)
+    colors = {d.slot_id: d.box.color for d in job.draw_plan.draws}
+    assert colors["headline"] == accent
+    # restraint: the accent is the headline's; the subline keeps the measured ink
+    assert colors["subline"] == (255, 255, 255)
+
+
+def test_unreadable_accent_falls_back_to_the_measured_ink_never_ships():
+    # a near-black accent on a near-black background can't be read — reject
+    plan = _plan([{"sourceScreen": "home", "headline": "Track your rank",
+                   "templateId": "headline-top", "accent": "#0b0e14"}])
+    [job] = plan_to_render_jobs(plan, CANVAS, {"home": "/shots/home.png"}, background=(7, 9, 14))
+    [draw] = job.draw_plan.draws
+    assert draw.box.color == (255, 255, 255)
+
+
+def test_light_background_flips_the_default_ink_dark():
+    # white-on-white was the latent bug; with a measured light background the
+    # ink must go dark even with no accent in play.
+    plan = _plan([{"sourceScreen": "home", "headline": "Track your rank",
+                   "templateId": "headline-top"}])
+    [job] = plan_to_render_jobs(plan, CANVAS, {"home": "/shots/home.png"}, background=(246, 247, 249))
+    [draw] = job.draw_plan.draws
+    assert draw.box.color == (17, 22, 33)
+
+
+def test_no_solid_background_means_no_accent_ever():
+    # background art (or none) → contrast is unmeasurable → the accent is NOT
+    # applied. Never a color we couldn't verify.
+    plan = _plan([{"sourceScreen": "home", "headline": "Track your rank",
+                   "templateId": "headline-top", "accent": "#34d399"}])
+    [job] = plan_to_render_jobs(plan, CANVAS, {"home": "/shots/home.png"})
+    [draw] = job.draw_plan.draws
+    assert draw.box.color == (255, 255, 255)
+
+
+def test_malformed_accent_is_ignored_not_guessed():
+    from shipshots_render import parse_hex
+    assert parse_hex("#34d399") == (52, 211, 153)
+    for bad in ("green", "#34d39", "#34d39g", 42, None, "#34d399ff"):
+        assert parse_hex(bad) is None
+    plan = _plan([{"sourceScreen": "home", "headline": "Track your rank",
+                   "templateId": "headline-top", "accent": "green"}])
+    [job] = plan_to_render_jobs(plan, CANVAS, {"home": "/shots/home.png"}, background=(7, 9, 14))
+    [draw] = job.draw_plan.draws
+    assert draw.box.color == (255, 255, 255)
+
+
 def _run():
     tests = [v for k, v in sorted(globals().items())
              if k.startswith("test_") and callable(v)]

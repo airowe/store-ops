@@ -137,3 +137,20 @@ describe("frame style choice", () => {
     expect(bodies[1]).toEqual(inputs); // "auto" = no lock on the wire
   });
 });
+
+describe("brand colors", () => {
+  it("picked colors ride as brandPalette; none picked sends none", async () => {
+    const { client, bodies } = fakeClient(basePlan);
+    render(<ScreenshotPlanCard client={client} inputs={inputs} />);
+
+    fireEvent.press(screen.getByTestId("plan-screenshots-btn"));
+    await waitFor(() => expect(bodies.length).toBe(1));
+    expect(bodies[0]).toEqual(inputs); // neutral: no brandPalette key at all
+
+    fireEvent.press(screen.getByTestId("color-34d399"));
+    fireEvent.press(screen.getByTestId("color-5b8cff"));
+    fireEvent.press(screen.getByTestId("plan-screenshots-btn"));
+    await waitFor(() => expect(bodies.length).toBe(2));
+    expect(bodies[1]).toEqual({ ...inputs, brandPalette: ["#34d399", "#5b8cff"] });
+  });
+});

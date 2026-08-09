@@ -16,6 +16,7 @@ import type { ApiClient } from "../api/client.js";
 import { planScreenshots } from "../api/endpoints.js";
 import type { ScreenshotPlan, ScreenshotPlanInputs } from "../types/api.js";
 import { spacing, usePalette } from "../theme/index.js";
+import { ColorPicker } from "./ColorPicker.js";
 import { FramePicker, type FrameChoice } from "./FramePicker.js";
 import { AppText, Button, Card } from "./primitives.js";
 
@@ -25,6 +26,8 @@ export function ScreenshotPlanCard({ client, inputs }: { client: ApiClient; inpu
   const [busy, setBusy] = useState(false);
   // "auto" = let ShipASO pick per shot; a catalog id locks every shot's frame.
   const [frame, setFrame] = useState<FrameChoice>("auto");
+  // brand colors → brandPalette (accents come only from here; empty = neutral).
+  const [colors, setColors] = useState<string[]>([]);
 
   const run = async () => {
     setBusy(true);
@@ -33,6 +36,7 @@ export function ScreenshotPlanCard({ client, inputs }: { client: ApiClient; inpu
         await planScreenshots(client, {
           ...inputs,
           ...(frame !== "auto" ? { templatePreference: frame } : {}),
+          ...(colors.length > 0 ? { brandPalette: colors } : {}),
         }),
       );
     } finally {
@@ -47,6 +51,7 @@ export function ScreenshotPlanCard({ client, inputs }: { client: ApiClient; inpu
         Turn this run’s screenshot findings into a shot-by-shot plan you render locally.
       </AppText>
       <FramePicker client={client} choice={frame} onChoose={setFrame} />
+      <ColorPicker colors={colors} onChange={setColors} />
       <Button testID="plan-screenshots-btn" label={busy ? "Planning…" : "Plan screenshots"} onPress={run} disabled={busy} />
 
       {plan ? (

@@ -148,6 +148,28 @@ def test_render_locale_composites_a_device_screen_into_the_frame():
             assert not (tr > 120 and tg < 100 and tb < 100), "device bled into caption band"
 
 
+def test_solid_color_background_fills_the_canvas():
+    # a (r, g, b) background is the user's brand color — the fill must be exact.
+    # Pillow is a render-time dep, not always present (sandbox): a missing PIL is
+    # a STATED skip, never a silent pass of an unrendered assertion.
+    try:
+        from PIL import Image
+    except ImportError:
+        print("  skip: Pillow not installed — pixel assertion runs where renders run")
+        return
+    import tempfile
+    from render_localized_shots import Canvas, build_draw_plan, render_locale
+    canvas = Canvas(width=200, height=400)
+    plan = build_draw_plan(canvas, {}, {}, needs_review=False)
+    with tempfile.TemporaryDirectory() as td:
+        out = Path(td) / "bg.png"
+        render_locale(plan, (52, 211, 153), out)
+        img = Image.open(out).convert("RGB")
+        assert img.size == (200, 400)
+        assert img.getpixel((5, 5)) == (52, 211, 153)
+        assert img.getpixel((195, 395)) == (52, 211, 153)
+
+
 def _run():
     tests = [v for k, v in sorted(globals().items())
              if k.startswith("test_") and callable(v)]

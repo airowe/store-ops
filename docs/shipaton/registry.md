@@ -19,6 +19,7 @@
 | Build-log thread composer (weekly cadence floor) | ✅ | `packages/postedge/buildlog.mjs` |
 | Screenshot + preview-footage capture in CI (agent-driven) | 🔵 scaffolded — unverified until the first macOS run; needs `ANTHROPIC_API_KEY` **Actions** secret (**yours**) then a manual dispatch | `.github/workflows/capture-shots.yml` + `marketing/screenshots/capture/PLAN.md`; raw captures feed `scripts/render-shipshots.py` |
 | Marketing frame catalog (8 styles + "Let ShipASO pick") | ✅ | SoT `lib/shot_catalog.json` (⇄ `cloud/src/engine/shotCatalog.ts`, parity-spec'd); `GET /screenshot-templates`; `templatePreference` on `POST /plan/screenshots`; mobile `FramePicker` |
+| Brand colors (picker → palette → contrast-guarded pixels) | ✅ | mobile `ColorPicker` → `brandPalette`; renderer paints a shot's accent only when it measures readable against the solid background (`--bg`), else the measured ink — an unreadable color never ships |
 | Mobile capture kit v1 (recording → frames → planned set) | ✅ code — device verification at Gate 2 | `mobile/app/(app)/capture-kit.tsx`: import an iOS screen recording, pick real extracted frames, pick a frame style, plan the set, export frames; render + upload stay explicit local steps |
 | Demo video ≤3 min | 🔵 script drafted | `docs/shipaton/devpost-draft.md` — recording needs a device + live 0.1.1 |
 | Devpost submission + #BuildInPublic post links | 🔵 draft ready | `docs/shipaton/devpost-draft.md` + the playbook's ledger; final facts land at submission |
