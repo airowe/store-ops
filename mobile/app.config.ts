@@ -81,7 +81,18 @@ const config: ExpoConfig = {
     ["expo-notifications", { icon: "./assets/notification-icon.png", color: "#34d399" }],
     [
       "expo-splash-screen",
-      { image: "./assets/splash.png", resizeMode: "contain", backgroundColor: "#07090e" },
+      {
+        // A TIGHT-CROPPED logo, not a full-screen canvas. splash.png is
+        // 1284x2778 with the boat occupying ~39% of its width, and
+        // `resizeMode: contain` fits that whole canvas into imageWidth — so the
+        // baked-in padding was scaled down twice and the boat rendered tiny.
+        // splash-icon.png is the same mark cropped square at 1024x1024.
+        image: "./assets/splash-icon.png",
+        // Explicit, because the default is ~200px on a ~1290px-wide screen.
+        imageWidth: 320,
+        resizeMode: "contain",
+        backgroundColor: "#07090e",
+      },
     ],
   ],
   experiments: { typedRoutes: true },

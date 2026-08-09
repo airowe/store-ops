@@ -11,6 +11,25 @@ jest.mock("@react-native-async-storage/async-storage", () =>
   require("@react-native-async-storage/async-storage/jest/async-storage-mock"),
 );
 
+// expo-image (57.0.2) wires an "expo-observe" integration at import time:
+//   const observe = requireOptionalNativeModule<ObserveModule>('ExpoObserve');
+//   if (!observe) return;
+//   activate(state, observe.getIntegrations());
+// expo-observe is NOT a declared dependency of expo-image, so it is absent from
+// node_modules. Under jest-expo `requireOptionalNativeModule` returns a mock
+// object rather than null, so the guard passes and getIntegrations() — which
+// does not exist on the mock — throws at import, failing every suite that
+// renders an <Image>. Returning null for this one module restores the intended
+// "integration unavailable" path.
+jest.mock("expo", () => {
+  const actual = jest.requireActual("expo");
+  return {
+    ...actual,
+    requireOptionalNativeModule: (name: string) =>
+      name === "ExpoObserve" ? null : actual.requireOptionalNativeModule(name),
+  };
+});
+
 // react-native-graph renders via Skia + reanimated worklets (native) — mock it
 // to a plain View so component tests stay headless. The honest data mapping is
 // tested separately (src/lib/rankSeries.test.ts).
