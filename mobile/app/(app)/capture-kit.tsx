@@ -18,6 +18,7 @@ import { ActivityIndicator, Image, Pressable, ScrollView, View } from "react-nat
 import { Stack, useLocalSearchParams } from "expo-router";
 import * as ImagePicker from "expo-image-picker";
 import * as VideoThumbnails from "expo-video-thumbnails";
+import * as FileSystem from "expo-file-system/legacy";
 import * as Sharing from "expo-sharing";
 import { useAuth } from "../../src/auth/AuthProvider.js";
 import { ScreenshotPlanCard } from "../../src/components/ScreenshotPlanCard.js";
@@ -83,10 +84,16 @@ export default function CaptureKit() {
   // same ids the renderer will expect as filename stems.
   const screenIds = selected.map((_, i) => `frame-${i + 1}`);
 
+  // Export under the plan's ids (frame-N.jpg) — the renderer maps captures to
+  // shots by filename stem, so the name IS the wiring; a temp-file name would
+  // silently break the handoff.
   const exportFrames = async () => {
-    for (const i of selected) {
-      const f = frames[i];
-      if (f) await Sharing.shareAsync(f.uri);
+    for (let pos = 0; pos < selected.length; pos++) {
+      const f = frames[selected[pos]!];
+      if (!f) continue;
+      const dest = `${FileSystem.cacheDirectory}frame-${pos + 1}.jpg`;
+      await FileSystem.copyAsync({ from: f.uri, to: dest });
+      await Sharing.shareAsync(dest);
     }
   };
 

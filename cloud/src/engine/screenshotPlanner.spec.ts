@@ -185,3 +185,14 @@ describe("templatePreference", () => {
     for (const id of seen) expect(TEMPLATE_IDS).toContain(id);
   });
 });
+
+// ── palette echo — the render step reads only the plan JSON ──────────────────
+describe("palette echo", () => {
+  it("both paths echo the brand palette verbatim; an empty one is omitted", async () => {
+    expect(reconcilePlan(JSON.stringify(validPlan()), INPUTS).palette).toEqual(INPUTS.brandPalette);
+    expect(planDeterministic(INPUTS).palette).toEqual(INPUTS.brandPalette);
+    const noColors = { ...INPUTS, brandPalette: [] };
+    expect("palette" in reconcilePlan(JSON.stringify(validPlan()), noColors)).toBe(false);
+    expect("palette" in planDeterministic(noColors)).toBe(false);
+  });
+});

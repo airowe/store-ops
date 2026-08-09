@@ -70,6 +70,9 @@ export type ScreenshotPlan = {
   label: typeof PLAN_DRAFT_LABEL;
   /** true when this came from the deterministic fallback, not the model. */
   degraded: boolean;
+  /** the user's brand palette, echoed verbatim so the render step (which reads
+   *  only the plan JSON) sees the colors the accents were chosen from. */
+  palette?: string[];
 };
 
 /** The LLM-facing interface — provider-agnostic so tests inject a fake. */
@@ -187,6 +190,7 @@ export function reconcilePlan(raw: string, inputs: PlannerInputs): ScreenshotPla
     shots,
     label: PLAN_DRAFT_LABEL,
     degraded: false,
+    ...(palette.length > 0 ? { palette } : {}),
   };
 }
 
@@ -228,6 +232,7 @@ export function planDeterministic(inputs: PlannerInputs): ScreenshotPlan {
     shots,
     label: PLAN_DRAFT_LABEL,
     degraded: true,
+    ...(inputs.brandPalette.length > 0 ? { palette: inputs.brandPalette } : {}),
   };
 }
 

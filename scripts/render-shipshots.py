@@ -77,6 +77,12 @@ def main() -> int:
     screen_paths = _screen_paths(Path(args.screens)) if args.screens else {}
     out_dir = Path(args.out)
 
+    # The plan echoes the user's brand palette; accents only paint over a KNOWN
+    # solid background, so say so instead of silently rendering neutral.
+    if background is None and plan.get("palette"):
+        print(f"note: plan carries brand palette {plan['palette']} — "
+              "pass --bg '#rrggbb' to paint captions and accents against it.")
+
     jobs = plan_to_render_jobs(plan, canvas, screen_paths, locale=args.locale,
                                background=background)
     if plan.get("degraded"):

@@ -805,6 +805,8 @@ export type ScreenshotPlan = {
   shots: PlannedShot[];
   label: string;
   degraded: boolean;
+  /** the brand palette echoed from the request, for the render step. */
+  palette?: string[];
 };
 
 /** Request body for POST /plan/screenshots. */

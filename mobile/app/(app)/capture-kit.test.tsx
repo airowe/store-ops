@@ -154,7 +154,8 @@ describe("CaptureKit", () => {
     expect(plan.body.audit!.recommendedCount).toBe(2);
   });
 
-  it("export shares exactly the selected frames' files", async () => {
+  it("export shares the selected frames UNDER the plan's ids (frame-N stems)", async () => {
+    const FileSystem = require("expo-file-system/legacy");
     pickerMock.mockResolvedValue(RECORDING);
     await renderKit();
     fireEvent.press(screen.getByTestId("import-recording-btn"));
@@ -164,8 +165,18 @@ describe("CaptureKit", () => {
     fireEvent.press(screen.getByTestId("thumb-3"));
     fireEvent.press(screen.getByTestId("export-frames-btn"));
 
+    // the renderer maps captures by filename stem, so the exported names must
+    // be exactly the ids the plan carries — not the thumbnail temp names.
     await waitFor(() => expect(shareMock).toHaveBeenCalledTimes(2));
-    expect(shareMock).toHaveBeenCalledWith("file:///thumbs/500.jpg");
-    expect(shareMock).toHaveBeenCalledWith("file:///thumbs/3500.jpg");
+    expect(FileSystem.copyAsync).toHaveBeenCalledWith({
+      from: "file:///thumbs/500.jpg",
+      to: "file:///cache/frame-1.jpg",
+    });
+    expect(FileSystem.copyAsync).toHaveBeenCalledWith({
+      from: "file:///thumbs/3500.jpg",
+      to: "file:///cache/frame-2.jpg",
+    });
+    expect(shareMock).toHaveBeenCalledWith("file:///cache/frame-1.jpg");
+    expect(shareMock).toHaveBeenCalledWith("file:///cache/frame-2.jpg");
   });
 });
