@@ -18,9 +18,11 @@
  * degrades to a deterministic plan that does the same job without an LLM.
  */
 
-/** The fixed template library — the renderer knows exactly these; nothing else. */
-export const TEMPLATE_IDS = ["headline-top", "headline-bottom", "full-bleed", "duo"] as const;
-export type TemplateId = (typeof TEMPLATE_IDS)[number];
+/** The frame library — the shared catalog (shotCatalog.ts ⇄ lib/shot_catalog.json);
+ *  the renderer knows exactly these ids and nothing else. Re-exported so existing
+ *  planner consumers keep their import path. */
+import { TEMPLATE_IDS, type TemplateId } from "./shotCatalog.js";
+export { TEMPLATE_IDS, type TemplateId };
 
 /** Verbatim draft caveat, mirroring localizeCopy.ts DRAFT_LABEL. */
 export const PLAN_DRAFT_LABEL = "draft — machine-planned, review before shipping" as const;
@@ -42,6 +44,10 @@ export type PlannerInputs = {
   };
   /** the fixed brand palette; accents must come from here, never free-form. */
   brandPalette: string[];
+  /** the user's locked frame style. Absent = "let ShipASO pick": the planner
+   *  (LLM or deterministic) assigns a frame per shot. When set, EVERY shot uses
+   *  this frame — the user's pick outranks whatever the model suggests. */
+  templatePreference?: TemplateId;
 };
 
 export type PlannedShot = {
@@ -121,7 +127,8 @@ function extractJson(raw: string): unknown {
   return null;
 }
 
-function coerceTemplate(id: unknown): TemplateId {
+function coerceTemplate(id: unknown, preference?: TemplateId): TemplateId {
+  if (preference) return preference; // the user's locked frame outranks the model
   return (TEMPLATE_IDS as readonly string[]).includes(id as string)
     ? (id as TemplateId)
     : "headline-top"; // the safe default when the model invents a template
@@ -168,7 +175,7 @@ export function reconcilePlan(raw: string, inputs: PlannerInputs): ScreenshotPla
       ...(missingReason ? { missingReason } : {}),
       headline,
       ...(typeof r.subline === "string" && sourceScreen !== "MISSING" ? { subline: r.subline } : {}),
-      templateId: coerceTemplate(r.templateId),
+      templateId: coerceTemplate(r.templateId, inputs.templatePreference),
       ...(accent ? { accent } : {}),
       // a bad headline is FLAGGED for review, never silently shipped as-is.
       ...(lint.ok ? {} : { needsReview: true, headlineIssue: lint.reason }),
@@ -196,8 +203,10 @@ export function planDeterministic(inputs: PlannerInputs): ScreenshotPlan {
   const shots: PlannedShot[] = [];
   for (let i = 0; i < n; i++) {
     const src = inputs.rawScreens[i];
-    // i % length is always in range, so this element is defined.
-    const template = TEMPLATE_IDS[i % TEMPLATE_IDS.length] as TemplateId;
+    // locked frame when the user picked one; otherwise cycle the catalog
+    // (i % length is always in range, so that element is defined).
+    const template =
+      inputs.templatePreference ?? (TEMPLATE_IDS[i % TEMPLATE_IDS.length] as TemplateId);
     if (src) {
       // keep the headline within lint bounds (≤6 words), benefit-first on shot 1.
       const words = (i === 0 ? lead : inputs.keywords[i % inputs.keywords.length] ?? lead)
@@ -229,7 +238,9 @@ export function buildPrompt(inputs: PlannerInputs): string {
     '{"narrative": string, "shots": [{"sourceScreen": string, "headline": string, "subline"?: string, "templateId": string, "accent"?: string}]}',
     `Plan exactly ${inputs.audit.recommendedCount} shots. First shot is the hook.`,
     `Each sourceScreen MUST be one of: ${JSON.stringify(inputs.rawScreens)}, or "MISSING" if none fits.`,
-    `templateId MUST be one of: ${JSON.stringify(TEMPLATE_IDS)}.`,
+    inputs.templatePreference
+      ? `templateId MUST be ${JSON.stringify(inputs.templatePreference)} for EVERY shot — the user locked this frame style.`
+      : `templateId MUST be one of: ${JSON.stringify(TEMPLATE_IDS)}.`,
     `accent (optional) MUST be one of: ${JSON.stringify(inputs.brandPalette)}.`,
     "Headlines: ≤ 6 words, benefit-first, NO unmeasured claims (no \"#1\", no \"best\").",
     `App: ${inputs.appName}${inputs.subtitle ? " — " + inputs.subtitle : ""}`,

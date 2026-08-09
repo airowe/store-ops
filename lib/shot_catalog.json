@@ -1,0 +1,80 @@
+{
+  "version": 1,
+  "templates": [
+    {
+      "id": "headline-top",
+      "name": "Headline up top",
+      "sell": "The classic converter: the promise first, the proof right under it. The safe default for shot #1.",
+      "slots": {
+        "headline": { "fx": 0.09, "fy": 0.06, "fw": 0.82, "fh": 0.15, "align": "center" }
+      },
+      "deviceFrame": { "fx": 0.1, "fy": 0.26, "fw": 0.8, "fh": 0.66 }
+    },
+    {
+      "id": "headline-bottom",
+      "name": "Screen first",
+      "sell": "The product leads, the caption lands after — strong when the screen itself is the hook.",
+      "slots": {
+        "headline": { "fx": 0.09, "fy": 0.79, "fw": 0.82, "fh": 0.15, "align": "center" }
+      },
+      "deviceFrame": { "fx": 0.1, "fy": 0.06, "fw": 0.8, "fh": 0.66 }
+    },
+    {
+      "id": "full-bleed",
+      "name": "Full bleed",
+      "sell": "Immersive, edge-to-edge product with the caption overlaid low. Great for rich, dense screens.",
+      "slots": {
+        "headline": { "fx": 0.09, "fy": 0.8, "fw": 0.82, "fh": 0.14, "align": "center" }
+      },
+      "deviceFrame": { "fx": 0.0, "fy": 0.0, "fw": 1.0, "fh": 1.0 }
+    },
+    {
+      "id": "duo",
+      "name": "Two-line story",
+      "sell": "Headline plus a supporting subline over a centered device — room to explain a non-obvious win.",
+      "slots": {
+        "headline": { "fx": 0.09, "fy": 0.06, "fw": 0.82, "fh": 0.14, "align": "center" },
+        "subline": { "fx": 0.09, "fy": 0.22, "fw": 0.82, "fh": 0.07, "align": "center" }
+      },
+      "deviceFrame": { "fx": 0.14, "fy": 0.32, "fw": 0.72, "fh": 0.6 }
+    },
+    {
+      "id": "editorial",
+      "name": "Editorial",
+      "sell": "Left-aligned copy like a feature card, device offset to the right — reads premium, stands out in a row of centered sets.",
+      "slots": {
+        "headline": { "fx": 0.09, "fy": 0.07, "fw": 0.82, "fh": 0.14, "align": "left" },
+        "subline": { "fx": 0.09, "fy": 0.23, "fw": 0.82, "fh": 0.06, "align": "left" }
+      },
+      "deviceFrame": { "fx": 0.22, "fy": 0.33, "fw": 0.72, "fh": 0.6 }
+    },
+    {
+      "id": "spotlight",
+      "name": "Spotlight",
+      "sell": "One oversized claim with the product beneath it — built for the single number or benefit that sells the app.",
+      "slots": {
+        "headline": { "fx": 0.09, "fy": 0.1, "fw": 0.82, "fh": 0.2, "align": "center" }
+      },
+      "deviceFrame": { "fx": 0.08, "fy": 0.4, "fw": 0.84, "fh": 0.55 }
+    },
+    {
+      "id": "full-bleed-top",
+      "name": "Full bleed, promise up top",
+      "sell": "Edge-to-edge product with the caption at the top — where browsing thumbs never cover it.",
+      "slots": {
+        "headline": { "fx": 0.09, "fy": 0.07, "fw": 0.82, "fh": 0.12, "align": "center" }
+      },
+      "deviceFrame": { "fx": 0.0, "fy": 0.0, "fw": 1.0, "fh": 1.0 }
+    },
+    {
+      "id": "duo-bottom",
+      "name": "Story after the screen",
+      "sell": "Device on top, two-line explanation below — the deep-dive frame for shots 3+, after the hook has landed.",
+      "slots": {
+        "headline": { "fx": 0.09, "fy": 0.7, "fw": 0.82, "fh": 0.13, "align": "center" },
+        "subline": { "fx": 0.09, "fy": 0.85, "fw": 0.82, "fh": 0.06, "align": "center" }
+      },
+      "deviceFrame": { "fx": 0.14, "fy": 0.06, "fw": 0.72, "fh": 0.6 }
+    }
+  ]
+}

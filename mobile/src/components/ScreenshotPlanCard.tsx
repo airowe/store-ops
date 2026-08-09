@@ -16,17 +16,25 @@ import type { ApiClient } from "../api/client.js";
 import { planScreenshots } from "../api/endpoints.js";
 import type { ScreenshotPlan, ScreenshotPlanInputs } from "../types/api.js";
 import { spacing, usePalette } from "../theme/index.js";
+import { FramePicker, type FrameChoice } from "./FramePicker.js";
 import { AppText, Button, Card } from "./primitives.js";
 
 export function ScreenshotPlanCard({ client, inputs }: { client: ApiClient; inputs: ScreenshotPlanInputs }) {
   const palette = usePalette();
   const [plan, setPlan] = useState<ScreenshotPlan | null>(null);
   const [busy, setBusy] = useState(false);
+  // "auto" = let ShipASO pick per shot; a catalog id locks every shot's frame.
+  const [frame, setFrame] = useState<FrameChoice>("auto");
 
   const run = async () => {
     setBusy(true);
     try {
-      setPlan(await planScreenshots(client, inputs));
+      setPlan(
+        await planScreenshots(client, {
+          ...inputs,
+          ...(frame !== "auto" ? { templatePreference: frame } : {}),
+        }),
+      );
     } finally {
       setBusy(false);
     }
@@ -38,6 +46,7 @@ export function ScreenshotPlanCard({ client, inputs }: { client: ApiClient; inpu
       <AppText kind="micro">
         Turn this run’s screenshot findings into a shot-by-shot plan you render locally.
       </AppText>
+      <FramePicker client={client} choice={frame} onChoose={setFrame} />
       <Button testID="plan-screenshots-btn" label={busy ? "Planning…" : "Plan screenshots"} onPress={run} disabled={busy} />
 
       {plan ? (

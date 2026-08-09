@@ -5,6 +5,8 @@ import {
   type PlannedShot,
   reconcilePlan,
   planScreenshots,
+  planDeterministic,
+  buildPrompt,
   lintHeadline,
   TEMPLATE_IDS,
 } from "./screenshotPlanner";
@@ -152,5 +154,34 @@ describe("planScreenshots — end to end over a Reasoner", () => {
     const plan = await planScreenshots(INPUTS, undefined);
     expect(plan.degraded).toBe(true);
     expect(plan.shots.length).toBe(INPUTS.audit.recommendedCount);
+  });
+});
+
+// ── templatePreference — the user's locked frame vs "let ShipASO pick" ───────
+describe("templatePreference", () => {
+  const locked: PlannerInputs = { ...INPUTS, templatePreference: "editorial" };
+
+  it("locks every deterministic shot to the user's frame", () => {
+    const plan = planDeterministic(locked);
+    expect(plan.shots.length).toBe(locked.audit.recommendedCount);
+    expect(plan.shots.every((s: PlannedShot) => s.templateId === "editorial")).toBe(true);
+  });
+
+  it("outranks whatever the model suggested, shot by shot", () => {
+    const raw = JSON.stringify(validPlan()); // model picked three other frames
+    const plan = reconcilePlan(raw, locked);
+    expect(plan.shots.every((s: PlannedShot) => s.templateId === "editorial")).toBe(true);
+  });
+
+  it("tells the model about the lock in the prompt", () => {
+    expect(buildPrompt(locked)).toContain('templateId MUST be "editorial" for EVERY shot');
+    expect(buildPrompt(INPUTS)).not.toContain("locked this frame style");
+  });
+
+  it("absent = let ShipASO pick: the deterministic plan cycles the catalog", () => {
+    const plan = planDeterministic(INPUTS);
+    const seen = new Set(plan.shots.map((s: PlannedShot) => s.templateId));
+    expect(seen.size).toBeGreaterThan(1);
+    for (const id of seen) expect(TEMPLATE_IDS).toContain(id);
   });
 });

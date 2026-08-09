@@ -815,4 +815,22 @@ export type ScreenshotPlanInputs = {
   rawScreens?: string[];
   audit: { grade?: string; recommendedCount: number; findings: string[] };
   brandPalette?: string[];
+  /** a locked catalog frame id; absent or "auto" = let ShipASO pick per shot. */
+  templatePreference?: string;
+};
+
+/** One marketing frame from GET /screenshot-templates (geometry in canvas fractions). */
+export type FrameBox = { fx: number; fy: number; fw: number; fh: number; align?: string };
+export type FrameTemplate = {
+  id: string;
+  name: string;
+  /** why this frame converts — the picker's one-line pitch. */
+  sell: string;
+  slots: Record<string, FrameBox>;
+  deviceFrame: FrameBox;
+};
+export type FrameCatalog = {
+  version: number;
+  auto: { id: "auto"; name: string; sell: string };
+  templates: FrameTemplate[];
 };

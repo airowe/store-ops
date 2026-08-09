@@ -92,3 +92,48 @@ describe("ScreenshotPlanCard theming", () => {
     expect(lightPalette.warn).not.toBe(palette.warn);
   });
 });
+
+describe("frame style choice", () => {
+  const CATALOG = {
+    version: 1,
+    auto: { id: "auto", name: "Let ShipASO pick", sell: "Planner assigns per shot." },
+    templates: [
+      {
+        id: "spotlight",
+        name: "Spotlight",
+        sell: "One oversized claim.",
+        slots: { headline: { fx: 0.09, fy: 0.1, fw: 0.82, fh: 0.2, align: "center" } },
+        deviceFrame: { fx: 0.08, fy: 0.4, fw: 0.84, fh: 0.55 },
+      },
+    ],
+  };
+
+  function catalogClient(plan: ScreenshotPlan): { client: ApiClient; bodies: unknown[] } {
+    const bodies: unknown[] = [];
+    const client = {
+      get: async () => CATALOG,
+      post: async (_p: string, body?: unknown) => {
+        bodies.push(body);
+        return plan;
+      },
+      request: async () => ({}),
+    } as unknown as ApiClient;
+    return { client, bodies };
+  }
+
+  it("a picked frame is sent as templatePreference; auto sends none", async () => {
+    const { client, bodies } = catalogClient(basePlan);
+    render(<ScreenshotPlanCard client={client} inputs={inputs} />);
+    await waitFor(() => expect(screen.getByTestId("frame-spotlight")).toBeTruthy());
+
+    fireEvent.press(screen.getByTestId("frame-spotlight"));
+    fireEvent.press(screen.getByTestId("plan-screenshots-btn"));
+    await waitFor(() => expect(bodies.length).toBe(1));
+    expect(bodies[0]).toEqual({ ...inputs, templatePreference: "spotlight" });
+
+    fireEvent.press(screen.getByTestId("frame-auto"));
+    fireEvent.press(screen.getByTestId("plan-screenshots-btn"));
+    await waitFor(() => expect(bodies.length).toBe(2));
+    expect(bodies[1]).toEqual(inputs); // "auto" = no lock on the wire
+  });
+});

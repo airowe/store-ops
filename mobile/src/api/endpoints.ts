@@ -20,6 +20,7 @@ import type {
   Competitor,
   DeltasView,
   EngagementSurface,
+  FrameCatalog,
   GithubConnectResult,
   GithubPrResult,
   GithubStatus,
@@ -107,6 +108,11 @@ export const analyzeRejection = (c: ApiClient, text: string) =>
  *  audit findings (#153). Returns the ScreenshotPlan; renders/ships nothing. */
 export const planScreenshots = (c: ApiClient, inputs: ScreenshotPlanInputs) =>
   c.post<ScreenshotPlan>("/plan/screenshots", inputs);
+
+/** GET /screenshot-templates — the marketing-frame catalog (public) for the
+ *  frame pickers, plus the "auto" let-ShipASO-pick option. */
+export const getScreenshotTemplates = (c: ApiClient) =>
+  c.get<FrameCatalog>("/screenshot-templates");
 
 // ── GitHub metadata-PR path (#8) — credential-free ship path ─────────────────
 /** Is the GitHub App configured on this deploy, and is a repo linked? */
