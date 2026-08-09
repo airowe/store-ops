@@ -17,6 +17,7 @@
 | Public /journey page on shipaso.com | ✅ built | `docs/landing/journey.html` + `docs/landing/journey/feed.json` (guard: `packages/docpaths/journeyFeed.test.mjs`); wins auto-journal via postedge `--journal` |
 | Claude brain Phase 1 (reasoning + authored subtitles) | ✅ code; needs `ANTHROPIC_API_KEY` Worker secret (**yours**) | `cloud/src/api/aiReasoner.ts` (Claude > Workers AI > deterministic) + `cloud/src/engine/copyAuthor.ts`; `/health` `claude_reasoner` warn shows which brain is live |
 | Build-log thread composer (weekly cadence floor) | ✅ | `packages/postedge/buildlog.mjs` |
+| Screenshot + preview-footage capture in CI (agent-driven) | 🔵 scaffolded — unverified until the first macOS run; needs `ANTHROPIC_API_KEY` **Actions** secret (**yours**) then a manual dispatch | `.github/workflows/capture-shots.yml` + `marketing/screenshots/capture/PLAN.md`; raw captures feed `scripts/render-shipshots.py` |
 | Demo video ≤3 min | 🔵 script drafted | `docs/shipaton/devpost-draft.md` — recording needs a device + live 0.1.1 |
 | Devpost submission + #BuildInPublic post links | 🔵 draft ready | `docs/shipaton/devpost-draft.md` + the playbook's ledger; final facts land at submission |
 
