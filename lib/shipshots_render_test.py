@@ -180,6 +180,20 @@ def test_malformed_accent_is_ignored_not_guessed():
     assert draw.box.color == (255, 255, 255)
 
 
+def test_cross_renderer_parity_vectors_match_the_device_renderer():
+    # The device renderer (mobile/src/lib/shotRender.ts) pins these SAME values;
+    # if either side's WCAG math drifts, one of the two suites goes red.
+    # Contract: docs/shipaton/shipshots-device-render.md
+    from shipshots_render import MIN_ACCENT_CONTRAST, contrast_ratio, ink_for
+    assert abs(contrast_ratio((52, 211, 153), (7, 9, 14)) - 10.3596) < 1e-3
+    assert abs(contrast_ratio((17, 22, 33), (246, 247, 249)) - 16.8805) < 1e-3
+    assert abs(contrast_ratio((255, 255, 255), (246, 247, 249)) - 1.0719) < 1e-3
+    assert abs(contrast_ratio((11, 14, 20), (7, 9, 14)) - 1.031) < 1e-3
+    assert MIN_ACCENT_CONTRAST == 3.0
+    assert ink_for((7, 9, 14)) == (255, 255, 255)
+    assert ink_for((246, 247, 249)) == (17, 22, 33)
+
+
 def _run():
     tests = [v for k, v in sorted(globals().items())
              if k.startswith("test_") and callable(v)]

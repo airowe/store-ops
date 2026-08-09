@@ -20,7 +20,16 @@ import { ColorPicker } from "./ColorPicker.js";
 import { FramePicker, type FrameChoice } from "./FramePicker.js";
 import { AppText, Button, Card } from "./primitives.js";
 
-export function ScreenshotPlanCard({ client, inputs }: { client: ApiClient; inputs: ScreenshotPlanInputs }) {
+export function ScreenshotPlanCard({
+  client,
+  inputs,
+  onPlan,
+}: {
+  client: ApiClient;
+  inputs: ScreenshotPlanInputs;
+  /** called with each fresh plan, so a parent can hand it to the renderer. */
+  onPlan?: ((plan: ScreenshotPlan) => void) | undefined;
+}) {
   const palette = usePalette();
   const [plan, setPlan] = useState<ScreenshotPlan | null>(null);
   const [busy, setBusy] = useState(false);
@@ -32,13 +41,13 @@ export function ScreenshotPlanCard({ client, inputs }: { client: ApiClient; inpu
   const run = async () => {
     setBusy(true);
     try {
-      setPlan(
-        await planScreenshots(client, {
-          ...inputs,
-          ...(frame !== "auto" ? { templatePreference: frame } : {}),
-          ...(colors.length > 0 ? { brandPalette: colors } : {}),
-        }),
-      );
+      const fresh = await planScreenshots(client, {
+        ...inputs,
+        ...(frame !== "auto" ? { templatePreference: frame } : {}),
+        ...(colors.length > 0 ? { brandPalette: colors } : {}),
+      });
+      setPlan(fresh);
+      onPlan?.(fresh);
     } finally {
       setBusy(false);
     }

@@ -21,9 +21,11 @@ import * as VideoThumbnails from "expo-video-thumbnails";
 import * as FileSystem from "expo-file-system/legacy";
 import * as Sharing from "expo-sharing";
 import { useAuth } from "../../src/auth/AuthProvider.js";
+import { RenderSetCard } from "../../src/components/RenderSetCard.js";
 import { ScreenshotPlanCard } from "../../src/components/ScreenshotPlanCard.js";
 import { Screen, AppText, Button, Card } from "../../src/components/primitives.js";
 import { spacing, usePalette } from "../../src/theme/index.js";
+import type { ScreenshotPlan } from "../../src/types/api.js";
 
 const THUMB_COUNT = 8;
 
@@ -31,8 +33,9 @@ type Extracted = { timeMs: number; uri: string };
 
 export default function CaptureKit() {
   const palette = usePalette();
-  const { client } = useAuth();
+  const { client, me, refresh } = useAuth();
   const { appName } = useLocalSearchParams<{ appName?: string }>();
+  const [plan, setPlan] = useState<ScreenshotPlan | null>(null);
 
   const [busy, setBusy] = useState(false);
   const [video, setVideo] = useState<{ uri: string; durationMs: number } | null>(null);
@@ -77,8 +80,11 @@ export default function CaptureKit() {
     }
   };
 
-  const toggle = (i: number) =>
+  const toggle = (i: number) => {
+    // a plan is a snapshot of a selection — changing the frames invalidates it
+    setPlan(null);
     setSelected((cur) => (cur.includes(i) ? cur.filter((x) => x !== i) : [...cur, i].sort((a, b) => a - b)));
+  };
 
   // Selected frames become the plan's rawScreens, named in time order — the
   // same ids the renderer will expect as filename stems.
@@ -193,6 +199,19 @@ export default function CaptureKit() {
                 findings: [`${selected.length} frames captured from a real walkthrough recording`],
               },
             }}
+            onPlan={setPlan}
+          />
+        ) : null}
+
+        {plan ? (
+          <RenderSetCard
+            client={client!}
+            plan={plan}
+            frames={Object.fromEntries(
+              selected.map((thumbIdx, pos) => [`frame-${pos + 1}`, frames[thumbIdx]!.uri]),
+            )}
+            tier={me?.tier}
+            onUnlocked={() => void refresh()}
           />
         ) : null}
       </ScrollView>

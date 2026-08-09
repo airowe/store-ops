@@ -779,8 +779,11 @@ export type CheckoutResult = { url: string };
 
 // ── ShipShots (#153) — mirrors the shared @shipaso/api ScreenshotPlan types ───
 
-/** The fixed ShipShots template library — matches the engine's TEMPLATE_IDS. */
-export type TemplateId = "headline-top" | "headline-bottom" | "full-bleed" | "duo";
+/** A ShipShots frame id. The catalog (GET /screenshot-templates) is the
+ *  runtime truth — a literal union here froze at four ids while the catalog
+ *  grew, so the type stays open and consumers resolve ids against the fetched
+ *  catalog (unknown → the first frame, the same safe default everywhere). */
+export type TemplateId = string;
 
 /**
  * One planned shot (mirrors the engine's PlannedShot). A "MISSING" sourceScreen

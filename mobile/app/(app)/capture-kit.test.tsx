@@ -31,6 +31,14 @@ jest.mock("expo-video-thumbnails", () => ({
 jest.mock("expo-sharing", () => ({
   shareAsync: jest.fn(async () => undefined),
 }));
+// the render card's executor pulls in native Skia — mock at the module seam
+jest.mock("../../src/lib/skiaShotRenderer.js", () => ({
+  renderShotToBase64: jest.fn(async () => "UEZha2VQbmc="),
+}));
+jest.mock("../../src/components/Paywall.js", () => {
+  const { View } = require("react-native");
+  return { Paywall: () => <View testID="paywall-stub" /> };
+});
 
 import * as ImagePicker from "expo-image-picker";
 import * as VideoThumbnails from "expo-video-thumbnails";
@@ -152,6 +160,30 @@ describe("CaptureKit", () => {
     // …but named in TIME order: thumb-1 is frame-1, thumb-5 is frame-2
     expect(plan.body.rawScreens).toEqual(["frame-1", "frame-2"]);
     expect(plan.body.audit!.recommendedCount).toBe(2);
+  });
+
+  it("a fresh plan surfaces the render card wired to the selected frames", async () => {
+    const { renderShotToBase64 } = require("../../src/lib/skiaShotRenderer.js");
+    pickerMock.mockResolvedValue(RECORDING);
+    await renderKit();
+    fireEvent.press(screen.getByTestId("import-recording-btn"));
+    await waitFor(() => expect(screen.getByTestId("thumb-0")).toBeTruthy());
+
+    fireEvent.press(screen.getByTestId("thumb-2"));
+    await waitFor(() => expect(screen.getByTestId("plan-screenshots-btn")).toBeTruthy());
+    fireEvent.press(screen.getByTestId("plan-screenshots-btn"));
+    await waitFor(() => expect(screen.getByTestId("render-set-btn")).toBeTruthy());
+
+    // the render card resolves frame-1 to the SELECTED thumb's real file
+    fireEvent.press(screen.getByTestId("render-set-btn"));
+    await waitFor(() => expect(renderShotToBase64).toHaveBeenCalled());
+    expect((renderShotToBase64 as jest.Mock).mock.calls[0]![0].frameUri).toBe(
+      "file:///thumbs/2500.jpg",
+    );
+
+    // changing the selection invalidates the plan (a plan is a snapshot)
+    fireEvent.press(screen.getByTestId("thumb-4"));
+    expect(screen.queryByTestId("render-set-btn")).toBeNull();
   });
 
   it("export shares the selected frames UNDER the plan's ids (frame-N stems)", async () => {
