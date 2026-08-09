@@ -108,13 +108,18 @@ const config: ExpoConfig = {
       android: process.env.REVENUECAT_ANDROID_KEY ?? "",
     },
     // Terms of Use (EULA) + privacy policy. Apple requires both to be reachable
-    // from a screen that sells a subscription. Empty until the pages are
-    // published — neither URL exists on shipaso.com yet (both 404 today), and
-    // shipping a link to a 404 from a purchase screen is its own rejection, so
-    // the paywall renders no link rather than a broken one. See issue #430.
+    // from a screen that sells a subscription, and 0.1.0 ate a 2.1(a) for a
+    // legal link that 404'd — so `legalUrls()` renders NO control for an unset
+    // URL rather than a broken one (#430).
+    //
+    // Both now default to real routes on the web app rather than "": /privacy
+    // and /terms are registered in cloud/web/src/router.tsx. Note the apex
+    // shipaso.com/terms and /privacy still 404 — the pages live on the app
+    // subdomain, which is what ASC's Privacy Policy URL already points at. The
+    // env vars stay as an override for a staging build.
     legal: {
-      terms: process.env.LEGAL_TERMS_URL ?? "",
-      privacy: process.env.LEGAL_PRIVACY_URL ?? "",
+      terms: process.env.LEGAL_TERMS_URL ?? "https://app.shipaso.com/terms",
+      privacy: process.env.LEGAL_PRIVACY_URL ?? "https://app.shipaso.com/privacy",
     },
   },
 };
