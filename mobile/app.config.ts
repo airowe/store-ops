@@ -15,6 +15,19 @@ const API_BASE = process.env.SHIPASO_API_BASE ?? "https://api.shipaso.com";
 /** The identity that MUST match the .well-known association files + EAS submit. */
 export const APP_IDENTIFIER = "com.shipaso.app";
 export const ASSOCIATED_HOST = "shipaso.com";
+/**
+ * The dashboard subdomain, which is what our EMAILS actually link to
+ * (`DASHBOARD_ORIGIN ?? "https://app.shipaso.com"`, cloud/src/api/index.ts).
+ *
+ * iOS matches universal links on the EXACT host and implies no wildcard, so
+ * associating only the apex meant a tapped digest link opened Safari and never
+ * offered the app — the same Guideline 2.1(a) dead end that rejected 0.1.0.
+ * `shipaso.com/dashboard` 404s; the content lives only here. Both hosts serve a
+ * valid AASA with `content-type: application/json`.
+ */
+export const DASHBOARD_HOST = "app.shipaso.com";
+/** Every host whose https links must open the app rather than the browser. */
+export const LINKED_HOSTS = [ASSOCIATED_HOST, DASHBOARD_HOST] as const;
 
 const config: ExpoConfig = {
   name: "ShipASO",
@@ -46,7 +59,7 @@ const config: ExpoConfig = {
     bundleIdentifier: APP_IDENTIFIER,
     buildNumber: "1",
     supportsTablet: true,
-    associatedDomains: [`applinks:${ASSOCIATED_HOST}`],
+    associatedDomains: LINKED_HOSTS.map((h) => `applinks:${h}`),
     config: { usesNonExemptEncryption: false },
     infoPlist: {
       // We never push to a live store and store no credentials on device; the
@@ -63,7 +76,7 @@ const config: ExpoConfig = {
       {
         action: "VIEW",
         autoVerify: true,
-        data: [{ scheme: "https", host: ASSOCIATED_HOST }],
+        data: LINKED_HOSTS.map((host) => ({ scheme: "https", host })),
         category: ["BROWSABLE", "DEFAULT"],
       },
     ],
