@@ -33,9 +33,9 @@ WHAT CHANGED SINCE 0.1.0
    status instead of a purchase button, so they are never charged twice.
 
 3. Guideline 2.1(a) — the magic-link sign-in no longer dead-ends. The app now
-   declares the shipaso.com associated domain and handles the /auth/m route, so
-   tapping the emailed link opens the app and completes sign-in rather than
-   loading a 404 in Safari.
+   declares both the shipaso.com and app.shipaso.com associated domains and
+   handles the /auth/m route, so tapping the emailed link opens the app and
+   completes sign-in rather than loading a page in Safari.
 
 4. Guideline 2.3.7 — the price and "free" text that appeared in the app's own
    UI has been removed, and every screenshot in this submission was re-captured
@@ -46,10 +46,17 @@ HOW TO SIGN IN
 Sign-in is passwordless. Enter an email on the login screen and tap "Send magic
 link", then tap the link in the email to return to the app.
 
-If you prefer not to use an inbox, use this demo account: <DEMO ACCOUNT EMAIL>
-A sign-in token for it is: <SIGN-IN TOKEN>
-Paste that token into the "Paste magic-link token" field on the login screen and
-tap Continue — this signs in without needing email access.
+Please use this demo account: adaminsley+shipaso-review@gmail.com
+
+Enter that address and tap "Send magic link". The link is delivered
+immediately. It is a free-tier account, which is what you want — the purchase
+screen only appears for a free account (see below).
+
+We have deliberately NOT pre-pasted a sign-in token here: our magic-link tokens
+expire 15 minutes after they are minted, so any token written into this note
+would be dead by the time you read it. If you cannot receive the email for any
+reason, contact support@shipaso.com and we will supply a fresh token within the
+window.
 
 HOW TO REACH THE PURCHASE SCREEN
 
@@ -79,14 +86,17 @@ Thank you — happy to provide anything else that would help.
 
 ## Before you paste
 
-- [ ] **`<DEMO ACCOUNT EMAIL>`** — create the account, then confirm it is on the
-      **free** tier. A reviewer signed in on a paid tier sees the read-only
-      "managed on the web" state and cannot complete a purchase, which reads as
-      a broken paywall.
-- [ ] **`<SIGN-IN TOKEN>`** — generate a long-lived token for that account. If
-      tokens in this environment expire quickly, delete those two lines and
-      leave email sign-in as the only route rather than shipping a token that
-      is dead by the time review opens the build.
+No placeholders remain — the block above is ready to paste as written. Two
+things to re-verify at submit time, because both drift:
+
+- [ ] **`adaminsley+shipaso-review@gmail.com` is still on the FREE tier.** This
+      is load-bearing: a reviewer on a paid tier hits the web-subscriber
+      read-only branch (`Paywall.tsx:51-52`), sees no purchase button, and reads
+      it as the same "nothing purchasable" 3.1.1 failure that rejected 0.1.0.
+      Verified free-tier on 2026-08-10 by reaching the paywall with it.
+- [ ] The mailbox still receives. Tokens live 15 minutes
+      (`MAGIC_LINK_TTL_SECONDS`, api/index.ts:294), which is why no token is
+      embedded here — one written into this note would be dead on arrival.
 - [ ] Confirm the three subscription display names in ASC read exactly
       **Indie / Startup / Scale**. The note names them; a mismatch invites a
       metadata question.
