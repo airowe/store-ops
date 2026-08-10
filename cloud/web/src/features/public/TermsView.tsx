@@ -35,7 +35,7 @@ export function TermsView() {
       <h2>Subscriptions and pricing</h2>
       <p data-testid="terms-tiers">
         ShipASO is free to use for a single app with manual runs. Paid tiers add
-        more apps and scheduled autonomous runs: <b>Indie $7/month</b> (3 apps),{" "}
+        more apps and scheduled autonomous runs: <b>Indie $6.99/month</b> (3 apps),{" "}
         <b>Startup $19/month</b> (10 apps), and <b>Scale $65/month</b> (50 apps).
       </p>
       <p data-testid="terms-renewal">

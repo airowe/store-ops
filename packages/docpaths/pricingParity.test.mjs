@@ -27,9 +27,16 @@ const html = read("index.html");
 const md = read("pricing.md");
 const llms = read("llms.txt");
 
-/** Every price token the machine-readable files assert, e.g. "$49". */
+/**
+ * Every price token the machine-readable files assert, e.g. "$49" or "$6.99".
+ *
+ * The cents group is REQUIRED, not cosmetic: without it "$6.99" parsed as "$6",
+ * so a cents-priced tier could never match the code and the guard failed on a
+ * correct doc. App Store price points are not all whole dollars — Indie is
+ * $6.99 in App Store Connect — so any price regex here must read the decimal.
+ */
 function pricesIn(text) {
-  return [...new Set([...text.matchAll(/\$[0-9][0-9,]*/g)].map((m) => m[0]))];
+  return [...new Set([...text.matchAll(/\$[0-9][0-9,]*(?:\.[0-9]{2})?/g)].map((m) => m[0]))];
 }
 
 test("every price in pricing.md also appears on the human pricing page", () => {
@@ -130,7 +137,12 @@ test("every advertised plan name is a tier the billing code actually knows", () 
  */
 test("the prices we advertise match the prices recorded in billing.ts", () => {
   const billing = readFileSync(join(repoRoot, "cloud/src/billing.ts"), "utf8");
-  const codePrices = new Set([...billing.matchAll(/\$([0-9][0-9,]*)\/mo/g)].map((m) => `$${m[1]}`));
+  // Cents are REQUIRED here (see pricesIn): billing.ts documents Indie as
+  // $6.99/mo, and dropping the decimal made the code side read "$6" while the
+  // doc side read "$6.99" — a mismatch invented by the regex, not by the copy.
+  const codePrices = new Set(
+    [...billing.matchAll(/\$([0-9][0-9,]*(?:\.[0-9]{2})?)\/mo/g)].map((m) => `$${m[1]}`),
+  );
   const advertised = pricesIn(md).filter((p) => p !== "$0"); // free has no Stripe price
   for (const price of advertised) {
     assert.ok(
@@ -172,7 +184,12 @@ test("the runbook names the Stripe price secrets the code actually reads", () =>
  */
 test("launch collateral quotes no price the billing code does not charge", () => {
   const billing = readFileSync(join(repoRoot, "cloud/src/billing.ts"), "utf8");
-  const codePrices = new Set([...billing.matchAll(/\$([0-9][0-9,]*)\/mo/g)].map((m) => `$${m[1]}`));
+  // Cents are REQUIRED here (see pricesIn): billing.ts documents Indie as
+  // $6.99/mo, and dropping the decimal made the code side read "$6" while the
+  // doc side read "$6.99" — a mismatch invented by the regex, not by the copy.
+  const codePrices = new Set(
+    [...billing.matchAll(/\$([0-9][0-9,]*(?:\.[0-9]{2})?)\/mo/g)].map((m) => `$${m[1]}`),
+  );
   for (const rel of ["docs/LAUNCH_X.md"]) {
     const text = readFileSync(join(repoRoot, rel), "utf8");
     // Only prices presented as OURS. Launch copy legitimately cites a

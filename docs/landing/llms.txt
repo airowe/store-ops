@@ -36,7 +36,7 @@ directly rather than only reading about the product.
 | Plan | Price | Apps | Autonomous weekly sweep |
 | --- | --- | --- | --- |
 | Free | $0 | 1 | No — manual runs only |
-| Indie | $7/mo | 3 | Yes |
+| Indie | $6.99/mo | 3 | Yes |
 | Startup | $19/mo | 10 | Yes |
 | Scale | $65/mo | 50 | Yes |
 
