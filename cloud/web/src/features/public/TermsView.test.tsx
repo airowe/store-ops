@@ -14,7 +14,7 @@ describe("<TermsView />", () => {
     render(<TermsView />);
     // The three tiers and their prices — must match docs/landing/pricing.md.
     const tiers = screen.getByTestId("terms-tiers");
-    expect(tiers).toHaveTextContent("$7");
+    expect(tiers).toHaveTextContent("$6.99");
     expect(tiers).toHaveTextContent("$19");
     expect(tiers).toHaveTextContent("$65");
     // Auto-renewal + where to cancel (the paywall says the same sentence).

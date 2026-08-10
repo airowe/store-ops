@@ -33,7 +33,7 @@ const LLMS_TXT = fileURLToPath(new URL("../../docs/landing/llms.txt", import.met
 /** The live scheme. Prices are not in code (Stripe holds them), so they are pinned here. */
 const TIERS = [
   { name: "Free", price: "$0", limit: appLimitForTier("free") },
-  { name: "Indie", price: "$7/mo", limit: appLimitForTier("indie") },
+  { name: "Indie", price: "$6.99/mo", limit: appLimitForTier("indie") },
   { name: "Startup", price: "$19/mo", limit: appLimitForTier("startup") },
   { name: "Scale", price: "$65/mo", limit: appLimitForTier("scale") },
 ] as const;

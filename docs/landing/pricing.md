@@ -7,7 +7,7 @@ ShipASO proposes, you approve, then it ships.
 | Plan | Price | Apps | Autonomous weekly sweep | What it is |
 | --- | --- | --- | --- | --- |
 | Free | $0 | 1 | No — manual runs only | Run the agent yourself. MIT-licensed skills, both stores, your machine, bring your own data keys. |
-| Indie | $7/mo | 3 | Yes | The recurring loop for a small portfolio. |
+| Indie | $6.99/mo | 3 | Yes | The recurring loop for a small portfolio. |
 | Startup | $19/mo | 10 | Yes | The recurring loop for a mid-sized portfolio. |
 | Scale | $65/mo | 50 | Yes | Portfolio across many apps, with the fleet roll-up view. |
 
