@@ -1,13 +1,19 @@
 import * as fs from "node:fs";
-import config, { APP_IDENTIFIER, ASSOCIATED_HOST } from "./app.config.js";
+import config, { APP_IDENTIFIER, LINKED_HOSTS } from "./app.config.js";
 
 describe("app.config (ship readiness)", () => {
   it("iOS bundle id, Android package, and the associated domain are consistent", () => {
     expect(config.ios?.bundleIdentifier).toBe(APP_IDENTIFIER);
     expect(config.android?.package).toBe(APP_IDENTIFIER);
-    expect(config.ios?.associatedDomains).toContain(`applinks:${ASSOCIATED_HOST}`);
+    // BOTH hosts: emails link app.shipaso.com (the apex 404s on /dashboard), and
+    // iOS matches universal links on the exact host with no implied wildcard —
+    // associating only the apex sent digest links to Safari (Guideline 2.1(a),
+    // the same dead end that rejected 0.1.0).
+    for (const host of LINKED_HOSTS) {
+      expect(config.ios?.associatedDomains).toContain(`applinks:${host}`);
+    }
     const filter = config.android?.intentFilters?.[0];
-    expect(filter?.data).toEqual([{ scheme: "https", host: ASSOCIATED_HOST }]);
+    expect(filter?.data).toEqual(LINKED_HOSTS.map((host) => ({ scheme: "https", host })));
     expect(filter?.autoVerify).toBe(true);
   });
 
