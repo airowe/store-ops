@@ -12,7 +12,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from store_ops_orchestrator import (  # noqa: E402
     parse_context, _bundle_from_context, _seeds_from_context,
     _competitors_from_context, _mini_yaml, next_actions,
+    classify_competitors, upsert_snapshot,
 )
+import aso_competitor_watch as cwatch  # noqa: E402
 
 
 CTX = """# ASO context — heathen
@@ -166,6 +168,98 @@ def test_next_actions_always_includes_optimize_step():
     ctx = {"competitors": ["Calm"], "seeds": ["x"], "audience": "real"}
     acts = next_actions("heathen", ctx, [])
     assert any("aso-keyword-research" in a or "optimiz" in a.lower() for a in acts)
+
+
+# ── competitor classification (#438) ─────────────────────────────────────────
+def test_classify_routes_numeric_to_ids():
+    ids, bundles, names = classify_competitors(["6450612690", "595287172"])
+    assert ids == ["6450612690", "595287172"]
+    assert bundles == [] and names == []
+
+
+def test_classify_routes_reverse_dns_to_bundles():
+    ids, bundles, names = classify_competitors(
+        ["place.twotwotwo.twotwotwo-ios", "com.calm.calm"])
+    assert bundles == ["place.twotwotwo.twotwotwo-ios", "com.calm.calm"]
+    assert ids == [] and names == []
+
+
+def test_classify_treats_name_with_trailing_period_as_a_name():
+    # The regression: this real App Store app was looked up as a bundle id.
+    ids, bundles, names = classify_competitors(["222 - find your people."])
+    assert names == ["222 - find your people."]
+    assert bundles == []
+
+
+def test_classify_treats_punctuated_names_as_names():
+    for name in ["Yahoo! Inc.", "Dr. Web", "Notes 2.0", "Half Life 3."]:
+        ids, bundles, names = classify_competitors([name])
+        assert names == [name], f"{name!r} misclassified as {bundles or ids}"
+
+
+def test_classify_ignores_blank_entries():
+    ids, bundles, names = classify_competitors(["", "   ", "Calm"])
+    assert names == ["Calm"] and ids == [] and bundles == []
+
+
+# ── snapshot upsert / idempotency (#438) ─────────────────────────────────────
+_SNAP_A = "## 2026-08-05 · US\n\n- `1` · name: A · version: 1.0\n\n"
+_SNAP_B = "## 2026-08-06 · US\n\n- `1` · name: A · version: 2.0\n\n"
+_SNAP_B2 = "## 2026-08-06 · US\n\n- `1` · name: A · version: 3.0\n\n"
+
+
+def test_upsert_appends_when_date_is_new():
+    out = upsert_snapshot(_SNAP_A, "2026-08-06", "US", _SNAP_B)
+    assert out.count("## 2026-08-05") == 1
+    assert out.count("## 2026-08-06") == 1
+    assert out.index("2026-08-05") < out.index("2026-08-06")
+
+
+def test_upsert_replaces_block_for_same_date():
+    once = upsert_snapshot(_SNAP_A, "2026-08-06", "US", _SNAP_B)
+    twice = upsert_snapshot(once, "2026-08-06", "US", _SNAP_B2)
+    assert twice.count("## 2026-08-06") == 1, "same-date re-run appended"
+    assert "version: 3.0" in twice and "version: 2.0" not in twice
+    assert "## 2026-08-05" in twice, "replacing clobbered an earlier date"
+
+
+def test_upsert_is_idempotent_under_repeat():
+    out = upsert_snapshot(_SNAP_A, "2026-08-06", "US", _SNAP_B)
+    for _ in range(3):
+        out = upsert_snapshot(out, "2026-08-06", "US", _SNAP_B)
+    assert out == upsert_snapshot(_SNAP_A, "2026-08-06", "US", _SNAP_B)
+
+
+def test_upsert_into_empty_file_is_just_the_snapshot():
+    assert upsert_snapshot("", "2026-08-06", "US", _SNAP_B).strip() == _SNAP_B.strip()
+
+
+def test_rerun_still_diffs_against_the_previous_date_not_itself():
+    """The consequence that made the duplicate block matter.
+
+    previous_listings reads the LAST block. After a same-date re-run the last
+    block must still be the *earlier date*, so a real version change is seen.
+    """
+    once = upsert_snapshot(_SNAP_A, "2026-08-06", "US", _SNAP_B)
+    # Re-running 08-06: the file it diffs against is everything before 08-06.
+    prior = upsert_snapshot(once, "2026-08-06", "US", _SNAP_B)
+    before_block = prior[:prior.index("## 2026-08-06")]
+    assert cwatch.previous_listings(before_block)["1"]["version"] == "1.0"
+
+
+def test_upsert_keeps_a_blank_line_between_blocks():
+    out = upsert_snapshot(_SNAP_A, "2026-08-06", "US", _SNAP_B)
+    assert "\n\n## 2026-08-06" in out, "blocks run together"
+    # And replacing a block must not collapse the gap either.
+    again = upsert_snapshot(out, "2026-08-06", "US", _SNAP_B2)
+    assert "\n\n## 2026-08-06" in again
+
+
+def test_upsert_replaces_regardless_of_country_suffix():
+    existing = upsert_snapshot("", "2026-08-06", "US", _SNAP_B)
+    out = upsert_snapshot(existing, "2026-08-06", "GB",
+                          "## 2026-08-06 · GB\n\n- `1` · name: A · version: 9.0\n\n")
+    assert out.count("## 2026-08-06") == 1
 
 
 def _run():
