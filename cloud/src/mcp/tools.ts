@@ -21,6 +21,9 @@ import {
   type WarRoomRankSnapshot,
 } from "../engine/index.js";
 import { auditFindings, summarizeFindings } from "../engine/auditFindings.js";
+import { sortFindings } from "../engine/findings/core.js";
+import { iconComparisonFindings } from "../engine/iconComparison.js";
+import { analyzeIconSet, iconAnalyzerForEnv } from "../api/aiIconVision.js";
 import { buildPreview } from "../engine/preview.js";
 import { fetchForEnv, fetchLikeForEnv } from "../fetchAdapter.js";
 import { reasonerForEnv } from "../api/aiReasoner.js";
@@ -130,6 +133,38 @@ async function resolveAndRun(
   return { app: out.app, result };
 }
 
+/**
+ * The icon comparison for a completed run (#455), or [] when it can't run.
+ *
+ * Returns [] — spending nothing — unless ICON_VISION_ENABLED is set AND the AI
+ * binding exists AND the run measured both our own artwork and the chart the
+ * neighbour set comes from. This is the only audit surface that costs an
+ * inference per icon, so it is opt-in rather than degrade-on.
+ *
+ * Never throws into the audit: an icon read that fails leaves the rest of the
+ * findings intact, exactly like every other optional surface.
+ */
+async function iconFindings(env: Env, result: Awaited<ReturnType<typeof runReadOnlyAgent>>) {
+  const analyzer = iconAnalyzerForEnv(env);
+  if (!analyzer) return [];
+  const { artworkUrl, trackId } = result.audit;
+  if (!artworkUrl || !trackId || !result.chartEntries) return [];
+  try {
+    return await iconComparisonFindings(
+      fetchForEnv(env),
+      (urls) => analyzeIconSet(analyzer, urls),
+      {
+        appId: trackId,
+        artworkUrl,
+        chartEntries: result.chartEntries,
+        country: (env.DEFAULT_COUNTRY ?? "us").toLowerCase(),
+      },
+    );
+  } catch {
+    return [];
+  }
+}
+
 /** Load an app and assert it belongs to the caller (owner-scoped; 404-equivalent). */
 async function requireOwnedApp(ctx: ToolContext, appId: string) {
   const app = await getApp(ctx.env.DB, appId);
@@ -176,7 +211,13 @@ export const TOOLS: McpToolDef[] = [
         // "we didn't look" distinct from "we looked and you're not charting".
         ...(result.chartRank !== undefined ? { chartRank: result.chartRank } : {}),
       });
-      return { audit: result.audit, findings, summary: summarizeFindings(findings) };
+      // #455 — the icon comparison. OPT-IN and cost-bounded: the analyzer is
+      // undefined unless ICON_VISION_ENABLED is set AND the AI binding exists,
+      // so the default run spends no inferences and emits no icon finding.
+      // Every other input it needs is already measured on this run.
+      const all = [...findings, ...(await iconFindings(ctx.env, result))];
+      const sorted = sortFindings(all);
+      return { audit: result.audit, findings: sorted, summary: summarizeFindings(sorted) };
     },
   },
   {

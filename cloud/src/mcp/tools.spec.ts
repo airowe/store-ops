@@ -65,6 +65,65 @@ function stubGlobalFetch(opts: { search?: unknown[] } = {}) {
   });
 }
 
+/** The ten chart neighbours the icon comparison compares against. */
+const NEIGHBOUR_IDS = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "10"];
+const MY_ARTWORK = "https://cdn.example/mine.png";
+
+/**
+ * A fetch stub carrying EVERY input the icon comparison needs: our own artwork,
+ * a trackId, a genre, a full category chart, neighbour artwork, and fetchable
+ * image bytes.
+ *
+ * Used by both icon tests on purpose. The flag-off test needs a fixture rich
+ * enough that the FLAG is the only thing stopping the comparison — otherwise it
+ * passes because the data is thin and would not notice the gate disappearing.
+ */
+function stubIconReadyFetch() {
+  vi.stubGlobal("fetch", async (url: string, _init?: unknown) => {
+    const u = String(url);
+    // the neighbour artwork batch (comma-separated id list)
+    if (u.includes("/lookup") && u.includes("id=")) {
+      return new Response(
+        JSON.stringify({
+          resultCount: NEIGHBOUR_IDS.length,
+          results: NEIGHBOUR_IDS.map((id) => ({
+            trackId: Number(id),
+            artworkUrl512: `https://cdn.example/${id}.png`,
+          })),
+        }),
+        { status: 200 },
+      );
+    }
+    if (u.includes("/lookup")) {
+      return new Response(
+        JSON.stringify({
+          resultCount: 1,
+          results: [
+            {
+              bundleId: "com.acme.app",
+              trackName: "Acme",
+              trackId: 500,
+              primaryGenreId: "6013",
+              primaryGenreName: "Health & Fitness",
+              artworkUrl512: MY_ARTWORK,
+            },
+          ],
+        }),
+        { status: 200 },
+      );
+    }
+    if (u.includes("/rss/")) {
+      const entry = NEIGHBOUR_IDS.map((id) => ({ id: { attributes: { "im:id": id } } }));
+      return new Response(JSON.stringify({ feed: { entry } }), { status: 200 });
+    }
+    if (u.startsWith("https://cdn.example/")) {
+      // ours gets a 9, neighbours a 1 — so a model stub can tell them apart
+      return new Response(new Uint8Array([u === MY_ARTWORK ? 9 : 1, 2, 3]), { status: 200 });
+    }
+    return new Response(JSON.stringify({ resultCount: 0, results: [] }), { status: 200 });
+  });
+}
+
 // A minimal env: no TinyFish key → fetchForEnv falls back to the (stubbed) global
 // fetch; no AI binding → the deterministic keyword classifier. No DB needed for
 // the resolve-driven tools exercised here.
@@ -122,6 +181,49 @@ describe("MCP tool handlers — delegate to the real engine pass", () => {
     expect(chart[0]!.id).toBe("chart_rank_present");
     expect(chart[0]!.title).toContain("#2");
   });
+
+  it("audit_app spends NOTHING on icons when ICON_VISION_ENABLED is off", async () => {
+    // The default path must not touch the AI binding: this surface is the only
+    // one that costs an inference per icon.
+    //
+    // The run is given EVERY other input the comparison needs — artwork, a
+    // trackId, a genre, and a full chart — so the flag is the only thing
+    // stopping it. Without that this test passes because the fixture is thin,
+    // not because the gate works, and it would not notice the gate's removal.
+    const run = vi.fn(async () => ({ response: '{"layout":"other","hasText":false}' }));
+    stubIconReadyFetch();
+    const withAi = { env: { DEFAULT_COUNTRY: "US", AI: { run } } as unknown as Env, user: ctx.user };
+    const out = (await toolByName("audit_app")!.handler({ bundleId: "com.acme.app" }, withAi)) as {
+      findings: { id: string }[];
+    };
+    expect(run).not.toHaveBeenCalled();
+    expect(out.findings.some((f) => f.id.startsWith("icon_"))).toBe(false);
+  });
+
+  it("audit_app REACHES the icon comparison when the flag and binding are present", async () => {
+    // Guards the failure this repo has hit twice: a module that exists, is
+    // tested, and is never called. Ten conforming neighbours + a differing
+    // icon of ours is the shape that must produce `icon_stands_apart`.
+    const run = vi.fn(async (_m: string, input: unknown) => {
+      const { image } = input as { image: number[] };
+      // first byte marks ours (9) vs a neighbour (1) — see stubIconReadyFetch
+      const layout = image[0] === 9 ? "other" : "single_centred_shape";
+      return { response: `{"layout":"${layout}","hasText":false}` };
+    });
+    stubIconReadyFetch();
+    const env = {
+      DEFAULT_COUNTRY: "US",
+      AI: { run },
+      ICON_VISION_ENABLED: "1",
+    } as unknown as Env;
+    const out = (await toolByName("audit_app")!.handler({ bundleId: "com.acme.app" }, { env, user: ctx.user })) as {
+      findings: { id: string; evidence?: string }[];
+    };
+    const icon = out.findings.filter((f) => f.id.startsWith("icon_"));
+    expect(icon).toHaveLength(1);
+    expect(icon[0]!.id).toBe("icon_stands_apart");
+    expect(run).toHaveBeenCalled();
+  }, 20_000);
 
   it("propose_copy returns a DRAFT only — no push commands reachable", async () => {
     stubGlobalFetch();

@@ -43,7 +43,7 @@ import type { CoverageReport } from "./metadataCoverage.js";
 import type { LocaleRecommendation } from "./localizationExpansion.js";
 import type { PpoTreatmentPlan } from "./ppoTreatment.js";
 import type { LanguageCoverage } from "./languageCoverage.js";
-import { categoryRankFrom, fetchChartRank, type CategoryRank, type ChartRank } from "./chartRank.js";
+import { categoryRankFrom, fetchChartRead, type CategoryRank, type ChartRank, type ChartRead } from "./chartRank.js";
 import type { ReviewSentiment } from "./reviewSentiment.js";
 
 /**
@@ -213,6 +213,13 @@ export type AgentResult = {
    */
   chartRank?: ChartRank | undefined;
   /**
+   * The ordered chart ids the SAME feed read carried (#455). `chartRank` is this
+   * list reduced to our position; the icon comparison needs the list itself —
+   * who is at the top of your category — so it rides along rather than costing a
+   * second read of the identical feed. Absent whenever `chartRank` is.
+   */
+  chartEntries?: string[] | undefined;
+  /**
    * Storefront-intel PRD 03 — MEASURED, language-level localization coverage for
    * KEYLESS runs, from the public page's language list. Language-level (labeled
    * `source:"storefront"`), never claiming locale-level knowledge. Present only on
@@ -366,9 +373,9 @@ async function measureChartRank(
   fetchFn: FetchFn,
   auditResult: Audit,
   country: string,
-): Promise<ChartRank | null> {
+): Promise<ChartRead | null> {
   if (!auditResult.trackId || !auditResult.primaryGenreId) return null;
-  return fetchChartRank(fetchFn, {
+  return fetchChartRead(fetchFn, {
     appId: auditResult.trackId,
     genreId: auditResult.primaryGenreId,
     ...(auditResult.primaryGenreName !== undefined
@@ -543,7 +550,8 @@ export async function runAgent(
   //    Degrade-safe: null on an unknown genre or an unreadable feed, which
   //    leaves BOTH `chartRank` and `audit.categoryRank` absent (unknown) rather
   //    than asserting a false "not charting".
-  const chartRank = await measureChartRank(fetchFn, auditResult, country);
+  const chartRead = await measureChartRank(fetchFn, auditResult, country);
+  const chartRank = chartRead?.rank ?? null;
   const categoryRank = categoryRankFrom(chartRank);
 
   return {
@@ -559,6 +567,7 @@ export async function runAgent(
     pushCommands,
     keywordGaps,
     ...(chartRank !== null ? { chartRank } : {}),
+    ...(chartRead ? { chartEntries: chartRead.entries } : {}),
   };
 }
 

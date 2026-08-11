@@ -98,23 +98,34 @@ export function categoryRankFrom(cr: ChartRank | null | undefined): CategoryRank
   };
 }
 
+/** Options shared by the chart reads. */
+type ChartOpts = {
+  appId: string;
+  genreId?: string;
+  genreName?: string;
+  chart?: ChartKind;
+  country?: string;
+  limit?: number;
+};
+
 /**
- * Fetch the genre chart and locate the app. Returns:
- *  - a ChartRank (ranked or not) on a good read,
- *  - null when the genre is unknown (can't pick a chart honestly) or the feed
- *    is unreadable (UNKNOWN — never a false "not charting").
+ * A chart read: the app's position AND the ordered ids the feed carried.
+ *
+ * The entries are the same list `chartRankFromEntries` reduces to a position.
+ * The icon comparison (#455) needs the list itself — who is at the top of your
+ * category — so this returns both from ONE fetch rather than making a second
+ * caller re-read the identical feed.
  */
-export async function fetchChartRank(
+export type ChartRead = { rank: ChartRank; entries: string[] };
+
+/**
+ * Fetch the genre chart ONCE, returning the position and the ordered ids.
+ * Null on the same terms as `fetchChartRank`: unknown genre or unreadable feed.
+ */
+export async function fetchChartRead(
   fetchFn: FetchFn,
-  opts: {
-    appId: string;
-    genreId?: string;
-    genreName?: string;
-    chart?: ChartKind;
-    country?: string;
-    limit?: number;
-  },
-): Promise<ChartRank | null> {
+  opts: ChartOpts,
+): Promise<ChartRead | null> {
   if (!opts.genreId) return null;
   const chart = opts.chart ?? "top-free";
   const country = opts.country ?? "us";
@@ -131,11 +142,25 @@ export async function fetchChartRank(
   const text = typeof body === "string" ? body : JSON.stringify(body);
   const entries = parseChartFeed(text);
   if (entries.length === 0) return null; // unreadable / empty ⇒ UNKNOWN
-  return chartRankFromEntries(entries, opts.appId, {
+  const rank = chartRankFromEntries(entries, opts.appId, {
     genreId: opts.genreId,
     ...(opts.genreName !== undefined ? { genreName: opts.genreName } : {}),
     chart,
     country,
     limit,
   });
+  return { rank, entries };
+}
+
+/**
+ * Fetch the genre chart and locate the app. Returns:
+ *  - a ChartRank (ranked or not) on a good read,
+ *  - null when the genre is unknown (can't pick a chart honestly) or the feed
+ *    is unreadable (UNKNOWN — never a false "not charting").
+ */
+export async function fetchChartRank(
+  fetchFn: FetchFn,
+  opts: ChartOpts,
+): Promise<ChartRank | null> {
+  return (await fetchChartRead(fetchFn, opts))?.rank ?? null;
 }
