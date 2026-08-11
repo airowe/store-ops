@@ -147,7 +147,32 @@ export type ItunesResult = {
   primaryGenreName?: string;
   screenshotUrls?: string[];
   ipadScreenshotUrls?: string[];
+  /** App icon artwork, largest first. Apple returns the 512 for essentially
+   *  every current app; the smaller two are the honest fallbacks. */
+  artworkUrl512?: string;
+  artworkUrl100?: string;
+  artworkUrl60?: string;
 };
+
+/**
+ * The biggest icon artwork a lookup result carries, or undefined when it has
+ * none — the ONE place the size-fallback order is defined.
+ *
+ * Biggest first because the vision read wants the most detail available. An
+ * absent or blank url returns undefined rather than an empty string: an icon we
+ * cannot fetch is UNMEASURED, and an empty string would pass a truthiness check
+ * downstream while failing every actual read.
+ */
+export function artworkUrlFrom(r: {
+  artworkUrl512?: unknown;
+  artworkUrl100?: unknown;
+  artworkUrl60?: unknown;
+}): string | undefined {
+  for (const candidate of [r.artworkUrl512, r.artworkUrl100, r.artworkUrl60]) {
+    if (typeof candidate === "string" && candidate.length > 0) return candidate;
+  }
+  return undefined;
+}
 
 export type ItunesResponse = { resultCount?: number; results?: ItunesResult[] };
 
