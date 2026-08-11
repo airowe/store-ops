@@ -229,9 +229,9 @@ The tiers:
 | Tier | Price | What you get |
 |------|-------|------|
 | **Free** | $0 | Run the agent yourself in any coding agent. The whole loop, your machine. 1 connected app, manual runs only. |
-| **Indie** | **$7/month** | The weekly autonomous sweep, up to 3 apps. It proposes, you approve, it ships. |
-| **Startup** | **$19/month** | The weekly sweep across up to 10 apps, with rank history and competitor watch. |
-| **Scale** | **$65/month** | Up to 50 apps plus the portfolio roll-up. For agencies and multi-app devs. |
+| **Indie** | **$6.99/month** | The weekly autonomous sweep, up to 3 apps. It proposes, you approve, it ships. |
+| **Startup** | **$19.99/month** | The weekly sweep across up to 10 apps, with rank history and competitor watch. |
+| **Scale** | **$64.99/month** | Up to 50 apps plus the portfolio roll-up. For agencies and multi-app devs. |
 
 We will **never** resell Apple/Google data through a shared account (that breaks
 their ToS) — the hosted tier is BYO-credentials too, and we never hold your

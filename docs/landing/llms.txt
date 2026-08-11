@@ -37,8 +37,8 @@ directly rather than only reading about the product.
 | --- | --- | --- | --- |
 | Free | $0 | 1 | No — manual runs only |
 | Indie | $6.99/mo | 3 | Yes |
-| Startup | $19/mo | 10 | Yes |
-| Scale | $65/mo | 50 | Yes |
+| Startup | $19.99/mo | 10 | Yes |
+| Scale | $64.99/mo | 50 | Yes |
 
 All paid tiers are recurring subscriptions; there is no one-time plan. The paid
 tiers add the scheduled sweep — the agent audits, watches competitors, and

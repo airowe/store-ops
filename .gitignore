@@ -36,3 +36,6 @@ dist/
 docs/competitive/
 cloud/docs/prd/
 .superpowers/
+
+# Local working artifacts (renders, API probe dumps) — never committed.
+scratchpad/

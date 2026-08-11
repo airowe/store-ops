@@ -14,9 +14,9 @@ describe("<TermsView />", () => {
     render(<TermsView />);
     // The three tiers and their prices — must match docs/landing/pricing.md.
     const tiers = screen.getByTestId("terms-tiers");
-    expect(tiers).toHaveTextContent("$6.99");
-    expect(tiers).toHaveTextContent("$19");
-    expect(tiers).toHaveTextContent("$65");
+    expect(tiers).toHaveTextContent("$6.99/month");
+    expect(tiers).toHaveTextContent("$19.99/month");
+    expect(tiers).toHaveTextContent("$64.99/month");
     // Auto-renewal + where to cancel (the paywall says the same sentence).
     expect(screen.getByTestId("terms-renewal")).toHaveTextContent(/renews? automatically/i);
     expect(screen.getByTestId("terms-renewal")).toHaveTextContent(/cancel/i);

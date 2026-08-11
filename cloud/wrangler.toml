@@ -122,9 +122,9 @@ ASC_WRITE_ENABLED = "true"
 #                           live. (Legacy STRIPE_TEST_KEY is still read as a
 #                           fallback during migration; prefer the new name.)
 #   STRIPE_WEBHOOK_SECRET — verifies the Stripe-Signature on /billing/webhook.
-#   STRIPE_PRICE_INDIE    — Price id for Indie ($7/mo subscription).
-#   STRIPE_PRICE_STARTUP  — Price id for Startup ($19/mo subscription).
-#   STRIPE_PRICE_SCALE    — Price id for Scale ($65/mo subscription).
+#   STRIPE_PRICE_INDIE    — Price id for Indie ($6.99/mo subscription).
+#   STRIPE_PRICE_STARTUP  — Price id for Startup ($19.99/mo subscription).
+#   STRIPE_PRICE_SCALE    — Price id for Scale ($64.99/mo subscription).
 # Egress:
 #   TINYFISH_API_KEY      — routes iTunes calls through TinyFish Fetch (clean egress).
 #     REQUIRED in production: Apple 403s iTunes /search from Cloudflare egress IPs.
