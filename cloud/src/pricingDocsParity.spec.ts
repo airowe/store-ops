@@ -34,8 +34,8 @@ const LLMS_TXT = fileURLToPath(new URL("../../docs/landing/llms.txt", import.met
 const TIERS = [
   { name: "Free", price: "$0", limit: appLimitForTier("free") },
   { name: "Indie", price: "$6.99/mo", limit: appLimitForTier("indie") },
-  { name: "Startup", price: "$19/mo", limit: appLimitForTier("startup") },
-  { name: "Scale", price: "$65/mo", limit: appLimitForTier("scale") },
+  { name: "Startup", price: "$19.99/mo", limit: appLimitForTier("startup") },
+  { name: "Scale", price: "$64.99/mo", limit: appLimitForTier("scale") },
 ] as const;
 
 /** Tier names retired in #105 that must never reappear on a customer surface. */

@@ -211,6 +211,38 @@ test("launch collateral quotes no price the billing code does not charge", () =>
   }
 });
 
+/**
+ * The OPERATOR-facing price surface (#461 aftermath).
+ *
+ * wrangler.toml documents each STRIPE_PRICE_* secret with the price it points
+ * at. When Indie moved $7 → $6.99 (App Store Connect has no $7.00 price point)
+ * every surface the guard reads was updated — and this comment was not, because
+ * no test read this file. It sat wrong for a day: a price surface nothing
+ * compared, which is the precise failure the rest of this suite exists to stop.
+ *
+ * An operator reading "$7/mo" here would provision the wrong Stripe Price.
+ */
+test("wrangler.toml documents the STRIPE_PRICE_* secrets at the prices we charge", () => {
+  const wrangler = readFileSync(join(repoRoot, "cloud/wrangler.toml"), "utf8");
+  const billing = readFileSync(join(repoRoot, "cloud/src/billing.ts"), "utf8");
+  const codePrices = new Set(
+    [...billing.matchAll(/\$([0-9][0-9,]*(?:\.[0-9]{2})?)\/mo/g)].map((m) => `$${m[1]}`),
+  );
+  // Only the lines that document a price for one of our tier secrets.
+  const documented = [...wrangler.matchAll(/STRIPE_PRICE_[A-Z]+\s+—[^\n]*?\$([0-9][0-9,]*(?:\.[0-9]{2})?)/g)];
+  assert.ok(
+    documented.length >= 3,
+    `expected wrangler.toml to document a price for each tier secret, found ${documented.length}`,
+  );
+  for (const m of documented) {
+    assert.ok(
+      codePrices.has(`$${m[1]}`),
+      `wrangler.toml documents $${m[1]} for a Stripe price secret, which billing.ts ` +
+        `does not charge (${[...codePrices].join(", ")}) — an operator would provision the wrong Price`,
+    );
+  }
+});
+
 test("llms.txt states the approval boundary, so an agent cannot mis-summarize it", () => {
   assert.match(llms, /does \*\*not\*\* auto-publish|never publishes/i);
   assert.match(llms, /approval/i);

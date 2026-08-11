@@ -1,1 +1,1 @@
-New in ShipASO: record your app on your phone → it extracts real frames, plans your store screenshots (8 frame styles, your brand colors, contrast-guarded), and renders them at full App Store resolution on-device. Export full-res is the paid tier. #BuildInPublic
+New in ShipASO: record your app on your phone → it extracts real frames, plans your store screenshots (8 frame styles, your brand colors, contrast-guarded), and renders them at full App Store resolution on-device. Export full-res is the paid tier. #BuildInPublic #Shipaton

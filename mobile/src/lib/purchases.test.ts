@@ -22,7 +22,7 @@ const rcPkg = {
   identifier: "scale_monthly",
   product: {
     identifier: "com.shipaso.scale.monthly",
-    priceString: "$65.00",
+    priceString: "$64.99",
     title: "Scale",
     description: "Unlimited apps and weekly autonomous runs.",
     subscriptionPeriod: "P1M",
@@ -36,7 +36,7 @@ const rcPkg = {
  */
 const rcPkgNoPeriod = {
   identifier: "scale_monthly",
-  product: { identifier: "com.shipaso.scale.monthly", priceString: "$65.00", title: "Scale" },
+  product: { identifier: "com.shipaso.scale.monthly", priceString: "$64.99", title: "Scale" },
 };
 const offeringOf = (pkgs: unknown[]) => ({
   current: pkgs.length ? { availablePackages: pkgs } : null,
@@ -105,7 +105,7 @@ describe("purchases wrapper — configured", () => {
       {
         id: "scale_monthly",
         productId: "com.shipaso.scale.monthly",
-        priceString: "$65.00",
+        priceString: "$64.99",
         title: "Scale",
         description: "Unlimited apps and weekly autonomous runs.",
         subscriptionPeriod: "P1M",

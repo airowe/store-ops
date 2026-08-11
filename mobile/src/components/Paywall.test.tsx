@@ -39,7 +39,7 @@ const mockRestore = restorePurchases as jest.MockedFunction<typeof restorePurcha
 const PKG: PaywallPackage = {
   id: "scale_monthly",
   productId: "com.shipaso.scale.monthly",
-  priceString: "$65.00",
+  priceString: "$64.99",
   title: "Scale",
   description: "Unlimited apps, weekly autonomous runs, and the full keyword corpus.",
   subscriptionPeriod: "P1M",
@@ -77,7 +77,7 @@ describe("Paywall", () => {
   it("renders the offering's packages with a native Buy button for a free user", async () => {
     render(<Paywall tier="free" />);
     await waitFor(() => expect(screen.getByTestId(`paywall-buy-${PKG.id}`)).toBeTruthy());
-    expect(screen.getByText(/Scale — \$65\.00/)).toBeTruthy();
+    expect(screen.getByText(/Scale — \$64\.99/)).toBeTruthy();
   });
 
   it("calls onDone after a successful purchase", async () => {
@@ -125,7 +125,7 @@ describe("Paywall", () => {
 /**
  * Guideline 3.1.2(c) + 5.1.1(i) — issue #430.
  *
- * A purchase screen that shows only "Scale — $65.00" does not tell the user
+ * A purchase screen that shows only "Scale — $64.99" does not tell the user
  * what they are agreeing to. ShipASO 0.1.0 was already rejected under 3.1.1 AND
  * 2.3.7 in one review, so the next submission goes to a reviewer who has failed
  * this app on payments and on price presentation. These assert the disclosures
@@ -135,7 +135,7 @@ describe("Paywall — subscription disclosure", () => {
   it("states the price per period, that it renews, and where to cancel", async () => {
     render(<Paywall tier="free" />);
     const disclosure = await screen.findByTestId(`paywall-terms-${PKG.id}`);
-    expect(disclosure).toHaveTextContent(/\$65\.00 per month/);
+    expect(disclosure).toHaveTextContent(/\$64\.99 per month/);
     expect(disclosure).toHaveTextContent(/renews automatically until cancelled/i);
     expect(disclosure).toHaveTextContent(/manage or cancel/i);
   });

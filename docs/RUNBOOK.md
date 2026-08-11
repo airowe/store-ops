@@ -87,8 +87,8 @@ npx wrangler secret put SESSION_SECRET          # HMAC key for magic-link + sess
 npx wrangler secret put STRIPE_SECRET_KEY       # Stripe secret key (Bearer for REST API), test OR live
 npx wrangler secret put STRIPE_WEBHOOK_SECRET   # verifies Stripe-Signature on /billing/webhook
 npx wrangler secret put STRIPE_PRICE_INDIE      # Price id — Indie ($6.99/mo)
-npx wrangler secret put STRIPE_PRICE_STARTUP    # Price id — Startup ($19/mo)
-npx wrangler secret put STRIPE_PRICE_SCALE      # Price id — Scale ($65/mo)
+npx wrangler secret put STRIPE_PRICE_STARTUP    # Price id — Startup ($19.99/mo)
+npx wrangler secret put STRIPE_PRICE_SCALE      # Price id — Scale ($64.99/mo)
 npx wrangler secret put TINYFISH_API_KEY        # routes iTunes calls through TinyFish (clean egress; REQUIRED in prod)
 npx wrangler secret put RESEND_API_KEY          # Resend API key for magic-link email delivery
 npx wrangler secret put RESEND_FROM             # verified sender, e.g. "ShipASO <login@mail.shipaso.com>"

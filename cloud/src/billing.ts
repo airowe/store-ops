@@ -9,8 +9,8 @@
  * Tiers (see commercial/OFFER.md):
  *   free    — run-it-yourself; manual runs only, 1 app, NO cron autonomy
  *   indie   — $6.99/mo; weekly cron autonomy, small portfolio
- *   startup — $19/mo; weekly cron autonomy, mid portfolio
- *   scale   — $65/mo; portfolio across many apps
+ *   startup — $19.99/mo; weekly cron autonomy, mid portfolio
+ *   scale   — $64.99/mo; portfolio across many apps
  *
  * All paid tiers are recurring subscriptions — there is no one-time tier.
  */
@@ -72,9 +72,9 @@ type CheckoutMode = "payment" | "subscription";
 /** Static per-tier checkout shape: which env price + which Stripe mode. All
  * paid tiers are recurring subscriptions. */
 const TIER_CONFIG: Record<PaidTier, { envKey: keyof StripePriceEnv; mode: CheckoutMode }> = {
-  indie: { envKey: "STRIPE_PRICE_INDIE", mode: "subscription" }, // $6.99/mo (App Store; Stripe bills $7)
-  startup: { envKey: "STRIPE_PRICE_STARTUP", mode: "subscription" }, // $19/mo
-  scale: { envKey: "STRIPE_PRICE_SCALE", mode: "subscription" }, // $65/mo
+  indie: { envKey: "STRIPE_PRICE_INDIE", mode: "subscription" }, // $6.99/mo
+  startup: { envKey: "STRIPE_PRICE_STARTUP", mode: "subscription" }, // $19.99/mo
+  scale: { envKey: "STRIPE_PRICE_SCALE", mode: "subscription" }, // $64.99/mo
 };
 
 /** Resolve a paid tier to its concrete Stripe price id + checkout mode. */

@@ -1,1 +1,1 @@
-ShipASO is my RevenueCat Shipaton entry: an AI ASO agent that proves your App Store rank actually moved — every number measured or absent. The whole build, including the rejection that started it, is public: https://shipaso.com/journey #BuildInPublic
+ShipASO is my RevenueCat Shipaton entry: an AI ASO agent that proves your App Store rank actually moved — every number measured or absent. The whole build, including the rejection that started it, is public: https://shipaso.com/journey #BuildInPublic #Shipaton
