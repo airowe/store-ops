@@ -106,6 +106,14 @@ export type Env = {
   // Costs one vision inference per run and reads the user's screenshot, so it
   // stays dark until deliberately switched on.
   CAPTION_OCR_ENABLED?: string;
+  // Opt-in gate for the icon-distinctiveness comparison (#455). Unset → the run
+  // attaches NO icon finding (the vision read never fires). Set to "1"/"true" to
+  // enable: the run then reads your icon AND the top competitor icons via the
+  // Workers AI vision model (env.AI) and reports which side of the category's
+  // shape convention you sit on. Costs one inference PER ICON (bounded to
+  // MAX_ICONS_PER_RUN in aiIconVision.ts) — materially more than the one-shot
+  // caption lens, so it stays dark until deliberately switched on.
+  ICON_VISION_ENABLED?: string;
   // Opt-in gate for the broad category rank+metadata corpus (#63) — the
   // compounding data moat. Unset → the daily cron collects NO corpus (default);
   // set to "1"/"true" to enable collecting the top-N apps per fixed seed keyword.
