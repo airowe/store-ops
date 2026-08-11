@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="900" viewBox="0 0 1600 900">
+  <rect width="1600" height="900" fill="#07090e"/>
+  <rect width="1600" height="8" fill="#34d399"/>
+
+  <text x="120" y="140" font-family="Helvetica, Arial, sans-serif" font-size="30" fill="#828ca3">shipaso.com/journey · #BuildInPublic</text>
+
+  <text x="120" y="262" font-family="Helvetica, Arial, sans-serif" font-size="82" font-weight="bold" fill="#f4f6fa">Most ASO tools</text>
+  <text x="120" y="358" font-family="Helvetica, Arial, sans-serif" font-size="82" font-weight="bold" fill="#f87171">guess.</text>
+
+  <text x="120" y="486" font-family="Helvetica, Arial, sans-serif" font-size="82" font-weight="bold" fill="#f4f6fa">ShipASO shows you</text>
+  <text x="120" y="582" font-family="Helvetica, Arial, sans-serif" font-size="82" font-weight="bold" fill="#34d399">the receipt.</text>
+
+  <rect x="120" y="660" width="1360" height="1" fill="#1a2130"/>
+
+  <text x="120" y="722" font-family="Helvetica, Arial, sans-serif" font-size="34" fill="#828ca3">Measured a rank?</text>
+  <text x="120" y="784" font-family="Helvetica, Arial, sans-serif" font-size="44" font-weight="bold" fill="#34d399">You get the number.</text>
+
+  <text x="740" y="722" font-family="Helvetica, Arial, sans-serif" font-size="34" fill="#828ca3">Haven't measured it?</text>
+  <text x="740" y="784" font-family="Helvetica, Arial, sans-serif" font-size="44" font-weight="bold" fill="#828ca3">You get “—”. Never a guess.</text>
+
+  <text x="120" y="858" font-family="Helvetica, Arial, sans-serif" font-size="32" fill="#34d399">My RevenueCat Shipaton entry — the whole build is public.</text>
+</svg>

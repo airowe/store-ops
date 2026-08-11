@@ -1,1 +1,1 @@
-Apple rejected ShipASO 0.1.0 on four guidelines at once: trademark in the name, nothing purchasable, a 404 magic link, price text in screenshots. Best thing that happened to the project — the payments fix became the RevenueCat core of 0.1.1. #BuildInPublic
+Apple rejected ShipASO 0.1.0 on four guidelines at once: trademark in the name, nothing purchasable, a 404 magic link, price text in screenshots. Best thing that happened to the project — the payments fix became the RevenueCat core of 0.1.1. #BuildInPublic #Shipaton
