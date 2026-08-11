@@ -42,7 +42,7 @@ import type { CoverageReport } from "./metadataCoverage.js";
 import type { LocaleRecommendation } from "./localizationExpansion.js";
 import type { PpoTreatmentPlan } from "./ppoTreatment.js";
 import type { LanguageCoverage } from "./languageCoverage.js";
-import type { CategoryRank, ChartRank } from "./chartRank.js";
+import { categoryRankFrom, fetchChartRank, type CategoryRank, type ChartRank } from "./chartRank.js";
 import type { ReviewSentiment } from "./reviewSentiment.js";
 
 /**
@@ -335,6 +335,36 @@ async function audit(fetchFn: FetchFn, input: AppInput): Promise<Audit> {
 }
 
 /**
+ * Read the app's PUBLIC category chart position from the audit we just did.
+ *
+ * The legacy top-charts RSS feed needs NO credential, so this runs on every
+ * path — a keyless run gets its chart position exactly like a keyed one. Both
+ * inputs come from the lookup `audit()` already performed, so this costs one
+ * extra request and never re-reads the listing.
+ *
+ * Returns null — UNKNOWN — when the genre is unreadable (we cannot pick a chart
+ * honestly) or the feed does not parse. `fetchChartRank` already distinguishes
+ * that from a read-but-absent app (`ranked:false`), and the distinction is the
+ * whole point: silence means we did not look, `ranked:false` means we looked and
+ * the app was not there.
+ */
+async function measureChartRank(
+  fetchFn: FetchFn,
+  auditResult: Audit,
+  country: string,
+): Promise<ChartRank | null> {
+  if (!auditResult.trackId || !auditResult.primaryGenreId) return null;
+  return fetchChartRank(fetchFn, {
+    appId: auditResult.trackId,
+    genreId: auditResult.primaryGenreId,
+    ...(auditResult.primaryGenreName !== undefined
+      ? { genreName: auditResult.primaryGenreName }
+      : {}),
+    country,
+  });
+}
+
+/**
  * Build the (non-executed) push command handoff from proposed copy.
  *
  * DESTRUCTIVE-COMMAND GUARD: only emit a flag for a field we actually PROPOSED.
@@ -494,8 +524,19 @@ export async function runAgent(
     competitors: listings,
   });
 
+  // 8. PUBLIC category chart position. Keyless — the genre chart feed needs no
+  //    ASC credential, so this is measured on every run, not just a keyed one.
+  //    Degrade-safe: null on an unknown genre or an unreadable feed, which
+  //    leaves BOTH `chartRank` and `audit.categoryRank` absent (unknown) rather
+  //    than asserting a false "not charting".
+  const chartRank = await measureChartRank(fetchFn, auditResult, country);
+  const categoryRank = categoryRankFrom(chartRank);
+
   return {
-    audit: auditResult,
+    audit: {
+      ...auditResult,
+      ...(categoryRank !== undefined ? { categoryRank } : {}),
+    },
     ranks,
     competitors: { listings, changes, digest: digestLine(changes) },
     reasoning,
@@ -503,6 +544,7 @@ export async function runAgent(
     proposedCopy,
     pushCommands,
     keywordGaps,
+    ...(chartRank !== null ? { chartRank } : {}),
   };
 }
 

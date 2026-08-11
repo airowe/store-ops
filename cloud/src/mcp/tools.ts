@@ -171,6 +171,10 @@ export const TOOLS: McpToolDef[] = [
         hasAscKey: false,
         ...(result.audit.storefront !== undefined ? { storefront: result.audit.storefront } : {}),
         ...(result.currentCopy !== undefined ? { currentCopy: result.currentCopy } : {}),
+        // The category chart is PUBLIC, so it is measured on this keyless path
+        // too. Omitted (not null) when the run could not read it, which keeps
+        // "we didn't look" distinct from "we looked and you're not charting".
+        ...(result.chartRank !== undefined ? { chartRank: result.chartRank } : {}),
       });
       return { audit: result.audit, findings, summary: summarizeFindings(findings) };
     },
