@@ -196,6 +196,67 @@ def step_ranks(app: str, bundle: str, seeds: list[str], root: Path, date: str,
             "keywords": len(kws), "file": str(path)}
 
 
+# A bundle id is a dotted identifier — reverse-DNS, no spaces, each segment
+# alphanumeric/hyphen: "place.twotwotwo.twotwotwo-ios". "Contains a dot" is too
+# loose: the real App Store app "222 - find your people." ends in a period and
+# was being looked up as a bundle id, which always fails (#438).
+_BUNDLE_ID = re.compile(r"^[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)+$")
+
+# A snapshot block header: "## 2026-08-06 · US". Mirrors aso_competitor_watch's
+# own header pattern — previous_listings() splits on the same shape, so the two
+# must agree on what starts a block.
+_SNAPSHOT_HEADER = re.compile(r"^##\s+\d{4}-\d{2}-\d{2}", re.M)
+
+
+def classify_competitors(comps: list[str]) -> tuple[list[str], list[str], list[str]]:
+    """Split competitor entries into (ids, bundles, names).
+
+    Numeric → App Store id. Reverse-DNS shape → bundle id. Everything else is
+    an app NAME to resolve via iTunes search — including names that happen to
+    contain punctuation.
+    """
+    ids, bundles, names = [], [], []
+    for c in comps:
+        entry = c.strip()
+        if not entry:
+            continue
+        if entry.isdigit():
+            ids.append(entry)
+        elif _BUNDLE_ID.match(entry):
+            bundles.append(entry)
+        else:
+            names.append(entry)
+    return ids, bundles, names
+
+
+def upsert_snapshot(existing: str, date: str, country: str, snapshot: str) -> str:
+    """Append `snapshot`, or REPLACE the block already recorded for `date`.
+
+    A snapshot log is keyed by date: re-running the orchestrator on a date the
+    file already covers must rewrite that day's block, not append a second one.
+    Appending left two `## <date> · <country>` blocks and made previous_listings
+    diff the run against *itself* rather than the previous date (#438).
+
+    Keyed by DATE only, not (date, country): `previous_listings` finds the last
+    block by date and ignores the country suffix, so one log holds one country.
+    `country` is accepted to mirror render_snapshot's signature and is written
+    into the block by the caller; a per-country log would key on both.
+    """
+    # One blank line between blocks, however the caller terminated the snapshot.
+    block = snapshot.rstrip("\n") + "\n\n"
+    if not existing.strip():
+        return block
+    base = existing if existing.endswith("\n") else existing + "\n"
+    # Find this date's block: from its header to the next header (or EOF).
+    same_date = re.compile(rf"^##\s+{re.escape(date)}\b.*$", re.M)
+    start = same_date.search(base)
+    if not start:
+        return base + block
+    nxt = _SNAPSHOT_HEADER.search(base, start.end())
+    end = nxt.start() if nxt else len(base)
+    return base[:start.start()] + block + base[end:]
+
+
 def step_competitors(app: str, comps: list[str], root: Path, date: str,
                      country: str) -> dict:
     if not comps:
@@ -203,12 +264,14 @@ def step_competitors(app: str, comps: list[str], root: Path, date: str,
                 "reason": "no competitors listed in context.md (fill them in)"}
     path = cwatch.md_path(root, app)
     existing = path.read_text() if path.exists() else ""
-    prev = cwatch.previous_listings(existing)
-    # classify each competitor: numeric → App Store id; has a dot → bundle id;
-    # otherwise → an app NAME we resolve to an id via iTunes search.
-    ids = [c for c in comps if c.isdigit()]
-    bundles = [c for c in comps if not c.isdigit() and "." in c]
-    names = [c for c in comps if not c.isdigit() and "." not in c]
+    # Diff against everything BEFORE today's block, so a same-date re-run
+    # compares to the previous date rather than to its own earlier output.
+    prior = existing
+    today = re.search(rf"^##\s+{re.escape(date)}\b", existing, re.M)
+    if today:
+        prior = existing[:today.start()]
+    prev = cwatch.previous_listings(prior)
+    ids, bundles, names = classify_competitors(comps)
     unresolved = []
     for nm in names:
         rid = cwatch.resolve_name_to_id(nm, country=country)
@@ -225,8 +288,7 @@ def step_competitors(app: str, comps: list[str], root: Path, date: str,
     path.parent.mkdir(parents=True, exist_ok=True)
     header = "" if existing else (f"# {app} — competitor listing watch\n\n"
                                   f"aso-competitor-watch.\n\n")
-    base = existing if not existing or existing.endswith("\n") else existing + "\n"
-    path.write_text((header + base if not existing else base) + snapshot + "\n")
+    path.write_text(header + upsert_snapshot(existing, date, country, snapshot))
     return {"step": "competitors", "status": "ok",
             "digest": cwatch.digest_line(changes), "tracked": len(current),
             "file": str(path)}
