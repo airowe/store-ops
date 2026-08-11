@@ -91,6 +91,38 @@ describe("MCP tool handlers — delegate to the real engine pass", () => {
     expect(out.summary).toBeDefined();
   });
 
+  it("audit_app DELIVERS the measured chart rank as a finding, not just measures it", async () => {
+    // The measurement is useless if the handler drops it on the way to
+    // auditFindings — which is exactly what happened while `chartRank` had a
+    // consumer and no producer. This pins the whole path: chart feed → runAgent
+    // → handler → finding.
+    const listing = {
+      bundleId: "com.acme.app",
+      trackName: "Acme",
+      trackId: 555,
+      primaryGenreId: "6013",
+      primaryGenreName: "Health & Fitness",
+    };
+    vi.stubGlobal("fetch", async (url: string) => {
+      const u = String(url);
+      if (u.includes("/lookup")) {
+        return new Response(JSON.stringify({ resultCount: 1, results: [listing] }), { status: 200 });
+      }
+      if (u.includes("/rss/")) {
+        const entry = ["111", "555"].map((id) => ({ id: { attributes: { "im:id": id } } }));
+        return new Response(JSON.stringify({ feed: { entry } }), { status: 200 });
+      }
+      return new Response(JSON.stringify({ resultCount: 0, results: [] }), { status: 200 });
+    });
+    const out = (await toolByName("audit_app")!.handler({ bundleId: "com.acme.app" }, ctx)) as {
+      findings: { id: string; title: string }[];
+    };
+    const chart = out.findings.filter((f) => f.id.startsWith("chart_rank"));
+    expect(chart).toHaveLength(1);
+    expect(chart[0]!.id).toBe("chart_rank_present");
+    expect(chart[0]!.title).toContain("#2");
+  });
+
   it("propose_copy returns a DRAFT only — no push commands reachable", async () => {
     stubGlobalFetch();
     const out = (await toolByName("propose_copy")!.handler({ bundleId: "com.acme.app" }, ctx)) as Record<string, unknown>;
