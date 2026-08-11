@@ -17,7 +17,7 @@
  *    card is decoration.
  */
 import { ITUNES_LOOKUP_URL } from "./constants.js";
-import { asResponse, buildUrl, fetchJson, type FetchFn } from "./itunes.js";
+import { artworkUrlFrom, asResponse, buildUrl, fetchJson, type FetchFn } from "./itunes.js";
 import { resolveShotUrl } from "./screenshotScore.js";
 import type { DigestCard } from "../digest.js";
 
@@ -48,7 +48,7 @@ export async function digestCardFor(
     artworkUrl100?: string;
     artworkUrl60?: string;
   };
-  const iconUrl = r.artworkUrl512 ?? r.artworkUrl100 ?? r.artworkUrl60;
+  const iconUrl = artworkUrlFrom(r);
 
   // A rating needs BOTH halves to mean anything: an average with no count is
   // unanchored, and a count with no average has nothing to show.

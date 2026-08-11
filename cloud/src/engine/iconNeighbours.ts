@@ -25,7 +25,7 @@
  * that and falls silent on its own.
  */
 import { ITUNES_LOOKUP_URL } from "./constants.js";
-import { asResponse, buildUrl, fetchJson, type FetchFn } from "./itunes.js";
+import { artworkUrlFrom, asResponse, buildUrl, fetchJson, type FetchFn } from "./itunes.js";
 
 /** One neighbour: its App Store id and the artwork url to read. */
 export type NeighbourIcon = {
@@ -90,16 +90,9 @@ export function neighbourIconsFromResults(
       artworkUrl60?: unknown;
     };
     if (typeof r.trackId !== "number") continue;
-    // Biggest first: the vision read wants the most detail available, and the
-    // 512 is what Apple returns for essentially every current app.
-    const art =
-      typeof r.artworkUrl512 === "string"
-        ? r.artworkUrl512
-        : typeof r.artworkUrl100 === "string"
-          ? r.artworkUrl100
-          : typeof r.artworkUrl60 === "string"
-            ? r.artworkUrl60
-            : undefined;
+    // Biggest first, via the shared helper so this module and the audit's own
+    // icon read cannot drift to different fallback orders.
+    const art = artworkUrlFrom(r);
     if (!art) continue;
     byId.set(String(r.trackId), art);
   }

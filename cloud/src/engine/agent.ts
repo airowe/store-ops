@@ -12,6 +12,7 @@
  *                               proposedCopy, pushCommands }
  */
 import {
+  artworkUrlFrom,
   asResponse,
   buildUrl,
   type FetchFn,
@@ -122,6 +123,13 @@ export type Audit = {
    * chart was never read (unknown) — the bar then shows its honest placeholder.
    */
   categoryRank?: CategoryRank;
+  /**
+   * The app's own icon artwork url (#455) — what the icon comparison measures
+   * YOUR icon from, alongside the neighbour set's. Absent when the lookup
+   * carried no artwork: an icon we cannot fetch is unmeasured, never a blank
+   * url that would fail every read downstream while passing a truthiness check.
+   */
+  artworkUrl?: string;
   /** App Store trackId (from lookup) — the id to find in a chart feed. */
   trackId?: string;
   /** Primary genre id + name (from lookup) — the CATEGORY chart to check. */
@@ -254,6 +262,7 @@ async function audit(fetchFn: FetchFn, input: AppInput): Promise<Audit> {
   let primaryGenreId: string | undefined;
   let primaryGenreName: string | undefined;
   let liveVersion: string | undefined;
+  let artworkUrl: string | undefined;
   let rating: { average: number | null; count: number | null; source: RatingSource } | undefined;
   try {
     const url = buildUrl(ITUNES_LOOKUP_URL, { bundleId: input.bundleId, country });
@@ -264,6 +273,10 @@ async function audit(fetchFn: FetchFn, input: AppInput): Promise<Audit> {
       if (r.trackId) trackId = String(r.trackId);
       if (r.primaryGenreId) primaryGenreId = r.primaryGenreId;
       if (r.primaryGenreName) primaryGenreName = r.primaryGenreName;
+      // #455 — the app's OWN icon, from the lookup we already did. The icon
+      // comparison measures this against the neighbour set; absent when the
+      // result carried no artwork at all.
+      artworkUrl = artworkUrlFrom(r);
       const desc = r.description?.trim();
       if (desc) liveDescription = desc;
       // #326 — status-bar stats off the read we already did. Each field is
@@ -328,6 +341,7 @@ async function audit(fetchFn: FetchFn, input: AppInput): Promise<Audit> {
     ...(storefront !== undefined ? { storefront } : {}),
     ...(liveVersion !== undefined ? { liveVersion } : {}),
     ...(rating !== undefined ? { rating } : {}),
+    ...(artworkUrl !== undefined ? { artworkUrl } : {}),
     ...(trackId !== undefined ? { trackId } : {}),
     ...(primaryGenreId !== undefined ? { primaryGenreId } : {}),
     ...(primaryGenreName !== undefined ? { primaryGenreName } : {}),
