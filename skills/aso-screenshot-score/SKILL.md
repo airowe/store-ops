@@ -32,8 +32,13 @@ python3 lib/aso_screenshot_score.py \
 ```
 
 Output: a 0–100 score + letter grade and a findings list (✓ good / ⚠ fix / ✗
-critical), e.g. *"⚠ Only 2 iPhone screenshots — add up to 10; the first 3 carry
-most installs."*
+critical), e.g. *"⚠ Only 2 iPhone screenshots — add up to 10; the first 3 are
+what search shows today."*
+
+> The engine says "are what search shows today", not "carry most installs".
+> The first claim is checkable against a search-results page; the second is an
+> attribution we cannot measure, and Apple's newer creative-asset surfaces can
+> change how many slots search shows (#436).
 
 ## Honest limits
 
