@@ -64,7 +64,13 @@ export function AppDetailView({
   initialTab?: "monitor" | "connections";
 }) {
   const appQ = useQuery({ queryKey: ["app", id], queryFn: () => getApp(client, id) });
-  const ranksQ = useQuery({ queryKey: ["ranks", id], queryFn: () => getRanks(client, id) });
+  // #473 follow-up: the standing view is the INDEX into the trend chart. No
+  // keyword picked → the server picks the lead term (today's behaviour).
+  const [trendKeyword, setTrendKeyword] = useState<string | undefined>(undefined);
+  const ranksQ = useQuery({
+    queryKey: ["ranks", id, trendKeyword ?? "__lead"],
+    queryFn: () => getRanks(client, id, trendKeyword),
+  });
   const deltasQ = useQuery({ queryKey: ["deltas", id], queryFn: () => getDeltas(client, id) });
   const standingQ = useQuery({ queryKey: ["standing", id], queryFn: () => getStanding(client, id) });
   const engagementQ = useQuery({ queryKey: ["engagement", id], queryFn: () => getEngagement(client, id), retry: false });
@@ -285,7 +291,11 @@ export function AppDetailView({
       {standing.length > 0 ? (
         <div className="panel" data-testid="keyword-standing-panel">
           <div className="panel-title">Keyword standing</div>
-          <KeywordStanding entries={standing} />
+          <KeywordStanding
+            entries={standing}
+            selected={trendKeyword}
+            onSelect={(kw) => setTrendKeyword((cur) => (cur === kw ? undefined : kw))}
+          />
           <p className="micro">
             Latest measured position per tracked keyword. A term with no dot was searched and did
             not appear in the results — that is a reading, not a gap in tracking.
@@ -297,9 +307,16 @@ export function AppDetailView({
       <div className="audit-grid-2">
         {points.length >= 2 ? (
           <div className="panel" data-testid="rank-trend">
-            <div className="panel-title">Rank trend</div>
+            <div className="panel-title">
+              Rank trend{trendKeyword ? <> · <span className="mono">{trendKeyword}</span></> : null}
+            </div>
             <RankChart points={points} />
-            <p className="micro">Organic rank over time (lower is better). History starts when tracking started.</p>
+            <p className="micro">
+              Organic rank over time (lower is better). History starts when tracking started.
+              {trendKeyword
+                ? " Pick the same keyword again to return to your lead term."
+                : " Pick a keyword above to chart it."}
+            </p>
           </div>
         ) : null}
 

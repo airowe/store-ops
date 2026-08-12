@@ -1763,3 +1763,16 @@ pre {
 .kw-standing-label { font-size: 12.5px; fill: var(--ink); }
 .kw-standing-value { font-family: var(--mono); font-size: 11.5px; }
 .kw-standing-total { font-size: 10.5px; fill: var(--faint); }
+
+/* An interactive standing row: only the rows that DO something look like they
+   do. The default (read-only) render stays inert text. */
+.kw-standing-row.is-interactive { cursor: pointer; }
+.kw-standing-row.is-interactive:hover .kw-standing-hit { fill: var(--raise); }
+.kw-standing-row.is-interactive:focus-visible { outline: none; }
+.kw-standing-row.is-interactive:focus-visible .kw-standing-hit {
+  fill: var(--raise);
+  stroke: var(--brand);
+  stroke-width: 1.5px;
+}
+.kw-standing-row.is-selected .kw-standing-hit { fill: var(--nav-active); }
+.kw-standing-row.is-selected .kw-standing-label { font-weight: 600; }
