@@ -1750,3 +1750,16 @@ pre {
 @media (prefers-reduced-motion: reduce) {
   .run-section-summary::before { transition: none; }
 }
+
+/* ── Keyword standing (#473) ──────────────────────────────────────────────
+   Where an app sits across every tracked keyword at once. Type sizes follow
+   the existing scale; every colour comes from a token so the chart re-tints
+   with the theme. */
+.kw-standing-headline { margin: 0 0 12px; color: var(--dim); font-size: 14px; }
+.kw-standing-headline strong { color: var(--ink); font-weight: 600; }
+.kw-standing-plot { display: block; width: 100%; height: auto; }
+.kw-standing-tick { font-family: var(--mono); font-size: 10.5px; fill: var(--faint); }
+.kw-standing-axis { font-family: var(--mono); font-size: 10px; letter-spacing: 0.09em; fill: var(--faint); }
+.kw-standing-label { font-size: 12.5px; fill: var(--ink); }
+.kw-standing-value { font-family: var(--mono); font-size: 11.5px; }
+.kw-standing-total { font-size: 10.5px; fill: var(--faint); }
