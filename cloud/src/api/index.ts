@@ -221,6 +221,7 @@ import {
 } from "../auth.js";
 import { emailSenderForEnv } from "../emailSender.js";
 import { rankDeltasView } from "../digest.js";
+import { standingFromHistory } from "../standing.js";
 import { pickShareWin, renderShareCardSvg } from "../shareCard.js";
 import { composeBuildInPublicPost } from "../buildInPublicPost.js";
 import { aggregateProof, extractWins } from "../proof.js";
@@ -3401,6 +3402,27 @@ async function appDeltas(env: Env, userId: string, appId: string, url: URL): Pro
 }
 
 /**
+ * GET /apps/:id/standing — where the app sits across EVERY tracked keyword
+ * right now (#473), as opposed to /deltas' "what moved since last time".
+ *
+ * Reads the SAME history as `appDeltas` and applies the same #74 keyword
+ * scoping, so the two surfaces can never disagree about a keyword's current
+ * position. It exists because `rankDeltasView` reduces to previous/current and
+ * drops `total` (apps competing) and `checked_at` (when we read it) — the two
+ * fields a standing view needs and cannot reconstruct.
+ *
+ * Honest by construction: an unranked term stays `rank: null` rather than being
+ * coerced to the scan depth, and `best` is null when nothing ranks.
+ */
+async function appStanding(env: Env, userId: string, appId: string, url: URL): Promise<unknown> {
+  await requireOwnedApp(env, appId, userId);
+  const country = url.searchParams.get("country") ?? undefined;
+  const history = await getRankHistory(env.DB, appId, country ? { country } : {});
+  const targeted = await latestRunKeywords(env, appId);
+  return standingFromHistory(history, targeted.length ? { keywords: targeted } : {});
+}
+
+/**
  * The keyword set the app's MOST RECENT run targeted (its rank-checked keywords).
  * Used to scope rank-movement / trend views to what the app currently targets,
  * not every keyword ever checked (#74). Empty when there's no run yet.
@@ -5158,6 +5180,9 @@ export async function handleApi(req: Request, env: Env, ctx?: ExecutionContext):
       }
       if (seg.length === 3 && seg[1] && seg[2] === "deltas" && method === "GET") {
         return json(await appDeltas(env, user.id, seg[1], url), 200, origin);
+      }
+      if (seg.length === 3 && seg[1] && seg[2] === "standing" && method === "GET") {
+        return json(await appStanding(env, user.id, seg[1], url), 200, origin);
       }
       if (seg.length === 3 && seg[1] && seg[2] === "war-room" && method === "GET") {
         return json(await warRoom(env, user.id, seg[1], url), 200, origin);

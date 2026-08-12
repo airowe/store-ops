@@ -24,12 +24,13 @@
 import { useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import type { ApiClient } from "@shipaso/api";
-import { getApp, getCredentials, getDeltas, getEngagement, getRanks, runApp } from "@shipaso/api";
+import { getApp, getCredentials, getDeltas, getEngagement, getRanks, getStanding, runApp } from "@shipaso/api";
 import { timeAgo } from "@shipaso/honesty";
 import type { CSSProperties } from "react";
 import { runStatusLabel } from "../../lib/status.js";
 import { annotationKey } from "../../lib/annotationKey.js";
 import { RankChart } from "../charts/RankChart.js";
+import { KeywordStanding } from "../charts/KeywordStanding.js";
 import { Gauge, coverage } from "../charts/Gauge.js";
 import { RankMovementRow } from "./RankMovementRow.js";
 import { ConversionCard } from "./ConversionCard.js";
@@ -65,6 +66,7 @@ export function AppDetailView({
   const appQ = useQuery({ queryKey: ["app", id], queryFn: () => getApp(client, id) });
   const ranksQ = useQuery({ queryKey: ["ranks", id], queryFn: () => getRanks(client, id) });
   const deltasQ = useQuery({ queryKey: ["deltas", id], queryFn: () => getDeltas(client, id) });
+  const standingQ = useQuery({ queryKey: ["standing", id], queryFn: () => getStanding(client, id) });
   const engagementQ = useQuery({ queryKey: ["engagement", id], queryFn: () => getEngagement(client, id), retry: false });
   // Lifted so the Connections tab can label itself honestly. The four cards each
   // run this same query under the same key, so this shares their cache entry
@@ -91,6 +93,7 @@ export function AppDetailView({
   const points = ranksQ.data?.points ?? [];
   const annotations = ranksQ.data?.annotations ?? [];
   const entries = deltasQ.data?.entries ?? [];
+  const standing = standingQ.data?.entries ?? [];
 
   // Honest lead rank for the metric band: the strongest measured current rank
   // among tracked deltas (the "lead" the app is ranking best for). Null → "—".
@@ -276,6 +279,19 @@ export function AppDetailView({
           </div>
         </div>
       </div>
+
+      {/* where the app stands across every tracked keyword (#473) — the
+          question a single sweep answers, which no trend view can show. */}
+      {standing.length > 0 ? (
+        <div className="panel" data-testid="keyword-standing-panel">
+          <div className="panel-title">Keyword standing</div>
+          <KeywordStanding entries={standing} />
+          <p className="micro">
+            Latest measured position per tracked keyword. A term with no dot was searched and did
+            not appear in the results — that is a reading, not a gap in tracking.
+          </p>
+        </div>
+      ) : null}
 
       {/* rank trend + what changed */}
       <div className="audit-grid-2">
