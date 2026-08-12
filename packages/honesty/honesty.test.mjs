@@ -46,7 +46,7 @@ test("classifyDelta: a keyword that drops out of the top 200 is 'lost', not 'unm
   assert.equal(classifyDelta({ previous: 1, current: null }).delta, null);
 });
 
-test("buildSparkGeometry: honest empties, inverted axis, #200+ floor", () => {
+test("buildSparkGeometry: honest empties, inverted axis", () => {
   const box = { width: 600, height: 120, pad: 24 };
   assert.equal(buildSparkGeometry([], box).empty, true);
   assert.equal(buildSparkGeometry([{ rank: 5 }], box).empty, true);
@@ -57,7 +57,38 @@ test("buildSparkGeometry: honest empties, inverted axis, #200+ floor", () => {
   assert.ok(geo.area.endsWith("Z"));
   // rank 1 (better) plots higher (smaller y) than rank 50
   assert.ok(geo.dots[1].y < geo.dots[0].y);
+});
 
-  const withNull = buildSparkGeometry([{ rank: 30 }, { rank: null }], box);
-  assert.equal(withNull.dots[withNull.dots.length - 1].label, "#200+");
+test("buildSparkGeometry: an unmeasured point BREAKS the line, never plots at 200", () => {
+  const box = { width: 600, height: 120, pad: 24 };
+  // #473: plotting null at the floor made the trend dive and recover — reading
+  // as "we crashed then came back" when we simply did not measure. Worse, a
+  // default-filled gap stops being noticed at all.
+  const geo = buildSparkGeometry([{ rank: 6 }, { rank: null }, { rank: 2 }], box);
+  assert.equal(geo.empty, false);
+  // two subpaths => a visible hole where the reading is missing
+  assert.equal(geo.line.match(/M/g).length, 2);
+  // no fill across a stretch we never measured
+  assert.equal(geo.area, "");
+  // endpoints are the measured readings; a gap has no position to label
+  assert.deepEqual(
+    geo.dots.map((d) => d.label),
+    ["#6", "#2"],
+  );
+});
+
+test("buildSparkGeometry: the axis scales to MEASURED ranks, not the 200 floor", () => {
+  const box = { width: 600, height: 120, pad: 24 };
+  const withGap = buildSparkGeometry([{ rank: 6 }, { rank: null }, { rank: 2 }], box);
+  const without = buildSparkGeometry([{ rank: 6 }, { rank: 2 }], box);
+  // an unmeasured week must not stretch the axis and flatten real movement
+  assert.equal(withGap.dots[0].y, without.dots[0].y);
+  assert.equal(withGap.dots[1].y, without.dots[1].y);
+});
+
+test("buildSparkGeometry: a trend needs two MEASURED readings", () => {
+  const box = { width: 600, height: 120, pad: 24 };
+  // one reading plus a gap is not a trend — it used to draw a line to #200
+  assert.equal(buildSparkGeometry([{ rank: 30 }, { rank: null }], box).empty, true);
+  assert.equal(buildSparkGeometry([{ rank: null }, { rank: null }], box).empty, true);
 });

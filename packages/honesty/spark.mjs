@@ -2,13 +2,22 @@
  * Rank-trend geometry — the pure core BOTH chart renderers consume (web uPlot,
  * native Victory-XL / SVG). Ported from `mobile/src/components/Sparkline.tsx`.
  *
- * Honesty rules, matched to the web `sparkline()`:
- *   • a null rank plots at the floor and labels "#200+" (never a fake 0);
+ * Honesty rules:
+ *   • an UNMEASURED point (rank null) BREAKS the line — it is not plotted at
+ *     the floor. Drawing it at 200 made the trend dive and recover, which reads
+ *     as "we crashed then came back" when the truth is "we did not measure".
+ *     A default-filled gap also stops being noticed at all, which is the whole
+ *     failure mode (#473);
  *   • the rank axis is INVERTED — #1 sits at the top;
- *   • <2 points draws nothing (no trend to draw) — callers gate on `!empty`.
+ *   • <2 MEASURED points draws nothing (no trend to draw) — callers gate on
+ *     `!empty`. Two readings either side of a gap are still a trend.
  */
 
-/** Rank used to plot an unranked snapshot (kept in sync with the web's 200). */
+/**
+ * The rank an unranked snapshot USED to be plotted at. Retained only so the
+ * axis can still reserve room for a "#200+" endpoint label; the line itself no
+ * longer routes through it. Do not reintroduce it as a plotted value.
+ */
 export const UNRANKED_PLOT = 200;
 
 /**
@@ -17,31 +26,53 @@ export const UNRANKED_PLOT = 200;
  */
 export function buildSparkGeometry(points, opts) {
   const { width: W, height: H, pad } = opts;
-  if (points.length < 2) return { line: "", area: "", gridY: [], dots: [], empty: true };
+  const measured = points.filter((p) => p.rank != null);
+  // A trend needs two MEASURED readings. Counting unmeasured points would draw
+  // a "trend" out of gaps.
+  if (points.length < 2 || measured.length < 2) {
+    return { line: "", area: "", gridY: [], dots: [], empty: true };
+  }
 
-  const plot = (r) => (r == null ? UNRANKED_PLOT : r);
-  const ranks = points.map((p) => plot(p.rank));
-  const minR = Math.min(...ranks);
-  const maxR = Math.max(...ranks);
-  const lo = Math.max(1, minR - 3);
-  const hi = maxR + 3;
+  // Scale from measured ranks only — an unmeasured point must not stretch the
+  // axis to 200 and flatten every real movement into a hairline.
+  const ranks = measured.map((p) => p.rank);
+  const lo = Math.max(1, Math.min(...ranks) - 3);
+  const hi = Math.max(...ranks) + 3;
   const x = (i) => pad + (i / (points.length - 1)) * (W - pad * 2);
   const y = (r) => pad + ((r - lo) / (hi - lo || 1)) * (H - pad * 2); // inverted: best at top
 
-  const line = points
-    .map((p, i) => `${i ? "L" : "M"}${x(i).toFixed(1)},${y(plot(p.rank)).toFixed(1)}`)
-    .join(" ");
-  const area = `${line} L${x(points.length - 1).toFixed(1)},${H - pad} L${x(0).toFixed(1)},${H - pad} Z`;
+  // Break the path at every gap: each measured run becomes its own subpath, so
+  // an unmeasured week leaves a visible hole rather than a line through 200.
+  let line = "";
+  let penDown = false;
+  for (let i = 0; i < points.length; i++) {
+    const r = points[i].rank;
+    if (r == null) {
+      penDown = false;
+      continue;
+    }
+    line += `${penDown ? " L" : (line ? " M" : "M")}${x(i).toFixed(1)},${y(r).toFixed(1)}`;
+    penDown = true;
+  }
+
+  // The fill is only honest under a CONTINUOUS run; with a gap present we drop
+  // it rather than shade across a stretch we never measured.
+  const hasGap = points.some((p) => p.rank == null);
+  const firstIdx = points.findIndex((p) => p.rank != null);
+  const lastIdx = points.length - 1 - [...points].reverse().findIndex((p) => p.rank != null);
+  const area = hasGap
+    ? ""
+    : `${line} L${x(lastIdx).toFixed(1)},${H - pad} L${x(firstIdx).toFixed(1)},${H - pad} Z`;
+
   const gridY = [1, 2, 3].map((g) => +(pad + (g / 4) * (H - pad * 2)).toFixed(1));
-  const dots = points
-    .map((p, i) => ({ p, i }))
-    .filter(({ i }) => i === 0 || i === points.length - 1)
-    .map(({ p, i }) => ({
-      x: x(i),
-      y: y(plot(p.rank)),
-      label: p.rank == null ? "#200+" : `#${p.rank}`,
-      anchor: i === 0 ? "start" : "end",
-    }));
+  // Endpoints are the first and last MEASURED readings — never a gap, which
+  // has no position to point at.
+  const dots = [firstIdx, lastIdx].map((i, n) => ({
+    x: x(i),
+    y: y(points[i].rank),
+    label: `#${points[i].rank}`,
+    anchor: n === 0 ? "start" : "end",
+  }));
 
   return { line, area, gridY, dots, empty: false };
 }

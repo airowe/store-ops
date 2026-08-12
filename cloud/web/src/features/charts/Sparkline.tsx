@@ -2,8 +2,12 @@
  * Sparkline — a tiny inline rank trend for the dashboard hero card. Hand-built
  * SVG over the shared, honest `buildSparkGeometry` (the same geometry the mobile
  * spark uses): rank #1 at top, a null rank is a GAP not a fabricated point, and
- * <2 measured points draws nothing. Theme-aware — the stroke resolves from the
+ * <2 MEASURED points draws nothing. Theme-aware — the stroke resolves from the
  * --signal token so it re-tints in light/dark like RankChart.
+ *
+ * The gap claim above was aspirational until #473: the geometry plotted a null
+ * rank at 200, so this component drew a line diving to the floor and back —
+ * "we crashed then recovered" for a week nobody measured. It now breaks.
  */
 import { buildSparkGeometry, type SparkPoint } from "@shipaso/honesty";
 
