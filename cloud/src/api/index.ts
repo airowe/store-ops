@@ -1464,7 +1464,7 @@ async function portfolioKeywords(env: Env, userId: string): Promise<unknown> {
     { app_id: string; app_name: string; country: string; rows: RankSnapshotRow[] }
   >();
   for (const r of rows) {
-    const key = `${r.app_id} ${r.country}`;
+    const key = `${r.app_id}${r.country}`;
     let g = groups.get(key);
     if (!g) {
       g = { app_id: r.app_id, app_name: r.app_name, country: r.country, rows: [] };
