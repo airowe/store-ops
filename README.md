@@ -16,7 +16,7 @@ ASO brain. **ShipASO does both, on both stores, with no paid data dependency.**
 
 ## Install — any coding agent
 
-The loop runs in your editor, on your machine, with your credentials. The 29
+The loop runs in your editor, on your machine, with your credentials. The 30
 skills are plain Markdown runbooks over plain CLI tools, and the engine is
 standard-library Python — so nothing here is tied to one vendor.
 
@@ -58,7 +58,7 @@ for you:
 
 | Path | What |
 |------|------|
-| **`skills/` + `lib/`** | The **free OSS agent plugin** — 29 skills + the engine (Python, 200 tests). Runs in any coding agent; Claude Code also has a one-command installer. |
+| **`skills/` + `lib/`** | The **free OSS agent plugin** — 30 skills + the engine (Python, 200 tests). Runs in any coding agent; Claude Code also has a one-command installer. |
 | **`cloud/`** | The **hosted autonomous agent** — a Cloudflare app (Workers + D1 + Cron + Pages) that runs the loop on a schedule and surfaces decisions for approval. Engine ported to TypeScript (2,160 tests). See `cloud/README.md` + `cloud/DEPLOY.md`. |
 | **`commercial/`, `docs/`** | The offer, the launch posts, the landing page. |
 
@@ -124,6 +124,7 @@ python3 lib/run_tests.py
 | Skill | Does |
 |-------|------|
 | `aso-audit` | Score a live iOS/Android listing field-by-field vs ASO best practice. Read-only. |
+| `aso-teardown` | Write a publishable long-form teardown of any app from public measured data. Never estimates revenue. |
 | `aso-keyword-research` | Rank keywords from store autocomplete + competitor scrape + synonyms. **No paid data API.** |
 | `aso-metadata-optimization` | Generate final copy at exact char limits + emit the push commands. Never auto-ships. |
 | `aso-rank-check` | Read your organic App Store rank per keyword and log it over time — did the change land? **Free public iTunes API, no key.** |
@@ -205,7 +206,7 @@ one registered a push through the wrong one succeeds against the wrong account.
 ## Open-core — what's free vs. hosted
 
 **The plugin is free and MIT-licensed, forever.** Everything above — the full
-audit → research → optimize → push → verify loop, both stores, all 29 skills —
+audit → research → optimize → push → verify loop, both stores, all 30 skills —
 runs locally with your own credentials at no cost. Use it, fork it, ship apps
 with it. That's the whole product for anyone who's comfortable in a terminal.
 
@@ -217,7 +218,7 @@ schedule.
 
 | | Free (this plugin) | Hosted agent |
 |---|---|---|
-| The 29 skills + full loop | ✅ all of it | ✅ same engine |
+| The 30 skills + full loop | ✅ all of it | ✅ same engine |
 | Real volume data | BYO Apple/Google keys | guided setup |
 | Rank tracking | run `aso-rank-check` by hand | **scheduled** weekly + history + delta alerts |
 | Standing autonomy (weekly cron) | ❌ you re-run it | ✅ Indie / Startup / Scale |

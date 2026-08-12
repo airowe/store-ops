@@ -92,7 +92,7 @@ Grouped by what they do:
 |---|---|
 | **Router / setup** | `store-ops`, `aso-context` |
 | **Research** | `aso-keyword-research`, `aso-review-mine`, `aso-offstore-mine`, `aso-localize-research`, `aso-competitor-watch` |
-| **Audit & risk** | `aso-audit`, `aso-screenshot-score`, `aso-review-risk`, `aso-rejection-assistant` |
+| **Audit & risk** | `aso-audit`, `aso-teardown`, `aso-screenshot-score`, `aso-review-risk`, `aso-rejection-assistant` |
 | **Write (App Store)** | `aso-metadata-optimization`, `asc-metadata-write-lane`, `asc-metadata-sync`, `asc-localize-metadata`, `asc-submission-health`, `asc-id-resolver`, `asc-ppp-pricing`, `asc-shots-pipeline` |
 | **Write (Google Play)** | `gplay-metadata-sync`, `gplay-review-management`, `gplay-rollout-management`, `gplay-vitals-monitoring`, `gplay-screenshot-automation`, `gplay-ppp-pricing` |
 | **Verify** | `aso-rank-check`, `aso-rank-monitor`, `aso-ppo-treatment` |
