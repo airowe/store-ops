@@ -122,7 +122,16 @@ await check("GET dashboard → 200 with a content-hashed bundle", async () => {
 //    thing in an actual browser, which is the only way to catch what a
 //    request-shaped check still cannot see.
 await check("GET dashboard assets (crossorigin) → correct MIME, not cached HTML", async () => {
-  const res = await fetch(DASHBOARD + "/index.html", { headers: { "cache-control": "no-cache" } });
+  // Read the HTML under the SAME cache key as the assets. `Origin` is part of
+  // the key, so fetching index.html without it and the bundles with it reads
+  // two different edge states — and during a deploy those diverge: the
+  // no-Origin key can serve fresh HTML naming a bundle the Origin-keyed edge
+  // has not received yet, and the check 404s on a healthy deployment (#417,
+  // which reddened #399). Aligning the reads keeps this a MIME/cached-HTML
+  // guard instead of a propagation-timing guard.
+  const res = await fetch(DASHBOARD + "/index.html", {
+    headers: { "cache-control": "no-cache", Origin: DASHBOARD },
+  });
   const html = await res.text();
   const refs = [...html.matchAll(/(?:src|href)="(\/assets\/[^"]+\.(?:js|css))"/g)].map((m) => m[1]);
   assert(refs.length > 0, "index.html referenced no /assets/ bundles");

@@ -5,7 +5,7 @@ research keywords → write copy to exact character limits → prepare the push 
 read the rank back.**
 
 This file is the front door for coding agents. It is deliberately not
-Claude-specific: the 29 skills in `skills/` are plain Markdown instructions over
+Claude-specific: the 31 skills in `skills/` are plain Markdown instructions over
 plain CLI tools, and the engine in `lib/` is **standard-library Python** for the
 whole audit → research → optimize → verify loop. Any agent that can read a file
 and run a command can drive this repo.
@@ -78,7 +78,7 @@ python3 lib/run_tests.py      # 200 tests across 16 suites
 
 ## The skills
 
-`skills/<name>/SKILL.md` — 29 of them. Each is a self-contained Markdown
+`skills/<name>/SKILL.md` — 31 of them. Each is a self-contained Markdown
 runbook: what it needs, what it does, what it refuses to do. They are written
 for an agent to read and follow, and carry no vendor-specific frontmatter
 (`name` and `description` only).
@@ -90,7 +90,7 @@ Grouped by what they do:
 
 | Group | Skills |
 |---|---|
-| **Router / setup** | `store-ops`, `aso-context` |
+| **Router / setup** | `store-ops`, `aso-context`, `issue-verify` |
 | **Research** | `aso-keyword-research`, `aso-review-mine`, `aso-offstore-mine`, `aso-localize-research`, `aso-competitor-watch` |
 | **Audit & risk** | `aso-audit`, `aso-teardown`, `aso-screenshot-score`, `aso-review-risk`, `aso-rejection-assistant` |
 | **Write (App Store)** | `aso-metadata-optimization`, `asc-metadata-write-lane`, `asc-metadata-sync`, `asc-localize-metadata`, `asc-submission-health`, `asc-id-resolver`, `asc-ppp-pricing`, `asc-shots-pipeline` |
@@ -155,7 +155,7 @@ scoped `shipaso_…` key, created in the dashboard under Agent access. See
 
 | Path | What |
 |---|---|
-| `skills/` | The 29 skill runbooks |
+| `skills/` | The 31 skill runbooks |
 | `lib/` | The Python engine — stdlib only, 200 tests |
 | `cloud/` | The hosted agent (Cloudflare Workers + D1); TypeScript port of the engine |
 | `packages/` | Shared tokens, API types, doc-path linting |
