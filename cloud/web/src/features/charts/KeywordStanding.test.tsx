@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import {
   KeywordStanding,
   SCAN_DEPTH,
@@ -144,5 +144,58 @@ describe("<KeywordStanding />", () => {
   it("renders nothing for an empty set rather than an empty frame", () => {
     const { container } = render(<KeywordStanding entries={[]} />);
     expect(container.firstChild).toBeNull();
+  });
+
+
+  // ── selection: the standing view is the index into the trend chart ──────
+  it("is INERT by default — nothing looks clickable unless it is", () => {
+    render(<KeywordStanding entries={HEATHEN} />);
+    const row = screen.getByTestId("standing-row-heathen");
+    expect(row.getAttribute("role")).toBeNull();
+    expect(row.getAttribute("tabindex")).toBeNull();
+  });
+
+  it("exposes each row as a button when selection is enabled", () => {
+    render(<KeywordStanding entries={HEATHEN} onSelect={() => {}} />);
+    const row = screen.getByTestId("standing-row-heathen");
+    expect(row.getAttribute("role")).toBe("button");
+    expect(row.getAttribute("tabindex")).toBe("0");
+  });
+
+  it("reports the chosen keyword on click", () => {
+    const picked: string[] = [];
+    render(<KeywordStanding entries={HEATHEN} onSelect={(k) => picked.push(k)} />);
+    fireEvent.click(screen.getByTestId("standing-row-anxiety"));
+    expect(picked).toEqual(["anxiety"]);
+  });
+
+  it("is operable from the keyboard — Enter and Space both choose", () => {
+    const picked: string[] = [];
+    render(<KeywordStanding entries={HEATHEN} onSelect={(k) => picked.push(k)} />);
+    const row = screen.getByTestId("standing-row-secular meditation");
+    fireEvent.keyDown(row, { key: "Enter" });
+    fireEvent.keyDown(row, { key: " " });
+    expect(picked).toEqual(["secular meditation", "secular meditation"]);
+  });
+
+  it("ignores other keys rather than firing on anything", () => {
+    const picked: string[] = [];
+    render(<KeywordStanding entries={HEATHEN} onSelect={(k) => picked.push(k)} />);
+    fireEvent.keyDown(screen.getByTestId("standing-row-heathen"), { key: "a" });
+    expect(picked).toEqual([]);
+  });
+
+  it("marks the charted keyword as pressed, and only that one", () => {
+    render(<KeywordStanding entries={HEATHEN} onSelect={() => {}} selected="heathen" />);
+    expect(screen.getByTestId("standing-row-heathen").getAttribute("aria-pressed")).toBe("true");
+    expect(screen.getByTestId("standing-row-anxiety").getAttribute("aria-pressed")).toBe("false");
+  });
+
+  it("an UNRANKED row is still selectable — its history is worth seeing", () => {
+    // a term that fell out of the results has the most consequential trend
+    const picked: string[] = [];
+    render(<KeywordStanding entries={HEATHEN} onSelect={(k) => picked.push(k)} />);
+    fireEvent.click(screen.getByTestId("standing-row-agnostic"));
+    expect(picked).toEqual(["agnostic"]);
   });
 });

@@ -20,6 +20,7 @@
  *   • the headline is "N of M ranked" — a figure that gets WORSE when a term
  *     drops out. A number that can only climb is decoration.
  */
+import type { KeyboardEvent as ReactKeyboardEvent } from "react";
 import { formatRank } from "@shipaso/honesty";
 
 /** One keyword's latest reading. `rank: null` = searched, not in the results. */
@@ -80,10 +81,20 @@ export function KeywordStanding({
   entries,
   now = Date.now(),
   width = 900,
+  selected,
+  onSelect,
 }: {
   entries: readonly StandingEntry[];
   now?: number;
   width?: number;
+  /** the keyword whose trend is currently charted, if any. */
+  selected?: string | undefined;
+  /**
+   * Called when a row is chosen. Omitted → the rows are inert text, which is
+   * the right default for a read-only surface: nothing should LOOK clickable
+   * unless it is.
+   */
+  onSelect?: ((keyword: string) => void) | undefined;
 }) {
   const rows = sortStanding(entries);
   if (rows.length === 0) return null;
@@ -152,10 +163,39 @@ export function KeywordStanding({
             <g
               key={e.keyword}
               data-testid={`standing-row-${e.keyword}`}
+              className={
+                onSelect
+                  ? `kw-standing-row is-interactive${selected === e.keyword ? " is-selected" : ""}`
+                  : "kw-standing-row"
+              }
+              {...(onSelect
+                ? {
+                    role: "button" as const,
+                    tabIndex: 0,
+                    "aria-pressed": selected === e.keyword,
+                    onClick: () => onSelect(e.keyword),
+                    onKeyDown: (ev: ReactKeyboardEvent<SVGGElement>) => {
+                      if (ev.key === "Enter" || ev.key === " ") {
+                        ev.preventDefault();
+                        onSelect(e.keyword);
+                      }
+                    },
+                  }
+                : {})}
               aria-label={`${e.keyword}. ${
                 held ? `position ${e.rank} of ${SCAN_DEPTH}` : `searched, not in the top ${SCAN_DEPTH}`
               }. Measured ${e.checked_at}.${stale ? " Stale reading." : ""}`}
             >
+              {onSelect ? (
+                <rect
+                  x={0}
+                  y={y - 8}
+                  width={width}
+                  height={ROW}
+                  fill="transparent"
+                  className="kw-standing-hit"
+                />
+              ) : null}
               <text
                 x={L - 14}
                 y={y + 4}
