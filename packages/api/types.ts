@@ -71,6 +71,26 @@ export type DeltaEntry = {
 };
 export type DeltasResponse = { entries: DeltaEntry[] };
 
+/**
+ * One keyword's LATEST reading (#473) — the standing view's row. Distinct from
+ * DeltaEntry: it carries `total` (apps competing) and `checked_at` (when we
+ * read it), which the delta reduction drops and a standing view cannot
+ * reconstruct. `rank: null` means searched-and-not-found, never the scan depth.
+ */
+export type StandingEntry = {
+  keyword: string;
+  rank: number | null;
+  total: number | null;
+  checked_at: string;
+};
+export type StandingResponse = {
+  entries: StandingEntry[];
+  ranked: number;
+  tracked: number;
+  /** the strongest measured position, or null when nothing ranks. Never 0. */
+  best: number | null;
+};
+
 export type WarTrend = "gaining" | "losing" | "flat" | "new" | "lost" | (string & {});
 export type HeadToHead = {
   keyword: string;

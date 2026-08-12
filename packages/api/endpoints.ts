@@ -24,6 +24,7 @@ import type {
   RejectionAnalysis,
   ConnectResult,
   DeltasResponse,
+  StandingResponse,
   EngagementSurface,
   GithubConnectResult,
   GithubPrResult,
@@ -131,6 +132,9 @@ export const getRanks = (c: ApiClient, id: string, keyword?: string) =>
 
 export const getDeltas = (c: ApiClient, id: string) =>
   c.get<DeltasResponse>(`/apps/${enc(id)}/deltas`);
+
+export const getStanding = (c: ApiClient, id: string) =>
+  c.get<StandingResponse>(`/apps/${enc(id)}/standing`);
 
 // ── competitors (#72) — discover / add / confirm / remove ────────────────────
 export const getCompetitors = (c: ApiClient, id: string) =>
