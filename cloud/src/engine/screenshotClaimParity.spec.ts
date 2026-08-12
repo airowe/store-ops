@@ -35,6 +35,33 @@ const TS_COPY_PATHS = ["./screenshotScore.ts", "./auditFindings.ts"].map((p) =>
   fileURLToPath(new URL(p, import.meta.url).href),
 );
 
+/**
+ * The SKILL doc quotes the same finding copy, and it is the surface a plugin
+ * user actually reads — the engine can be correct while the doc still teaches
+ * the old claim. It shipped that way: every engine site was corrected and
+ * `skills/aso-screenshot-score/SKILL.md` kept "carry most installs" until it
+ * was found by sweeping #436 by hand. This guard only ever read engine
+ * sources, so nothing failed.
+ */
+const DOC_PATHS = ["../../../skills/aso-screenshot-score/SKILL.md"].map((p) =>
+  fileURLToPath(new URL(p, import.meta.url).href),
+);
+
+/**
+ * The doc legitimately NAMES the retired wording to explain why it is retired,
+ * so a whole-file scan passes on a doc that teaches the wrong thing — the
+ * explanation satisfies the check while the example above it stays wrong.
+ * Verified: reverting only the example still passed a whole-file guard.
+ *
+ * So read the EXAMPLE FINDING — the quoted `*"⚠ …"*` block — and judge that.
+ */
+function docFindingCopy(path: string): string {
+  const text = readFileSync(path, "utf8").replace(/\r\n/g, "\n");
+  const m = /\*"⚠[\s\S]*?"\*/.exec(text);
+  if (!m) throw new Error(`no example finding (*"⚠ …"*) found in ${path}`);
+  return m[0].replace(/\n/g, " ");
+}
+
 /** The positional phrasing both sides must use. */
 const POSITIONAL = "are what search shows today";
 /**
@@ -66,10 +93,16 @@ describe("screenshot key-slots claim parity (Python ↔ TypeScript)", () => {
     expect(readFileSync(path, "utf8")).toContain(POSITIONAL);
   });
 
+  it.each(DOC_PATHS)("%s shows the positional claim in its EXAMPLE finding", (path) => {
+    expect(docFindingCopy(path)).toContain(POSITIONAL);
+  });
+
   it.each(CAUSAL_CLAIMS)("neither side reintroduces the causal %o claim", (claim) => {
-    const offenders = [PY_PATH, ...TS_COPY_PATHS].filter((p) =>
-      readFileSync(p, "utf8").includes(claim),
-    );
+    const offenders = [
+      ...[PY_PATH, ...TS_COPY_PATHS].filter((p) => readFileSync(p, "utf8").includes(claim)),
+      // For the doc, only the EXAMPLE finding counts — see docFindingCopy.
+      ...DOC_PATHS.filter((p) => docFindingCopy(p).includes(claim)),
+    ];
     expect(offenders).toEqual([]);
   });
 
