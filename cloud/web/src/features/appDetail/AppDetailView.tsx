@@ -42,6 +42,7 @@ import { PlayFunnelCard } from "./PlayFunnelCard.js";
 import { CompetitorsCard } from "./CompetitorsCard.js";
 import { LocaleKeywordsCard } from "./LocaleKeywordsCard.js";
 import { RejectionAssistantCard } from "./RejectionAssistantCard.js";
+import { shareWin as defaultShareWin, type ShareWinResult } from "../../lib/shareWin.js";
 
 export function AppDetailView({
   client,
@@ -50,12 +51,15 @@ export function AppDetailView({
   onWarRoom,
   now = Date.now(),
   initialTab = "monitor",
+  shareWin = defaultShareWin,
 }: {
   client: ApiClient;
   id: string;
   onOpenRun: (runId: string) => void;
   onWarRoom: (appId: string) => void;
   now?: number;
+  /** Injected so the share path is testable without a canvas or a network. */
+  shareWin?: (appId: string) => Promise<ShareWinResult>;
   /**
    * Which tab opens first. The key cards live on "connections", so a link that
    * exists to connect a key must be able to land there — otherwise arriving
@@ -90,6 +94,24 @@ export function AppDetailView({
   const audit = useMutation({
     mutationFn: () => runApp(client, id),
     onSuccess: (run) => onOpenRun(run.id),
+  });
+
+  // #437 — the share card, its route and its rasterizer all shipped; nothing on
+  // the web surface ever called them, so the whole feature was unreachable.
+  //
+  // Explicit click only, and the result carries its own copy. "No real win yet"
+  // is a MEASURED answer (a hold or a slip), so it renders as a plain note —
+  // styling it as an error would tell the user something broke when in fact the
+  // honesty bar simply held.
+  const [shareNote, setShareNote] = useState<{ text: string; bad: boolean } | null>(null);
+  const share = useMutation({
+    mutationFn: () => shareWin(id),
+    onSuccess: (r: ShareWinResult) => {
+      setShareNote(r.ok ? null : { text: r.reason, bad: !r.noWin });
+    },
+    onError: (e: unknown) => {
+      setShareNote({ text: e instanceof Error ? e.message : "Couldn’t share the win.", bad: true });
+    },
   });
 
   if (appQ.isLoading) return <p className="muted">Loading…</p>;
@@ -167,10 +189,27 @@ export function AppDetailView({
           <button type="button" className="btn ghost" data-testid="war-room" onClick={() => onWarRoom(app.id)}>
             War room
           </button>
+          <button
+            type="button"
+            className="btn ghost"
+            data-testid="share-win"
+            disabled={share.isPending}
+            onClick={() => {
+              setShareNote(null);
+              share.mutate();
+            }}
+          >
+            {share.isPending ? "Building…" : "Share a win"}
+          </button>
         </div>
         {audit.isError ? (
           <p className="micro bad" data-testid="run-audit-error">
             {audit.error instanceof Error ? audit.error.message : "Couldn’t start the audit."}
+          </p>
+        ) : null}
+        {shareNote ? (
+          <p className={"micro" + (shareNote.bad ? " bad" : "")} data-testid="share-win-note">
+            {shareNote.text}
           </p>
         ) : null}
       </header>

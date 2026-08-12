@@ -10,6 +10,7 @@ vi.mock("../charts/RankChart.js", () => ({
 }));
 
 import { AppDetailView } from "./AppDetailView.js";
+import type { ShareWinResult } from "../../lib/shareWin.js";
 
 function makeClient(
   over: {
@@ -39,11 +40,12 @@ function renderView(
   client: ApiClient,
   onOpenRun: (runId: string) => void = () => {},
   onWarRoom: (appId: string) => void = () => {},
+  shareWin?: (appId: string) => Promise<ShareWinResult>,
 ) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
     <QueryClientProvider client={qc}>
-      <AppDetailView client={client} id="a1" onOpenRun={onOpenRun} onWarRoom={onWarRoom} now={Date.parse("2026-07-05T00:00:00Z")} />
+      <AppDetailView client={client} id="a1" onOpenRun={onOpenRun} onWarRoom={onWarRoom} now={Date.parse("2026-07-05T00:00:00Z")} shareWin={shareWin} />
     </QueryClientProvider>,
   );
 }
@@ -364,5 +366,56 @@ describe("<AppDetailView />", () => {
     renderView(client);
     await waitFor(() => screen.getByText("Acme"));
     expect(screen.queryByTestId("connections-unconnected")).toBeNull();
+  });
+
+  // #437 — the share card, its endpoint and its rasterizer all shipped; the web
+  // surface simply had no button, so a user could not reach any of it.
+  describe("share a win (#437)", () => {
+    it("offers the button, and never fires it on mount", async () => {
+      const share = vi.fn(async () => ({ ok: true as const, filename: "f.png" }));
+      renderView(makeClient(), () => {}, () => {}, share);
+      await waitFor(() => screen.getByText("Acme"));
+      expect(screen.getByTestId("share-win")).toBeInTheDocument();
+      expect(share).not.toHaveBeenCalled();
+    });
+
+    it("a click asks for this app's card", async () => {
+      const share = vi.fn(async () => ({ ok: true as const, filename: "f.png" }));
+      renderView(makeClient(), () => {}, () => {}, share);
+      await waitFor(() => screen.getByText("Acme"));
+      fireEvent.click(screen.getByTestId("share-win"));
+      await waitFor(() => expect(share).toHaveBeenCalledWith("a1"));
+    });
+
+    // The honesty bar reaches the UI: no win is a real, calm answer — not an
+    // error, and never a card invented to fill the space.
+    it("no win yet reads as plain copy, not a failure", async () => {
+      const share = vi.fn(async () => ({ ok: false as const, reason: "No real win to share yet.", noWin: true }));
+      renderView(makeClient(), () => {}, () => {}, share);
+      await waitFor(() => screen.getByText("Acme"));
+      fireEvent.click(screen.getByTestId("share-win"));
+      const note = await screen.findByTestId("share-win-note");
+      expect(note).toHaveTextContent("No real win to share yet.");
+      expect(note).not.toHaveClass("bad");
+    });
+
+    it("a genuine failure is marked as one, and is distinguishable from no-win", async () => {
+      const share = vi.fn(async () => ({ ok: false as const, reason: "Couldn’t build the card (500).", noWin: false }));
+      renderView(makeClient(), () => {}, () => {}, share);
+      await waitFor(() => screen.getByText("Acme"));
+      fireEvent.click(screen.getByTestId("share-win"));
+      const note = await screen.findByTestId("share-win-note");
+      expect(note).toHaveTextContent("500");
+      expect(note).toHaveClass("bad");
+    });
+
+    it("a successful share leaves no leftover message", async () => {
+      const share = vi.fn(async () => ({ ok: true as const, filename: "f.png" }));
+      renderView(makeClient(), () => {}, () => {}, share);
+      await waitFor(() => screen.getByText("Acme"));
+      fireEvent.click(screen.getByTestId("share-win"));
+      await waitFor(() => expect(share).toHaveBeenCalled());
+      expect(screen.queryByTestId("share-win-note")).toBeNull();
+    });
   });
 });
