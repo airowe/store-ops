@@ -7,9 +7,13 @@
  *   packages/api RunStatus         (what the client is told it can READ)
  *
  * They diverged: `superseded` is CHECK-allowed and actively written by
- * `setRunStatus` (d1.ts), listed in RUN_STATUSES, and labelled by the web
- * status map — but the wire union omitted it, so every superseded row on the
- * wire carried a status the type said was impossible.
+ * `insertRun` (d1.ts — it supersedes the app's previous awaiting_approval run),
+ * listed in RUN_STATUSES, and labelled by the web status map — but the wire
+ * union omitted it, so every superseded row on the wire carried a status the
+ * type said was impossible.
+ *
+ * This header used to credit `setRunStatus` for that write. It never performed
+ * it, and the function itself was dead; both are gone (runStatusWriters.spec.ts).
  *
  * The union is erased at runtime, so it is read out of the source text. That
  * is deliberate: the point is to catch the source of truth drifting, and a
@@ -49,7 +53,7 @@ describe("RunStatus wire parity", () => {
     expect(wireUnionMembers().sort()).toEqual(schemaCheckStatuses().sort());
   });
 
-  it("includes 'superseded' — setRunStatus writes it, so a client can read it", () => {
+  it("includes 'superseded' — insertRun writes it, so a client can read it", () => {
     expect(wireUnionMembers()).toContain("superseded");
   });
 });

@@ -1381,13 +1381,12 @@ export async function updateRunCopy(
   await db.batch(stmts);
 }
 
-export async function setRunStatus(
-  db: D1Database,
-  runId: string,
-  status: RunStatus,
-): Promise<void> {
-  await db.prepare("UPDATE runs SET status = ? WHERE id = ?").bind(status, runId).run();
-}
+// `setRunStatus` lived here: an exported, arbitrary-status writer with no
+// callers, left behind by #43 (approval sets 'approved', not 'shipped'). It
+// made d1.ts read as though something could still move a run to 'shipped'.
+// Nothing can, and nothing has since 2026-06-19 — see runStatusWriters.spec.ts.
+// Status transitions belong to recordApproval (approved/rejected) and insertRun
+// (superseded); a third one should be added deliberately, not restored.
 
 // ── snapshots: lightweight writes (daily cadence) + reads ────────────────────
 
