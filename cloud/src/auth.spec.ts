@@ -365,3 +365,72 @@ describe("list-unsub token", () => {
     expect(await verifyListUnsubToken(secret, t, { now: 2000 })).toEqual({ ok: false });
   });
 });
+
+import { mintReviewToken, verifyReviewToken } from "./auth.js";
+
+describe("review token (App Review sign-in, #2.1(a))", () => {
+  const secret = "test-secret-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+  const reviewer = "adaminsley+shipaso-review@gmail.com";
+
+  it("round-trips the email", async () => {
+    const t = await mintReviewToken(secret, reviewer, { ttlSeconds: 3600 });
+    expect(await verifyReviewToken(secret, t)).toEqual({ ok: true, email: reviewer });
+  });
+
+  it("survives a long TTL — the whole point is that it can be written into review notes", async () => {
+    const ninetyDays = 90 * 24 * 60 * 60;
+    const t = await mintReviewToken(secret, reviewer, { now: 1000, ttlSeconds: ninetyDays });
+    // 89 days later it is still good; the 15-minute magic TTL is what stranded App Review.
+    expect(await verifyReviewToken(secret, t, { now: 1000 + 89 * 24 * 60 * 60 })).toEqual({
+      ok: true,
+      email: reviewer,
+    });
+  });
+
+  it("still expires — it is long-lived, not eternal", async () => {
+    const t = await mintReviewToken(secret, reviewer, { now: 1000, ttlSeconds: 60 });
+    expect(await verifyReviewToken(secret, t, { now: 2000 })).toEqual({ ok: false });
+  });
+
+  it("is audience-separated: a magic token does NOT verify as a review token", async () => {
+    const magic = await mintMagicToken(secret, reviewer, { ttlSeconds: 3600 });
+    expect(await verifyReviewToken(secret, magic)).toEqual({ ok: false });
+  });
+
+  it("and a review token does NOT verify as a magic token", async () => {
+    const t = await mintReviewToken(secret, reviewer, { ttlSeconds: 3600 });
+    expect(await verifyMagicToken(secret, t)).toEqual({ ok: false });
+  });
+
+  it("and a review token does NOT verify as a session token — it must be exchanged, never replayed", async () => {
+    const t = await mintReviewToken(secret, reviewer, { ttlSeconds: 3600 });
+    expect(await verifySessionToken(secret, t)).toEqual({ ok: false });
+  });
+
+  it("rejects a token signed with a different secret", async () => {
+    const t = await mintReviewToken("some-other-secret-bbbbbbbbbbbbbbbbbbbb", reviewer, {
+      ttlSeconds: 3600,
+    });
+    expect(await verifyReviewToken(secret, t)).toEqual({ ok: false });
+  });
+});
+
+describe("isReviewAccount", () => {
+  it("recognises the configured review address, case- and space-insensitively", async () => {
+    const { isReviewAccount } = await import("./auth.js");
+    const env = { REVIEW_ACCOUNT_EMAIL: "adaminsley+shipaso-review@gmail.com" };
+    expect(isReviewAccount(env, "  ADAMINSLEY+ShipASO-Review@Gmail.com ")).toBe(true);
+  });
+
+  it("rejects every other address", async () => {
+    const { isReviewAccount } = await import("./auth.js");
+    const env = { REVIEW_ACCOUNT_EMAIL: "adaminsley+shipaso-review@gmail.com" };
+    expect(isReviewAccount(env, "someone-else@gmail.com")).toBe(false);
+  });
+
+  it("is CLOSED when unset — no review account means no review token can ever mint", async () => {
+    const { isReviewAccount } = await import("./auth.js");
+    expect(isReviewAccount({}, "adaminsley+shipaso-review@gmail.com")).toBe(false);
+    expect(isReviewAccount({ REVIEW_ACCOUNT_EMAIL: "  " }, "anything@x.com")).toBe(false);
+  });
+});
