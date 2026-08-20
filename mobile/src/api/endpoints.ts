@@ -54,6 +54,10 @@ export const authRequest = (c: ApiClient, email: string) =>
   c.post<AuthRequestResult>("/auth/request", { email });
 export const authExchange = (c: ApiClient, token: string) =>
   c.post<AuthExchangeResult>("/auth/exchange", { token });
+/** App Review sign-in: exchanges a long-lived `review` token (Guideline 2.1(a)).
+ *  Server-side this only ever mints a session for the configured review account. */
+export const authReviewExchange = (c: ApiClient, token: string) =>
+  c.post<AuthExchangeResult>("/auth/review-exchange", { token });
 
 // ── dashboard: resolve / connect / list ────────────────────────────────────────
 export const resolve = (c: ApiClient, query: string, offset = 0) =>

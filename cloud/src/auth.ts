@@ -23,7 +23,7 @@ export const SESSION_COOKIE = "store_ops_session";
 /** Fallback secret used ONLY in the demo env when SESSION_SECRET is unset. */
 const DEV_FALLBACK_SECRET = "store-ops-dev-insecure-secret-do-not-use-in-prod";
 
-type TokenKind = "magic" | "session" | "unsub" | "list-unsub";
+type TokenKind = "magic" | "session" | "unsub" | "list-unsub" | "review";
 
 type TokenPayload = {
   /** normalized (trimmed, lowercased) email */
@@ -216,6 +216,58 @@ export function verifyListUnsubToken(
   opts?: Clock,
 ): Promise<VerifyResult> {
   return verify(secret, token, "list-unsub", opts);
+}
+
+/**
+ * App Review sign-in tokens (Guideline 2.1(a), 2026-08 rejection).
+ *
+ * WHY THIS EXISTS: sign-in is passwordless, so the only way in is a magic link
+ * mailed to an inbox. App Review has no access to our mailbox, and magic tokens
+ * live 15 minutes — too short to write into review notes. The 0.1.1 reviewer was
+ * left on the "link is on its way" screen and rejected the build. This is the
+ * credential that is durable enough to PUT IN THE NOTES.
+ *
+ * The trade is deliberate: a long-lived bearer credential sitting in a document.
+ * Three things bound the blast radius —
+ *   1. Audience-separated ("review"): it is not a session. It must be exchanged,
+ *      and it can never be replayed as one.
+ *   2. It only ever mints a session for `REVIEW_ACCOUNT_EMAIL` — the route checks
+ *      `isReviewAccount` on the verified email and refuses everything else, so a
+ *      leaked token cannot be re-pointed at a real customer.
+ *   3. That account is a free-tier account holding no store credentials and no
+ *      payment method, so the session it yields can reach nothing worth stealing.
+ * Rotate it by changing SESSION_SECRET or REVIEW_ACCOUNT_EMAIL; both invalidate
+ * every outstanding review token immediately.
+ */
+export function mintReviewToken(
+  secret: string,
+  email: string,
+  opts: Clock & { ttlSeconds: number },
+): Promise<string> {
+  return mint(secret, email, "review", opts);
+}
+
+export function verifyReviewToken(
+  secret: string,
+  token: string,
+  opts?: Clock,
+): Promise<VerifyResult> {
+  return verify(secret, token, "review", opts);
+}
+
+/**
+ * Is `email` the configured App Review account? FAIL-CLOSED: an unset or blank
+ * `REVIEW_ACCOUNT_EMAIL` means NO address qualifies, so the review path is off
+ * by default and cannot be enabled by accident. Comparison is on the same
+ * normalized form the tokens carry.
+ */
+export function isReviewAccount(
+  env: { REVIEW_ACCOUNT_EMAIL?: string },
+  email: string,
+): boolean {
+  const configured = env.REVIEW_ACCOUNT_EMAIL?.trim();
+  if (!configured) return false;
+  return normalizeEmail(configured) === normalizeEmail(email);
 }
 
 // ── cookies ─────────────────────────────────────────────────────────────────────

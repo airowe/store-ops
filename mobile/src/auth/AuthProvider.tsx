@@ -111,7 +111,9 @@ export function AuthProvider({
       completeMagicLink: async (magicToken: string) => {
         setStatus("loading");
         try {
-          await session.exchangeMagicLink(client, magicToken);
+          // Deep links carry a magic token; a PASTED token may be either a magic
+          // token or the long-lived App Review token, so redeem handles both.
+          await session.redeemPastedToken(client, magicToken);
         } catch {
           // Invalid/expired link — NEVER strand the UI on "loading". Fall through
           // to a fresh boot: an existing session survives untouched; a logged-out

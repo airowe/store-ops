@@ -51,6 +51,10 @@ export type Env = {
    * link stays the worker's /auth/callback (today's web-only flow).
    */
   MAGIC_LINK_BASE?: string;
+  // The ONE address /auth/review-exchange will mint a session for (App Review,
+  // Guideline 2.1(a)). UNSET = that route is closed for every input — leave it
+  // unset everywhere except the env App Review actually tests against.
+  REVIEW_ACCOUNT_EMAIL?: string;
   // Secrets (set via `wrangler secret put`):
   SESSION_SECRET?: string; // signs magic-link + session tokens (HMAC-SHA256)
   STRIPE_SECRET_KEY?: string; // Stripe secret key (Bearer for the REST API) — test OR live

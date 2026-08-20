@@ -2,8 +2,9 @@
  * Login — passwordless magic link. Enter an email → `POST /auth/request` (always
  * "we sent it", never leaking whether the account exists) → the emailed link
  * opens the app and AuthProvider exchanges it for a session token. No password,
- * no SSO. A pasted-token affordance helps dev/testing before the universal-link
- * association files are live.
+ * no SSO. The pasted-token card is the no-email path: App Review signs in with a
+ * long-lived token from the review notes (Guideline 2.1(a)), and it doubles as
+ * the dev/testing route.
  */
 import React, { useState } from "react";
 import { View } from "react-native";
@@ -94,18 +95,27 @@ export default function Login() {
   );
 }
 
-/** Dev/testing affordance: paste a magic token directly (used until the
- *  universal-link association files are live). Honest about what it is. */
+/**
+ * Paste-a-token sign-in. This is NOT only a dev affordance — it is the path App
+ * Review uses (Guideline 2.1(a), 0.1.1): sign-in is passwordless, a reviewer
+ * cannot open the mailbox our magic link goes to, and magic tokens expire in 15
+ * minutes, so the review notes carry a long-lived review token to paste here.
+ * Labelling this "(dev)" is what led the 0.1.1 reviewer to ignore it and report
+ * the app as unreachable — so the copy names the real audience.
+ */
 function PasteTokenCard({ onPaste }: { onPaste: (token: string) => void }) {
   const [token, setToken] = useState("");
   return (
     <Card>
-      <AppText kind="dim">Have a sign-in token? (dev)</AppText>
+      <AppText kind="lead">Have a sign-in token?</AppText>
+      <AppText kind="dim">
+        App Review: paste the token from the review notes here to sign in without email.
+      </AppText>
       <TextField
         testID="token-input"
         value={token}
         onChangeText={setToken}
-        placeholder="Paste magic-link token"
+        placeholder="Paste sign-in token"
         autoCapitalize="none"
         autoCorrect={false}
       />
