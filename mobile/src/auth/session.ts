@@ -10,7 +10,7 @@
  */
 import * as SecureStore from "expo-secure-store";
 import type { ApiClient } from "../api/client.js";
-import { authExchange, me as fetchMe } from "../api/endpoints.js";
+import { authExchange, authReviewExchange, me as fetchMe } from "../api/endpoints.js";
 import type { AuthExchangeResult, Me } from "../types/api.js";
 
 /** Keychain key for the session token. (Credentials are never given a key.) */
@@ -63,6 +63,25 @@ export async function exchangeMagicLink(client: ApiClient, magicToken: string): 
   const res = await authExchange(client, magicToken);
   await setToken(res.token);
   return res;
+}
+
+/**
+ * Redeem a pasted sign-in token. App Review is handed a long-lived `review`
+ * token (Guideline 2.1(a) — they cannot read the mailbox a magic link goes to),
+ * while a developer pasting a token from a dev inbox has an ordinary `magic`
+ * one. The two are audience-separated server-side, so we cannot tell them apart
+ * from the string: try the review route, fall back to the magic route. Whichever
+ * the token actually is, exactly one of them accepts it.
+ */
+export async function redeemPastedToken(client: ApiClient, token: string): Promise<AuthExchangeResult> {
+  try {
+    const res = await authReviewExchange(client, token);
+    await setToken(res.token);
+    return res;
+  } catch {
+    // Not a review token (or the review account is not configured in this env).
+    return exchangeMagicLink(client, token);
+  }
 }
 
 /** Sign out: drop the on-device token. (No server round-trip needed for Bearer.) */

@@ -214,6 +214,8 @@ import {
   serializeSessionCookie,
   SESSION_COOKIE,
   verifyMagicToken,
+  verifyReviewToken,
+  isReviewAccount,
   verifyUnsubToken,
   verifyListUnsubToken,
   verifySessionToken,
@@ -786,6 +788,44 @@ async function authExchange(req: Request, env: Env): Promise<Response> {
   });
   // Token in the body — NOT a cookie. The app stores it in SecureStore and sends
   // it as `Authorization: Bearer` on every call (the requireUser Bearer path).
+  return json({ token: session, email: res.email }, 200, origin, env);
+}
+
+/**
+ * POST /auth/review-exchange { token } — the APP REVIEW sign-in gate.
+ *
+ * Guideline 2.1(a), 0.1.1 (2026-08-14): sign-in is passwordless, App Review
+ * cannot read the mailbox our magic links go to, and a magic token dies in 15
+ * minutes — so there was no credential we could write into the review notes. The
+ * reviewer was stranded on "a sign-in link is on its way" and rejected the build.
+ *
+ * This accepts a long-lived, audience-separated `review` token (which CAN live in
+ * the notes) and returns an ordinary session, exactly like /auth/exchange. Two
+ * gates, both fail-closed:
+ *   • the token must verify as kind "review" — a magic or session token is not
+ *     accepted here, and a review token is not accepted at /auth/exchange.
+ *   • the verified email must BE the configured `REVIEW_ACCOUNT_EMAIL`. With it
+ *     unset the route is dead for every input, so this is off unless deliberately
+ *     switched on, and a leaked token cannot be re-pointed at a real customer.
+ *
+ * Every rejection returns the SAME opaque 400 as the magic path — no probing for
+ * whether a token was well-formed, expired, or aimed at the wrong account.
+ */
+async function authReviewExchange(req: Request, env: Env): Promise<Response> {
+  const origin = req.headers.get("Origin");
+  const body = await readJson<{ token?: string }>(req);
+  const token = typeof body.token === "string" ? body.token : "";
+
+  const res = await verifyReviewToken(sessionSecret(env), token);
+  // Fail-closed on BOTH conditions, and give them one indistinguishable answer.
+  if (!res.ok || !isReviewAccount(env, res.email)) {
+    return json({ error: "invalid or expired link" }, 400, origin, env);
+  }
+
+  await upsertUser(env.DB, res.email);
+  const session = await mintSessionToken(sessionSecret(env), res.email, {
+    ttlSeconds: SESSION_TTL_SECONDS,
+  });
   return json({ token: session, email: res.email }, 200, origin, env);
 }
 
@@ -4806,6 +4846,9 @@ export async function handleApi(req: Request, env: Env, ctx?: ExecutionContext):
       }
       if (seg[1] === "exchange" && seg.length === 2 && method === "POST") {
         return authExchange(req, env);
+      }
+      if (seg[1] === "review-exchange" && seg.length === 2 && method === "POST") {
+        return authReviewExchange(req, env);
       }
       if (seg[1] === "logout" && seg.length === 2 && method === "POST") {
         return authLogout(origin, env);
