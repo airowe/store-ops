@@ -434,3 +434,60 @@ describe("isReviewAccount", () => {
     expect(isReviewAccount({ REVIEW_ACCOUNT_EMAIL: "  " }, "anything@x.com")).toBe(false);
   });
 });
+
+import { magicLinkMessage } from "./auth.js";
+
+describe("magicLinkMessage — the sign-in email body", () => {
+  const LINK = "https://shipaso.com/auth/m?token=abc123";
+
+  it("carries the link in both html and text", async () => {
+    const m = magicLinkMessage(LINK);
+    expect(m.html).toContain(LINK);
+    expect(m.text).toContain(LINK);
+  });
+
+  it("keeps the expiry warning — the link dies in 15 minutes and the reader must know", async () => {
+    const m = magicLinkMessage(LINK);
+    expect(m.html).toMatch(/15 minutes/);
+    expect(m.text).toMatch(/15 minutes/);
+  });
+
+  it("keeps the didn't-request-it line in both parts (anti-phishing hygiene)", async () => {
+    const m = magicLinkMessage(LINK);
+    expect(m.html).toMatch(/didn't request/);
+    expect(m.text).toMatch(/didn't request/);
+  });
+
+  it("escapes the link so a crafted token cannot inject markup", async () => {
+    const m = magicLinkMessage('https://x.test/?t=a"><script>alert(1)</script>');
+    expect(m.html).not.toContain("<script>");
+    expect(m.html).toContain("&quot;");
+  });
+
+  it("says what ShipASO is — one orienting line, so a stale signup is not a mystery", async () => {
+    const m = magicLinkMessage(LINK);
+    expect(m.text).toMatch(/keyword|rank/i);
+    expect(m.html).toMatch(/keyword|rank/i);
+  });
+
+  it("makes NO measured claim — the honesty invariant applies to marketing copy too", async () => {
+    const m = magicLinkMessage(LINK);
+    // No fabricated stats: no "N% more installs", no "trusted by N developers".
+    expect(m.text).not.toMatch(/\d+\s*%/);
+    expect(m.text).not.toMatch(/\b\d[\d,]*\s+(developers|apps|users|installs)\b/i);
+    expect(m.html).not.toMatch(/\d+\s*%/);
+  });
+
+  it("keeps the credential first: the sign-in link precedes any marketing copy", async () => {
+    const m = magicLinkMessage(LINK);
+    const linkAt = m.text.indexOf(LINK);
+    const pitchAt = m.text.search(/keyword|rank/i);
+    expect(linkAt).toBeGreaterThanOrEqual(0);
+    expect(pitchAt).toBeGreaterThan(linkAt);
+  });
+
+  it("stays short — a transactional email that reads as a newsletter gets filtered", async () => {
+    const m = magicLinkMessage(LINK);
+    expect(m.text.length).toBeLessThan(600);
+  });
+});

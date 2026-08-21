@@ -459,19 +459,42 @@ export class ResendEmailSender implements EmailSender {
   }
 }
 
-/** Shared magic-link email body (subject/html/text). Branding lives here so all
- *  senders stay consistent. */
+/**
+ * Shared magic-link email body (subject/html/text). Branding lives here so all
+ * senders stay consistent.
+ *
+ * This is a TRANSACTIONAL email carrying a security credential, and the ordering
+ * below is deliberate: the link comes first, the orienting line comes after. A
+ * sign-in mail that reads as a newsletter is both worse at its job (the reader
+ * hunts for the button) and likelier to be filtered — and the one email that
+ * MUST arrive is the one you cannot afford in a spam folder.
+ *
+ * The one-line description exists because sign-in can happen weeks after signup
+ * and "what is ShipASO?" is a real reaction. It says what the product does and
+ * makes NO measured claim: no percentages, no "trusted by N developers". The
+ * measured-or-nothing invariant governs marketing copy exactly as it governs the
+ * dashboard — a number we cannot measure does not get written down, and a
+ * fabricated one in an email is no cheaper than a fabricated one in a report.
+ */
 export function magicLinkMessage(link: string): { subject: string; html: string; text: string } {
   const safe = escapeHtml(link);
+  const tagline =
+    "ShipASO tracks where your app really ranks for the keywords that matter, " +
+    "and proposes the fix.";
   return {
     subject: "Your ShipASO sign-in link",
     html:
       `<p>Click to sign in to ShipASO:</p>` +
       `<p><a href="${safe}">Sign in</a></p>` +
-      `<p>This link expires in 15 minutes. If you didn't request it, ignore this email.</p>`,
+      `<p>This link expires in 15 minutes. If you didn't request it, ignore this email.</p>` +
+      `<hr>` +
+      `<p><small>${tagline} Every number it shows is measured, or it is marked ` +
+      `unmeasured — never a guess.</small></p>`,
     text:
       `Sign in to ShipASO:\n${link}\n\n` +
-      `This link expires in 15 minutes. If you didn't request it, ignore this email.`,
+      `This link expires in 15 minutes. If you didn't request it, ignore this email.\n\n` +
+      `--\n${tagline} Every number it shows is measured, or it is marked ` +
+      `unmeasured — never a guess.`,
   };
 }
 
