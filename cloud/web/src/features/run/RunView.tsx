@@ -28,6 +28,7 @@ import { ScreenshotPlanCard } from "./ScreenshotPlanCard.js";
 import { CppSetsCard } from "./CppSetsCard.js";
 import { LocalizationCard } from "./LocalizationCard.js";
 import { RunVerdictHeader } from "./RunVerdictHeader.js";
+import { RunTriggerNote } from "./RunTriggerNote.js";
 import { RunSection } from "./RunSection.js";
 import { DecisionSummary } from "./DecisionSummary.js";
 import { RunStatusBar } from "./RunStatusBar.js";
@@ -321,6 +322,10 @@ export function RunView({
           appName={r.audit?.liveName ?? r.currentCopy.name ?? "this app"}
           {...(connectThisApp ? { onConnect: connectThisApp } : {})}
         />
+
+        {/* Why this run exists, directly under what to do about it. The verdict
+            is the ask; this is the evidence behind the ask. */}
+        <RunTriggerNote trigger={run?.trigger} />
 
         {changedFieldCount > 0 ? (
           <RunSection

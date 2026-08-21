@@ -496,12 +496,27 @@ export type GithubConnectResult = { connected: boolean; repo: string | null };
 export type GithubPrResult =
   | { ok: true; url: string; number: number; branch: string }
   | { ok: false; reason: string };
+/**
+ * Why a run exists: the agent's own account, persisted on every run since runs
+ * existed. `source` is who caused it; `reasons` are the measured observations
+ * the sweep recorded when it decided to open one (empty for manual/connect).
+ *
+ * Optional because runs persisted before the field was added carry no trigger —
+ * a consumer must render nothing rather than infer one.
+ */
+export type RunTrigger = {
+  source: "manual" | "cron" | "connect";
+  reasons: string[];
+};
+
 export type RunDetail = {
   id: string;
   app_id: string;
   status: string;
   created_at: string;
   approval: RunApproval | null;
+  /** Present on runs opened after the field shipped; absent on older rows. */
+  trigger?: RunTrigger | null;
   result: RunResult;
 };
 

@@ -658,7 +658,14 @@ export type RunDetail = {
   status: string;
   created_at: string;
   approval: RunApproval | null;
-  trigger?: { source?: string; reasons?: string[] } | null;
+  /**
+   * Why this run exists. Mirrors the shared @shipaso/api `RunTrigger`: the
+   * server writes both fields on every run it opens (cron / manual / connect),
+   * so they are required here rather than optional — a run that HAS a trigger
+   * always has both. The field itself stays optional for rows persisted before
+   * it shipped.
+   */
+  trigger?: { source: "manual" | "cron" | "connect"; reasons: string[] } | null;
   result: RunResult;
 };
 

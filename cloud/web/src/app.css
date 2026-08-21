@@ -1692,6 +1692,30 @@ pre {
    it is the one state where the page cannot answer the question it exists for. */
 .run-verdict[data-tone="blocked"] .run-verdict-headline { color: var(--warn); }
 
+/* Why the run exists, under what to do about it. Quiet by design: this is the
+   evidence behind the verdict, not a second headline competing with it. */
+.run-trigger {
+  padding: 14px 0 16px;
+  border-bottom: 1px solid var(--line-soft);
+}
+.run-trigger-headline {
+  font-size: 14px;
+  color: var(--ink);
+  margin: 0;
+}
+/* Mono because the reasons are measured observations, not prose. */
+.run-trigger-reasons {
+  font-family: var(--mono);
+  font-size: 13px;
+  color: var(--dim);
+  margin: 8px 0 0;
+  padding-left: 18px;
+}
+.run-trigger-reasons li { margin: 3px 0; overflow-wrap: anywhere; }
+/* Only an agent-opened run gets the accent: it is the one case where something
+   happened without the reader asking, and the page should say so. */
+.run-trigger[data-actor="agent"] .run-trigger-headline { font-weight: 600; }
+
 .run-section {
   border-bottom: 1px solid var(--line-soft);
   min-width: 0;

@@ -22,6 +22,7 @@ import { PpoTreatmentCard } from "../../../src/components/PpoTreatmentCard.js";
 import { ScreenshotPlanCard } from "../../../src/components/ScreenshotPlanCard.js";
 import { ScreenshotGallery } from "../../../src/components/ScreenshotGallery.js";
 import { EmptyState } from "../../../src/components/EmptyState.js";
+import { RunTriggerNote } from "../../../src/components/RunTriggerNote.js";
 import { Screen, AppText, Button, Centered } from "../../../src/components/primitives.js";
 import { downloadAndShareFastlane } from "../../../src/lib/fastlane.js";
 import { spacing, usePalette } from "../../../src/theme/index.js";
@@ -88,6 +89,10 @@ export default function RunDetail() {
       <Stack.Screen options={{ title: "Run", headerShown: true }} />
 
       <AppText kind="dim">{r.findingsSummary.label}</AppText>
+
+      {/* Why this run exists. On mobile this is the first thing under the
+          summary because a push notification is often how the reader got here. */}
+      <RunTriggerNote trigger={run.data.trigger} />
 
       <ScreenshotGallery shots={screenshots} />
 
