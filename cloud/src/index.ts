@@ -18,6 +18,11 @@ const DAILY_SNAPSHOT_CRON = "0 8 * * *";
 
 export type Env = {
   DB: D1Database;
+  // Cloudflare rate limiting binding, damping repeat hits on the public
+  // /report/:appId funnel. OPTIONAL: unset (local dev, tests) means no damper
+  // rather than a closed door — see api/publicReportGuard.ts. It is documented
+  // as per-location and eventually consistent, so it is never a spend cap.
+  REPORT_LIMITER?: { limit(input: { key: string }): Promise<{ success: boolean }> };
   DEFAULT_COUNTRY: string;
   APP_ENV: string;
   // Workers AI binding (#57) — the FALLBACK reasoning backend. OPTIONAL: when

@@ -79,3 +79,31 @@ describe("GET /report/:appId", () => {
     expect(body.error).not.toMatch(/internal error/i);
   });
 });
+
+describe("GET /report/:appId rate limiting", () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  it("429s when the limiter refuses, rather than running the agent", async () => {
+    // Each miss reasons with the Anthropic client, so the whole point is that a
+    // refused request must not reach the agent at all.
+    const fetchImpl = vi.fn(async () => new Response("{}", { status: 200 })) as unknown as typeof fetch;
+    vi.stubGlobal("fetch", fetchImpl);
+    const env = {
+      DEFAULT_COUNTRY: "US",
+      REPORT_LIMITER: { limit: async () => ({ success: false }) },
+    } as unknown as Env;
+
+    const res = await handleApi(get("/report/310633997"), env);
+
+    expect(res.status).toBe(429);
+    expect(fetchImpl).not.toHaveBeenCalled();
+  });
+
+  it("serves normally when no limiter is bound", async () => {
+    // Unset in local dev. A missing binding must not close the public funnel.
+    const env = { DEFAULT_COUNTRY: "US" } as unknown as Env;
+    const res = await handleApi(get("/report/not-numeric"), env);
+    // 400 for the bad id proves it reached the handler rather than being 429'd.
+    expect(res.status).toBe(400);
+  });
+});
