@@ -244,6 +244,7 @@ import {
 import { buildAppInput, descriptionFromTrace, type RunOverrides } from "./runConfig.js";
 import { type AscCred, type AscCredBody, AscCredentialError, resolveAscCredential } from "./ascCredentials.js";
 import { reasonerForEnv } from "./aiReasoner.js";
+import { cachedReport, allowReport, defaultReportCache, type ReportLimiter } from "./publicReportGuard.js";
 import { captionAnalyzerForEnv } from "./aiCaptionVision.js";
 import { analyzeFirstShot, captionFindings } from "../engine/captionLens.js";
 import { screenshotClaimFindings } from "../engine/screenshotCompliance.js";
@@ -1367,11 +1368,16 @@ async function reportByAppId(appId: string, url: URL, env: Env): Promise<unknown
     if (!bundleId) throw new HttpError(404, `no App Store app for id ${appId}`);
     const name = [r?.trackName ?? "", (r?.genres ?? []).join(" ")].filter(Boolean).join(" ").trim() || bundleId;
 
-    const appRow = { id: "report", user_id: "report", bundle_id: bundleId, name, country } as AppRow;
-    const reasoner = reasonerForEnv(env);
-    const input = await buildAppInput(appRow, reasoner ? { reasoner } : {}, {});
-    const result = await runAgent(fetchForEnv(env), input, { copywriter: reasoner });
-    return { preview: buildPreview(result), appId, bundleId, country };
+    // The agent reasons with the Anthropic client, so a miss here spends money
+    // on our key for an unauthenticated caller. Cache it: a public listing's
+    // audit is stable for hours, and the endpoint was recomputing every call.
+    return await cachedReport(appId, country, defaultReportCache(), async () => {
+      const appRow = { id: "report", user_id: "report", bundle_id: bundleId, name, country } as AppRow;
+      const reasoner = reasonerForEnv(env);
+      const input = await buildAppInput(appRow, reasoner ? { reasoner } : {}, {});
+      const result = await runAgent(fetchForEnv(env), input, { copywriter: reasoner });
+      return { preview: buildPreview(result), appId, bundleId, country };
+    });
   } catch (e) {
     if (e instanceof HttpError) throw e;
     if (e instanceof ItunesError) {
@@ -4941,6 +4947,12 @@ export async function handleApi(req: Request, env: Env, ctx?: ExecutionContext):
     // Public shareable report (#287): GET /report/:appId — a scored audit of any
     // App Store app by numeric id, no signup. The URL is the funnel.
     if (seg[0] === "report" && seg.length === 2 && method === "GET") {
+      // A damper on hammering one app, not a spend cap: Cloudflare documents
+      // the binding as permissive, eventually consistent, and per-location.
+      // The cache inside reportByAppId is what actually bounds the cost.
+      if (!(await allowReport(env.REPORT_LIMITER as ReportLimiter | undefined, seg[1]!))) {
+        return json({ error: "Too many requests for this app just now — try again shortly." }, 429, origin, env);
+      }
       return json(await reportByAppId(seg[1]!, new URL(req.url), env), 200, origin, env);
     }
     // Owner-only RLHF export (#39 Part 2). NOT session-gated — it has its own

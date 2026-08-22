@@ -27,6 +27,27 @@ pattern = "api.shipaso.com"
 custom_domain = true
 
 # ── D1 (SQLite) — bound as env.DB in the Worker ──────────────────────────────
+# ── Rate limiting — damps repeat hits on the public /report/:appId funnel ────
+# Each cache MISS on that route runs the agent, which reasons with the Anthropic
+# client, so an unauthenticated caller can spend inference budget on our key.
+#
+# Read the caveats before trusting this. Cloudflare documents the binding as
+# "permissive, eventually consistent, and intentionally designed to not be used
+# as an accurate accounting system", and a limit applies PER CLOUDFLARE
+# LOCATION — a caller spread across locations gets a multiple of it. The cache
+# in api/publicReportGuard.ts is what actually bounds the cost; this only stops
+# one app being hammered.
+#
+# `period` accepts only 10 or 60. The binding is unset in local dev, which the
+# code treats as "no damper" rather than "refuse everyone".
+[[ratelimits]]
+name = "REPORT_LIMITER"
+namespace_id = "1001"
+
+  [ratelimits.simple]
+  limit = 20
+  period = 60
+
 [[d1_databases]]
 binding = "DB"                 # code reads it as `env.DB`
 database_name = "store_ops"
