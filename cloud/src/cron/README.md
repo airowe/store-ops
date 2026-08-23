@@ -24,9 +24,16 @@ For EACH connected app (`listAllApps`; per-app failures isolated):
 
 ## Idempotency
 
-If an app already has an `awaiting_approval` run (`hasOpenRun`), the sweep still
-records fresh snapshots but does **not** open a second gate — the human clears
-the first one. D1 is the work queue; one `scheduled()` invocation walks all apps.
+If an app already has a **fresh** `awaiting_approval` run (`openRunAgeDays` <
+`STALE_GATE_DAYS`, 14), the sweep still records snapshots but does **not** open a
+second gate — the human clears the first one. D1 is the work queue; one
+`scheduled()` invocation walks all apps.
+
+Past 14 days the gate is treated as abandoned and a NEW one opens (`persistRun`
+supersedes the stale row, so there is still only ever one open gate per app).
+Without that cutoff a single unanswered run made the app permanently ineligible
+— no gate, no notification, forever. Every production app was in exactly that
+state on 2026-08-23 (#492).
 
 ## Triggering locally
 

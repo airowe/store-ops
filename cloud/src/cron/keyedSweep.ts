@@ -17,7 +17,7 @@ import {
   getLatestCompetitorMap,
   getLatestRanks,
   getThresholds,
-  hasOpenRun,
+  openRunAgeDays,
   latestRunTraceForApp,
   persistRun,
   type AppRow,
@@ -31,6 +31,18 @@ import { fetchForEnv } from "../fetchAdapter.js";
 import { notifyRunAwaitingApproval } from "../push.js";
 import type { Env } from "../index.js";
 import { DEFAULT_THRESHOLDS, type ThresholdConfig } from "../thresholds.js";
+
+
+/**
+ * How long an unanswered approval gate keeps suppressing new ones. Past this,
+ * the sweep opens a fresh gate and supersedes the stale one.
+ *
+ * 14 days = two missed weekly sweeps. One missed Monday is someone on holiday;
+ * two is a gate that is not going to be answered on its own, and the app has
+ * gone silent — which is the state that cost the one real paying user two
+ * months of contact (#492).
+ */
+const STALE_GATE_DAYS = 14;
 
 /** Result of evaluating whether this week's data crosses the re-draft threshold. */
 export type ThresholdDecision = {
@@ -199,8 +211,14 @@ export async function runKeyedSweepForApp(
   const previousRanks =
     thresholds.rankDropAtLeast != null ? await getLatestRanks(env.DB, app.id) : [];
   const decision = evaluateThreshold(result, thresholds, previousRanks);
-  const alreadyOpen = await hasOpenRun(env.DB, app.id);
-  const openRun = decision.crossed && !alreadyOpen && !thresholds.notifyOnly;
+  // An open gate suppresses a second one — but only while it is FRESH. With no
+  // age limit, one unanswered run made the app permanently ineligible and it
+  // never notified again (#492: all 14 production apps were in that state).
+  // Past the cutoff we open a new gate; persistRun supersedes the stale one, so
+  // the user sees this week's proposal rather than a two-month-old one.
+  const openAgeDays = await openRunAgeDays(env.DB, app.id);
+  const blockedByFreshGate = openAgeDays !== null && openAgeDays < STALE_GATE_DAYS;
+  const openRun = decision.crossed && !blockedByFreshGate && !thresholds.notifyOnly;
 
   let runId: string;
   if (openRun) {
@@ -232,7 +250,7 @@ export async function runKeyedSweepForApp(
       result: resultWithSnapshot,
       trigger: {
         source: "cron",
-        reasons: alreadyOpen
+        reasons: blockedByFreshGate
           ? ["snapshot recorded — prior run still awaiting approval"]
           : decision.crossed && thresholds.notifyOnly
             ? [...decision.reasons, "notify-only mode — threshold crossed but no run opened (owner setting)"]
@@ -241,7 +259,7 @@ export async function runKeyedSweepForApp(
     });
   }
 
-  opts.onDetail?.({ keyed, decision, alreadyOpen, opened: openRun, runId });
+  opts.onDetail?.({ keyed, decision, alreadyOpen: blockedByFreshGate, opened: openRun, runId });
 
   return openRun ? runId : null;
 }

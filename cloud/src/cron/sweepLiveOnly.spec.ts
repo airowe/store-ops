@@ -27,7 +27,7 @@ const isAgentPaused = vi.fn(async (): Promise<boolean> => false);
 const getTier = vi.fn(async (): Promise<string> => "indie");
 const listAllApps = vi.fn(async (): Promise<Array<Record<string, string>>> => []);
 const persistRun = vi.fn(async (): Promise<string> => "run-x");
-const hasOpenRun = vi.fn(async () => false);
+const openRunAgeDays = vi.fn(async (): Promise<number | null> => null);
 const runAgent = vi.fn();
 
 vi.mock("../d1.js", () => ({
@@ -37,7 +37,7 @@ vi.mock("../d1.js", () => ({
   persistRun: () => persistRun(),
   getLatestCompetitorMap: async () => ({}),
   latestRunTraceForApp: async () => null,
-  hasOpenRun: () => hasOpenRun(),
+  openRunAgeDays: () => openRunAgeDays(),
   getUser: async () => ({ email: "owner@example.com" }),
   getRankHistory: async () => [],
   confirmedCompetitorKeys: async () => [],

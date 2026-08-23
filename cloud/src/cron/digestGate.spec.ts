@@ -5,13 +5,13 @@
  * that silently never sends passes the "off works" test alone.
  *
  * Also pins: the user row is read ONCE per owner (cached), and 'off' skips
- * BEFORE the per-app hasOpenRun/getRankHistory reads.
+ * BEFORE the per-app openRunAgeDays/getRankHistory reads.
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const listAllApps = vi.fn(async (): Promise<Array<Record<string, string>>> => []);
 const getUser = vi.fn(async (_db: unknown, _userId: string): Promise<unknown> => null);
-const hasOpenRun = vi.fn(async () => false);
+const openRunAgeDays = vi.fn(async (): Promise<number | null> => null);
 const getRankHistory = vi.fn(async () => [
   { keyword: "yoga", rank: 5, total: 100, checked_at: "2026-07-01 00:00:00" },
 ]);
@@ -20,7 +20,8 @@ const send = vi.fn(async (_msg: unknown) => undefined);
 vi.mock("../d1.js", () => ({
   listAllApps: () => listAllApps(),
   getUser: (db: unknown, userId: string) => getUser(db, userId),
-  hasOpenRun: () => hasOpenRun(),
+  openRunAgeDays: () => openRunAgeDays(),
+  hasOpenRun: async () => false,
   getRankHistory: () => getRankHistory(),
   // unused by sendWeeklyDigests but imported by scheduled.ts:
   isAgentPaused: vi.fn(),
@@ -85,7 +86,7 @@ describe("sendWeeklyDigests — email_digest gate (both directions)", () => {
 
     expect(sent).toBe(0);
     expect(send).not.toHaveBeenCalled();
-    expect(hasOpenRun).not.toHaveBeenCalled(); // gated BEFORE the expensive reads
+    expect(openRunAgeDays).not.toHaveBeenCalled(); // gated BEFORE the expensive reads
     expect(getRankHistory).not.toHaveBeenCalled();
     expect(getUser).toHaveBeenCalledTimes(1); // cached: one read for three apps
   });
