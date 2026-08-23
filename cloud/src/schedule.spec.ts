@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { DEFAULT_SCHEDULE, isSweepDue, parseSchedule, validateSchedule } from "./schedule.js";
+import { DEFAULT_SCHEDULE, isSweepDue, nextSweepAt, parseSchedule, validateSchedule } from "./schedule.js";
 
 /** #52 — sweep schedule: fail-open stored reads, loud API validation, and the
  *  pure due-check that replaces "Monday 09:00 for everyone". */
@@ -72,5 +72,93 @@ describe("isSweepDue", () => {
   it("never swept → due on the first matching slot; unreadable stamp never strands", () => {
     expect(isSweepDue(DEFAULT_SCHEDULE, MON_9, null)).toBe(true);
     expect(isSweepDue(DEFAULT_SCHEDULE, MON_9, "not a date")).toBe(true);
+  });
+});
+
+/**
+ * nextSweepAt — the slot a user is told to expect.
+ *
+ * `isSweepDue` answers "should this app sweep right now", which the cron needs
+ * and a UI cannot use: it is only ever true during the matching hour. Showing
+ * "when next" requires computing the slot forward, which nothing did.
+ *
+ * Deliberately returns the next matching SLOT, not a guarantee of a run. A
+ * biweekly app matches its day/hour weekly but sweeps only when the ≥13d
+ * min-gap has also elapsed, so a slot can pass quietly. The UI says "next
+ * check" for exactly that reason — the check happens; the run may not.
+ */
+describe("nextSweepAt", () => {
+  const at = (iso: string) => new Date(iso);
+
+  it("weekly: returns the next matching day+hour", () => {
+    // Wed 2026-08-19 12:00Z, schedule Monday 09:00 → Mon 2026-08-24 09:00Z
+    const next = nextSweepAt({ cadence: "weekly", day: 1, hourUtc: 9 }, at("2026-08-19T12:00:00Z"));
+    expect(next.toISOString()).toBe("2026-08-24T09:00:00.000Z");
+  });
+
+  it("weekly: a slot LATER today is today's, not next week's", () => {
+    // Monday 2026-08-24 07:00Z, schedule Monday 09:00 → same day 09:00
+    const next = nextSweepAt({ cadence: "weekly", day: 1, hourUtc: 9 }, at("2026-08-24T07:00:00Z"));
+    expect(next.toISOString()).toBe("2026-08-24T09:00:00.000Z");
+  });
+
+  it("weekly: a slot that already passed today rolls to next week", () => {
+    // Monday 2026-08-24 10:00Z, schedule Monday 09:00 → Mon 2026-08-31
+    const next = nextSweepAt({ cadence: "weekly", day: 1, hourUtc: 9 }, at("2026-08-24T10:00:00Z"));
+    expect(next.toISOString()).toBe("2026-08-31T09:00:00.000Z");
+  });
+
+  it("weekly: exactly AT the slot returns the next one, never now", () => {
+    // A slot that is happening is not a slot to wait for.
+    const next = nextSweepAt({ cadence: "weekly", day: 1, hourUtc: 9 }, at("2026-08-24T09:00:00Z"));
+    expect(next.toISOString()).toBe("2026-08-31T09:00:00.000Z");
+  });
+
+  it("daily: rolls to tomorrow once today's hour has passed", () => {
+    const next = nextSweepAt({ cadence: "daily", day: 1, hourUtc: 9 }, at("2026-08-24T10:00:00Z"));
+    expect(next.toISOString()).toBe("2026-08-25T09:00:00.000Z");
+  });
+
+  it("daily: ignores `day` entirely", () => {
+    // day=1 (Monday) must not constrain a daily schedule; Wed → Wed.
+    const next = nextSweepAt({ cadence: "daily", day: 1, hourUtc: 9 }, at("2026-08-19T07:00:00Z"));
+    expect(next.toISOString()).toBe("2026-08-19T09:00:00.000Z");
+  });
+
+  it("biweekly: returns the next matching slot (which may not fire — min-gap)", () => {
+    const next = nextSweepAt({ cadence: "biweekly", day: 1, hourUtc: 9 }, at("2026-08-19T12:00:00Z"));
+    expect(next.toISOString()).toBe("2026-08-24T09:00:00.000Z");
+  });
+
+  it("crosses a month boundary", () => {
+    // Sat 2026-08-29, schedule Tuesday 14:00 → Tue 2026-09-01
+    const next = nextSweepAt({ cadence: "weekly", day: 2, hourUtc: 14 }, at("2026-08-29T00:00:00Z"));
+    expect(next.toISOString()).toBe("2026-09-01T14:00:00.000Z");
+  });
+
+  it("crosses a year boundary", () => {
+    // Wed 2026-12-30, schedule Sunday 00:00 → Sun 2027-01-03
+    const next = nextSweepAt({ cadence: "weekly", day: 0, hourUtc: 0 }, at("2026-12-30T12:00:00Z"));
+    expect(next.toISOString()).toBe("2027-01-03T00:00:00.000Z");
+  });
+
+  it("zeroes minutes and seconds — a slot is an hour, not a moment mid-hour", () => {
+    const next = nextSweepAt({ cadence: "daily", day: 0, hourUtc: 9 }, at("2026-08-19T07:43:21Z"));
+    expect(next.getUTCMinutes()).toBe(0);
+    expect(next.getUTCSeconds()).toBe(0);
+    expect(next.getUTCMilliseconds()).toBe(0);
+  });
+
+  it("always returns a time strictly in the future", () => {
+    // Property check across every day/hour combination from one instant.
+    const now = at("2026-08-19T12:34:56Z");
+    for (let day = 0; day < 7; day++) {
+      for (const hourUtc of [0, 9, 14, 23]) {
+        const next = nextSweepAt({ cadence: "weekly", day, hourUtc }, now);
+        expect(next.getTime()).toBeGreaterThan(now.getTime());
+        expect(next.getUTCDay()).toBe(day);
+        expect(next.getUTCHours()).toBe(hourUtc);
+      }
+    }
   });
 });

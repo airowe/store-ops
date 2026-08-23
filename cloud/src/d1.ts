@@ -918,24 +918,68 @@ export async function deleteApp(db: D1Database, appId: string): Promise<void> {
   ]);
 }
 
-/** All apps for a user, with the latest run's status/id folded in (for the list view). */
+/**
+ * All apps for a user, with the latest run's status/id AND the autonomous
+ * loop's state folded in (for the list view).
+ *
+ * Loop state rides THIS query rather than a per-app read. The caller already
+ * loops over the results doing a `getRun` each; adding two more sequential
+ * awaits per app would be a visible regression on a 12-app account, which is a
+ * real account size here. The correlated subqueries cost one scan of `runs`
+ * per app on an already-indexed app_id.
+ *
+ * `app_settings` is LEFT JOINed: a row exists only once an app has settings, so
+ * an app that has never been swept yields NULLs, which shape to "never swept"
+ * rather than to a fabricated default.
+ */
 export async function listAppsForUser(
   db: D1Database,
   userId: string,
-): Promise<Array<AppRow & { latest_run_id: string | null; latest_run_status: RunStatus | null }>> {
+): Promise<
+  Array<
+    AppRow & {
+      latest_run_id: string | null;
+      latest_run_status: RunStatus | null;
+      last_sweep_at: string | null;
+      schedule_json: string | null;
+      agent_run_count: number | null;
+      agent_since: string | null;
+    }
+  >
+> {
   const { results } = await db
     .prepare(
       `SELECT a.id, a.user_id, a.bundle_id, a.name, a.country, a.created_at,
-              r.id AS latest_run_id, r.status AS latest_run_status
+              r.id AS latest_run_id, r.status AS latest_run_status,
+              s.last_sweep_at AS last_sweep_at,
+              s.schedule_json AS schedule_json,
+              (SELECT COUNT(*) FROM runs cr
+                WHERE cr.app_id = a.id
+                  AND json_extract(cr.reasoning_json, '$.trigger.source') = 'cron'
+              ) AS agent_run_count,
+              (SELECT MIN(cr.created_at) FROM runs cr
+                WHERE cr.app_id = a.id
+                  AND json_extract(cr.reasoning_json, '$.trigger.source') = 'cron'
+              ) AS agent_since
        FROM apps a
        LEFT JOIN runs r ON r.id = (
          SELECT id FROM runs WHERE app_id = a.id ORDER BY created_at DESC, id DESC LIMIT 1
        )
+       LEFT JOIN app_settings s ON s.app_id = a.id
        WHERE a.user_id = ?
        ORDER BY a.created_at DESC`,
     )
     .bind(userId)
-    .all<AppRow & { latest_run_id: string | null; latest_run_status: RunStatus | null }>();
+    .all<
+      AppRow & {
+        latest_run_id: string | null;
+        latest_run_status: RunStatus | null;
+        last_sweep_at: string | null;
+        schedule_json: string | null;
+        agent_run_count: number | null;
+        agent_since: string | null;
+      }
+    >();
   return results ?? [];
 }
 

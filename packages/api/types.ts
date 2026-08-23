@@ -41,6 +41,23 @@ export type FindingsSummary = {
   topImpact: string | null;
 };
 
+/**
+ * What the autonomous loop has done for an app. Every field is nullable except
+ * the count, because an app can predate the sweep or never have been swept —
+ * and a fabricated cadence would be exactly the placeholder the measured-or-
+ * nothing rule forbids, applied to a time instead of a rank.
+ */
+export type LoopState = {
+  /** ISO. null = never swept. */
+  last_sweep_at: string | null;
+  /** ISO of the next scheduled slot. A CHECK, not a promise of a run. */
+  next_sweep_at: string | null;
+  /** Runs the agent opened by itself. 0 is a measurement here, not an absence. */
+  agent_run_count: number;
+  /** ISO of the first agent-opened run — "watching since". null when none. */
+  agent_since: string | null;
+};
+
 export type AppListItem = {
   id: string;
   name: string;
@@ -48,6 +65,12 @@ export type AppListItem = {
   latest_run: { status: RunStatus; created_at: string } | null;
   rank_summary: RankSummary | null;
   findings_summary: FindingsSummary | null;
+  /**
+   * Optional, not just nullable: a Worker deployed before this field omits the
+   * key entirely, and the web/mobile clients must render against that response
+   * during the deploy-order window rather than crash on it.
+   */
+  loop?: LoopState | null;
 };
 
 /** Honest rank point: null rank = unmeasured, never 0. */
