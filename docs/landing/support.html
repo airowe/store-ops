@@ -1,0 +1,110 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="dark">
+<title>Support · ShipASO</title>
+<meta name="description" content="Help with ShipASO — sign-in, subscriptions, account deletion, and what the numbers mean. Email support@shipaso.com.">
+<link rel="canonical" href="https://shipaso.com/support">
+<!--
+  The Support URL on the App Store listing points here.
+
+  It did not exist until now: /support, /help, and /contact all returned the
+  404 page while version 0.1.1 sat in review naming this exact address.
+  App Review checks it under Guideline 1.5.
+
+  Served at /support (no extension) — Cloudflare Pages resolves support.html
+  for that path and 308s the .html form, same as check-your-rank.html.
+
+  Self-contained by design: the styling is inlined from index.html's tokens
+  rather than shared, because a support page that breaks when a stylesheet
+  moves is worse than one that repeats forty lines of CSS.
+-->
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%230b0e14'/%3E%3Cg fill='%2334d399'%3E%3Cpath d='M16 6 L8.5 17 h15 Z'/%3E%3Cpath d='M5.5 19 h21 l-3 5 H8.5 Z'/%3E%3C/g%3E%3Cline x1='16' y1='8' x2='16' y2='17' stroke='%230b0e14' stroke-width='1.5'/%3E%3C/svg%3E">
+<style>
+  :root {
+    --bg: #07090e;
+    --panel: #11151f;
+    --line: #222a3b;
+    --line-soft: #1a2130;
+    --ink: #eef1f7;
+    --dim: #97a1b6;
+    --faint: #626c83;
+    --signal: #34d399;
+    --mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
+    --sans: "Space Grotesk", -apple-system, "Segoe UI", Roboto, sans-serif;
+  }
+  * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    margin: 0; font-family: var(--sans); font-size: 17px; line-height: 1.65;
+    color: var(--ink); background: var(--bg);
+    -webkit-font-smoothing: antialiased;
+    background-image: radial-gradient(900px 500px at 12% -8%, rgba(52,211,153,0.14), transparent 60%);
+    background-repeat: no-repeat;
+  }
+  .wrap { max-width: 720px; margin: 0 auto; padding: 56px 22px 72px; }
+  a { color: var(--signal); }
+  h1 { font-size: 2rem; margin: 0 0 6px; letter-spacing: -0.02em; }
+  h2 { font-size: 1.15rem; margin: 38px 0 8px; letter-spacing: -0.01em; }
+  p { margin: 0 0 12px; color: var(--dim); }
+  p.lead { color: var(--ink); font-size: 1.05rem; }
+  .card {
+    background: var(--panel); border: 1px solid var(--line);
+    border-radius: 12px; padding: 18px 20px; margin: 20px 0 8px;
+  }
+  .card p:last-child { margin-bottom: 0; }
+  .mono { font-family: var(--mono); }
+  .reply { color: var(--faint); font-size: 14.5px; }
+  footer {
+    margin-top: 56px; padding-top: 22px; border-top: 1px solid var(--line-soft);
+    color: var(--faint); font-size: 13.5px;
+    display: flex; flex-wrap: wrap; gap: 8px 18px; align-items: center;
+  }
+  footer a { color: var(--dim); text-decoration: none; }
+  footer a:hover { color: var(--ink); }
+  .sep { color: var(--line); }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <h1>Support</h1>
+  <p class="lead">Something not working, or not making sense? Write to us — a person reads every message.</p>
+
+  <div class="card">
+    <p><strong>Email</strong> <a class="mono" href="mailto:support@shipaso.com">support@shipaso.com</a></p>
+    <p class="reply">We reply within one business day. If you are writing about a failed sign-in, tell us which email address you used and we can look it up.</p>
+  </div>
+
+  <h2>I can’t sign in</h2>
+  <p>ShipASO has no passwords. Enter your email on the sign-in screen and we send a magic link that signs you in when you tap it. The link is valid for 15 minutes — if it expires, request a fresh one. If nothing arrives after a minute or two, check your spam folder, then write to us.</p>
+
+  <h2>Approving a change does not ship it</h2>
+  <p>ShipASO never pushes anything to the App Store or Google Play on your behalf. Approving a recommendation records your decision and prepares the change; submitting it to the store stays your action, in your account. Nothing you do here reaches your live listing on its own.</p>
+
+  <h2>Why is a number blank?</h2>
+  <p>A dash (—) means we have not measured that value yet, not that it is zero. We would rather show you nothing than a guess, so a field stays blank until there is real data behind it. Ranks fill in once a run completes for that keyword and storefront.</p>
+
+  <h2>Billing and subscriptions</h2>
+  <p>Subscriptions are billed by Apple, not by us. To view, change, or cancel one, open the Settings app on your device, tap your name, then <strong>Subscriptions</strong>. Refunds are handled by Apple at <a href="https://reportaproblem.apple.com">reportaproblem.apple.com</a>. Write to us if something looks wrong and we will help you sort it out.</p>
+
+  <h2>Deleting your account</h2>
+  <p>Email us from the address on the account and we will delete it, along with the audit history attached to it, within seven days.</p>
+
+  <footer>
+    <span class="mono">ShipASO</span>
+    <span class="sep">·</span>
+    <a href="/">Home</a>
+    <span class="sep">·</span>
+    <a href="https://app.shipaso.com/privacy">Privacy</a>
+    <span class="sep">·</span>
+    <a href="https://app.shipaso.com/terms">Terms</a>
+    <span class="sep">·</span>
+    <a href="https://app.shipaso.com">Dashboard</a>
+  </footer>
+
+</div>
+</body>
+</html>
