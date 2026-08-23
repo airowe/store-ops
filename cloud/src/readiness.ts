@@ -174,18 +174,15 @@ export function auditReadiness(env: Env): ReadinessReport {
       : "TINYFISH_API_KEY is missing — Apple will 403 the datacenter egress in production.",
   });
 
-  // ── warns: email delivery (Brevo preferred, Resend fallback) ──────────────
-  const brevoOk = isSet(env.BREVO_API_KEY) && isSet(env.BREVO_FROM);
-  const resendOk = isSet(env.RESEND_API_KEY) && isSet(env.RESEND_FROM);
-  const emailOk = brevoOk || resendOk;
-  const provider = brevoOk ? "Brevo" : resendOk ? "Resend" : null;
+  // ── warns: email delivery (Resend) ────────────────────────────────────────
+  const emailOk = isSet(env.RESEND_API_KEY) && isSet(env.RESEND_FROM);
   checks.push({
     name: "email_delivery",
     ok: emailOk,
     severity: "warn",
     detail: emailOk
-      ? `Magic-link emails are delivered via ${provider}.`
-      : "No email provider set (BREVO_API_KEY/BREVO_FROM or RESEND_*) — magic-link emails are only logged, not delivered.",
+      ? "Magic-link emails are delivered via Resend."
+      : "No email provider set (RESEND_API_KEY/RESEND_FROM) — magic-link emails are only logged, not delivered.",
   });
 
   // ── warns: dashboard origin + cookie domain ───────────────────────────────

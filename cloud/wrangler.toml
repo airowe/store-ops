@@ -132,9 +132,10 @@ ASC_WRITE_ENABLED = "true"
 # Email (magic-link delivery):
 #   RESEND_API_KEY        — Resend API key. With it (+ RESEND_FROM) /auth/request
 #                           emails the magic link; unset → link is logged only.
-#   RESEND_FROM           — verified Resend sender, e.g.
-#                           "store-ops <login@mail.yourdomain.com>". Set as a [vars]
-#                           entry (not secret) or a secret — either works.
+#   RESEND_FROM           — verified Resend sender on a domain we own, e.g.
+#                           "ShipASO <login@shipaso.com>". The domain must be
+#                           verified in Resend (SPF + DKIM) or mail fails DMARC.
+#                           Set as a [vars] entry or a secret — either works.
 #
 #   npx wrangler secret put SESSION_SECRET
 #   npx wrangler secret put STRIPE_SECRET_KEY
