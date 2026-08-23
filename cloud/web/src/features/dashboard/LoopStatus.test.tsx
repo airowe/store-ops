@@ -100,6 +100,20 @@ describe("<LoopStatus />", () => {
     expect(container).toBeEmptyDOMElement();
   });
 
+  it("does not run words into the separator — 'active· last checked' shipped once", () => {
+    // toHaveTextContent normalizes whitespace, so it cannot see this class of
+    // bug. Assert on the raw textContent instead. Found in a browser after 8
+    // green tests, which is exactly why this one reads the string directly.
+    render(
+      <LoopStatus
+        summary={{ lastSweepAt: "2026-08-17T09:00:00Z", nextSweepAt: "2026-08-24T09:00:00Z", agentRunCount: 9, agentSince: null }}
+        now={NOW}
+      />,
+    );
+    const raw = screen.getByTestId("loop-status").textContent ?? "";
+    expect(raw).not.toMatch(/\S·/); // no glyph welded to the preceding word
+  });
+
   it("singularises one check", () => {
     render(
       <LoopStatus
