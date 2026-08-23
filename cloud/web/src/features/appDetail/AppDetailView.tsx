@@ -24,6 +24,7 @@
 import { useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { LoopStatus } from "../dashboard/LoopStatus.js";
+import { RunActorMark } from "../run/RunActorMark.js";
 import type { ApiClient } from "@shipaso/api";
 import { getApp, getCredentials, getDeltas, getEngagement, getRanks, getStanding, runApp } from "@shipaso/api";
 import { timeAgo } from "@shipaso/honesty";
@@ -432,6 +433,7 @@ export function AppDetailView({
               onClick={() => onOpenRun(r.id)}
             >
               <span className={"run-dot " + r.status} aria-hidden="true" />
+              <RunActorMark trigger={r.trigger} />
               <span className="audit-run-status">{runStatusLabel(r.status)}</span>
               <span className="audit-run-when micro">{timeAgo(r.created_at, now)}</span>
               <span className="audit-run-chevron" aria-hidden="true">›</span>

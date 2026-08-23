@@ -1469,8 +1469,24 @@ async function portfolioRuns(env: Env, userId: string): Promise<unknown> {
       status: r.status,
       created_at: r.created_at,
       findings_summary: findingsSummaryFromTrace(r.reasoning_json),
+      trigger: triggerFromTrace(r.reasoning_json),
     })),
   };
+}
+
+/**
+ * The trigger a run's persisted trace carries, or null. Same fail-soft posture
+ * as findingsSummaryFromTrace: an unparseable blob, or a run predating the
+ * field, yields null — and the UI renders NO actor marker rather than a
+ * plausible-looking default. "We do not know who opened this" is the honest
+ * answer, and it must not be dressed up as a measurement.
+ */
+function triggerFromTrace(reasoningJson: string): ReasoningTrace["trigger"] | null {
+  try {
+    return (JSON.parse(reasoningJson) as ReasoningTrace).trigger ?? null;
+  } catch {
+    return null;
+  }
 }
 
 /**
@@ -3311,7 +3327,14 @@ async function appDetail(env: Env, userId: string, appId: string): Promise<unkno
   const loopRow = await loopStateRowForApp(env.DB, appId);
   return {
     app: { id: app.id, bundle_id: app.bundle_id, name: app.name, country: app.country },
-    runs,
+    // The trigger rides each row so the history can say who opened what. The
+    // trace itself stays server-side; only the resolved trigger crosses.
+    runs: runs.map((r) => ({
+      id: r.id,
+      status: r.status,
+      created_at: r.created_at,
+      trigger: triggerFromTrace(r.reasoning_json),
+    })),
     // The loop's state for THIS app — same shaping as the list view, so the
     // detail page and the dashboard can never disagree about it.
     loop: loopRow ? toLoopState(loopRow, new Date()) : null,

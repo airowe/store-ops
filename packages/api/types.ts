@@ -136,7 +136,16 @@ export type WarRoomView = {
 };
 export type Run = { id: string; app_id: string; status: RunStatus; created_at: string };
 
-export type RunRow = { id: string; status: RunStatus; created_at: string };
+export type RunRow = {
+  id: string;
+  status: RunStatus;
+  created_at: string;
+  /**
+   * Who opened this run. null for a run predating the field — the UI shows NO
+   * actor marker in that case rather than an invented default.
+   */
+  trigger?: RunTrigger | null;
+};
 export type AppDetail = {
   app: { id: string; bundle_id: string; name: string; country: string };
   runs: RunRow[];
