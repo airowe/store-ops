@@ -40,6 +40,11 @@
     <priority>0.8</priority>
   </url>
   <url>
+    <loc>https://shipaso.com/support.html</loc>
+    <changefreq>yearly</changefreq>
+    <priority>0.3</priority>
+  </url>
+  <url>
     <loc>https://shipaso.com/llms.txt</loc>
     <changefreq>weekly</changefreq>
     <priority>0.7</priority>
