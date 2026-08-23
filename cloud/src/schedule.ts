@@ -107,3 +107,34 @@ export function isSweepDue(
   const elapsedHours = (now.getTime() - last) / 3_600_000;
   return elapsedHours >= MIN_GAP_HOURS[schedule.cadence];
 }
+
+/**
+ * The next UTC slot this schedule matches, strictly after `now`. Pure.
+ *
+ * `isSweepDue` cannot answer this: it is a "right now?" predicate, true only
+ * during the matching hour, so a UI asking "when next" gets false all week.
+ *
+ * Returns the next matching SLOT — NOT a promise that a sweep runs then. A
+ * biweekly app matches its day/hour every week but sweeps only when the
+ * min-gap has also elapsed, so a slot can pass without a run. Callers that
+ * show this to a user should say "next check", not "next run".
+ *
+ * Minutes/seconds are zeroed: the cron fires hourly and `isSweepDue` matches on
+ * the hour, so a slot IS an hour, and reporting 09:43 would imply a precision
+ * the scheduler does not have.
+ */
+export function nextSweepAt(schedule: SweepSchedule, now: Date): Date {
+  const next = new Date(now.getTime());
+  next.setUTCMinutes(0, 0, 0);
+  next.setUTCHours(schedule.hourUtc);
+
+  // Today's slot already gone (or happening now) → start from tomorrow.
+  if (next.getTime() <= now.getTime()) next.setUTCDate(next.getUTCDate() + 1);
+
+  // Daily matches any day; weekly/biweekly walk forward to the target weekday.
+  if (schedule.cadence !== "daily") {
+    const delta = (schedule.day - next.getUTCDay() + 7) % 7;
+    if (delta > 0) next.setUTCDate(next.getUTCDate() + delta);
+  }
+  return next;
+}

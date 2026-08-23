@@ -140,6 +140,7 @@ import { serializeAsaBundle, verifyAsaCredentials, type AsaKeyBundle } from "../
 import localesData from "../engine/locales-data.json";
 import { validateThresholdPatch } from "../thresholds.js";
 import { validateSchedule } from "../schedule.js";
+import { toLoopState } from "../loopState.js";
 import {
   captureProposalEdits,
   confirmCompetitor,
@@ -1756,6 +1757,7 @@ async function connectApp(req: Request, env: Env, userId: string): Promise<unkno
 /** GET /apps — list with latest-run badge + a small rank summary per card. */
 async function listApps(env: Env, userId: string): Promise<unknown> {
   const rows = await listAppsForUser(env.DB, userId);
+  const now = new Date();
   const apps = await Promise.all(
     rows.map(async (a) => {
       let latest_run: { id: string; status: string; created_at: string } | null = null;
@@ -1781,6 +1783,18 @@ async function listApps(env: Env, userId: string): Promise<unknown> {
         latest_run,
         rank_summary,
         findings_summary,
+        // The loop's own state — the evidence that the agent has been working
+        // while the user was away. `now` is stamped once outside the map so
+        // every app's next-slot is computed from one instant.
+        loop: toLoopState(
+          {
+            last_sweep_at: a.last_sweep_at,
+            schedule_json: a.schedule_json,
+            agent_run_count: a.agent_run_count,
+            agent_since: a.agent_since,
+          },
+          now,
+        ),
       };
     }),
   );

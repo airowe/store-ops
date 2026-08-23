@@ -466,6 +466,15 @@ export type LatestRun = {
 };
 
 /** `GET /apps` — one app card: identity + latest-run badge + rank/findings summary. */
+/** What the autonomous loop has done for an app (mirrors @shipaso/api). */
+export type LoopState = {
+  last_sweep_at: string | null;
+  next_sweep_at: string | null;
+  /** 0 is a measurement here — we counted and found none — never an absence. */
+  agent_run_count: number;
+  agent_since: string | null;
+};
+
 export type AppListItem = {
   id: string;
   bundle_id: string;
@@ -475,6 +484,8 @@ export type AppListItem = {
   latest_run: LatestRun | null;
   rank_summary: RankSummary | null;
   findings_summary: FindingsSummary | null;
+  /** Optional: a Worker predating this field omits the key entirely. */
+  loop?: LoopState | null;
 };
 
 export type AppList = { apps: AppListItem[] };
