@@ -23,6 +23,7 @@
  */
 import { useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
+import { LoopStatus } from "../dashboard/LoopStatus.js";
 import type { ApiClient } from "@shipaso/api";
 import { getApp, getCredentials, getDeltas, getEngagement, getRanks, getStanding, runApp } from "@shipaso/api";
 import { timeAgo } from "@shipaso/honesty";
@@ -117,7 +118,7 @@ export function AppDetailView({
   if (appQ.isLoading) return <p className="muted">Loading…</p>;
   if (appQ.isError || !appQ.data) return <p className="muted">Couldn’t load this app. Try again.</p>;
 
-  const { app, runs } = appQ.data;
+  const { app, runs, loop } = appQ.data;
   const points = ranksQ.data?.points ?? [];
   const annotations = ranksQ.data?.annotations ?? [];
   const entries = deltasQ.data?.entries ?? [];
@@ -213,6 +214,20 @@ export function AppDetailView({
           </p>
         ) : null}
       </header>
+
+      {/* What the loop has done for THIS app, in the same words the
+          dashboard uses across the fleet. */}
+      {loop ? (
+        <LoopStatus
+          summary={{
+            lastSweepAt: loop.last_sweep_at,
+            nextSweepAt: loop.next_sweep_at,
+            agentRunCount: loop.agent_run_count,
+            agentSince: loop.agent_since,
+          }}
+          now={new Date()}
+        />
+      ) : null}
 
       {/* store tabs — App Store active; Google Play behind a connect chip */}
       <div className="store-tabs" data-testid="store-tabs">

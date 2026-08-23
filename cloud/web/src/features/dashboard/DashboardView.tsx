@@ -16,6 +16,8 @@ import { runStatusLabel } from "../../lib/status.js";
 import { Sparkline } from "../charts/Sparkline.js";
 import { MultiLineChart, SERIES_COLORS } from "../charts/MultiLineChart.js";
 import { greeting, kpis, heroApp, pendingCount } from "./dashboardModel.js";
+import { loopSummary } from "./loopSummary.js";
+import { LoopStatus } from "./LoopStatus.js";
 import { movers, series, type FleetDeltas, type FleetRanks } from "./fleetModel.js";
 
 export function DashboardView({ client, onOpen }: { client: ApiClient; onOpen: (id: string) => void }) {
@@ -80,6 +82,9 @@ export function DashboardView({ client, onOpen }: { client: ApiClient; onOpen: (
         <div className={"dash-eyebrow" + (g.urgent ? " urgent" : "")}>{g.eyebrow}</div>
         <h1 className="dash-headline">{g.headline}</h1>
       </header>
+
+      {/* The loop itself: what the agents did while nobody was looking. */}
+      <LoopStatus summary={loopSummary(apps)} now={new Date()} />
 
       {/* KPI strip: awaiting-you card + derived metrics */}
       <div className="kpi-strip">

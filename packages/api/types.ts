@@ -140,6 +140,8 @@ export type RunRow = { id: string; status: RunStatus; created_at: string };
 export type AppDetail = {
   app: { id: string; bundle_id: string; name: string; country: string };
   runs: RunRow[];
+  /** Optional: a Worker predating this field omits the key entirely. */
+  loop?: LoopState | null;
 };
 
 // ── run detail (the money screen) ───────────────────────────────────────────
