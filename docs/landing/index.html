@@ -10,6 +10,28 @@
 <meta property="og:description" content="Audit, research, optimize, push, and verify — App Store and Google Play. Free MIT plugin or a live hosted agent.">
 <meta property="og:type" content="website">
 <meta property="og:url" content="https://shipaso.com">
+<!--
+  The unfurl card. Absent until 2026-08-23, so every shared shipaso.com link
+  rendered as a bare URL with no preview — on X, a link post with no card is
+  the difference between a read and a scroll-past.
+
+  og:image must be an ABSOLUTE url (crawlers do not resolve relative paths) and
+  twitter:card must be present or X falls back to no card even when og:image
+  resolves. Both were missing, either one alone being enough to break it.
+
+  The card states what the product does; it does not claim a rank win. A
+  measured win belongs on a proof card (cloud/src/shareCard.ts) tied to real
+  data, never on a static site card.
+-->
+<meta property="og:image" content="https://shipaso.com/og/card.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="ShipASO — ASO on autopilot. Your agents watch your rankings, spot what moved, and prepare the fix. You approve.">
+<meta property="og:site_name" content="ShipASO">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="ShipASO — ASO on autopilot">
+<meta name="twitter:description" content="Your agents watch your rankings, spot what moved, and prepare the fix. You approve. App Store and Google Play.">
+<meta name="twitter:image" content="https://shipaso.com/og/card.png">
 <link rel="canonical" href="https://shipaso.com">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%230b0e14'/%3E%3Cg fill='%2334d399'%3E%3Cpath d='M16 6 L8.5 17 h15 Z'/%3E%3Cpath d='M5.5 19 h21 l-3 5 H8.5 Z'/%3E%3C/g%3E%3Cline x1='16' y1='8' x2='16' y2='17' stroke='%230b0e14' stroke-width='1.5'/%3E%3C/svg%3E">
 <link rel="preconnect" href="https://fonts.googleapis.com">
