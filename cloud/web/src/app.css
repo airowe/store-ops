@@ -623,6 +623,18 @@ pre {
   color: var(--ink); margin: 8px 0 0; line-height: 1.08;
 }
 
+/* ── Run actor mark: who opened this run ───────────────────────────────────
+   A glyph, not a colour swatch. The distinction between an agent-opened run
+   and one the user asked for has to survive greyscale, colour blindness, and a
+   landing-page screenshot — colour alone fails all three. */
+.run-actor {
+  font-family: var(--mono); font-size: 11px; line-height: 1;
+  flex: none; width: 1.1em; text-align: center; cursor: default;
+}
+.run-actor.is-agent { color: var(--signal); }
+.run-actor.is-human { color: var(--dim); }
+.run-actor.is-system { color: var(--faint); }
+
 /* ── Loop status: the autopilot, stated where a user lands ─────────────────
    Static by design. The sweep fires on the hour and finishes in seconds, so a
    moving indicator would imply continuous activity that does not exist. The

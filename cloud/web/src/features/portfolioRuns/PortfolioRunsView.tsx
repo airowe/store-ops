@@ -31,6 +31,7 @@ import type { ApiClient, FindingsSummary, PortfolioRunRow, RunStatus } from "@sh
 import { approveAllRuns, getPortfolioRuns } from "@shipaso/api";
 import { timeAgo } from "@shipaso/honesty";
 import { runStatusLabel } from "../../lib/status.js";
+import { RunActorMark } from "../run/RunActorMark.js";
 import {
   applyFilter,
   groupByDay,
@@ -295,6 +296,7 @@ function HistoryRow({ run }: { run: PortfolioRunRow }) {
       data-run-id={run.id}
     >
       <span className={`pruns-status-dot ${tone}`} aria-hidden="true" />
+      <RunActorMark trigger={run.trigger} />
       <span className="pruns-history-app">{run.app_name}</span>
       <span className={`pruns-history-status ${tone}`}>{runStatusLabel(run.status)}</span>
       <span className="pruns-history-age">{timeAgo(run.created_at, Date.now())}</span>

@@ -1167,13 +1167,18 @@ export async function latestRunTraceForApp(
 export async function listRunsForApp(
   db: D1Database,
   appId: string,
-): Promise<Array<{ id: string; status: RunStatus; created_at: string }>> {
+): Promise<
+  Array<{ id: string; status: RunStatus; created_at: string; reasoning_json: string }>
+> {
   const { results } = await db
     .prepare(
-      "SELECT id, status, created_at FROM runs WHERE app_id = ? ORDER BY created_at DESC, id DESC",
+      // reasoning_json carries the trigger, which the list needs to say WHO
+      // opened each run. Selected here rather than fetched per row: an app with
+      // 29 runs (a real count on this account) would otherwise be 29 reads.
+      "SELECT id, status, created_at, reasoning_json FROM runs WHERE app_id = ? ORDER BY created_at DESC, id DESC",
     )
     .bind(appId)
-    .all<{ id: string; status: RunStatus; created_at: string }>();
+    .all<{ id: string; status: RunStatus; created_at: string; reasoning_json: string }>();
   return results ?? [];
 }
 
