@@ -69,13 +69,18 @@ export function LoopStatus({ summary, now }: { summary: LoopSummary; now: Date }
       <p className="loop-status-head">
         <span className="loop-dot" aria-hidden="true" />
         <span className="loop-label">Agents active</span>
+        {/* The separator's leading space is a non-breaking space IN THE TEXT,
+            not CSS margin and not `{" "}`. JSX collapses a leading space at the
+            start of a line, which shipped as "active· last checked"; CSS margin
+            fixes the pixels but leaves the DOM text (and screen readers, and
+            copy-paste) still welded together. */}
         {lastSweepAt ? (
-          <span className="loop-clause"> · last checked {relativeDay(lastSweepAt, now)}</span>
+          <span className="loop-clause">{"\u00a0· "}last checked {relativeDay(lastSweepAt, now)}</span>
         ) : null}
         {nextSweepAt ? (
           <span className="loop-clause">
-            {" "}
-            · {lastSweepAt ? "next check" : "first check"} {slotLabel(nextSweepAt)}
+            {"\u00a0· "}
+            {lastSweepAt ? "next check" : "first check"} {slotLabel(nextSweepAt)}
           </span>
         ) : null}
       </p>
