@@ -159,7 +159,7 @@ Gates: cloud 2647/2647, mobile 468/468, typecheck clean both packages.
 
 Replaces everything from "Sign-in is passwordless" through "…within the window."
 Leave the rest of the notes as they are. `[PASTE TOKEN]` is the output of
-`cd cloud && npx tsx scripts/mint-review-token.mts`.
+`npx tsx cloud/scripts/mint-review-token.mts` (run from the repo root).
 
 > HOW TO SIGN IN — NO EMAIL REQUIRED
 >

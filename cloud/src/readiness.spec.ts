@@ -248,17 +248,19 @@ describe("auditReadiness — Stripe secret key (rename migration #9)", () => {
   });
 });
 
-describe("auditReadiness — email delivery (Brevo preferred, Resend fallback)", () => {
-  it("passes on Resend alone (the prodEnv default)", () => {
+describe("auditReadiness — email delivery (Resend)", () => {
+  it("passes on Resend (the prodEnv default)", () => {
     expect(check(auditReadiness(prodEnv()), "email_delivery").ok).toBe(true);
   });
 
-  it("passes on Brevo alone, even with Resend unset", () => {
-    const over = { RESEND_API_KEY: undefined, RESEND_FROM: undefined, BREVO_API_KEY: "xkeysib", BREVO_FROM: "ShipASO <login@shipaso.com>" } as EnvOverrides;
-    expect(check(auditReadiness(prodEnv(over)), "email_delivery").ok).toBe(true);
+  it("warns when only half the Resend pair is set", () => {
+    const over = { RESEND_FROM: undefined } as EnvOverrides;
+    const c = check(auditReadiness(prodEnv(over)), "email_delivery");
+    expect(c.ok).toBe(false);
+    expect(c.severity).toBe("warn");
   });
 
-  it("warns when neither provider is fully configured", () => {
+  it("warns when Resend is not configured at all", () => {
     const over = { RESEND_API_KEY: undefined, RESEND_FROM: undefined } as EnvOverrides;
     const c = check(auditReadiness(prodEnv(over)), "email_delivery");
     expect(c.ok).toBe(false);
