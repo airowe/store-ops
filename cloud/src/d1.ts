@@ -1744,6 +1744,31 @@ export async function hasOpenRun(db: D1Database, appId: string): Promise<boolean
   return row !== null;
 }
 
+/**
+ * Age in whole days of the app's OLDEST open approval gate, or null when none
+ * is open. Callers decide what counts as stale; this only measures.
+ *
+ * `hasOpenRun` answers "is one open?", which is the wrong question for the
+ * weekly sweep: an unanswered gate made the app permanently ineligible for a
+ * new one, so a single un-approved run silenced every future notification
+ * (#492). Age is what distinguishes "the human is still deciding" from "this
+ * has been abandoned and the app has gone quiet".
+ *
+ * julianday() rather than date arithmetic on strings: created_at is stored as
+ * `datetime('now')` (UTC, second precision), and a text comparison would count
+ * a gate opened 23 hours ago as a day old.
+ */
+export async function openRunAgeDays(db: D1Database, appId: string): Promise<number | null> {
+  const row = await db
+    .prepare(
+      "SELECT CAST(julianday('now') - julianday(MIN(created_at)) AS INTEGER) age " +
+        "FROM runs WHERE app_id = ? AND status = 'awaiting_approval'",
+    )
+    .bind(appId)
+    .first<{ age: number | null }>();
+  return row?.age ?? null;
+}
+
 // ── App competitors (#72) ─────────────────────────────────────────────────────
 // The competitors an app actually WATCHES. Two sources: auto-discovery
 // (status='suggested' until the human confirms) and user entry (confirmed

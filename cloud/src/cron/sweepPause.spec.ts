@@ -18,7 +18,7 @@ const getTier = vi.fn(async (_db: unknown, _userId: string): Promise<string> => 
 const listAllApps = vi.fn(async (): Promise<Array<Record<string, string>>> => []);
 const persistRun = vi.fn(async (): Promise<string> => "run-x");
 const getLatestCompetitorMap = vi.fn(async () => ({}));
-const hasOpenRun = vi.fn(async () => false);
+const openRunAgeDays = vi.fn(async (): Promise<number | null> => null);
 const getUser = vi.fn(async () => ({ email: "owner@example.com" }));
 const getRankHistory = vi.fn(async () => []);
 const runAgent = vi.fn();
@@ -31,7 +31,7 @@ vi.mock("../d1.js", () => ({
   persistRun: () => persistRun(),
   getLatestCompetitorMap: () => getLatestCompetitorMap(),
   latestRunTraceForApp: async () => null,
-  hasOpenRun: () => hasOpenRun(),
+  openRunAgeDays: () => openRunAgeDays(),
   getUser: () => getUser(),
   getRankHistory: () => getRankHistory(),
   confirmedCompetitorKeys: async () => [], // #72: sweep watches confirmed rows

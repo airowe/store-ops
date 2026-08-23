@@ -10,7 +10,10 @@
  * are pruned so dead devices don't accumulate. Nothing here persists or logs
  * credentials; full push tokens are never echoed.
  */
-import { deleteDeviceToken, getPushRunReady, listDeviceTokensForUser } from "./d1.js";
+import { deleteDeviceToken, getPushRunReady, getUser, listDeviceTokensForUser } from "./d1.js";
+import { emailSenderForEnv } from "./emailSender.js";
+import { runReadyMessage } from "./runReadyEmail.js";
+import type { Env } from "./index.js";
 
 /**
  * A POST-capable fetch (the engine's `FetchFn` is headers-only). The Worker's
@@ -158,15 +161,28 @@ export async function notifyRunAwaitingApproval(
   db: D1Database,
   app: { user_id: string; name: string; bundle_id: string },
   runId: string,
-  opts: { fixLabel?: string | undefined; endpoint?: string | undefined } = {},
+  opts: {
+    fixLabel?: string | undefined;
+    endpoint?: string | undefined;
+    /** Enables the email fallback. Omitted → push-only (the historical behavior). */
+    env?: Env | undefined;
+    reasons?: readonly string[] | undefined;
+  } = {},
 ): Promise<number> {
   try {
-    // Preference gate (comms-prefs): the owner turned run-ready push off →
-    // send NOTHING, before any token read. Missing row/pre-migration → ON
-    // (today's behavior). The run itself is untouched either way.
+    // Preference gate (comms-prefs): the owner turned run-ready notifications
+    // off → send NOTHING on EITHER channel, before any token read. "Do not tell
+    // me a run is ready" is about the event, not the transport. Missing
+    // row/pre-migration → ON (today's behavior). The run itself is untouched.
     if (!(await getPushRunReady(db, app.user_id))) return 0;
     const tokens = await listDeviceTokensForUser(db, app.user_id);
-    if (tokens.length === 0) return 0;
+    // No device token → push cannot reach this user at all. A token exists only
+    // for someone who installed the mobile app AND granted permission, which in
+    // production was nobody outside the owner (#494). Fall back to the address
+    // they signed in with.
+    if (tokens.length === 0) {
+      return opts.env ? await emailRunReady(opts.env, db, app, runId, opts.reasons) : 0;
+    }
     const messages = buildRunReadyMessages(tokens, {
       appName: app.name || app.bundle_id,
       runId,
@@ -186,6 +202,36 @@ export async function notifyRunAwaitingApproval(
     // Best-effort end to end: a token-read failure must NEVER abort the run/sweep
     // that triggered the notification.
     console.error(`[store-ops push] notify failed for app ${app.bundle_id}: ${String(e)}`);
+    return 0;
+  }
+}
+
+/**
+ * Email the owner that a run awaits approval. Best-effort, same as push: a
+ * send failure returns 0 ("nobody reached") rather than throwing, because the
+ * run itself is already recorded and must not be undone by a mail problem.
+ */
+async function emailRunReady(
+  env: Env,
+  db: D1Database,
+  app: { user_id: string; name: string; bundle_id: string },
+  runId: string,
+  reasons: readonly string[] | undefined,
+): Promise<number> {
+  try {
+    const user = await getUser(db, app.user_id);
+    const to = user?.email?.trim();
+    if (!to) return 0;
+    const origin = (env.DASHBOARD_ORIGIN ?? "https://app.shipaso.com").replace(/\/+$/, "");
+    const msg = runReadyMessage({
+      appName: app.name || app.bundle_id,
+      runUrl: `${origin}/runs/${runId}`,
+      ...(reasons?.length ? { reasons } : {}),
+    });
+    await emailSenderForEnv(env).send({ to, ...msg });
+    return 1;
+  } catch (e) {
+    console.error(`[store-ops push] run-ready email failed for ${app.bundle_id}: ${String(e)}`);
     return 0;
   }
 }
