@@ -237,7 +237,10 @@ export async function runKeyedSweepForApp(
     // Notify the owner on their phone — the whole point of push: a run opened
     // while they were away. Best-effort (no tokens / blocked egress → no-op);
     // a notification failure never affects the recorded run.
-    await notifyRunAwaitingApproval(globalThis.fetch, env.DB, app, runId);
+    await notifyRunAwaitingApproval(globalThis.fetch, env.DB, app, runId, {
+      env,
+      reasons: decision.reasons,
+    });
   } else {
     // No threshold crossed (or a run is already open, or the owner set
     // notify-only #53): still persist this week's snapshots as a recorded
