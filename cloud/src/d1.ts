@@ -2036,6 +2036,51 @@ export async function getLastSweepAt(db: D1Database, appId: string): Promise<str
   }
 }
 
+/**
+ * One app's loop-state row, for the detail view. Mirrors the aggregate that
+ * rides `listAppsForUser`, and fails open the same way `getLastSweepAt` does:
+ * a missing table/column predates this feature and must read as "no data", not
+ * as an error that blanks the whole page.
+ */
+export async function loopStateRowForApp(
+  db: D1Database,
+  appId: string,
+): Promise<{
+  last_sweep_at: string | null;
+  schedule_json: string | null;
+  agent_run_count: number | null;
+  agent_since: string | null;
+} | null> {
+  try {
+    return await db
+      .prepare(
+        `SELECT s.last_sweep_at AS last_sweep_at,
+                s.schedule_json AS schedule_json,
+                (SELECT COUNT(*) FROM runs cr
+                  WHERE cr.app_id = ?1
+                    AND json_extract(cr.reasoning_json, '$.trigger.source') = 'cron'
+                ) AS agent_run_count,
+                (SELECT MIN(cr.created_at) FROM runs cr
+                  WHERE cr.app_id = ?1
+                    AND json_extract(cr.reasoning_json, '$.trigger.source') = 'cron'
+                ) AS agent_since
+         FROM apps a
+         LEFT JOIN app_settings s ON s.app_id = a.id
+         WHERE a.id = ?1`,
+      )
+      .bind(appId)
+      .first<{
+        last_sweep_at: string | null;
+        schedule_json: string | null;
+        agent_run_count: number | null;
+        agent_since: string | null;
+      }>();
+  } catch (e) {
+    if (e instanceof Error && /no such (table|column)/i.test(e.message)) return null;
+    throw e;
+  }
+}
+
 /** Stamp the sweep completion. Best-effort: a failed stamp never fails the sweep. */
 export async function setLastSweepAt(db: D1Database, appId: string, at: string): Promise<void> {
   try {

@@ -176,6 +176,7 @@ import {
   listCompetitorSnapshots,
   getPlayFunnelSeries,
   listRunsForApp,
+  loopStateRowForApp,
   persistPlayChartRank,
   persistRankSnapshots,
   persistRun,
@@ -3307,9 +3308,13 @@ function asaPopularityEnabled(env: Env): boolean {
 async function appDetail(env: Env, userId: string, appId: string): Promise<unknown> {
   const app = await requireOwnedApp(env, appId, userId);
   const runs = await listRunsForApp(env.DB, appId);
+  const loopRow = await loopStateRowForApp(env.DB, appId);
   return {
     app: { id: app.id, bundle_id: app.bundle_id, name: app.name, country: app.country },
     runs,
+    // The loop's state for THIS app — same shaping as the list view, so the
+    // detail page and the dashboard can never disagree about it.
+    loop: loopRow ? toLoopState(loopRow, new Date()) : null,
   };
 }
 
