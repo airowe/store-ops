@@ -169,7 +169,13 @@ export function OnboardingView({ client, appId, onAppConnected, onDone, onSkip, 
           {/* ── upcoming step (dimmed, optional) ─────────────────── */}
           <div className="onb-upcoming" data-testid="onb-upcoming">
             <span className="onb-num muted" aria-hidden="true">{STEPS.length}</span>
-            <span className="onb-answer-label">Connect a key to push</span>
+            {appId ? (
+              <a className="onb-answer-label" href={`/apps/${appId}`} data-testid="onb-connect-key">
+                Connect a key to push
+              </a>
+            ) : (
+              <span className="onb-answer-label">Connect a key to push</span>
+            )}
             <span className="onb-upcoming-note mono">optional · read-only until you do</span>
           </div>
 

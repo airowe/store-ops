@@ -127,6 +127,19 @@ describe("<OnboardingView /> — guided setup stepper (1a)", () => {
     );
   });
 
+  it("links the optional key step to the credential surface", () => {
+    renderOnb({ initial: atRivals, appId: "app-1" });
+    // A control that goes nowhere is not a control (#503): this is a real
+    // anchor, so it works pre-hydration and supports middle/right-click.
+    expect(screen.getByTestId("onb-connect-key")).toHaveAttribute("href", "/apps/app-1");
+    expect(screen.getByTestId("onb-upcoming")).toHaveTextContent(/read-only until you do/i);
+  });
+
+  it("keeps the approval promise on screen", () => {
+    renderOnb({ initial: atRivals, appId: "app-1" });
+    expect(screen.getByText(/nothing ships on its own/i)).toBeInTheDocument();
+  });
+
   it("claims no audit grade for a freshly connected app", async () => {
     renderOnb({ initial: { stepIndex: 2, store: "app-store", app: { name: "Acme" }, rivals: [], suggested: [] } });
     expect(screen.getByTestId("onb-answer-app")).toHaveTextContent("Acme");
