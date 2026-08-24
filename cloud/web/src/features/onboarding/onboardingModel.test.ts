@@ -5,14 +5,14 @@ import {
   removeRival,
   progressState,
   storeLabel,
-  sampleState,
+  emptyState,
   type OnboardingState,
 } from "./onboardingModel.js";
 
 const base = (): OnboardingState => ({
   stepIndex: 2,
   store: "app-store",
-  app: { name: "Cal AI", grade: "A−" },
+  app: { name: "Cal AI" },
   rivals: ["MyFitnessPal"],
   suggested: ["Lifesum", "Yazio"],
 });
@@ -70,13 +70,19 @@ describe("onboardingModel", () => {
     });
   });
 
-  describe("sampleState", () => {
-    it("matches the design: step 3 (rivals), App Store, Cal AI graded A−", () => {
-      const s = sampleState();
-      expect(STEPS[s.stepIndex]).toBe("rivals");
-      expect(s.store).toBe("app-store");
-      expect(s.app).toEqual({ name: "Cal AI", grade: "A−" });
-      expect(s.rivals).toEqual(["MyFitnessPal", "Lose It!"]);
+  // The default state a real user starts from. This replaced sampleState(),
+  // which seeded a fabricated app ("Cal AI") and a fabricated audit grade
+  // ("A−") and rendered them as the user's OWN result — a measured-or-nothing
+  // violation that shipped because the old test asserted the fake values were
+  // present rather than that nothing was invented.
+  describe("emptyState", () => {
+    it("invents no app, no grade, no store, and no rivals", () => {
+      const s = emptyState();
+      expect(s.app).toBeNull();
+      expect(s.store).toBeNull();
+      expect(s.rivals).toEqual([]);
+      expect(s.suggested).toEqual([]);
+      expect(STEPS[s.stepIndex]).toBe("store");
     });
   });
 });

@@ -19,8 +19,14 @@ export type OnboardingState = {
   stepIndex: number;
   /** Chosen store (step 1). */
   store: Store | null;
-  /** Connected app name + honest audit grade (step 2). Grade is never faked. */
-  app: { name: string; grade: string | null } | null;
+  /**
+   * The connected app (step 2). Name only: POST /apps returns
+   * { id, name, bundleId } and carries NO grade — a grade exists only once the
+   * run that connecting triggers has completed. types.ts:649 records what
+   * happens when a type claims a field the server never sends: every read is
+   * undefined and the UI renders empty, silently.
+   */
+  app: { name: string } | null;
   /** Confirmed rivals — only these feed runs (step 3). */
   rivals: string[];
   /** Suggested-from-keywords rivals not yet confirmed. */
@@ -54,13 +60,14 @@ export function removeRival(state: OnboardingState, rival: string): OnboardingSt
   return { ...state, rivals: state.rivals.filter((r) => r !== rival) };
 }
 
-/** The sample state the design renders: step 3, App Store + Cal AI (A−). */
-export function sampleState(): OnboardingState {
-  return {
-    stepIndex: STEPS.indexOf("rivals"),
-    store: "app-store",
-    app: { name: "Cal AI", grade: "A−" },
-    rivals: ["MyFitnessPal", "Lose It!"],
-    suggested: ["Lifesum", "Yazio", "Noom"],
-  };
+/**
+ * The starting state for a real user: nothing answered, nothing invented.
+ *
+ * Replaces sampleState(), which seeded a fabricated app ("Cal AI") and a
+ * fabricated audit grade ("A−") and rendered them as the user's own result.
+ * Measured-or-nothing: an unanswered step renders empty, never a plausible
+ * sample. Fixtures for tests belong in tests.
+ */
+export function emptyState(): OnboardingState {
+  return { stepIndex: 0, store: null, app: null, rivals: [], suggested: [] };
 }

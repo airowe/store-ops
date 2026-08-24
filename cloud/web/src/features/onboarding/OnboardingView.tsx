@@ -15,7 +15,7 @@ import {
   addRival,
   removeRival,
   progressState,
-  sampleState,
+  emptyState,
   type OnboardingState,
 } from "./onboardingModel.js";
 
@@ -29,7 +29,7 @@ type Props = {
 };
 
 export function OnboardingView({ onDone, onSkip, initial }: Props) {
-  const [state, setState] = useState<OnboardingState>(initial ?? sampleState());
+  const [state, setState] = useState<OnboardingState>(initial ?? emptyState());
   const segments = progressState(state.stepIndex);
   const stepNo = state.stepIndex + 1;
 
@@ -77,9 +77,6 @@ export function OnboardingView({ onDone, onSkip, initial }: Props) {
               <span className="onb-check" aria-hidden="true">✓</span>
               <span className="onb-answer-label">Your app</span>
               <span className="onb-answer-value">{state.app.name}</span>
-              {state.app.grade ? (
-                <span className="onb-grade-pill mono">Audited: {state.app.grade}</span>
-              ) : null}
               <button type="button" className="onb-edit mono">Edit</button>
             </div>
           ) : null}
