@@ -11,6 +11,7 @@ import { useState } from "react";
 import { useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { ApiClient, AppListItem } from "@shipaso/api";
 import { ApiError, approveAllRuns, getApps, getDeltas, getRanks } from "@shipaso/api";
+import { Navigate } from "@tanstack/react-router";
 import { ConnectAppCard } from "../connect/ConnectAppCard.js";
 import { formatRank } from "@shipaso/honesty";
 import { runStatusLabel } from "../../lib/status.js";
@@ -58,19 +59,12 @@ export function DashboardView({ client, onOpen }: { client: ApiClient; onOpen: (
   const apps = appsQ.data?.apps ?? [];
   const pending = pendingCount(apps);
 
+  // A user with nothing connected has no dashboard to show. Send them to the
+  // guided setup rather than a card that duplicates it. This sits AFTER the
+  // isPending / 401 / error guards on purpose: redirecting on a list we have
+  // not actually received would bounce a logged-out or still-loading visitor.
   if (apps.length === 0) {
-    return (
-      <section>
-        <ConnectAppCard client={client} onConnected={onOpen} />
-        <div className="empty" data-testid="empty">
-          <div className="big">🛰️</div>
-          <div>No apps connected yet.</div>
-          <div className="faint">
-            Connect one above — the agent audits it, ranks it on real iTunes data, and drafts optimized copy.
-          </div>
-        </div>
-      </section>
-    );
+    return <Navigate to="/onboarding" replace />;
   }
 
   const g = greeting(apps);

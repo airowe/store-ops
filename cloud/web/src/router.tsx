@@ -14,12 +14,14 @@ import { RunRoute } from "./routes/run.js";
 import { PortfolioRunsRoute } from "./routes/portfolioRuns.js";
 import { PortfolioKeywordsRoute } from "./routes/portfolioKeywords.js";
 import { PortfolioCompetitorsRoute } from "./routes/portfolioCompetitors.js";
+import { OnboardingRoute } from "./routes/onboarding.js";
 import { NotFoundRoute } from "./routes/notFound.js";
 import { LandingRoute, LoginRoute, PreviewRoute, ProofRoute, BroadcastRoute, PrivacyRoute, SupportRoute, TermsRoute } from "./routes/public.js";
 
 const rootRoute = createRootRoute({ component: ShellLayout });
 
 const indexRoute = createRoute({ getParentRoute: () => rootRoute, path: "/", component: LandingRoute });
+const onboardingRoute = createRoute({ getParentRoute: () => rootRoute, path: "/onboarding", component: OnboardingRoute });
 const dashboardRoute = createRoute({ getParentRoute: () => rootRoute, path: "/dashboard", component: DashboardRoute });
 const healthRoute = createRoute({ getParentRoute: () => rootRoute, path: "/_shell/health", component: Health });
 const settingsRoute = createRoute({ getParentRoute: () => rootRoute, path: "/settings", component: SettingsRoute });
@@ -45,6 +47,7 @@ const broadcastRoute = createRoute({ getParentRoute: () => rootRoute, path: "/br
 const routeTree = rootRoute.addChildren([
   indexRoute,
   dashboardRoute,
+  onboardingRoute,
   healthRoute,
   settingsRoute,
   appDetailRoute,

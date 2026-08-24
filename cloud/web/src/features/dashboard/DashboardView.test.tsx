@@ -1,9 +1,18 @@
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, waitFor, fireEvent } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import type { ApiClient } from "@shipaso/api";
 import { ApiError } from "@shipaso/api";
 import { DashboardView } from "./DashboardView.js";
+
+const navigateSpy = vi.fn();
+vi.mock("@tanstack/react-router", () => ({
+  useNavigate: () => navigateSpy,
+  Navigate: ({ to, replace }: { to: string; replace?: boolean }) => {
+    navigateSpy({ to, replace });
+    return null;
+  },
+}));
 
 function client(apps: unknown[], over: Partial<Record<"post", any>> = {}) {
   const get = vi.fn(async (path: string) => {
@@ -29,6 +38,8 @@ const app = {
 };
 
 describe("<DashboardView />", () => {
+  beforeEach(() => navigateSpy.mockClear());
+
   it("a logged-out visitor is asked to sign in, not told to 'try again'", async () => {
     // /apps 401s when there's no session. The old code lumped that in with every
     // other failure and said "Couldn't load your apps. Try again." — untrue, and
@@ -56,6 +67,10 @@ describe("<DashboardView />", () => {
 
     expect(await screen.findByText(/loading your apps/i)).toBeInTheDocument();
     expect(screen.queryByText(/no apps connected yet/i)).not.toBeInTheDocument();
+    // Same hazard, new form: a redirect fired mid-load would bounce a
+    // logged-out visitor into setup on the strength of an empty list we have
+    // not actually received yet.
+    expect(navigateSpy).not.toHaveBeenCalled();
   });
 
   it("a real failure (not a 401) still says try again", async () => {
@@ -78,11 +93,21 @@ describe("<DashboardView />", () => {
     await waitFor(() => expect(screen.getByTestId("app-card-a1")).toBeInTheDocument());
   });
 
-  it("shows the honest empty state when no apps are connected", async () => {
+  it("sends a user with no apps to the guided setup", async () => {
     const { c } = client([]);
     renderView(c);
-    await waitFor(() => expect(screen.getByTestId("empty")).toBeInTheDocument());
-    expect(screen.getByText(/No apps connected yet/i)).toBeInTheDocument();
+    await waitFor(() =>
+      expect(navigateSpy).toHaveBeenCalledWith({ to: "/onboarding", replace: true }),
+    );
+  });
+
+  // The negative control. Without it, an unconditional redirect passes the
+  // test above — and every existing user would be bounced into setup.
+  it("does not redirect a user who already has an app", async () => {
+    const { c } = client([app]);
+    renderView(c);
+    await waitFor(() => expect(screen.getByTestId("dashboard")).toBeInTheDocument());
+    expect(navigateSpy).not.toHaveBeenCalled();
   });
 
   it("offers Approve-all when >1 run is pending, and reports the count", async () => {
@@ -150,7 +175,7 @@ describe("<DashboardView />", () => {
       if (path === "/apps") return { id: "new1", name: body.name, bundleId: body.bundle_id };
       throw new Error("unexpected POST " + path);
     });
-    const { c } = client([], { post });
+    const { c } = client([app], { post });
     const onOpen = vi.fn();
     renderView(c, onOpen);
 
