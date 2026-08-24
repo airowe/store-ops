@@ -14,7 +14,6 @@ import { RunRoute } from "./routes/run.js";
 import { PortfolioRunsRoute } from "./routes/portfolioRuns.js";
 import { PortfolioKeywordsRoute } from "./routes/portfolioKeywords.js";
 import { PortfolioCompetitorsRoute } from "./routes/portfolioCompetitors.js";
-import { OnboardingRoute } from "./routes/onboarding.js";
 import { NotFoundRoute } from "./routes/notFound.js";
 import { LandingRoute, LoginRoute, PreviewRoute, ProofRoute, BroadcastRoute, PrivacyRoute, SupportRoute, TermsRoute } from "./routes/public.js";
 
@@ -33,7 +32,6 @@ const runRoute = createRoute({ getParentRoute: () => rootRoute, path: "/runs/$id
 const portfolioRunsRoute = createRoute({ getParentRoute: () => rootRoute, path: "/runs", component: PortfolioRunsRoute });
 const portfolioKeywordsRoute = createRoute({ getParentRoute: () => rootRoute, path: "/keywords", component: PortfolioKeywordsRoute });
 const portfolioCompetitorsRoute = createRoute({ getParentRoute: () => rootRoute, path: "/competitors", component: PortfolioCompetitorsRoute });
-const onboardingRoute = createRoute({ getParentRoute: () => rootRoute, path: "/onboarding", component: OnboardingRoute });
 const loginRoute = createRoute({ getParentRoute: () => rootRoute, path: "/login", component: LoginRoute });
 const previewRoute = createRoute({ getParentRoute: () => rootRoute, path: "/preview", component: PreviewRoute });
 const proofRoute = createRoute({ getParentRoute: () => rootRoute, path: "/proof", component: ProofRoute });
@@ -55,7 +53,6 @@ const routeTree = rootRoute.addChildren([
   portfolioRunsRoute,
   portfolioKeywordsRoute,
   portfolioCompetitorsRoute,
-  onboardingRoute,
   loginRoute,
   previewRoute,
   proofRoute,

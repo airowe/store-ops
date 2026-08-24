@@ -101,7 +101,11 @@ describe("resolveSurface (strangler edge map)", () => {
     expect(resolveSurface("/broadcast", OWNED_PATHS)).toBe("web");
   });
 
-  it("owns /onboarding (guided setup stepper)", () => {
-    expect(resolveSurface("/onboarding", OWNED_PATHS)).toBe("web");
+  // Temporarily un-owned while the guided setup is completed (#504 cutover).
+  // The flow is reachable by URL, so a partial wizard would be visible to
+  // anyone who guesses the path — including an App Review reviewer. Restored
+  // in the final task of docs/superpowers/plans/2026-08-24-onboarding-cutover.md
+  it("does not own /onboarding while the flow is incomplete", () => {
+    expect(resolveSurface("/onboarding", OWNED_PATHS)).toBe("legacy");
   });
 });
