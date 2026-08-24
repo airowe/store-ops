@@ -11,10 +11,20 @@ describe("<Topbar />", () => {
     expect(pill.className).toContain("live");
   });
 
-  it("live backend + logged out → a Sign in button, never the demo stub", () => {
+  it("live backend + logged out → a Sign in control, never the demo stub", () => {
     render(<Topbar apiBase="https://api.shipaso.com" session={{ authed: false }} />);
     expect(screen.getByTestId("sign-in")).toBeInTheDocument();
     expect(screen.queryByText(/acting as/i)).toBeNull();
+  });
+
+  // Regression: this shipped as <button type="button"> with no onClick and no
+  // href — styled, labelled, and completely inert. Clicking it did nothing, in
+  // silence. The old assertion (toBeInTheDocument) passed the whole time,
+  // because existing-and-doing-nothing is still existing. An App Review
+  // rejection cited the same failure mode on the Connect button.
+  it("points Sign in at /login — a control that goes nowhere is not a control", () => {
+    render(<Topbar apiBase="https://api.shipaso.com" session={{ authed: false }} />);
+    expect(screen.getByTestId("sign-in")).toHaveAttribute("href", "/login");
   });
 
   it("no API base → demo pill + the acting-as stub", () => {

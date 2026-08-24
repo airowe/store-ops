@@ -25,9 +25,9 @@ export function Topbar({ apiBase, session }: { apiBase: string | null; session: 
           {hs.mode === "demoStub" && <span className="faint">acting as (demo)</span>}
           {hs.mode === "signedIn" && <span data-testid="who-email">{hs.email}</span>}
           {hs.mode === "signIn" && (
-            <button type="button" className="btn ghost" data-testid="sign-in">
+            <a className="btn ghost" href="/login" data-testid="sign-in" style={{ textDecoration: "none" }}>
               Sign in
-            </button>
+            </a>
           )}
           <span className={"env-pill " + pill.kind} title={pill.title} data-testid="env-pill">
             {pill.label}
