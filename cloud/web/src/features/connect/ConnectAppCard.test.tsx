@@ -33,7 +33,7 @@ describe("<ConnectAppCard />", () => {
     fireEvent.click(screen.getByTestId("cand-com.x.y"));
 
     await waitFor(() => expect(post).toHaveBeenCalledWith("/apps", { bundle_id: "com.x.y", name: "XY" }));
-    await waitFor(() => expect(onConnected).toHaveBeenCalledWith("new1"));
+    await waitFor(() => expect(onConnected).toHaveBeenCalledWith("new1", "XY"));
   });
 
   it("re-offers the pick list when the connect comes back ambiguous", async () => {

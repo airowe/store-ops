@@ -43,6 +43,26 @@ export function storeLabel(store: Store): string {
   return store === "app-store" ? "App Store" : "Google Play";
 }
 
+/**
+ * Record the store choice (step 1) and open the app step.
+ *
+ * App Store is the only real option today: POST /apps has no store parameter
+ * and resolves via iTunes (a Play URL is parsed only to mine a bundle id, which
+ * is then looked up on iTunes). The view renders Google Play disabled rather
+ * than offering a choice that would silently connect the wrong listing.
+ */
+export function chooseStore(state: OnboardingState, store: Store): OnboardingState {
+  return { ...state, store, stepIndex: Math.max(state.stepIndex, STEPS.indexOf("app")) };
+}
+
+/**
+ * Record the connected app (step 2) and open the rivals step. Name only — see
+ * the `app` field on OnboardingState for why there is no grade here.
+ */
+export function setApp(state: OnboardingState, app: { name: string }): OnboardingState {
+  return { ...state, app, stepIndex: Math.max(state.stepIndex, STEPS.indexOf("rivals")) };
+}
+
 /** Confirm a suggested rival: move it from `suggested` into `rivals` (idempotent). */
 export function addRival(state: OnboardingState, rival: string): OnboardingState {
   const name = rival.trim();

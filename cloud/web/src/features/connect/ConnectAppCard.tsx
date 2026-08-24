@@ -18,7 +18,8 @@ export function ConnectAppCard({
   heading = "Connect an app",
 }: {
   client: ApiClient;
-  onConnected: (id: string) => void;
+  /** The new app's id and name — both come back from POST /apps. */
+  onConnected: (id: string, name: string) => void;
   /** Overridable so onboarding can ask its own question ("Which app?"). */
   heading?: string;
 }) {
@@ -32,7 +33,7 @@ export function ConnectAppCard({
   const connectMut = useMutation({
     mutationFn: (c: Candidate) => connectApp(client, { bundle_id: c.bundle_id, name: c.name }),
     onSuccess: (r) => {
-      if ("id" in r) onConnected(r.id);
+      if ("id" in r) onConnected(r.id, r.name);
       else setCandidates(r.candidates);
     },
   });

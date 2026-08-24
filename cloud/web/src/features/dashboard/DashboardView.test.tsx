@@ -160,6 +160,6 @@ describe("<DashboardView />", () => {
     await waitFor(() => screen.getByTestId("cand-com.x.y"));
     fireEvent.click(screen.getByTestId("cand-com.x.y"));
     await waitFor(() => expect(post).toHaveBeenCalledWith("/apps", { bundle_id: "com.x.y", name: "XY" }));
-    await waitFor(() => expect(onOpen).toHaveBeenCalledWith("new1"));
+    await waitFor(() => expect(onOpen).toHaveBeenCalledWith("new1", "XY"));
   });
 });
