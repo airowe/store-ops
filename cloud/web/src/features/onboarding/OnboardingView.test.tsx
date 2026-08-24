@@ -68,6 +68,65 @@ describe("<OnboardingView /> — guided setup stepper (1a)", () => {
     await waitFor(() => expect(screen.getByTestId("onb-answer-app")).toHaveTextContent("XY"));
   });
 
+  // Step 3 over the real endpoints. The rivals a user confirms here must feed
+  // their runs; the old implementation kept chips in local state and threw them
+  // away on Continue.
+  const atRivals = { stepIndex: 2, store: "app-store" as const, app: { name: "Acme" }, rivals: [], suggested: [] };
+
+  function rivalsClient(over: { get?: any; post?: any; request?: any } = {}) {
+    return {
+      get: over.get ?? vi.fn(async () => ({ competitors: [] })),
+      post: over.post ?? vi.fn(async () => ({ competitors: [] })),
+      request: over.request ?? vi.fn(async () => ({ competitors: [] })),
+    } as unknown as ApiClient;
+  }
+
+  it("seeds rivals from real discovery and confirms through the API", async () => {
+    const suggested = { key: "k1", name: "Rival One", source: "itunes", status: "suggested" };
+    const post = vi.fn(async (path: string) => {
+      if (path.endsWith("/competitors/discover")) return { competitors: [suggested], discovered: 1 };
+      if (path.endsWith("/competitors/k1/confirm")) return { competitors: [{ ...suggested, status: "confirmed" }] };
+      return { competitors: [] };
+    });
+    renderOnb({ initial: atRivals, appId: "app-1", client: rivalsClient({ post }) });
+
+    fireEvent.click(await screen.findByTestId("onb-suggest-k1"));
+    await waitFor(() =>
+      expect(post).toHaveBeenCalledWith("/apps/app-1/competitors/k1/confirm"),
+    );
+    await waitFor(() => expect(screen.getByTestId("onb-rival-k1")).toBeInTheDocument());
+  });
+
+  it("says there are no suggestions yet rather than inventing seeds", async () => {
+    const post = vi.fn(async () => ({
+      competitors: [],
+      discovered: 0,
+      note: "No tracked keywords yet — add a rival by name.",
+    }));
+    renderOnb({ initial: atRivals, appId: "app-1", client: rivalsClient({ post }) });
+
+    expect(await screen.findByTestId("onb-rivals-empty")).toHaveTextContent(
+      "No tracked keywords yet — add a rival by name.",
+    );
+    expect(screen.queryByTestId(/^onb-suggest-/)).toBeNull();
+  });
+
+  it("adds a typed rival through the API", async () => {
+    const post = vi.fn(async (path: string) => {
+      if (path.endsWith("/competitors/discover")) return { competitors: [] };
+      return { competitors: [{ key: "k9", name: "Typed", source: "manual", status: "confirmed" }] };
+    });
+    renderOnb({ initial: atRivals, appId: "app-1", client: rivalsClient({ post }) });
+
+    await screen.findByTestId("onb-rival-input");
+    fireEvent.change(screen.getByTestId("onb-rival-input"), { target: { value: "Typed" } });
+    fireEvent.click(screen.getByTestId("onb-rival-add"));
+
+    await waitFor(() =>
+      expect(post).toHaveBeenCalledWith("/apps/app-1/competitors", { name: "Typed" }),
+    );
+  });
+
   it("claims no audit grade for a freshly connected app", async () => {
     renderOnb({ initial: { stepIndex: 2, store: "app-store", app: { name: "Acme" }, rivals: [], suggested: [] } });
     expect(screen.getByTestId("onb-answer-app")).toHaveTextContent("Acme");
@@ -100,24 +159,7 @@ describe("<OnboardingView /> — guided setup stepper (1a)", () => {
     expect(segs.filter((s) => s.dataset.filled === "true")).toHaveLength(3);
   });
 
-  it("asks the active question and lets a suggestion be confirmed as a rival", () => {
-    renderOnb({onDone: vi.fn(), onSkip: vi.fn(), initial: answered()});
-    expect(screen.getByTestId("onb-question")).toHaveTextContent("Who are your top rivals?");
-    // Lifesum starts as a suggestion, not a confirmed rival
-    expect(screen.queryByTestId("onb-rival-Lifesum")).not.toBeInTheDocument();
-    fireEvent.click(screen.getByTestId("onb-suggest-Lifesum"));
-    expect(screen.getByTestId("onb-rival-Lifesum")).toBeInTheDocument();
-    // and it leaves the suggestion list
-    expect(screen.queryByTestId("onb-suggest-Lifesum")).not.toBeInTheDocument();
-  });
 
-  it("removes a confirmed rival when its × is clicked", () => {
-    renderOnb({onDone: vi.fn(), onSkip: vi.fn(), initial: answered()});
-    expect(screen.getByTestId("onb-rival-MyFitnessPal")).toBeInTheDocument();
-    const chip = screen.getByTestId("onb-rival-MyFitnessPal");
-    fireEvent.click(within(chip).getByRole("button", { name: /remove/i }));
-    expect(screen.queryByTestId("onb-rival-MyFitnessPal")).not.toBeInTheDocument();
-  });
 
   it("Continue → calls onDone with the collected answers", () => {
     const onDone = vi.fn();

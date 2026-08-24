@@ -12,13 +12,12 @@
 import { useState } from "react";
 import type { ApiClient } from "@shipaso/api";
 import { ConnectAppCard } from "../connect/ConnectAppCard.js";
+import { RivalsStep } from "./RivalsStep.js";
 import {
   STEPS,
-  addRival,
   chooseStore,
   setApp,
   storeLabel,
-  removeRival,
   progressState,
   emptyState,
   type OnboardingState,
@@ -157,43 +156,13 @@ export function OnboardingView({ client, appId, onAppConnected, onDone, onSkip, 
               add or remove any.
             </p>
 
-            <div className="onb-chip-area">
-              <div className="onb-chips" data-testid="onb-rivals">
-                {state.rivals.map((r) => (
-                  <span key={r} className="onb-chip confirmed" data-testid={`onb-rival-${r}`}>
-                    {r}
-                    <button
-                      type="button"
-                      className="onb-chip-x"
-                      aria-label={`Remove ${r}`}
-                      onClick={() => setState((s) => removeRival(s, r))}
-                    >
-                      ×
-                    </button>
-                  </span>
-                ))}
-                <button type="button" className="onb-chip add">+ Add rival</button>
-              </div>
-
-              {state.suggested.length ? (
-                <>
-                  <div className="onb-suggest-label mono">Suggested from your keywords</div>
-                  <div className="onb-chips">
-                    {state.suggested.map((s) => (
-                      <button
-                        key={s}
-                        type="button"
-                        className="onb-chip suggest"
-                        data-testid={`onb-suggest-${s}`}
-                        onClick={() => setState((prev) => addRival(prev, s))}
-                      >
-                        + {s}
-                      </button>
-                    ))}
-                  </div>
-                </>
-              ) : null}
-            </div>
+            {appId ? (
+              <RivalsStep client={client} appId={appId} />
+            ) : (
+              <p className="onb-help" data-testid="onb-rivals-empty">
+                Connect an app first — rivals are watched per app.
+              </p>
+            )}
           </section>
           ) : null}
 
