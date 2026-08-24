@@ -140,6 +140,16 @@ describe("<OnboardingView /> — guided setup stepper (1a)", () => {
     expect(screen.getByText(/nothing ships on its own/i)).toBeInTheDocument();
   });
 
+  // #504: these rendered as real buttons wired to nothing. A collapsed answer
+  // row is reached by not having answered yet; re-editing a connected app is a
+  // dashboard concern. Asserted as absent so they cannot creep back in inert —
+  // the previous pass claimed to have removed them and did not, and no test
+  // noticed, because every other assertion only checks what SHOULD be present.
+  it("offers no dead Edit control on the collapsed answers", () => {
+    renderOnb({ initial: atRivals, appId: "app-1" });
+    expect(screen.queryByText("Edit")).toBeNull();
+  });
+
   it("claims no audit grade for a freshly connected app", async () => {
     renderOnb({ initial: { stepIndex: 2, store: "app-store", app: { name: "Acme" }, rivals: [], suggested: [] } });
     expect(screen.getByTestId("onb-answer-app")).toHaveTextContent("Acme");

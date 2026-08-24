@@ -78,7 +78,6 @@ export function OnboardingView({ client, appId, onAppConnected, onDone, onSkip, 
               <span className="onb-check" aria-hidden="true">✓</span>
               <span className="onb-answer-label">Optimizing first for</span>
               <span className="onb-answer-value">{storeLabel(state.store)}</span>
-              <button type="button" className="onb-edit mono">Edit</button>
             </div>
           ) : null}
 
@@ -87,7 +86,6 @@ export function OnboardingView({ client, appId, onAppConnected, onDone, onSkip, 
               <span className="onb-check" aria-hidden="true">✓</span>
               <span className="onb-answer-label">Your app</span>
               <span className="onb-answer-value">{state.app.name}</span>
-              <button type="button" className="onb-edit mono">Edit</button>
             </div>
           ) : null}
 
