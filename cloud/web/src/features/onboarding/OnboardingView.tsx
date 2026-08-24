@@ -50,7 +50,7 @@ export function OnboardingView({ client, appId, onAppConnected, onDone, onSkip, 
         <header className="onb-head">
           <span className="onb-logo" aria-hidden="true">✓</span>
           <b className="onb-title">Set up ShipASO</b>
-          <span className="onb-step-count mono">Step {stepNo} of {STEPS.length}</span>
+          <span className="onb-step-count mono" data-testid="onb-step-count">Step {stepNo} of {STEPS.length}</span>
           <button
             type="button"
             className="onb-skip-link mono"

@@ -3,7 +3,7 @@ import { render, screen, fireEvent, within, waitFor } from "@testing-library/rea
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import type { ApiClient } from "@shipaso/api";
 import { OnboardingView } from "./OnboardingView.js";
-import { emptyState, type OnboardingState } from "./onboardingModel.js";
+import { emptyState, STEPS, type OnboardingState } from "./onboardingModel.js";
 
 /** A fully-answered fixture. Test data belongs in the test, never in the model. */
 const answered = (): OnboardingState => ({
@@ -71,7 +71,7 @@ describe("<OnboardingView /> — guided setup stepper (1a)", () => {
   // Step 3 over the real endpoints. The rivals a user confirms here must feed
   // their runs; the old implementation kept chips in local state and threw them
   // away on Continue.
-  const atRivals = { stepIndex: 2, store: "app-store" as const, app: { name: "Acme" }, rivals: [], suggested: [] };
+  const atRivals = { stepIndex: STEPS.length - 1, store: "app-store" as const, app: { name: "Acme" }, rivals: [], suggested: [] };
 
   function rivalsClient(over: { get?: any; post?: any; request?: any } = {}) {
     return {
@@ -145,6 +145,17 @@ describe("<OnboardingView /> — guided setup stepper (1a)", () => {
   // dashboard concern. Asserted as absent so they cannot creep back in inert —
   // the previous pass claimed to have removed them and did not, and no test
   // noticed, because every other assertion only checks what SHOULD be present.
+  // The progress bar is a displayed measurement like any other: it must match
+  // where the user actually is. stepIndex stopped at 2 (rivals), so the header
+  // read "Step 3 of 4" forever and the last segment never filled — while step 4
+  // sat visible on the same screen.
+  it("reaches the final step once an app is connected", () => {
+    renderOnb({ initial: atRivals, appId: "app-1" });
+    expect(screen.getByTestId("onb-step-count")).toHaveTextContent("Step 4 of 4");
+    const segs = screen.getAllByTestId(/^onb-seg-/);
+    expect(segs.filter((el) => el.dataset.filled === "true")).toHaveLength(4);
+  });
+
   it("offers no dead Edit control on the collapsed answers", () => {
     renderOnb({ initial: atRivals, appId: "app-1" });
     expect(screen.queryByText("Edit")).toBeNull();

@@ -90,10 +90,13 @@ describe("onboardingModel", () => {
   });
 
   describe("setApp", () => {
-    it("records the app name and advances to rivals", () => {
+    it("records the app name and advances to the last step", () => {
+      // Not "rivals": once an app is connected, rivals AND the optional key are
+      // both on screen, so the progress bar has to show the end. Stopping at
+      // rivals left the header reading "Step 3 of 4" forever.
       const s = setApp(chooseStore(emptyState(), "app-store"), { name: "Acme" });
       expect(s.app).toEqual({ name: "Acme" });
-      expect(STEPS[s.stepIndex]).toBe("rivals");
+      expect(s.stepIndex).toBe(STEPS.length - 1);
     });
   });
 

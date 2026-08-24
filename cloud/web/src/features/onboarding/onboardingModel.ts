@@ -56,11 +56,16 @@ export function chooseStore(state: OnboardingState, store: Store): OnboardingSta
 }
 
 /**
- * Record the connected app (step 2) and open the rivals step. Name only — see
- * the `app` field on OnboardingState for why there is no grade here.
+ * Record the connected app (step 2). Name only — see the `app` field on
+ * OnboardingState for why there is no grade here.
+ *
+ * Advances to the LAST step, not to "rivals": once an app is connected, both
+ * remaining steps (rivals and the optional key) are on screen together, so the
+ * progress bar must show the user at the end rather than reading "Step 3 of 4"
+ * forever with a segment that never fills.
  */
 export function setApp(state: OnboardingState, app: { name: string }): OnboardingState {
-  return { ...state, app, stepIndex: Math.max(state.stepIndex, STEPS.indexOf("rivals")) };
+  return { ...state, app, stepIndex: Math.max(state.stepIndex, STEPS.length - 1) };
 }
 
 /** Confirm a suggested rival: move it from `suggested` into `rivals` (idempotent). */

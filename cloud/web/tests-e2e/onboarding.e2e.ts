@@ -84,6 +84,11 @@ test("first run: store → connect → confirm a rival, each over the API", asyn
   await expect(page.getByTestId("onb-answer-app")).toContainText("Acme");
   await expect(page.getByText(/Audited:/)).toHaveCount(0);
 
+  // The progress bar has to agree with where the user actually is. It used to
+  // stop at "Step 3 of 4" with the last segment permanently unfilled, while
+  // step 4 sat visible on the same screen.
+  await expect(page.getByTestId("onb-step-count")).toContainText("Step 4 of 4");
+
   await page.getByTestId("onb-suggest-k1").click();
   await expect(page.getByTestId("onb-rival-k1")).toBeVisible();
   expect(confirmed).toBe(true);
