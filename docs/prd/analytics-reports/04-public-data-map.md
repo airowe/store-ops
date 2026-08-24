@@ -33,19 +33,32 @@ The richest public source: subtitle, ratings histogram, What's New, privacy
 labels, languages, category, IAP names+prices, Apple's `similarApps` graph,
 `moreByDeveloper`, and the full screenshot set. Already fully consumed.
 
-### 🆕 Top-charts RSS — `https://rss.marketingtools.apple.com/api/v2/{cc}/apps/{chart}/{n}/apps.json`
-**Public, no auth, verified live.** `chart` ∈ `top-free | top-paid | top-grossing`
-(+ `new-apps-we-love`, `new-games-we-love`); `n` up to ~200; per country; genre
-filterable. Returns ranked app lists with id/name/artist/artwork/genre.
+### ✅ Top-charts RSS — `https://itunes.apple.com/{cc}/rss/{feed}/limit={n}/genre={id}/json`
+**Public, no auth, verified live.** Shipped as `engine/chartRank.ts`.
+`feed` ∈ `topfreeapplications | toppaidapplications | topgrossingapplications`;
+`n` up to 200; per country; **genre-scoped**. Returns ranked app ids.
+
+> **Correction (2026-08-24).** This section previously named
+> `rss.marketingtools.apple.com/api/v2/...` and called it "genre filterable".
+> It is not: the genre path form 404s, and passing `?genre=` is silently
+> ignored — it returns the ungenred chart, which looks like a working
+> category read and is not one. Only the LEGACY feed above supports `genre=`.
+> `constants.ts:56` records the same finding; this doc lagged behind the code.
 - **What it unlocks (honestly):** *category chart rank* — a MEASURED position
   we don't surface today. "You're #34 in Weather (Top Free, US)" is real and
   free. Cross-referenced with `moreByDeveloper`/`similarApps`, it also gives a
   competitor's chart standing.
 - **Limits:** overall/genre top lists only — NOT per-keyword search rank (that's
-  our own search-scrape), and it's a snapshot, not history (we'd persist our own
-  time series, like `rank_snapshots`).
-- **Proposed home:** a small `chartRank.ts` engine + a `chart_rank` finding/annotation;
-  natural sibling to the rank-features PRDs. Cheap, keyless, on-strategy.
+  our own search-scrape), and it's a snapshot, not history.
+- **Status:** the engine shipped (`chartRank.ts`, surfaced on the run + audit
+  paths). Chart rank is read per-app, on demand, and stored inside the run
+  trace — there is no chart_rank table and no time series.
+- **The history idea is scoped in #506** — a daily sweep across
+  (country × genre × chart), the model appstoretracker.com uses. The fetch side
+  is already built; the open questions are D1 storage (the smallest useful
+  sweep adds ~3x the current database per day) and the acceptable-use review
+  that `cron/corpusCollection.ts` deferred to. Read that issue before
+  proposing this again.
 
 ### 🆕 amp-api storefront reviews — `https://amp-api.apps.apple.com/v1/catalog/{cc}/apps/{id}/reviews`
 The API the web App Store itself uses. Richer than the RSS feed (more reviews,
