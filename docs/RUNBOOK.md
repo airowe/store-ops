@@ -91,8 +91,9 @@ To confirm the live domain is serving the build you just made, compare the
 content-hashed asset names — they must match:
 
 ```bash
+# from cloud/, after the build above (dist/ is a build artifact, not in git)
 curl -s https://app.shipaso.com/ | grep -o 'assets/index-[A-Za-z0-9_-]*\.js'
-grep -o 'assets/index-[A-Za-z0-9_-]*\.js' cloud/dist/index.html
+grep -o 'assets/index-[A-Za-z0-9_-]*\.js' dist/index.html
 ```
 
 ---
