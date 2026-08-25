@@ -101,7 +101,7 @@ describe("resolveSurface (strangler edge map)", () => {
     expect(resolveSurface("/broadcast", OWNED_PATHS)).toBe("web");
   });
 
-  it("owns /onboarding (guided setup stepper)", () => {
+  it("owns /onboarding now that the guided setup is complete", () => {
     expect(resolveSurface("/onboarding", OWNED_PATHS)).toBe("web");
   });
 });

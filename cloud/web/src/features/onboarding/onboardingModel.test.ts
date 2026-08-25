@@ -5,14 +5,16 @@ import {
   removeRival,
   progressState,
   storeLabel,
-  sampleState,
+  emptyState,
+  chooseStore,
+  setApp,
   type OnboardingState,
 } from "./onboardingModel.js";
 
 const base = (): OnboardingState => ({
   stepIndex: 2,
   store: "app-store",
-  app: { name: "Cal AI", grade: "A−" },
+  app: { name: "Cal AI" },
   rivals: ["MyFitnessPal"],
   suggested: ["Lifesum", "Yazio"],
 });
@@ -70,13 +72,42 @@ describe("onboardingModel", () => {
     });
   });
 
-  describe("sampleState", () => {
-    it("matches the design: step 3 (rivals), App Store, Cal AI graded A−", () => {
-      const s = sampleState();
-      expect(STEPS[s.stepIndex]).toBe("rivals");
+  // The default state a real user starts from. This replaced sampleState(),
+  // which seeded a fabricated app ("Cal AI") and a fabricated audit grade
+  // ("A−") and rendered them as the user's OWN result — a measured-or-nothing
+  // violation that shipped because the old test asserted the fake values were
+  // present rather than that nothing was invented.
+  describe("chooseStore", () => {
+    it("records the store and advances to the app step", () => {
+      const s = chooseStore(emptyState(), "app-store");
       expect(s.store).toBe("app-store");
-      expect(s.app).toEqual({ name: "Cal AI", grade: "A−" });
-      expect(s.rivals).toEqual(["MyFitnessPal", "Lose It!"]);
+      expect(STEPS[s.stepIndex]).toBe("app");
+    });
+    it("never walks the stepper backwards", () => {
+      const s = chooseStore({ ...emptyState(), stepIndex: 2 }, "app-store");
+      expect(s.stepIndex).toBe(2);
+    });
+  });
+
+  describe("setApp", () => {
+    it("records the app name and advances to the last step", () => {
+      // Not "rivals": once an app is connected, rivals AND the optional key are
+      // both on screen, so the progress bar has to show the end. Stopping at
+      // rivals left the header reading "Step 3 of 4" forever.
+      const s = setApp(chooseStore(emptyState(), "app-store"), { name: "Acme" });
+      expect(s.app).toEqual({ name: "Acme" });
+      expect(s.stepIndex).toBe(STEPS.length - 1);
+    });
+  });
+
+  describe("emptyState", () => {
+    it("invents no app, no grade, no store, and no rivals", () => {
+      const s = emptyState();
+      expect(s.app).toBeNull();
+      expect(s.store).toBeNull();
+      expect(s.rivals).toEqual([]);
+      expect(s.suggested).toEqual([]);
+      expect(STEPS[s.stepIndex]).toBe("store");
     });
   });
 });

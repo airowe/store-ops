@@ -21,6 +21,7 @@ import { LandingRoute, LoginRoute, PreviewRoute, ProofRoute, BroadcastRoute, Pri
 const rootRoute = createRootRoute({ component: ShellLayout });
 
 const indexRoute = createRoute({ getParentRoute: () => rootRoute, path: "/", component: LandingRoute });
+const onboardingRoute = createRoute({ getParentRoute: () => rootRoute, path: "/onboarding", component: OnboardingRoute });
 const dashboardRoute = createRoute({ getParentRoute: () => rootRoute, path: "/dashboard", component: DashboardRoute });
 const healthRoute = createRoute({ getParentRoute: () => rootRoute, path: "/_shell/health", component: Health });
 const settingsRoute = createRoute({ getParentRoute: () => rootRoute, path: "/settings", component: SettingsRoute });
@@ -33,7 +34,6 @@ const runRoute = createRoute({ getParentRoute: () => rootRoute, path: "/runs/$id
 const portfolioRunsRoute = createRoute({ getParentRoute: () => rootRoute, path: "/runs", component: PortfolioRunsRoute });
 const portfolioKeywordsRoute = createRoute({ getParentRoute: () => rootRoute, path: "/keywords", component: PortfolioKeywordsRoute });
 const portfolioCompetitorsRoute = createRoute({ getParentRoute: () => rootRoute, path: "/competitors", component: PortfolioCompetitorsRoute });
-const onboardingRoute = createRoute({ getParentRoute: () => rootRoute, path: "/onboarding", component: OnboardingRoute });
 const loginRoute = createRoute({ getParentRoute: () => rootRoute, path: "/login", component: LoginRoute });
 const previewRoute = createRoute({ getParentRoute: () => rootRoute, path: "/preview", component: PreviewRoute });
 const proofRoute = createRoute({ getParentRoute: () => rootRoute, path: "/proof", component: ProofRoute });
@@ -47,6 +47,7 @@ const broadcastRoute = createRoute({ getParentRoute: () => rootRoute, path: "/br
 const routeTree = rootRoute.addChildren([
   indexRoute,
   dashboardRoute,
+  onboardingRoute,
   healthRoute,
   settingsRoute,
   appDetailRoute,
@@ -55,7 +56,6 @@ const routeTree = rootRoute.addChildren([
   portfolioRunsRoute,
   portfolioKeywordsRoute,
   portfolioCompetitorsRoute,
-  onboardingRoute,
   loginRoute,
   previewRoute,
   proofRoute,

@@ -19,8 +19,14 @@ export type OnboardingState = {
   stepIndex: number;
   /** Chosen store (step 1). */
   store: Store | null;
-  /** Connected app name + honest audit grade (step 2). Grade is never faked. */
-  app: { name: string; grade: string | null } | null;
+  /**
+   * The connected app (step 2). Name only: POST /apps returns
+   * { id, name, bundleId } and carries NO grade — a grade exists only once the
+   * run that connecting triggers has completed. types.ts:649 records what
+   * happens when a type claims a field the server never sends: every read is
+   * undefined and the UI renders empty, silently.
+   */
+  app: { name: string } | null;
   /** Confirmed rivals — only these feed runs (step 3). */
   rivals: string[];
   /** Suggested-from-keywords rivals not yet confirmed. */
@@ -35,6 +41,31 @@ export function progressState(stepIndex: number, total: number = STEPS.length): 
 /** Human label for the store choice ("App Store" / "Google Play"). */
 export function storeLabel(store: Store): string {
   return store === "app-store" ? "App Store" : "Google Play";
+}
+
+/**
+ * Record the store choice (step 1) and open the app step.
+ *
+ * App Store is the only real option today: POST /apps has no store parameter
+ * and resolves via iTunes (a Play URL is parsed only to mine a bundle id, which
+ * is then looked up on iTunes). The view renders Google Play disabled rather
+ * than offering a choice that would silently connect the wrong listing.
+ */
+export function chooseStore(state: OnboardingState, store: Store): OnboardingState {
+  return { ...state, store, stepIndex: Math.max(state.stepIndex, STEPS.indexOf("app")) };
+}
+
+/**
+ * Record the connected app (step 2). Name only — see the `app` field on
+ * OnboardingState for why there is no grade here.
+ *
+ * Advances to the LAST step, not to "rivals": once an app is connected, both
+ * remaining steps (rivals and the optional key) are on screen together, so the
+ * progress bar must show the user at the end rather than reading "Step 3 of 4"
+ * forever with a segment that never fills.
+ */
+export function setApp(state: OnboardingState, app: { name: string }): OnboardingState {
+  return { ...state, app, stepIndex: Math.max(state.stepIndex, STEPS.length - 1) };
 }
 
 /** Confirm a suggested rival: move it from `suggested` into `rivals` (idempotent). */
@@ -54,13 +85,14 @@ export function removeRival(state: OnboardingState, rival: string): OnboardingSt
   return { ...state, rivals: state.rivals.filter((r) => r !== rival) };
 }
 
-/** The sample state the design renders: step 3, App Store + Cal AI (A−). */
-export function sampleState(): OnboardingState {
-  return {
-    stepIndex: STEPS.indexOf("rivals"),
-    store: "app-store",
-    app: { name: "Cal AI", grade: "A−" },
-    rivals: ["MyFitnessPal", "Lose It!"],
-    suggested: ["Lifesum", "Yazio", "Noom"],
-  };
+/**
+ * The starting state for a real user: nothing answered, nothing invented.
+ *
+ * Replaces sampleState(), which seeded a fabricated app ("Cal AI") and a
+ * fabricated audit grade ("A−") and rendered them as the user's own result.
+ * Measured-or-nothing: an unanswered step renders empty, never a plausible
+ * sample. Fixtures for tests belong in tests.
+ */
+export function emptyState(): OnboardingState {
+  return { stepIndex: 0, store: null, app: null, rivals: [], suggested: [] };
 }

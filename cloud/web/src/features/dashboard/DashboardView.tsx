@@ -9,8 +9,10 @@
  */
 import { useState } from "react";
 import { useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
-import type { ApiClient, AppListItem, Candidate } from "@shipaso/api";
-import { ApiError, approveAllRuns, connectApp, getApps, getDeltas, getRanks, resolveApps } from "@shipaso/api";
+import type { ApiClient, AppListItem } from "@shipaso/api";
+import { ApiError, approveAllRuns, getApps, getDeltas, getRanks } from "@shipaso/api";
+import { Navigate } from "@tanstack/react-router";
+import { ConnectAppCard } from "../connect/ConnectAppCard.js";
 import { formatRank } from "@shipaso/honesty";
 import { runStatusLabel } from "../../lib/status.js";
 import { Sparkline } from "../charts/Sparkline.js";
@@ -57,19 +59,12 @@ export function DashboardView({ client, onOpen }: { client: ApiClient; onOpen: (
   const apps = appsQ.data?.apps ?? [];
   const pending = pendingCount(apps);
 
+  // A user with nothing connected has no dashboard to show. Send them to the
+  // guided setup rather than a card that duplicates it. This sits AFTER the
+  // isPending / 401 / error guards on purpose: redirecting on a list we have
+  // not actually received would bounce a logged-out or still-loading visitor.
   if (apps.length === 0) {
-    return (
-      <section>
-        <ConnectCard client={client} onConnected={onOpen} />
-        <div className="empty" data-testid="empty">
-          <div className="big">🛰️</div>
-          <div>No apps connected yet.</div>
-          <div className="faint">
-            Connect one above — the agent audits it, ranks it on real iTunes data, and drafts optimized copy.
-          </div>
-        </div>
-      </section>
-    );
+    return <Navigate to="/onboarding" replace />;
   }
 
   const g = greeting(apps);
@@ -153,7 +148,7 @@ export function DashboardView({ client, onOpen }: { client: ApiClient; onOpen: (
       </div>
 
       <div className="dash-connect">
-        <ConnectCard client={client} onConnected={onOpen} />
+        <ConnectAppCard client={client} onConnected={onOpen} />
       </div>
     </section>
   );
@@ -337,57 +332,3 @@ function TrackedRow({ app, onOpen }: { app: AppListItem; onOpen: (id: string) =>
   );
 }
 
-function ConnectCard({ client, onConnected }: { client: ApiClient; onConnected: (id: string) => void }) {
-  const [query, setQuery] = useState("");
-  const [candidates, setCandidates] = useState<Candidate[] | null>(null);
-
-  const resolveMut = useMutation({
-    mutationFn: (q: string) => resolveApps(client, q),
-    onSuccess: (r) => setCandidates(r.candidates),
-  });
-  const connectMut = useMutation({
-    mutationFn: (c: Candidate) => connectApp(client, { bundle_id: c.bundle_id, name: c.name }),
-    onSuccess: (r) => {
-      if ("id" in r) onConnected(r.id);
-      else setCandidates(r.candidates);
-    },
-  });
-
-  return (
-    <div className="card">
-      <b>Connect an app</b>
-      <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
-        <input
-          className="txt"
-          data-testid="connect-input"
-          value={query}
-          placeholder="App name or bundle id"
-          onChange={(e) => setQuery(e.target.value)}
-        />
-        <button
-          type="button"
-          className="btn"
-          data-testid="connect-search"
-          disabled={!query.trim() || resolveMut.isPending}
-          onClick={() => resolveMut.mutate(query.trim())}
-        >
-          Search
-        </button>
-      </div>
-      {candidates?.length === 0 ? <p className="micro">No matches.</p> : null}
-      {candidates?.map((c) => (
-        <button
-          key={c.bundle_id}
-          type="button"
-          className="card appcard"
-          data-testid={`cand-${c.bundle_id}`}
-          style={{ padding: "10px 12px", marginTop: 6 }}
-          onClick={() => connectMut.mutate(c)}
-        >
-          <div className="name">{c.name}</div>
-          <div className="bundle">{c.bundle_id}</div>
-        </button>
-      ))}
-    </div>
-  );
-}

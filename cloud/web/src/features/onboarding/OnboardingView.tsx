@@ -10,16 +10,26 @@
  * audit returned, and the footer keeps the "nothing ships on its own" promise.
  */
 import { useState } from "react";
+import type { ApiClient } from "@shipaso/api";
+import { ConnectAppCard } from "../connect/ConnectAppCard.js";
+import { RivalsStep } from "./RivalsStep.js";
 import {
   STEPS,
-  addRival,
-  removeRival,
+  chooseStore,
+  setApp,
+  storeLabel,
   progressState,
-  sampleState,
+  emptyState,
   type OnboardingState,
 } from "./onboardingModel.js";
 
 type Props = {
+  /** The shared API client — steps 2 and 3 talk to the real backend. */
+  client: ApiClient;
+  /** The connected app's id, once step 2 completes. Null until then. */
+  appId: string | null;
+  /** Step 2 connected an app: hand the id up so the route can hold it. */
+  onAppConnected: (id: string) => void;
   /** Continue → : setup is done, hand back the collected answers. */
   onDone: (state: OnboardingState) => void;
   /** Skip setup / Skip step → : bail to the dashboard. */
@@ -28,8 +38,8 @@ type Props = {
   initial?: OnboardingState;
 };
 
-export function OnboardingView({ onDone, onSkip, initial }: Props) {
-  const [state, setState] = useState<OnboardingState>(initial ?? sampleState());
+export function OnboardingView({ client, appId, onAppConnected, onDone, onSkip, initial }: Props) {
+  const [state, setState] = useState<OnboardingState>(initial ?? emptyState());
   const segments = progressState(state.stepIndex);
   const stepNo = state.stepIndex + 1;
 
@@ -40,7 +50,7 @@ export function OnboardingView({ onDone, onSkip, initial }: Props) {
         <header className="onb-head">
           <span className="onb-logo" aria-hidden="true">✓</span>
           <b className="onb-title">Set up ShipASO</b>
-          <span className="onb-step-count mono">Step {stepNo} of {STEPS.length}</span>
+          <span className="onb-step-count mono" data-testid="onb-step-count">Step {stepNo} of {STEPS.length}</span>
           <button
             type="button"
             className="onb-skip-link mono"
@@ -67,8 +77,7 @@ export function OnboardingView({ onDone, onSkip, initial }: Props) {
             <div className="onb-answer" data-testid="onb-answer-store">
               <span className="onb-check" aria-hidden="true">✓</span>
               <span className="onb-answer-label">Optimizing first for</span>
-              <span className="onb-answer-value">App Store</span>
-              <button type="button" className="onb-edit mono">Edit</button>
+              <span className="onb-answer-value">{storeLabel(state.store)}</span>
             </div>
           ) : null}
 
@@ -77,14 +86,64 @@ export function OnboardingView({ onDone, onSkip, initial }: Props) {
               <span className="onb-check" aria-hidden="true">✓</span>
               <span className="onb-answer-label">Your app</span>
               <span className="onb-answer-value">{state.app.name}</span>
-              {state.app.grade ? (
-                <span className="onb-grade-pill mono">Audited: {state.app.grade}</span>
-              ) : null}
-              <button type="button" className="onb-edit mono">Edit</button>
             </div>
           ) : null}
 
-          {/* ── active step: rivals ──────────────────────────────── */}
+          {/* ── active step 1: which store ───────────────────────── */}
+          {state.store === null ? (
+            <section className="onb-active">
+              <div className="onb-active-head">
+                <span className="onb-num" aria-hidden="true">1</span>
+                <h2 className="onb-question" data-testid="onb-question">Which store are you optimizing first?</h2>
+              </div>
+              <p className="onb-help">
+                App Store is what we audit and rank today. Google Play is coming — we
+                will not connect a listing we cannot measure.
+              </p>
+              <div className="onb-chip-area">
+                <button
+                  type="button"
+                  className="btn primary"
+                  data-testid="onb-store-app-store"
+                  onClick={() => setState((s) => chooseStore(s, "app-store"))}
+                >
+                  App Store
+                </button>
+                <button
+                  type="button"
+                  className="btn ghost"
+                  data-testid="onb-store-google-play"
+                  disabled
+                >
+                  Google Play · coming soon
+                </button>
+              </div>
+            </section>
+          ) : null}
+
+          {/* ── active step 2: which app ─────────────────────────── */}
+          {state.store !== null && state.app === null ? (
+            <section className="onb-active">
+              <div className="onb-active-head">
+                <span className="onb-num" aria-hidden="true">2</span>
+                <h2 className="onb-question" data-testid="onb-question">Which app?</h2>
+              </div>
+              <p className="onb-help">
+                We audit it on live iTunes data as soon as it is connected.
+              </p>
+              <ConnectAppCard
+                client={client}
+                heading="Search the App Store"
+                onConnected={(id, name) => {
+                  onAppConnected(id);
+                  setState((s) => setApp(s, { name }));
+                }}
+              />
+            </section>
+          ) : null}
+
+          {/* ── active step 3: rivals ────────────────────────────── */}
+          {state.app !== null ? (
           <section className="onb-active">
             <div className="onb-active-head">
               <span className="onb-num" aria-hidden="true">{stepNo}</span>
@@ -95,49 +154,26 @@ export function OnboardingView({ onDone, onSkip, initial }: Props) {
               add or remove any.
             </p>
 
-            <div className="onb-chip-area">
-              <div className="onb-chips" data-testid="onb-rivals">
-                {state.rivals.map((r) => (
-                  <span key={r} className="onb-chip confirmed" data-testid={`onb-rival-${r}`}>
-                    {r}
-                    <button
-                      type="button"
-                      className="onb-chip-x"
-                      aria-label={`Remove ${r}`}
-                      onClick={() => setState((s) => removeRival(s, r))}
-                    >
-                      ×
-                    </button>
-                  </span>
-                ))}
-                <button type="button" className="onb-chip add">+ Add rival</button>
-              </div>
-
-              {state.suggested.length ? (
-                <>
-                  <div className="onb-suggest-label mono">Suggested from your keywords</div>
-                  <div className="onb-chips">
-                    {state.suggested.map((s) => (
-                      <button
-                        key={s}
-                        type="button"
-                        className="onb-chip suggest"
-                        data-testid={`onb-suggest-${s}`}
-                        onClick={() => setState((prev) => addRival(prev, s))}
-                      >
-                        + {s}
-                      </button>
-                    ))}
-                  </div>
-                </>
-              ) : null}
-            </div>
+            {appId ? (
+              <RivalsStep client={client} appId={appId} />
+            ) : (
+              <p className="onb-help" data-testid="onb-rivals-empty">
+                Connect an app first — rivals are watched per app.
+              </p>
+            )}
           </section>
+          ) : null}
 
           {/* ── upcoming step (dimmed, optional) ─────────────────── */}
           <div className="onb-upcoming" data-testid="onb-upcoming">
             <span className="onb-num muted" aria-hidden="true">{STEPS.length}</span>
-            <span className="onb-answer-label">Connect a key to push</span>
+            {appId ? (
+              <a className="onb-answer-label" href={`/apps/${appId}`} data-testid="onb-connect-key">
+                Connect a key to push
+              </a>
+            ) : (
+              <span className="onb-answer-label">Connect a key to push</span>
+            )}
             <span className="onb-upcoming-note mono">optional · read-only until you do</span>
           </div>
 
