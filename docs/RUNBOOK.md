@@ -34,12 +34,22 @@ Publishes the Worker, provisions/updates `api.shipaso.com` (DNS + cert via
 
 ### Pages sites
 
-```bash
-# dashboard → app.shipaso.com
-npx wrangler pages deploy public --project-name store-ops-dashboard --branch main
+`.github/workflows/deploy.yml` is the source of truth for these steps — it runs
+them on every merge to main. Deploy by hand only when Actions is unavailable,
+and mirror the workflow rather than improvising.
 
-# landing → shipaso.com
-npx wrangler pages deploy <landing-dir> --project-name store-ops-site --branch main
+**The dashboard is built, not copied.** `cloud/public` no longer exists (#370
+retired the legacy dashboard); the deploy root `cloud/dist` is produced by
+`build:combined` from the app's vite build at `cloud/web/dist`. Deploying an
+unbuilt directory is the most likely way to ship nothing or ship something old.
+
+```bash
+# dashboard → app.shipaso.com  (run from cloud/)
+npm run build:combined   # vite build → cloud/web/dist, then web-enable.mjs → cloud/dist
+npx wrangler pages deploy dist --project-name store-ops-dashboard --branch main
+
+# landing → shipaso.com  (run from the repo root; static, no build)
+npx wrangler pages deploy docs/landing --project-name store-ops-site --branch main
 ```
 
 > **Production-branch gotcha:** a `wrangler pages deploy` **without `--branch main`**
@@ -48,13 +58,42 @@ npx wrangler pages deploy <landing-dir> --project-name store-ops-site --branch m
 > site. If a deploy "succeeded" but `app.shipaso.com` / `shipaso.com` didn't change,
 > this is almost always why — redeploy with `--branch main`.
 
-After deploying the dashboard, confirm `public/config.js` points at the API:
+Note that a successful `pages deploy` prints a `*.pages.dev` URL and may report
+files as "already uploaded" even for a production deploy. Neither is evidence the
+live domain changed — verify it (below) rather than reading the deploy output.
+
+The API base lives in `cloud/web/public/config.js` (copied verbatim into the
+build), and should point at the API:
 
 ```js
 window.STORE_OPS = { API_BASE: "https://api.shipaso.com" };
 ```
 
 (Empty `API_BASE` runs the dashboard on its built-in mock backend.)
+
+### Verify a deploy actually landed
+
+A green deploy is not evidence the site works: on 2026-07-28 `app.shipaso.com`
+served a blank page for hours while the deploy was green, the tests passed, and
+the assets returned 200 to `curl`. Run both smoke passes — note they live in
+**different directories**:
+
+```bash
+cd cloud     && npm run smoke        # fetch level: Worker, auth, engine, bundle refs
+cd cloud/web && npm run smoke:prod   # browser level: does the page actually render
+```
+
+`smoke:prod` is the one that sees what a user sees. It is also occasionally flaky
+(#491), so treat a single red run as a prompt to re-run, not as proof of a
+regression.
+
+To confirm the live domain is serving the build you just made, compare the
+content-hashed asset names — they must match:
+
+```bash
+curl -s https://app.shipaso.com/ | grep -o 'assets/index-[A-Za-z0-9_-]*\.js'
+grep -o 'assets/index-[A-Za-z0-9_-]*\.js' cloud/dist/index.html
+```
 
 ---
 
@@ -71,9 +110,11 @@ npx wrangler rollback <version-id> # or roll back to a specific version
 Alternatively, redeploy a prior version by checking out the previous commit and
 running `npm run deploy` again.
 
-For Pages, redeploy the previous good build (re-run the `pages deploy ... --branch main`
-from the prior commit), or promote an earlier deployment in the Cloudflare
-dashboard.
+For Pages, promoting an earlier deployment in the Cloudflare dashboard is the
+fastest rollback. To redeploy from source instead, check out the prior commit and
+run the **full build + deploy** above (`npm run build:combined`, then
+`pages deploy dist --branch main`) — `pages deploy` alone would re-ship whatever
+happens to be in `cloud/dist`, which is the *new* build, not the old one.
 
 ---
 
