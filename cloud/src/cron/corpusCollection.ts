@@ -7,6 +7,12 @@
  * systematic iTunes collection is a different egress/ToS scale than the product's
  * per-app reads, so it stays dark until the owner reviews acceptable-use + cost.
  *
+ * IN PRODUCTION THAT REVIEW HAPPENED AND THIS IS ON. The flag is set as a Worker
+ * SECRET, so it is invisible to a repo grep — do not read "not in wrangler.toml"
+ * as "not collecting" (#506 made exactly that mistake). Verify with
+ * `npx wrangler secret list`, or just query `corpus_snapshots`. Live since
+ * 2026-07-21, 174 rows/day, no gaps.
+ *
  * Conservative caps (the enabled footprint): a small FIXED seed set (CORPUS_SEEDS,
  * not user-driven) × topN 20 × once/day ≈ 200 rows/day. The report is logged so
  * the footprint is never silent. Failures are self-contained — this must never

@@ -53,12 +53,19 @@ labels, languages, category, IAP names+prices, Apple's `similarApps` graph,
 - **Status:** the engine shipped (`chartRank.ts`, surfaced on the run + audit
   paths). Chart rank is read per-app, on demand, and stored inside the run
   trace — there is no chart_rank table and no time series.
-- **The history idea is scoped in #506** — a daily sweep across
+- **The history idea was scoped and declined in #506** — a daily sweep across
   (country × genre × chart), the model appstoretracker.com uses. The fetch side
-  is already built; the open questions are D1 storage (the smallest useful
-  sweep adds ~3x the current database per day) and the acceptable-use review
-  that `cron/corpusCollection.ts` deferred to. Read that issue before
-  proposing this again.
+  is already built; what killed it was D1 storage. The feed hard-caps at 100 per
+  (country × genre × chart), and even storing changes-only the smallest useful
+  sweep is ~19,800 rows/day against a database that currently holds ~7,080 rows
+  in total. Read that issue before proposing this again.
+- **Note the acceptable-use review is NOT the blocker** — it already happened.
+  `CATEGORY_CORPUS_ENABLED` is set as a Worker **secret** (so it is invisible to
+  a repo grep, which is exactly how #506 got this wrong the first time), and
+  `cron/corpusCollection.ts` has collected 174 rows/day since 2026-07-21 without
+  a gap. Broad collection is approved *at that footprint*. A sweep is ~100x it,
+  so the remaining gate is the cost sign-off in `docs/prds/issue-63.md` step 5,
+  not the ToS question in step 2.
 
 ### 🆕 amp-api storefront reviews — `https://amp-api.apps.apple.com/v1/catalog/{cc}/apps/{id}/reviews`
 The API the web App Store itself uses. Richer than the RSS feed (more reviews,
