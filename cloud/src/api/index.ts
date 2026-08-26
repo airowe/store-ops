@@ -1118,13 +1118,27 @@ async function notificationsGetRoute(env: Env, userId: string): Promise<unknown>
 }
 
 async function notificationsPostRoute(req: Request, env: Env, userId: string): Promise<unknown> {
-  const body = await readJson<{ email_digest?: unknown; push_run_ready?: unknown }>(req);
-  const patch: { email_digest?: "weekly" | "off"; push_run_ready?: boolean } = {};
+  const body = await readJson<{
+    email_digest?: unknown;
+    push_run_ready?: unknown;
+    email_run_ready?: unknown;
+  }>(req);
+  const patch: {
+    email_digest?: "weekly" | "off";
+    push_run_ready?: boolean;
+    email_run_ready?: boolean;
+  } = {};
   if (body.email_digest !== undefined) {
     if (body.email_digest !== "weekly" && body.email_digest !== "off") {
       throw new HttpError(400, "email_digest must be 'weekly' or 'off'");
     }
     patch.email_digest = body.email_digest;
+  }
+  if (body.email_run_ready !== undefined) {
+    if (typeof body.email_run_ready !== "boolean") {
+      throw new HttpError(400, "email_run_ready must be a boolean");
+    }
+    patch.email_run_ready = body.email_run_ready;
   }
   if (body.push_run_ready !== undefined) {
     if (typeof body.push_run_ready !== "boolean") {
@@ -1132,8 +1146,12 @@ async function notificationsPostRoute(req: Request, env: Env, userId: string): P
     }
     patch.push_run_ready = body.push_run_ready;
   }
-  if (patch.email_digest === undefined && patch.push_run_ready === undefined) {
-    throw new HttpError(400, "provide email_digest and/or push_run_ready");
+  if (
+    patch.email_digest === undefined &&
+    patch.push_run_ready === undefined &&
+    patch.email_run_ready === undefined
+  ) {
+    throw new HttpError(400, "provide email_digest, push_run_ready and/or email_run_ready");
   }
   await setNotificationPrefs(env.DB, { userId, ...patch });
   return getNotificationPrefs(env.DB, userId);

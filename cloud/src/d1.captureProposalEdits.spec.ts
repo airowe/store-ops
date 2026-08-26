@@ -120,3 +120,66 @@ describe("captureProposalEdits", () => {
     expect(stmts.every((s) => s.args[3] === 0)).toBe(true); // unedited
   });
 });
+
+describe("captureProposalEdits — provenance (migration 0013)", () => {
+  const proposedCopy = {
+    name: "Moonly",
+    subtitle: "Tarot & moon rituals",
+    keywords: "tarot,moon,ritual",
+    promo: "Read the moon.",
+  };
+
+  it("defaults source to 'human' — the existing path is unchanged", async () => {
+    const { db } = fakeDb();
+    const key = await importKeyFromBase64(testKeyB64());
+    const stmts = (await captureProposalEdits(db, key, {
+      proposed: proposedCopy,
+      final: proposedCopy,
+      decision: "approved",
+    })) as unknown as Captured[];
+    expect(stmts.length).toBeGreaterThan(0);
+    for (const s of stmts) {
+      expect(s.sql).toMatch(/source/);
+      expect(s.args[s.args.length - 1]).toBe("human");
+    }
+  });
+
+  it("records 'agent-draft' when a page agent authored the final text", async () => {
+    const { db } = fakeDb();
+    const key = await importKeyFromBase64(testKeyB64());
+    const final = { ...proposedCopy, subtitle: "Moon phases, tarot & daily ritual" };
+    const stmts = (await captureProposalEdits(db, key, {
+      proposed: proposedCopy,
+      final,
+      decision: "approved",
+      source: "agent-draft",
+    })) as unknown as Captured[];
+    for (const s of stmts) {
+      expect(s.args[s.args.length - 1]).toBe("agent-draft");
+    }
+  });
+
+  /**
+   * The corruption this column exists to prevent: an agent redrafts a field, the
+   * human approves it UNCHANGED, and `edited` is 0 — "shipped as proposed". That
+   * row is indistinguishable from genuine human assent to the agent's own copy
+   * unless provenance is recorded alongside it.
+   */
+  it("distinguishes an agent-drafted unedited approval from a human one", async () => {
+    const { db } = fakeDb();
+    const key = await importKeyFromBase64(testKeyB64());
+    const args = { proposed: proposedCopy, final: proposedCopy, decision: "approved" as const };
+    const humanRows = (await captureProposalEdits(db, key, args)) as unknown as Captured[];
+    const agentRows = (await captureProposalEdits(db, key, {
+      ...args,
+      source: "agent-draft",
+    })) as unknown as Captured[];
+
+    // identical on every existing signal — `edited` cannot tell them apart
+    expect(humanRows[0]!.args[3]).toBe(0);
+    expect(agentRows[0]!.args[3]).toBe(0);
+    // and yet distinguishable, which is the whole point
+    expect(humanRows[0]!.args[humanRows[0]!.args.length - 1]).toBe("human");
+    expect(agentRows[0]!.args[agentRows[0]!.args.length - 1]).toBe("agent-draft");
+  });
+});
