@@ -22,6 +22,7 @@ import {
   persistRun,
   type AppRow,
 } from "../d1.js";
+import { notifyRunReadyForEnv } from "../notify/forEnv.js";
 import { buildAppInput, descriptionFromTrace } from "../api/runConfig.js";
 import { keyedAscPass } from "../api/index.js";
 import { mintAscJwt } from "../engine/ascJwt.js";
@@ -240,6 +241,19 @@ export async function runKeyedSweepForApp(
     await notifyRunAwaitingApproval(globalThis.fetch, env.DB, app, runId, {
       env,
       reasons: decision.reasons,
+    });
+    // …and on every channel the owner verified (email today, Telegram/SMS as
+    // deliverers are added). Same best-effort contract as push: this never
+    // throws and a delivery failure never affects the recorded run. The
+    // 'detected' branch below deliberately gets nothing — notifyRunReadyForEnv
+    // gates on the status itself, so a snapshot pass stays silent.
+    await notifyRunReadyForEnv(env, {
+      userId: app.user_id,
+      appName: app.name,
+      runId,
+      status: "awaiting_approval",
+      proposed: resultWithSnapshot.proposedCopy,
+      current: resultWithSnapshot.currentCopy,
     });
   } else {
     // No threshold crossed (or a run is already open, or the owner set

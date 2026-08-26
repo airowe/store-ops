@@ -140,6 +140,7 @@ import { serializeAsaBundle, verifyAsaCredentials, type AsaKeyBundle } from "../
 import localesData from "../engine/locales-data.json";
 import { validateThresholdPatch } from "../thresholds.js";
 import { requireApprovalNonce, requireHumanSession } from "./approvalBoundary.js";
+import { notifyRunReadyForEnv } from "../notify/forEnv.js";
 import { validateSchedule } from "../schedule.js";
 import { toLoopState } from "../loopState.js";
 import {
@@ -1703,8 +1704,33 @@ async function approveAll(env: Env, userId: string): Promise<unknown> {
   return { approved, approvedCount: approved.length, skipped: plan.skipped };
 }
 
+
+/**
+ * Fire the run_ready notification WITHOUT making the caller wait on a transport.
+ *
+ * With an ExecutionContext the send rides `waitUntil`, so `POST /apps` returns
+ * as soon as the run is recorded. Without one (tests, internal callers) it runs
+ * inline — the broadcastSendRoute precedent: a missing ctx must degrade to
+ * "still happens", never to "silently dropped".
+ *
+ * notifyRunReadyForEnv never throws, so nothing here can surface as a failed run.
+ */
+function notifyInBackground(
+  ctx: ExecutionContext | undefined,
+  env: Env,
+  args: Parameters<typeof notifyRunReadyForEnv>[1],
+): void {
+  const work = notifyRunReadyForEnv(env, args);
+  if (ctx) ctx.waitUntil(work);
+}
+
 /** POST /apps — connect + initial run. */
-async function connectApp(req: Request, env: Env, userId: string): Promise<unknown> {
+async function connectApp(
+  req: Request,
+  env: Env,
+  userId: string,
+  ctx?: ExecutionContext,
+): Promise<unknown> {
   const body = await readJson<ConnectBody>(req);
   const country = body.country?.trim() || env.DEFAULT_COUNTRY || "US";
 
@@ -1790,6 +1816,19 @@ async function connectApp(req: Request, env: Env, userId: string): Promise<unkno
     trigger: { source: "connect", reasons: ["app connected — initial audit"] },
   });
 
+  // #493: a run at the gate that nobody is told about is a silent drawer.
+  // Backgrounded via waitUntil so the caller never waits on an email send; with
+  // no ctx (tests, some internal paths) it runs inline rather than being
+  // silently dropped, mirroring broadcastSendRoute. Never throws either way.
+  notifyInBackground(ctx, env, {
+    userId,
+    appName: app.name,
+    runId,
+    status: "awaiting_approval",
+    proposed: result.proposedCopy,
+    current: result.currentCopy,
+  });
+
   // The dashboard's connect form reads `id` (the app id) and then fires the
   // first on-demand run. We return the app id plus a little run context.
   return {
@@ -1856,6 +1895,7 @@ async function runApp(
   env: Env,
   userId: string,
   appId: string,
+  ctx?: ExecutionContext,
 ): Promise<unknown> {
   const app = await requireOwnedApp(env, appId, userId);
   const body = (await req
@@ -1944,6 +1984,15 @@ async function runApp(
     trigger: { source: "manual", reasons: ["manual run requested"] },
   });
 
+  notifyInBackground(ctx, env, {
+    userId,
+    appName: app.name,
+    runId,
+    status: "awaiting_approval",
+    proposed: result.proposedCopy,
+    current: result.currentCopy,
+  });
+
   // The dashboard reads `id` and navigates to #/runs/:id.
   return { id: runId, status: "awaiting_approval", digest: result.competitors.digest };
 }
@@ -1964,6 +2013,7 @@ async function runAppWithAsc(
   env: Env,
   userId: string,
   appId: string,
+  ctx?: ExecutionContext,
 ): Promise<unknown> {
   const app = await requireOwnedApp(env, appId, userId);
   const body = (await req.json().catch(() => ({}))) as RunAscBody & { store?: boolean; useStored?: boolean };
@@ -2026,6 +2076,16 @@ async function runAppWithAsc(
     result: resultWithSnapshot,
     trigger: { source: "manual", reasons: ["manual run requested (App Store Connect read)"] },
   });
+
+  notifyInBackground(ctx, env, {
+    userId,
+    appName: app.name,
+    runId,
+    status: "awaiting_approval",
+    proposed: result.proposedCopy,
+    current: result.currentCopy,
+  });
+
   return { id: runId, status: "awaiting_approval", digest: result.competitors.digest, ascRead: true };
 }
 
@@ -5242,7 +5302,7 @@ export async function handleApi(req: Request, env: Env, ctx?: ExecutionContext):
     if (seg[0] === "apps") {
       if (seg.length === 1) {
         if (method === "POST") {
-          const result = await connectApp(req, env, user.id);
+          const result = await connectApp(req, env, user.id, ctx);
           // A pick-list (ambiguous query) is a 200, not a 201-created.
           const status =
             result && typeof result === "object" && "needsChoice" in result ? 200 : 201;
@@ -5256,10 +5316,10 @@ export async function handleApi(req: Request, env: Env, ctx?: ExecutionContext):
         if (method === "DELETE") return json(await disconnectApp(env, user.id, appId), 200, origin);
       }
       if (seg.length === 3 && seg[1] && seg[2] === "run" && method === "POST") {
-        return json(await runApp(req, env, user.id, seg[1]), 201, origin);
+        return json(await runApp(req, env, user.id, seg[1], ctx), 201, origin);
       }
       if (seg.length === 3 && seg[1] && seg[2] === "run-asc" && method === "POST") {
-        return json(await runAppWithAsc(req, env, user.id, seg[1]), 201, origin);
+        return json(await runAppWithAsc(req, env, user.id, seg[1], ctx), 201, origin);
       }
       if (seg.length === 3 && seg[1] && seg[2] === "audit-play" && method === "POST") {
         return json(await auditPlayRoute(req, env, user.id, seg[1]), 200, origin);
