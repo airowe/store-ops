@@ -7,7 +7,9 @@
 import { describe, expect, it } from "vitest";
 import {
   ConsoleEmailSender,
+  APPROVAL_NONCE_TTL_SECONDS,
   constantTimeEqual,
+  mintApprovalNonce,
   mintMagicToken,
   mintSessionToken,
   parseCookie,
@@ -16,6 +18,7 @@ import {
   serializeSessionCookie,
   serializeLogoutCookie,
   SESSION_COOKIE,
+  verifyApprovalNonce,
   verifyMagicToken,
   verifySessionToken,
 } from "./auth.js";
@@ -417,5 +420,72 @@ describe("magicLinkMessage — the sign-in email body", () => {
   it("stays short — a transactional email that reads as a newsletter gets filtered", async () => {
     const m = magicLinkMessage(LINK);
     expect(m.text.length).toBeLessThan(600);
+  });
+});
+
+describe("approval nonces (ADR-001: the approval boundary)", () => {
+  const RUN = "9f8e7d6c-1234-4a5b-8c9d-0123456789ab";
+  const OTHER_RUN = "00000000-1111-4222-8333-444444444444";
+
+  it("mints a nonce that verifies back to the same email for the same run", async () => {
+    const now = 1_000_000;
+    const nonce = await mintApprovalNonce(SECRET, "User@Example.com", RUN, { now });
+    await expect(verifyApprovalNonce(SECRET, nonce, RUN, { now })).resolves.toEqual({
+      ok: true,
+      email: "user@example.com",
+    });
+  });
+
+  it("REJECTS a nonce minted for a different run — the subject is signed", async () => {
+    const now = 1_000_000;
+    const nonce = await mintApprovalNonce(SECRET, "user@example.com", RUN, { now });
+    await expect(verifyApprovalNonce(SECRET, nonce, OTHER_RUN, { now })).resolves.toEqual({
+      ok: false,
+    });
+  });
+
+  it("REJECTS a session token replayed as an approval nonce", async () => {
+    const now = 1_000_000;
+    const session = await mintSessionToken(SECRET, "user@example.com", { now, ttlSeconds: 3600 });
+    await expect(verifyApprovalNonce(SECRET, session, RUN, { now })).resolves.toEqual({ ok: false });
+  });
+
+  it("REJECTS an approval nonce replayed as a session token", async () => {
+    const now = 1_000_000;
+    const nonce = await mintApprovalNonce(SECRET, "user@example.com", RUN, { now });
+    await expect(verifySessionToken(SECRET, nonce, { now })).resolves.toEqual({ ok: false });
+  });
+
+  it("REJECTS a nonce signed with a different secret", async () => {
+    const now = 1_000_000;
+    const nonce = await mintApprovalNonce("some-other-secret", "user@example.com", RUN, { now });
+    await expect(verifyApprovalNonce(SECRET, nonce, RUN, { now })).resolves.toEqual({ ok: false });
+  });
+
+  it("REJECTS a tampered payload", async () => {
+    const now = 1_000_000;
+    const nonce = await mintApprovalNonce(SECRET, "user@example.com", RUN, { now });
+    const [, sig] = nonce.split(".");
+    const forged = `${btoa(JSON.stringify({ e: "attacker@example.com", x: now + 60, t: "approve", s: RUN })).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "")}.${sig}`;
+    await expect(verifyApprovalNonce(SECRET, forged, RUN, { now })).resolves.toEqual({ ok: false });
+  });
+
+  it("EXPIRES — a nonce is dead once its TTL has elapsed", async () => {
+    const now = 1_000_000;
+    const nonce = await mintApprovalNonce(SECRET, "user@example.com", RUN, { now });
+    await expect(
+      verifyApprovalNonce(SECRET, nonce, RUN, { now: now + APPROVAL_NONCE_TTL_SECONDS }),
+    ).resolves.toEqual({ ok: false });
+    // still valid one second before expiry — the boundary is exact
+    await expect(
+      verifyApprovalNonce(SECRET, nonce, RUN, { now: now + APPROVAL_NONCE_TTL_SECONDS - 1 }),
+    ).resolves.toEqual({ ok: true, email: "user@example.com" });
+  });
+
+  it("REJECTS junk", async () => {
+    const now = 1_000_000;
+    for (const junk of ["", "not-a-token", "a.b.c", "onlyonepart"]) {
+      await expect(verifyApprovalNonce(SECRET, junk, RUN, { now })).resolves.toEqual({ ok: false });
+    }
   });
 });

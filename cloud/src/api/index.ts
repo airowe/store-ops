@@ -139,6 +139,7 @@ import { createApiKey, listApiKeys, looksLikeApiKey, resolveApiKey, revokeApiKey
 import { serializeAsaBundle, verifyAsaCredentials, type AsaKeyBundle } from "../engine/asaAuth.js";
 import localesData from "../engine/locales-data.json";
 import { validateThresholdPatch } from "../thresholds.js";
+import { requireApprovalNonce, requireHumanSession } from "./approvalBoundary.js";
 import { validateSchedule } from "../schedule.js";
 import { toLoopState } from "../loopState.js";
 import {
@@ -208,6 +209,8 @@ import { isExpoPushToken } from "../push.js";
 import { finalizeEditedCopy } from "./proposalEdit.js";
 import { decryptField, importKeyFromBase64 } from "../crypto/rlhfCrypto.js";
 import {
+  APPROVAL_NONCE_TTL_SECONDS,
+  mintApprovalNonce,
   mintMagicToken,
   mintSessionToken,
   parseCookie,
@@ -621,7 +624,18 @@ function sessionSecret(env: Env): string {
  *   4. 401.
  * In every valid path the email get-or-creates the `users` row.
  */
-async function requireUser(req: Request, env: Env): Promise<{ id: string; email: string }> {
+/**
+ * HOW a caller authenticated. The approval boundary (ADR-001) needs this: a
+ * cookie session is a browser with a human at it, while a Bearer token is a
+ * script or agent holding a credential, and `x-user-email` is a demo-env
+ * convenience. Routes that must be human-driven (POST /runs/approve-all) accept
+ * only "cookie"; every other route ignores this field and behaves as before.
+ */
+export type AuthMethod = "cookie" | "bearer" | "demo-header";
+
+export type AuthedUser = { id: string; email: string; auth: AuthMethod };
+
+async function requireUser(req: Request, env: Env): Promise<AuthedUser> {
   // (1) session cookie
   const jar = parseCookie(req.headers.get("Cookie"));
   const token = jar[SESSION_COOKIE];
@@ -629,7 +643,7 @@ async function requireUser(req: Request, env: Env): Promise<{ id: string; email:
     const res = await verifySessionToken(sessionSecret(env), token);
     if (res.ok) {
       const user = await upsertUser(env.DB, res.email);
-      return { id: user.id, email: user.email };
+      return { id: user.id, email: user.email, auth: "cookie" };
     }
   }
 
@@ -644,12 +658,12 @@ async function requireUser(req: Request, env: Env): Promise<{ id: string; email:
     if (bearer) {
       if (looksLikeApiKey(bearer)) {
         const owner = await resolveApiKey(env.DB, bearer);
-        if (owner) return owner;
+        if (owner) return { ...owner, auth: "bearer" };
       } else {
         const res = await verifySessionToken(sessionSecret(env), bearer);
         if (res.ok) {
           const user = await upsertUser(env.DB, res.email);
-          return { id: user.id, email: user.email };
+          return { id: user.id, email: user.email, auth: "bearer" };
         }
       }
     }
@@ -660,7 +674,7 @@ async function requireUser(req: Request, env: Env): Promise<{ id: string; email:
     const email = req.headers.get("x-user-email")?.trim().toLowerCase();
     if (email && email.includes("@")) {
       const user = await upsertUser(env.DB, email);
-      return { id: user.id, email: user.email };
+      return { id: user.id, email: user.email, auth: "demo-header" };
     }
   }
 
@@ -3724,6 +3738,31 @@ type ApproveBody = {
 };
 
 /**
+ * POST /runs/:id/approval-nonce — mint the token that lets the NEXT request
+ * approve this run (ADR-001).
+ *
+ * The dashboard calls this from a trusted (isTrusted) click handler and sends
+ * the result back on `x-approval-nonce`. A scripted fetch — including one made
+ * by an agent holding the user's own session — cannot produce the gesture, so
+ * it cannot obtain a nonce, so it cannot approve.
+ *
+ * Minting is deliberately harmless on its own: it writes nothing, changes no
+ * status, and a nonce with no follow-up POST expires unused in 60s. Ownership
+ * is checked here so a nonce is never minted for someone else's run.
+ */
+async function mintApprovalNonceRoute(
+  env: Env,
+  user: AuthedUser,
+  runId: string,
+): Promise<unknown> {
+  const run = await getRun(env.DB, runId);
+  if (!run) throw new HttpError(404, "run not found");
+  await requireOwnedApp(env, run.app_id, user.id);
+  const nonce = await mintApprovalNonce(sessionSecret(env), user.email, runId);
+  return { nonce, expiresInSeconds: APPROVAL_NONCE_TTL_SECONDS };
+}
+
+/**
  * POST /runs/:id/approve  and  POST /runs/:id/reject — the human gate.
  *
  * `action` comes from the URL segment ("approve"/"reject"); the JSON body's
@@ -5150,6 +5189,10 @@ export async function handleApi(req: Request, env: Env, ctx?: ExecutionContext):
 
     // /runs/approve-all — bulk-approve every pending run (matched BEFORE /runs/:id)
     if (seg[0] === "runs" && seg[1] === "approve-all" && seg.length === 2 && method === "POST") {
+      // ADR-001: bulk approve is cookie-only. Without this, an agent credential
+      // could route around the per-run nonce by approving everything at once.
+      const gate = requireHumanSession(user.auth);
+      if (!gate.ok) return json({ error: gate.error }, gate.status, origin, env);
       return json(await approveAll(env, user.id), 200, origin, env);
     }
 
@@ -5305,7 +5348,21 @@ export async function handleApi(req: Request, env: Env, ctx?: ExecutionContext):
       if (seg.length === 2 && method === "GET") {
         return json(await getRunRoute(env, user.id, runId), 200, origin);
       }
+      // ADR-001: minting an approval nonce. The dashboard calls this from a
+      // trusted (isTrusted) click handler; a scripted fetch cannot produce the
+      // gesture, so it cannot obtain a nonce. Read-only — minting approves
+      // nothing, and the nonce is worthless without the subsequent POST.
+      if (seg.length === 3 && seg[2] === "approval-nonce" && method === "POST") {
+        return json(await mintApprovalNonceRoute(env, user, runId), 200, origin, env);
+      }
       if (seg.length === 3 && method === "POST" && (seg[2] === "approve" || seg[2] === "reject")) {
+        // The nonce gates APPROVE only. Rejecting closes the gate without
+        // shipping anything, so an agent clearing bad proposals is legitimate
+        // pre-gate triage and stays available to it.
+        if (seg[2] === "approve") {
+          const gate = await requireApprovalNonce(req, env, user, runId);
+          if (!gate.ok) return json({ error: gate.error }, gate.status, origin, env);
+        }
         return json(await decideRun(req, env, user.id, runId, seg[2]), 200, origin);
       }
       if (seg.length === 3 && seg[2] === "localize" && method === "POST") {
