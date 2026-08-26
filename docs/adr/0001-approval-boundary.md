@@ -24,11 +24,25 @@ capability — it only declines to advertise it. A scripted `fetch` from that
 same page carries the same cookie and can POST the same endpoint.
 
 So "only a human approves" was a claim about our tool manifest, not a property
-of the system. That distinction is not academic here. WebMCP's own
-security-privacy questionnaire notes that a page-declared `readOnlyHint` "may
-cause the agent to skip a confirmation step" — page-declared tool semantics get
-trusted by the agent reading them. A boundary that exists only in a manifest is
-a boundary that the standard itself warns you not to trust.
+of the system. That distinction is not academic, and the standard itself says
+so in three places:
+
+- A page-declared `readOnlyHint` "may cause the agent to skip a confirmation
+  step" (security-privacy questionnaire) — page-declared tool semantics get
+  *trusted* by the agent reading them.
+- `SubmitEvent.agentInvoked` (added March 2026) is the one automatic,
+  browser-set signal that an agent acted. The guidance shipped with it is
+  explicit: use it for "analytics, abuse detection, or to adjust UX — **do not
+  use it for authorization**; that's the user's session, not the agent's."
+  It is a signal, not a credential.
+- Agent identity has no mechanism at all. `webmcp` issue #105 ("Agent Identity
+  Verification and Authorization Framework", opened Feb 2026, still **backlog**)
+  states that tools "cannot determine who is calling them" and that
+  `requestUserInteraction` is "merely a polite suggestion agents can ignore".
+
+In other words: the platform offers no way to know *who* is acting, and
+explicitly warns against authorizing on the one signal it does offer. A boundary
+built on caller identity is a boundary the standard tells you not to build.
 
 Two further facts made the decision urgent rather than theoretical:
 
@@ -139,6 +153,19 @@ bypass is removing the marker, and a scripted fetch controls its own headers. It
 would pass for compliant clients and wave through non-compliant ones — precisely
 the failure mode of trusting `readOnlyHint`, dressed up as a control.
 
+**B(ii). Gate on `SubmitEvent.agentInvoked`.** The browser sets it, so unlike a
+header it cannot simply be spoofed by the caller — which makes it the most
+tempting wrong answer. Rejected because it is per-*event* and form-scoped: it
+says nothing about a `fetch()` that never touches a form, and the spec's own
+guidance forbids authorizing on it. Adopted for the opposite purpose instead —
+see "Detection versus evidence".
+
+**B(iii). Detect the agent some other way** (`navigator.webdriver`, UA sniffing,
+behavioural heuristics, CDP probing). Rejected: `webdriver` detects automation
+frameworks, not an in-page agent; UA and headers are self-declared; heuristics
+false-positive on fast, keyboard-driven, and assistive-technology users, which
+makes them an accessibility hazard as well as unreliable.
+
 **C. Gate rejection as well as approval.** Rejected: it would block an agent
 from clearing bad proposals, which is legitimate pre-gate work, and it buys no
 safety since rejection ships nothing.
@@ -146,6 +173,35 @@ safety since rejection ships nothing.
 **D. Store nonces in D1 for true single-use.** Rejected as unnecessary given the
 `UNIQUE (run_id)` idempotency wall, and as a per-approval write on a hot path
 for a property we already have.
+
+## Detection versus evidence
+
+The rejected alternatives share one mistake: they ask **"who is calling?"** The
+agent runs in the page, as the user, with the user's session — at the HTTP and
+DOM layer there is no boundary between them to detect across. The platform
+confirms this (issue #105) rather than merely failing to help.
+
+The design instead asks **"did a human gesture happen?"** `isTrusted` is not
+detection — it is proof of a specific act, unforgeable by script, requiring no
+identity, and failing safe (no gesture ⇒ no nonce ⇒ no approval).
+
+The signals that *do* exist are used where being wrong is harmless:
+
+- **`agentInvoked` and tool-call events** drive the UI — the always-visible
+  tools panel lights up the tool an agent just called, so the human watching
+  sees the work happen. Both only ever fire *truthfully positive*; neither can
+  assert an absence, and neither grants anything.
+- **Structured refusals.** A refused approval returns a stable
+  `boundary: "human-approval-required"` code plus `youCan` (the read-and-draft
+  capabilities still open) and `humanMustDo`. A human never sees this body — the
+  UI renders its own message — so it exists purely so a caller that hit the
+  endpoint directly gets a handoff instead of a bare 403. A test asserts no
+  `youCan` entry can cross the gate, so the list cannot drift into granting.
+- **A `Link: rel="webmcp"` header** on API responses, advertising the page
+  surface to a programmatic caller that would otherwise never discover it.
+
+**The rule that keeps all of this safe:** a caller's self-description may change
+what we *tell* them, never what we *permit*.
 
 ## Revisiting
 

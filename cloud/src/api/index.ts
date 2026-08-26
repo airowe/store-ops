@@ -139,7 +139,7 @@ import { createApiKey, listApiKeys, looksLikeApiKey, resolveApiKey, revokeApiKey
 import { serializeAsaBundle, verifyAsaCredentials, type AsaKeyBundle } from "../engine/asaAuth.js";
 import localesData from "../engine/locales-data.json";
 import { validateThresholdPatch } from "../thresholds.js";
-import { requireApprovalNonce, requireHumanSession } from "./approvalBoundary.js";
+import { type BoundaryRefusal, requireApprovalNonce, requireHumanSession } from "./approvalBoundary.js";
 import { notifyRunReadyForEnv } from "../notify/forEnv.js";
 import { checkDailyCadenceBound, checkRunTriggerBound, RUN_TRIGGER_WINDOW_SECONDS } from "./agentBounds.js";
 import { validateSchedule } from "../schedule.js";
@@ -310,7 +310,22 @@ const SESSION_TTL_SECONDS = 30 * 24 * 60 * 60; // 30 days
 
 // ── HTTP helpers ──────────────────────────────────────────────────────────────
 
-const JSON_HEADERS = { "content-type": "application/json" } as const;
+/**
+ * Every JSON response advertises the WebMCP surface.
+ *
+ * An agent that reaches this API programmatically has no way to discover that
+ * the same origin publishes page-declared tools with the user's own session —
+ * WebMCP has no identity or discovery mechanism pointing the other way (the
+ * spec's agent-identity work is still open). A `Link` header is the cheapest
+ * honest answer: it tells every caller where the richer surface is, grants
+ * nothing, and costs one header.
+ */
+const WEBMCP_LINK = '<https://shipaso.com/runs>; rel="webmcp"';
+
+const JSON_HEADERS = {
+  "content-type": "application/json",
+  link: WEBMCP_LINK,
+} as const;
 
 /**
  * CORS for a credentialed (cookie-bearing) cross-origin dashboard. We must echo a
@@ -1750,6 +1765,25 @@ async function enforceRunTriggerBound(env: Env, userId: string): Promise<void> {
     tier: user?.tier ?? "free",
   });
   if (!bound.ok) throw new HttpError(429, bound.error);
+}
+
+
+/**
+ * The wire body for a refused approval (ADR-001).
+ *
+ * A human never sees this — the UI renders its own message. It exists for a
+ * caller that hit the endpoint directly, so it names the boundary with a stable
+ * code and lists what IS still available rather than leaving a bare 403 to be
+ * guessed at. It grants nothing: `youCan` restates capabilities the caller
+ * already had.
+ */
+function boundaryRefusalBody(refusal: BoundaryRefusal): Record<string, unknown> {
+  return {
+    error: refusal.error,
+    boundary: refusal.boundary,
+    youCan: refusal.youCan,
+    humanMustDo: refusal.humanMustDo,
+  };
 }
 
 /** POST /apps — connect + initial run. */
@@ -5313,7 +5347,7 @@ export async function handleApi(req: Request, env: Env, ctx?: ExecutionContext):
       // ADR-001: bulk approve is cookie-only. Without this, an agent credential
       // could route around the per-run nonce by approving everything at once.
       const gate = requireHumanSession(user.auth);
-      if (!gate.ok) return json({ error: gate.error }, gate.status, origin, env);
+      if (!gate.ok) return json(boundaryRefusalBody(gate), gate.status, origin, env);
       return json(await approveAll(env, user.id), 200, origin, env);
     }
 
@@ -5482,7 +5516,7 @@ export async function handleApi(req: Request, env: Env, ctx?: ExecutionContext):
         // pre-gate triage and stays available to it.
         if (seg[2] === "approve") {
           const gate = await requireApprovalNonce(req, env, user, runId);
-          if (!gate.ok) return json({ error: gate.error }, gate.status, origin, env);
+          if (!gate.ok) return json(boundaryRefusalBody(gate), gate.status, origin, env);
         }
         return json(await decideRun(req, env, user.id, runId, seg[2]), 200, origin);
       }

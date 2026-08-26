@@ -21,7 +21,45 @@
 import { resolveSessionSecret, verifyApprovalNonce } from "../auth.js";
 import type { AuthMethod } from "./index.js";
 
-export type BoundaryVerdict = { ok: true } | { ok: false; status: number; error: string };
+/**
+ * A refusal, shaped so a machine can act on it.
+ *
+ * A human never sees this body — the UI renders its own message. This is for
+ * whoever called the endpoint directly, which is a script or an agent. A bare
+ * 403 leaves it guessing (retry? different endpoint? broken auth?); naming the
+ * boundary and listing what IS available turns a dead end into a handoff.
+ *
+ * THE RULE (ADR-001): a caller's self-description may change what we TELL them,
+ * never what we PERMIT. Nothing in this shape grants anything — `youCan` lists
+ * capabilities the caller already had, and no entry may cross the gate.
+ */
+export type BoundaryRefusal = {
+  ok: false;
+  status: number;
+  /** Human-readable. Kept because a person reads server logs. */
+  error: string;
+  /** Stable machine code — safe to branch on, unlike the prose. */
+  boundary: "human-approval-required";
+  /** What this caller CAN do here. Never includes anything gate-crossing. */
+  youCan: readonly string[];
+  /** The act only a person can perform. */
+  humanMustDo: string;
+};
+
+export type BoundaryVerdict = { ok: true } | BoundaryRefusal;
+
+/**
+ * The read-and-draft capabilities that remain open to an agent at the gate.
+ * Deliberately excludes anything that approves, ships, or pushes — a test
+ * asserts that, so this list cannot drift into granting by accident.
+ */
+const AGENT_CAPABILITIES = [
+  "explain_run",
+  "draft_alternative",
+  "stage_for_approval",
+  "get_run",
+  "list_pending_runs",
+] as const;
 
 /**
  * May this caller use BULK approve? Cookie sessions only.
@@ -40,6 +78,9 @@ export function requireHumanSession(auth: AuthMethod): BoundaryVerdict {
       "Bulk approval requires a signed-in browser session. Approving is a human " +
       "gesture in ShipASO — an API key or agent credential can read and draft, but " +
       "cannot approve. Open the run in the dashboard and approve it there.",
+    boundary: "human-approval-required",
+    youCan: AGENT_CAPABILITIES,
+    humanMustDo: "approve in the dashboard, signed in, one run at a time",
   };
 }
 
@@ -68,6 +109,9 @@ export async function requireApprovalNonce(
       "Approving requires a human gesture in the page. This request carried no " +
       "valid approval nonce, so it was not approved. An agent can read, draft and " +
       "stage a proposal — only a person can approve it.",
+    boundary: "human-approval-required",
+    youCan: AGENT_CAPABILITIES,
+    humanMustDo: "approve in the page — a real click, which mints the nonce",
   };
   const nonce = req.headers.get(APPROVAL_NONCE_HEADER)?.trim();
   if (!nonce) return refused;

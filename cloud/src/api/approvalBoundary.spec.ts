@@ -77,3 +77,71 @@ describe("requireApprovalNonce — single approve needs a trusted gesture", () =
     }
   });
 });
+
+/**
+ * Structured refusals — the boundary explaining itself to a machine.
+ *
+ * A human never sees this body; the UI renders its own message. This is for
+ * whoever hit the endpoint directly, which by definition is a script or an
+ * agent. Telling it what it CAN do turns a dead end into a handoff.
+ *
+ * THE RULE THIS MUST NOT BREAK (ADR-001): a caller's self-description may
+ * change what we TELL them, never what we PERMIT. Nothing here grants anything.
+ */
+describe("refusal bodies are machine-actionable", () => {
+  const RUN = "9f8e7d6c-1234-4a5b-8c9d-0123456789ab";
+  const USER = { id: "u1", email: "user@example.com", auth: "cookie" as const };
+  const env = { SESSION_SECRET: "test-secret-please-ignore", APP_ENV: "test" };
+
+  it("names the boundary with a STABLE machine code, not just prose", async () => {
+    const v = await requireApprovalNonce(
+      new Request("https://api.test/runs/x/approve", { method: "POST" }),
+      env,
+      USER,
+      RUN,
+    );
+    expect(v.ok).toBe(false);
+    if (!v.ok) expect(v.boundary).toBe("human-approval-required");
+  });
+
+  it("tells the caller what it CAN do instead of only what it cannot", async () => {
+    const v = await requireApprovalNonce(
+      new Request("https://api.test/runs/x/approve", { method: "POST" }),
+      env,
+      USER,
+      RUN,
+    );
+    if (!v.ok) {
+      expect(v.youCan).toEqual(expect.arrayContaining(["explain_run", "draft_alternative"]));
+      expect(v.humanMustDo).toMatch(/approv/i);
+    }
+  });
+
+  it("never lists a capability that would cross the gate", async () => {
+    const v = await requireApprovalNonce(
+      new Request("https://api.test/runs/x/approve", { method: "POST" }),
+      env,
+      USER,
+      RUN,
+    );
+    if (!v.ok) {
+      for (const cap of v.youCan ?? []) {
+        expect(cap).not.toMatch(/approve|ship|push|publish/i);
+      }
+    }
+  });
+
+  it("bulk refusal is structured too, and points at the per-run path", () => {
+    const v = requireHumanSession("bearer");
+    expect(v.ok).toBe(false);
+    if (!v.ok) {
+      expect(v.boundary).toBe("human-approval-required");
+      expect(v.humanMustDo).toBeTruthy();
+    }
+  });
+
+  it("keeps the human-readable message — a person reading logs still gets prose", () => {
+    const v = requireHumanSession("bearer");
+    if (!v.ok) expect(v.error.length).toBeGreaterThan(40);
+  });
+});

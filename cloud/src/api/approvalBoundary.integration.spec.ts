@@ -137,3 +137,46 @@ describe("POST /runs/approve-all — cookie-only is WIRED", () => {
     expect(res.status).toBe(200);
   });
 });
+
+describe("refusals reach the wire structured (not just prose)", () => {
+  it("the 403 body carries the machine fields, not only `error`", async () => {
+    const res = await handleApi(
+      new Request(`https://api.test/runs/${RUN}/approve`, {
+        method: "POST",
+        headers: await cookieHeaders(),
+      }),
+      env(),
+    );
+    expect(res.status).toBe(403);
+    const body = (await res.json()) as Record<string, unknown>;
+    expect(body.boundary).toBe("human-approval-required");
+    expect(Array.isArray(body.youCan)).toBe(true);
+    expect(body.humanMustDo).toBeTruthy();
+    // prose survives for a human reading logs
+    expect(String(body.error)).toMatch(/human gesture/i);
+  });
+
+  it("approve-all's 403 is structured too", async () => {
+    const res = await handleApi(
+      new Request("https://api.test/runs/approve-all", {
+        method: "POST",
+        headers: await bearerHeaders(),
+      }),
+      env(),
+    );
+    expect(res.status).toBe(403);
+    const body = (await res.json()) as Record<string, unknown>;
+    expect(body.boundary).toBe("human-approval-required");
+  });
+
+  it("advertises the WebMCP surface on responses", async () => {
+    const res = await handleApi(
+      new Request("https://api.test/runs/approve-all", {
+        method: "POST",
+        headers: await cookieHeaders(),
+      }),
+      env(),
+    );
+    expect(res.headers.get("link")).toMatch(/rel="webmcp"/);
+  });
+});
