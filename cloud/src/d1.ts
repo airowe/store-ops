@@ -2779,3 +2779,49 @@ export async function markChannelDelivery(
     console.error("[store-ops] markChannelDelivery failed (non-fatal):", e);
   }
 }
+
+/**
+ * How many of this user's apps are on the DAILY sweep, EXCLUDING one.
+ *
+ * Excluding the app under change is the point: re-setting an already-daily app
+ * to daily must not be blocked by its own existing row, which is exactly the
+ * off-by-one that would make the bound feel arbitrary.
+ *
+ * Fail-open on an unreadable schedule, matching parseSchedule's contract — a
+ * garbage row counts as its default (weekly), never as daily.
+ */
+export async function dailyAppCountExcluding(
+  db: D1Database,
+  args: { userId: string; exceptAppId: string },
+): Promise<number> {
+  const { results } = await db
+    .prepare(
+      "SELECT s.schedule_json AS schedule_json FROM app_settings s " +
+        "JOIN apps a ON a.id = s.app_id " +
+        "WHERE a.user_id = ? AND s.app_id != ?",
+    )
+    .bind(args.userId, args.exceptAppId)
+    .all<{ schedule_json: string | null }>();
+  return (results ?? []).filter((r) => parseSchedule(r.schedule_json).cadence === "daily").length;
+}
+
+/**
+ * How many runs this user has opened across all their apps since `sinceIso`.
+ *
+ * Backs the agent-triggered run bound. Counts every run regardless of status: a
+ * run that failed validation still spent the inference that the bound exists to
+ * damp, so excluding it would let a loop of failing runs run free.
+ */
+export async function runCountSince(
+  db: D1Database,
+  args: { userId: string; sinceIso: string },
+): Promise<number> {
+  const row = await db
+    .prepare(
+      "SELECT COUNT(*) AS n FROM runs r JOIN apps a ON a.id = r.app_id " +
+        "WHERE a.user_id = ? AND r.created_at >= ?",
+    )
+    .bind(args.userId, args.sinceIso)
+    .first<{ n: number }>();
+  return row?.n ?? 0;
+}

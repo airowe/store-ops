@@ -141,6 +141,7 @@ import localesData from "../engine/locales-data.json";
 import { validateThresholdPatch } from "../thresholds.js";
 import { requireApprovalNonce, requireHumanSession } from "./approvalBoundary.js";
 import { notifyRunReadyForEnv } from "../notify/forEnv.js";
+import { checkDailyCadenceBound, checkRunTriggerBound, RUN_TRIGGER_WINDOW_SECONDS } from "./agentBounds.js";
 import { validateSchedule } from "../schedule.js";
 import { toLoopState } from "../loopState.js";
 import {
@@ -160,6 +161,8 @@ import {
   getThresholds,
   getOptOut,
   getUser,
+  dailyAppCountExcluding,
+  runCountSince,
   getApproval,
   getLatestCompetitorMap,
   getRankHistory,
@@ -1724,6 +1727,31 @@ function notifyInBackground(
   if (ctx) ctx.waitUntil(work);
 }
 
+
+/**
+ * Damp agent-triggered runs before one starts.
+ *
+ * Every run reasons with the Anthropic client, so an agent in a retry loop
+ * spends real money on our key. This is a DAMPER, not a spend cap — the same
+ * honesty publicReportGuard applies to its limiter. It bounds the obvious
+ * runaway; it does not account for cost.
+ *
+ * Throws 429 (with the tier's allowance explained) rather than returning a
+ * verdict, because every caller's response to a refusal is identical.
+ */
+async function enforceRunTriggerBound(env: Env, userId: string): Promise<void> {
+  const since = new Date(Date.now() - RUN_TRIGGER_WINDOW_SECONDS * 1000)
+    .toISOString()
+    .replace("T", " ")
+    .slice(0, 19);
+  const user = await getUser(env.DB, userId);
+  const bound = checkRunTriggerBound({
+    runsInWindow: await runCountSince(env.DB, { userId, sinceIso: since }),
+    tier: user?.tier ?? "free",
+  });
+  if (!bound.ok) throw new HttpError(429, bound.error);
+}
+
 /** POST /apps — connect + initial run. */
 async function connectApp(
   req: Request,
@@ -1898,6 +1926,7 @@ async function runApp(
   ctx?: ExecutionContext,
 ): Promise<unknown> {
   const app = await requireOwnedApp(env, appId, userId);
+  await enforceRunTriggerBound(env, userId);
   const body = (await req
     .json()
     .catch(() => ({}))) as RunOverrides;
@@ -3017,6 +3046,20 @@ async function schedulePost(
   await requireOwnedApp(env, appId, userId);
   const v = validateSchedule(await readJson(req));
   if (!v.ok) throw new HttpError(400, v.error);
+  // Spend bound: `daily` multiplies recurring inference cost sevenfold per app,
+  // and this route is agent-drivable from the WebMCP surface. The app being
+  // changed is excluded from the count so re-setting an already-daily app never
+  // blocks on its own row. Weekly/biweekly are unbounded (checkDailyCadenceBound
+  // returns ok immediately), so the extra read only happens for `daily`.
+  if (v.schedule.cadence === "daily") {
+    const user = await getUser(env.DB, userId);
+    const bound = checkDailyCadenceBound({
+      cadence: v.schedule.cadence,
+      dailyAppCount: await dailyAppCountExcluding(env.DB, { userId, exceptAppId: appId }),
+      tier: user?.tier ?? "free",
+    });
+    if (!bound.ok) throw new HttpError(429, bound.error);
+  }
   await setSchedule(env.DB, appId, v.schedule);
   return { schedule: v.schedule };
 }
