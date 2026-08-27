@@ -1957,3 +1957,45 @@ pre {
 .webmcp-log-row[data-phase="error"] .webmcp-log-phase { color: var(--bad); }
 .webmcp-log-row[data-phase="done"] .webmcp-log-phase { color: var(--signal); }
 .webmcp-log-message { color: var(--bad); }
+
+/* ── notification channels ───────────────────────────────────────────────────
+   Four states, deliberately distinguishable: an unverified destination must
+   never read as connected. Colours from tokens only. */
+.channel-list {
+  list-style: none;
+  margin: 14px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+.channel-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.6rem 0.75rem;
+  border: 1px solid var(--line);
+  border-left-width: 3px;
+  border-radius: calc(var(--radius) / 2);
+  background: var(--raise);
+}
+.channel-row[data-state="live"] { border-left-color: var(--signal); }
+.channel-row[data-state="unverified"] { border-left-color: var(--warn); }
+.channel-row[data-state="muted"] { border-left-color: var(--line); }
+.channel-row[data-state="failing"] { border-left-color: var(--bad); }
+.channel-row-main { display: flex; flex-direction: column; gap: 0.2rem; }
+.channel-row-name {
+  font-family: var(--mono);
+  font-size: 0.8rem;
+  color: var(--ink);
+}
+.channel-row-state { font-size: 0.72rem; color: var(--dim); }
+.channel-row-error {
+  font-size: 0.72rem;
+  color: var(--bad);
+  font-family: var(--mono);
+}
+.channel-row-actions { display: flex; gap: 0.4rem; flex-shrink: 0; }
+.channel-connect { margin-top: 14px; }
+.channel-link { color: var(--brand); }
