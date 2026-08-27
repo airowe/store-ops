@@ -83,6 +83,10 @@ export type Env = {
   // emails the link via Resend; unset → ConsoleEmailSender (logs the link).
   RESEND_API_KEY?: string;
   RESEND_FROM?: string; // verified sender, e.g. "ShipASO <login@shipaso.com>"
+  // Telegram Bot API token, from @BotFather. Unset → the Telegram transport is
+  // ABSENT rather than broken: a Telegram destination on an env without this is
+  // reported as a configuration bug by deliverAll, never counted as delivered.
+  TELEGRAM_BOT_TOKEN?: string;
   // Opt-in gate for the direct ASC metadata WRITE (#11). Unset → the push
   // endpoint returns 403 (the credential-free Fastlane handoff stays the default).
   // Set to "1"/"true" only after verifying against a test app.
