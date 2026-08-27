@@ -43,11 +43,28 @@ export function NavRail({
         ))}
       </nav>
       <div className="rail-spacer" />
+      {/*
+        Signed out, the chip used to read "You" over "Fleet" — a name for
+        nobody and a plan nobody is on — and the rail offered no route to
+        /login, so an expired session on /settings was a dead end. An absent
+        operator is stated as absent, and the way back in is offered.
+      */}
       <div className="rail-user" data-testid="rail-user">
-        <span className="rail-avatar" aria-hidden="true">{initials}</span>
+        <span className="rail-avatar" aria-hidden="true">{operator ? initials : "··"}</span>
         <div className="rail-user-meta">
-          <div className="rail-user-name">{operator ?? "You"}</div>
-          <div className="rail-user-sub">Fleet</div>
+          {operator ? (
+            <>
+              <div className="rail-user-name">{operator}</div>
+              <div className="rail-user-sub">Fleet</div>
+            </>
+          ) : (
+            <>
+              <div className="rail-user-name">Signed out</div>
+              <Link to="/login" className="rail-user-sub rail-signin" data-testid="rail-signin">
+                Sign in
+              </Link>
+            </>
+          )}
         </div>
       </div>
     </aside>

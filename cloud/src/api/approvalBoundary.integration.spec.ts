@@ -180,3 +180,82 @@ describe("refusals reach the wire structured (not just prose)", () => {
     expect(res.headers.get("link")).toMatch(/rel="webmcp"/);
   });
 });
+
+/**
+ * THE MINT ROUTE — the hole this suite could not see.
+ *
+ * Every test above mints a nonce by calling `mintApprovalNonce` directly, so
+ * none of them ever asked the question that matters: can a caller who never
+ * produced a gesture GET one from the server?
+ *
+ * Measured in real Chrome 151 against production: yes. A plain scripted
+ * `fetch` with the user's own cookie received a valid nonce, 200. Since the
+ * spend path can only check signature, kind, subject and email — all of which
+ * a server-minted nonce satisfies by construction — the gate was decorative.
+ *
+ * `isTrusted` is a browser fact that never crosses the network, so the server
+ * cannot verify a gesture happened. What it CAN verify is that the caller is
+ * the page we shipped, driven by a top-level navigation: `Sec-Fetch-Site` and
+ * `Sec-Fetch-Mode` are FORBIDDEN headers — page script cannot set or forge
+ * them, only the browser sets them. That does not prove a human clicked; it
+ * proves the request came from our own document. Combined with the trusted
+ * click that the dashboard still requires client-side, it restores the
+ * property that the comment claimed all along.
+ */
+describe("POST /runs/:id/approval-nonce — minting is itself gated", () => {
+  it("MINTS for a same-origin request from our own page", async () => {
+    const res = await handleApi(
+      new Request(`https://api.test/runs/${RUN}/approval-nonce`, {
+        method: "POST",
+        headers: {
+          ...(await cookieHeaders()),
+          Origin: "https://app.shipaso.com",
+          "Sec-Fetch-Site": "same-site",
+          "Sec-Fetch-Mode": "cors",
+          "Sec-Fetch-Dest": "empty",
+        },
+      }),
+      env(),
+    );
+    expect(res.status).toBe(200);
+    expect(await res.json()).toMatchObject({ nonce: expect.any(String) });
+  });
+
+  it("REFUSES a cross-site request — the drive-by case", async () => {
+    const res = await handleApi(
+      new Request(`https://api.test/runs/${RUN}/approval-nonce`, {
+        method: "POST",
+        headers: {
+          ...(await cookieHeaders()),
+          Origin: "https://evil.example",
+          "Sec-Fetch-Site": "cross-site",
+          "Sec-Fetch-Mode": "cors",
+        },
+      }),
+      env(),
+    );
+    expect(res.status).toBe(403);
+  });
+
+  it("REFUSES a bearer/agent credential — a nonce needs the browser, not a key", async () => {
+    const res = await handleApi(
+      new Request(`https://api.test/runs/${RUN}/approval-nonce`, {
+        method: "POST",
+        headers: await bearerHeaders(),
+      }),
+      env(),
+    );
+    expect(res.status).toBe(403);
+  });
+
+  it("REFUSES a request with NO Sec-Fetch-Site — a non-browser client", async () => {
+    const res = await handleApi(
+      new Request(`https://api.test/runs/${RUN}/approval-nonce`, {
+        method: "POST",
+        headers: await cookieHeaders(),
+      }),
+      env(),
+    );
+    expect(res.status).toBe(403);
+  });
+});

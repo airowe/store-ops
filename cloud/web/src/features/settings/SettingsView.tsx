@@ -45,6 +45,53 @@ function setTheme(next: ThemeMode) {
   applyTheme(next);
 }
 
+/**
+ * Theme lives in this browser, not the account, so it is the one setting that
+ * stays answerable with no session — which is why it is shared between the
+ * signed-in page and the signed-out one rather than duplicated.
+ */
+function ThemePanel({ theme, pickTheme }: { theme: ThemeMode; pickTheme: (m: ThemeMode) => void }) {
+  return (
+    <Panel
+      id="appearance"
+      title="Appearance"
+      sub="Theme for this browser. System follows your OS setting and changes with it."
+    >
+      <div className="pref-row">
+        <div className="pref-row-main">
+          <div className="pref-row-title">Theme</div>
+        </div>
+        <span className="segmented">
+          <button
+            type="button"
+            className={theme === "system" ? "is-on" : ""}
+            data-testid="theme-system"
+            onClick={() => pickTheme("system")}
+          >
+            System
+          </button>
+          <button
+            type="button"
+            className={theme === "dark" ? "is-on" : ""}
+            data-testid="theme-dark"
+            onClick={() => pickTheme("dark")}
+          >
+            Dark
+          </button>
+          <button
+            type="button"
+            className={theme === "light" ? "is-on" : ""}
+            data-testid="theme-light"
+            onClick={() => pickTheme("light")}
+          >
+            Light
+          </button>
+        </span>
+      </div>
+    </Panel>
+  );
+}
+
 export function SettingsView({ client, onSignedOut }: { client: ApiClient; onSignedOut?: () => void }) {
   const meQ = useQuery({ queryKey: ["auth", "me"], queryFn: () => me(client) });
   const credsQ = useQuery({ queryKey: ["account", "credentials"], queryFn: () => getCredentials(client) });
@@ -91,13 +138,42 @@ export function SettingsView({ client, onSignedOut }: { client: ApiClient; onSig
   });
   const signOutMut = useMutation({ mutationFn: () => logout(client), onSuccess: () => onSignedOut?.() });
 
-  if (!prefs) return <p className="muted">Loading settings…</p>;
-  const creds = credsQ.data?.credentials ?? [];
-
   const pickTheme = (next: ThemeMode) => {
     setTheme(next);
     setThemeState(next);
   };
+
+  // `/auth/me` answers {authed:false} for a signed-out visitor — a truthy
+  // object, so seeding from it and falling back through `??` painted "On",
+  // "On" and "Active" as though they were this person's settings. They belong
+  // to nobody. Measured-or-nothing applies to a preference exactly as it does
+  // to a rank: state it, or say it is not there.
+  //
+  // Appearance survives because the theme lives in this browser, not the
+  // account, so it is the one thing on this page still honestly answerable.
+  if (meQ.data && meQ.data.authed === false) {
+    return (
+      <div className="settings-layout">
+        <section>
+          <div className="panel" data-testid="settings-signed-out">
+            <h2>Settings</h2>
+            <p className="muted">
+              You are signed out, so there are no account settings to show. Nothing here is
+              a default — these values simply are not known until you sign in.
+            </p>
+            <p>
+              <a href="/login" data-testid="settings-signin-link">Sign in</a> to see and
+              change what reaches your inbox, and how the agent runs.
+            </p>
+          </div>
+          <ThemePanel theme={theme} pickTheme={pickTheme} />
+        </section>
+      </div>
+    );
+  }
+
+  if (!prefs) return <p className="muted">Loading settings…</p>;
+  const creds = credsQ.data?.credentials ?? [];
 
   return (
     <div className="settings-layout">
@@ -277,43 +353,7 @@ export function SettingsView({ client, onSignedOut }: { client: ApiClient; onSig
           )}
         </Panel>
 
-        <Panel
-          id="appearance"
-          title="Appearance"
-          sub="Theme for this browser. System follows your OS setting and changes with it."
-        >
-          <div className="pref-row">
-            <div className="pref-row-main">
-              <div className="pref-row-title">Theme</div>
-            </div>
-            <span className="segmented">
-              <button
-                type="button"
-                className={theme === "system" ? "is-on" : ""}
-                data-testid="theme-system"
-                onClick={() => pickTheme("system")}
-              >
-                System
-              </button>
-              <button
-                type="button"
-                className={theme === "dark" ? "is-on" : ""}
-                data-testid="theme-dark"
-                onClick={() => pickTheme("dark")}
-              >
-                Dark
-              </button>
-              <button
-                type="button"
-                className={theme === "light" ? "is-on" : ""}
-                data-testid="theme-light"
-                onClick={() => pickTheme("light")}
-              >
-                Light
-              </button>
-            </span>
-          </div>
-        </Panel>
+        <ThemePanel theme={theme} pickTheme={pickTheme} />
 
         <Panel id="account" title="Account">
           <div className="pref-row">

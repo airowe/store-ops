@@ -123,3 +123,65 @@ export async function requireApprovalNonce(
   if (res.email !== user.email.trim().toLowerCase()) return refused;
   return { ok: true };
 }
+
+/**
+ * May this caller MINT an approval nonce?
+ *
+ * WHY THIS EXISTS: the nonce was documented as unobtainable without a trusted
+ * gesture, but the mint route only checked ownership. Measured in real Chrome
+ * 151 against production, a plain scripted `fetch` carrying the user's own
+ * cookie received a valid nonce (200) — and since the spend path can only
+ * verify signature, kind, subject and email, all of which a server-minted
+ * nonce satisfies by construction, an in-page agent could mint and spend
+ * without a human ever clicking. The gate was decorative.
+ *
+ * WHAT THE SERVER CAN AND CANNOT KNOW: `isTrusted` is a browser-side fact
+ * about a DOM event. It never crosses the network, and no header can carry it
+ * honestly — anything page script can set, page script can forge. So the
+ * server cannot verify that a human clicked. This function does not pretend
+ * to.
+ *
+ * WHAT IT DOES VERIFY: that the request came from OUR OWN DOCUMENT in a real
+ * browser. `Sec-Fetch-*` are forbidden header names (WHATWG Fetch): script
+ * cannot set or override them, only the user agent can. A cross-site page, a
+ * curl, or a non-browser agent client therefore cannot present the same shape.
+ *
+ * This is defence in depth, not a proof of humanity:
+ *   • the CLIENT still requires a trusted click before it calls this route;
+ *   • the SERVER now requires that the caller be our page in a browser;
+ *   • the SPEND path still requires the nonce, bound to run and user.
+ * An agent driving the real page via CDP can still produce a trusted click —
+ * that limit is inherent and documented in ADR-001, not closed here.
+ *
+ * Bearer credentials are refused outright: an API key is not a browser, and a
+ * key holder that could mint would route straight around the gate.
+ */
+export function requireBrowserOrigin(
+  auth: AuthMethod,
+  headers: { site: string | null; mode: string | null },
+): BoundaryVerdict {
+  const refused: BoundaryRefusal = {
+    ok: false,
+    status: 403,
+    error:
+      "Minting an approval nonce requires the ShipASO dashboard in a browser. " +
+      "This request did not come from it, so no nonce was issued. An agent can " +
+      "read, draft and stage a proposal — only a person can approve it.",
+    boundary: "human-approval-required",
+    youCan: AGENT_CAPABILITIES,
+    humanMustDo: "approve in the page — a real click, which mints the nonce",
+  };
+  // An API key is not a browser. Refuse before looking at anything else.
+  if (auth !== "cookie") return refused;
+  // Absent Sec-Fetch-Site means a non-browser client: every browser that can
+  // reach this route sends it. Absence is refusal, never a pass-through —
+  // defaulting to "allow when unknown" is how this check would silently rot.
+  if (headers.site === null) return refused;
+  // "same-origin" and "same-site" are our own document (app.shipaso.com →
+  // api.shipaso.com is same-site). "cross-site" and "none" (a user typing a
+  // URL, or another site) are not.
+  if (headers.site !== "same-origin" && headers.site !== "same-site") return refused;
+  // A navigation cannot carry our nonce request; the dashboard calls fetch().
+  if (headers.mode !== "cors" && headers.mode !== "same-origin") return refused;
+  return { ok: true };
+}
