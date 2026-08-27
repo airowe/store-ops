@@ -11,6 +11,10 @@ function runDetail(status: string, pushCommands: unknown[] = [], extra: Record<s
     status,
     created_at: "2026-07-04T00:00:00Z",
     approval: null,
+    // ADR-001: the real server sends this with a run awaiting approval, and
+    // approving spends it. A fixture without it makes every approve test fail
+    // for the right reason — which is how this was noticed.
+    ...(status === "awaiting_approval" ? { approval_challenge: "c_test" } : {}),
     result: {
       currentCopy: { name: "Old name", subtitle: "old sub" },
       proposedCopy: { name: "New name", subtitle: "new sub" },
@@ -55,9 +59,8 @@ function makeClient({
     throw new Error("unexpected GET " + path);
   });
   const post = vi.fn(async (path: string) => {
-    // ADR-001: approving is now two calls — mint the nonce from the click, then
-    // present it. The nonce route is harmless on its own (it writes nothing).
-    if (path.endsWith("/approval-nonce")) return { nonce: "n_test", expiresInSeconds: 60 };
+    // ADR-001: approving is ONE call that spends the challenge carried by the
+    // run view. There is deliberately no endpoint that vends one on request.
     if (path.endsWith("/approve")) {
       return {
         id: "run1",
@@ -105,7 +108,7 @@ describe("<RunView trustGesture={() => true} /> — the money screen", () => {
     await waitFor(() => screen.getByTestId("approve"));
     fireEvent.click(screen.getByTestId("approve"));
     await waitFor(() => expect(post).toHaveBeenCalledWith("/runs/run1/approve", { decision: "approve" }, {
-        "x-approval-nonce": "n_test",
+        "x-approval-challenge": "c_test",
       }));
     await waitFor(() => expect(screen.getByTestId("handoff")).toBeInTheDocument());
     // regression: the slim decision must MERGE, not replace — the diff (fed by

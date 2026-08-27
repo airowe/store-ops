@@ -71,18 +71,21 @@ export function RunView({
   const runQ = useQuery({ queryKey: ["run", id], queryFn: () => getRun(client, id) });
   const credsQ = useQuery({ queryKey: ["credentials"], queryFn: () => getCredentials(client) });
   /**
-   * ADR-001: approving mints a nonce from the CLICK, rejecting does not.
+   * ADR-001: approving spends the single-use challenge that came with this run
+   * view; rejecting spends nothing.
    *
    * The gesture is threaded through the mutation rather than read inside it,
    * because by the time an async mutationFn runs the event is long gone — and a
    * gesture we cannot see is a gesture we must not assume. Rejecting needs no
-   * nonce: it closes the gate without shipping anything, so an agent clearing
-   * bad proposals is legitimate pre-gate triage.
+   * challenge: it closes the gate without shipping anything, so an agent
+   * clearing bad proposals is legitimate pre-gate triage.
    */
   const decide = useMutation({
     mutationFn: (v: { decision: "approve" | "reject"; event?: { isTrusted?: unknown } }) =>
       v.decision === "approve"
-        ? approveFromGesture(client, id, v.event, trustGesture ?? isTrustedGesture)
+        ? approveFromGesture(
+            client, id, v.event, runQ.data?.approval_challenge, trustGesture ?? isTrustedGesture,
+          )
         : decideRun(client, id, "reject"),
     // The decision is a SLIM partial (no `result`/`currentCopy`) — MERGE it onto
     // the cached RunDetail. Replacing outright dropped `result` and crashed the

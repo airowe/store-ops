@@ -38,12 +38,33 @@ function fakeDb(): D1Database {
     return { row: null, results: [] };
   }
 
+  // Challenges this DB has issued and not yet spent. Without this the fake
+  // accepts any UPDATE, so an invented challenge "spends" and the suite cannot
+  // fail on the attack it exists to describe.
+  const issued = new Set<string>();
+
   function prepare(sql: string) {
+    const q = sql.trim().replace(/\s+/g, " ");
     let bound: unknown[] = [];
     const stmt = {
       bind(...a: unknown[]) { bound = a; return stmt; },
-      async first<T>() { void bound; return exec(sql).row as T | null; },
-      async run() { return { success: true, meta: { changes: 1 } }; },
+      async first<T>() {
+        if (/FROM approval_challenges/i.test(q)) return null as T | null;
+        return exec(sql).row as T | null;
+      },
+      async run() {
+        if (/INSERT INTO approval_challenges/i.test(q)) {
+          issued.add(String(bound[0]));
+          return { success: true, meta: { changes: 1 } };
+        }
+        if (/UPDATE approval_challenges/i.test(q)) {
+          // bind order: (now, challenge, run, user, now)
+          const value = String(bound[1]);
+          const ok = issued.delete(value); // single-use: gone once spent
+          return { success: true, meta: { changes: ok ? 1 : 0 } };
+        }
+        return { success: true, meta: { changes: 1 } };
+      },
       async all<T>() { return { results: (exec(sql).results ?? []) as T[] }; },
     };
     return stmt;
@@ -75,7 +96,7 @@ describe("POST /runs/:id/approve — the nonce gate is WIRED", () => {
       env(),
     );
     expect(res.status).toBe(403);
-    expect(await res.json()).toMatchObject({ error: expect.stringMatching(/human gesture/i) });
+    expect(await res.json()).toMatchObject({ boundary: "human-approval-required" });
   });
 
   it("REFUSES 403 for a bearer/agent credential with no nonce", async () => {
@@ -153,7 +174,7 @@ describe("refusals reach the wire structured (not just prose)", () => {
     expect(Array.isArray(body.youCan)).toBe(true);
     expect(body.humanMustDo).toBeTruthy();
     // prose survives for a human reading logs
-    expect(String(body.error)).toMatch(/human gesture/i);
+    expect(String(body.error)).toMatch(/challenge|approv/i);
   });
 
   it("approve-all's 403 is structured too", async () => {
@@ -182,73 +203,47 @@ describe("refusals reach the wire structured (not just prose)", () => {
 });
 
 /**
- * THE MINT ROUTE — the hole this suite could not see.
+ * THE ATTACK, reproduced as the router sees it.
  *
- * Every test above mints a nonce by calling `mintApprovalNonce` directly, so
- * none of them ever asked the question that matters: can a caller who never
- * produced a gesture GET one from the server?
+ * The previous two attempts both passed their own tests and both left the hole
+ * open. The first minted a stateless nonce from a dedicated endpoint; the
+ * second gated that endpoint on `Sec-Fetch-*`, which distinguishes our page
+ * from another SITE but not a human from script running INSIDE our page — the
+ * actual threat. Neither suite ever wrote down the attack, so neither could
+ * fail on it.
  *
- * Measured in real Chrome 151 against production: yes. A plain scripted
- * `fetch` with the user's own cookie received a valid nonce, 200. Since the
- * spend path can only check signature, kind, subject and email — all of which
- * a server-minted nonce satisfies by construction — the gate was decorative.
- *
- * `isTrusted` is a browser fact that never crosses the network, so the server
- * cannot verify a gesture happened. What it CAN verify is that the caller is
- * the page we shipped, driven by a top-level navigation: `Sec-Fetch-Site` and
- * `Sec-Fetch-Mode` are FORBIDDEN headers — page script cannot set or forge
- * them, only the browser sets them. That does not prove a human clicked; it
- * proves the request came from our own document. Combined with the trusted
- * click that the dashboard still requires client-side, it restores the
- * property that the comment claimed all along.
+ * This does. The attacker here is exactly what was measured against
+ * production: a caller with a valid cookie session who never opened the run,
+ * presenting whatever it can construct on its own.
  */
-describe("POST /runs/:id/approval-nonce — minting is itself gated", () => {
-  it("MINTS for a same-origin request from our own page", async () => {
+describe("THE ATTACK: approving without the run view's challenge", () => {
+  it("REFUSES a cookie-session caller that never opened the run", async () => {
     const res = await handleApi(
-      new Request(`https://api.test/runs/${RUN}/approval-nonce`, {
+      new Request(`https://api.test/runs/${RUN}/approve`, {
         method: "POST",
-        headers: {
-          ...(await cookieHeaders()),
-          Origin: "https://app.shipaso.com",
-          "Sec-Fetch-Site": "same-site",
-          "Sec-Fetch-Mode": "cors",
-          "Sec-Fetch-Dest": "empty",
-        },
+        headers: await cookieHeaders(),
       }),
       env(),
     );
-    expect(res.status).toBe(200);
-    expect(await res.json()).toMatchObject({ nonce: expect.any(String) });
+    expect(res.status).toBe(403);
+    expect(await res.json()).toMatchObject({ boundary: "human-approval-required" });
   });
 
-  it("REFUSES a cross-site request — the drive-by case", async () => {
+  it("REFUSES a challenge the caller invented", async () => {
     const res = await handleApi(
-      new Request(`https://api.test/runs/${RUN}/approval-nonce`, {
+      new Request(`https://api.test/runs/${RUN}/approve`, {
         method: "POST",
-        headers: {
-          ...(await cookieHeaders()),
-          Origin: "https://evil.example",
-          "Sec-Fetch-Site": "cross-site",
-          "Sec-Fetch-Mode": "cors",
-        },
+        headers: { ...(await cookieHeaders()), "x-approval-challenge": "made-up" },
       }),
       env(),
     );
     expect(res.status).toBe(403);
   });
 
-  it("REFUSES a bearer/agent credential — a nonce needs the browser, not a key", async () => {
-    const res = await handleApi(
-      new Request(`https://api.test/runs/${RUN}/approval-nonce`, {
-        method: "POST",
-        headers: await bearerHeaders(),
-      }),
-      env(),
-    );
-    expect(res.status).toBe(403);
-  });
-
-  it("REFUSES a request with NO Sec-Fetch-Site — a non-browser client", async () => {
+  it("the credential-vending endpoint is GONE — not merely gated", async () => {
+    // The route whose entire job was handing out approval credentials on
+    // request. A 200 here would mean the hole is back regardless of what the
+    // approve path does.
     const res = await handleApi(
       new Request(`https://api.test/runs/${RUN}/approval-nonce`, {
         method: "POST",
@@ -256,6 +251,50 @@ describe("POST /runs/:id/approval-nonce — minting is itself gated", () => {
       }),
       env(),
     );
-    expect(res.status).toBe(403);
+    expect(res.status).not.toBe(200);
+  });
+});
+
+/**
+ * THE HONEST PATH — the negative control for the negative controls.
+ *
+ * Every test above asserts a refusal. A gate that refuses everything would pass
+ * all of them and ship a dashboard nobody can approve in, so this asserts the
+ * dashboard's own sequence still works: open the run, take the challenge from
+ * the view, spend it once.
+ *
+ * It also pins the property that makes the challenge worth holding state for:
+ * the SECOND spend of the same value fails.
+ */
+describe("the dashboard's own sequence still approves", () => {
+  it("open the run, spend its challenge, approve — and no replay", async () => {
+    const e = env();
+    const headers = await cookieHeaders();
+
+    const view = await handleApi(
+      new Request(`https://api.test/runs/${RUN}`, { headers }),
+      e,
+    );
+    expect(view.status).toBe(200);
+    const { approval_challenge } = (await view.json()) as { approval_challenge?: string };
+    expect(approval_challenge).toEqual(expect.any(String));
+
+    const ok = await handleApi(
+      new Request(`https://api.test/runs/${RUN}/approve`, {
+        method: "POST",
+        headers: { ...headers, "x-approval-challenge": approval_challenge! },
+      }),
+      e,
+    );
+    expect(ok.status).toBe(200);
+
+    const replay = await handleApi(
+      new Request(`https://api.test/runs/${RUN}/approve`, {
+        method: "POST",
+        headers: { ...headers, "x-approval-challenge": approval_challenge! },
+      }),
+      e,
+    );
+    expect(replay.status).toBe(403);
   });
 });

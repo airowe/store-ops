@@ -52,7 +52,7 @@ import type {
   WarRoomView,
   ScheduleResult,
   SweepSchedule,
-  ApprovalNonce,
+
   StagedEdit,
   ChannelKind,
   ChannelsResult,
@@ -307,18 +307,23 @@ export const setSchedule = (c: ApiClient, appId: string, schedule: SweepSchedule
  * nonce, so it cannot approve. Calling this from anywhere else would hand the
  * capability straight back.
  */
-export const mintApprovalNonce = (c: ApiClient, runId: string) =>
-  c.post<ApprovalNonce>(`/runs/${enc(runId)}/approval-nonce`);
-
-/** The header the minted nonce rides on. Mirrors APPROVAL_NONCE_HEADER server-side. */
-export const APPROVAL_NONCE_HEADER = "x-approval-nonce";
+/**
+ * The header the run view's challenge rides back on. Mirrors
+ * APPROVAL_CHALLENGE_HEADER server-side.
+ *
+ * There is deliberately no endpoint that hands out a challenge on request. The
+ * previous design had one, and it gave an approval credential to any caller
+ * with the user's cookie — which, for an agent in our own page, is everyone.
+ * The challenge now arrives with the run view and is spent here.
+ */
+export const APPROVAL_CHALLENGE_HEADER = "x-approval-challenge";
 
 /**
  * Approve a run, presenting the nonce from a trusted gesture. Separate from
  * `decideRun` because rejecting needs no nonce — only approval crosses the gate.
  */
-export const approveRunWithNonce = (c: ApiClient, id: string, nonce: string) =>
-  c.post<RunDecision>(`/runs/${enc(id)}/approve`, { decision: "approve" }, { [APPROVAL_NONCE_HEADER]: nonce });
+export const approveRunWithChallenge = (c: ApiClient, id: string, challenge: string) =>
+  c.post<RunDecision>(`/runs/${enc(id)}/approve`, { decision: "approve" }, { [APPROVAL_CHALLENGE_HEADER]: challenge });
 
 /**
  * Stage an edit to a run's proposed copy (ADR-001). The agent's one write at

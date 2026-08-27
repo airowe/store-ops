@@ -12,7 +12,7 @@
  */
 import { describe, expect, it } from "vitest";
 import { handleApi } from "./index.js";
-import { mintApprovalNonce, mintSessionToken } from "../auth.js";
+import { mintSessionToken } from "../auth.js";
 import type { Env } from "../index.js";
 
 const SECRET = "test-secret-please-ignore";
@@ -78,18 +78,27 @@ const envFor = (db: D1Database) =>
 async function approve(traceExtra: Record<string, unknown>) {
   const { db, binds } = fakeDb(traceExtra);
   const token = await mintSessionToken(SECRET, EMAIL, { ttlSeconds: 3600 });
-  const nonce = await mintApprovalNonce(SECRET, EMAIL, RUN);
+  const cookie = `store_ops_session=${token}`;
+  const env = envFor(db);
+  // ADR-001: approving spends the challenge carried by the run view, so the
+  // test walks the dashboard's own sequence rather than fabricating a
+  // credential — which is exactly the shortcut that hid the original hole.
+  const view = await handleApi(
+    new Request(`https://api.test/runs/${RUN}`, { headers: { Cookie: cookie } }),
+    env,
+  );
+  const { approval_challenge } = (await view.json()) as { approval_challenge?: string };
   const res = await handleApi(
     new Request(`https://api.test/runs/${RUN}/approve`, {
       method: "POST",
       headers: {
-        Cookie: `store_ops_session=${token}`,
-        "x-approval-nonce": nonce,
+        Cookie: cookie,
+        "x-approval-challenge": approval_challenge ?? "",
         "content-type": "application/json",
       },
       body: JSON.stringify({ decision: "approve" }),
     }),
-    envFor(db),
+    env,
   );
   // proposal_edits binds `source` last (…, created_at, source).
   const rows = binds.filter((b) => /INSERT INTO proposal_edits/i.test(b.sql));

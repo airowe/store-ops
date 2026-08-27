@@ -60,49 +60,67 @@ Two further facts made the decision urgent rather than theoretical:
 
 ## Decision
 
-**Approval requires a nonce that only a trusted user gesture can mint.**
+**Approval requires a single-use challenge issued with the run view.**
 
-1. `POST /runs/:id/approve` requires an `x-approval-nonce` header. The nonce is
-   minted by `POST /runs/:id/approval-nonce`. Scripted `fetch` cannot forge a
-   trusted event, so a client that mints only from a real gesture cannot be
-   driven into approving by an agent sharing its session.
+> **Superseded design, kept because the failure is instructive.** This ADR
+> originally specified a nonce minted from `POST /runs/:id/approval-nonce`,
+> obtainable only from a trusted gesture. That property was never true.
+> Measured against production in Chrome 151: a plain scripted `fetch` carrying
+> the user's own cookie received a valid nonce, HTTP 200. The route's entire
+> job was vending approval credentials, and it could not tell an agent from a
+> person because both present the same session.
+>
+> A second attempt gated that route on `Sec-Fetch-Site`/`Sec-Fetch-Mode`,
+> which are forbidden headers script cannot forge. That distinguishes our page
+> from another *site* — but the threat is script running *inside* our page,
+> which is same-site by definition. It defended the wrong boundary and was
+> also measured failing in production.
+>
+> Both attempts passed their own test suites. Neither suite ever wrote down the
+> attack, so neither could fail on it. That is the lesson worth keeping: a test
+> asserting that a design behaves as designed is not a negative control.
 
-   **The client contract:** the approve UI MUST call the mint route only from a
-   handler where `event.isTrusted === true`, and MUST NOT expose a mint helper
-   an in-page script could call directly. The server cannot verify that a
-   gesture occurred — it can only ensure a nonce was obtained and is valid for
-   this run and user. This half of the boundary lives in the client and is
-   stated here because it is the half a future refactor could quietly break.
+1. `POST /runs/:id/approve` requires an `x-approval-challenge` header. The
+   challenge is a 128-bit opaque value issued by `GET /runs/:id` for a run
+   awaiting approval, recorded in `approval_challenges`, and **spent exactly
+   once**. There is deliberately **no endpoint that issues one on request**.
 
-   **Discharged.** The contract now has exactly one implementation:
-   `cloud/web/src/webmcp/trustedApprove.ts`. It is the only code that calls the
-   mint route, it compares `isTrusted === true` (never a truthy coercion, since
-   `{isTrusted: "true"}` is precisely what a caller synthesises), and RunView's
-   approve button is its only caller. Rejecting deliberately needs no nonce: it
-   closes the gate without shipping anything, so an agent clearing bad proposals
-   remains legitimate pre-gate triage.
+   `consumeApprovalChallenge` marks the row in the same `UPDATE` that checks
+   it (`spent_at IS NULL` in the `WHERE`), so a replay — or two approvals
+   racing — matches no rows the second time. The database arbitrates, not a
+   signature check with no memory.
+
+2. **What this does NOT do, stated plainly.** It does not prove a human
+   clicked. An agent in the page can read `GET /runs/:id` and therefore the
+   challenge, exactly as the dashboard does. **No server-side check can
+   distinguish them**, because `isTrusted` is a browser-side fact about a DOM
+   event that never crosses the network, and any header purporting to carry it
+   could be set by the same script we are defending against.
+
+   What it removes is real but narrower than the original claim:
+   - the credential-vending endpoint, which handed approval capability to any
+     caller that asked;
+   - unlimited re-minting — a challenge is one-shot;
+   - replay of a captured value;
+   - approval by a caller that never opened the run.
+
+   **The client contract still stands and is still only a client contract:**
+   `cloud/web/src/webmcp/trustedApprove.ts` is the single caller, it compares
+   `isTrusted === true` (never a truthy coercion, since `{isTrusted: "true"}`
+   is precisely what a caller synthesises), and RunView's approve button is its
+   only caller. That is the honest client. It is not enforcement, and this ADR
+   no longer implies otherwise.
 
    **Measured, not assumed.** In jsdom, `fireEvent.click()` and
    `element.click()` both produce `isTrusted === false`; in real Chromium,
-   Playwright's `.click()` produces `true` while a `click()` issued from page
-   script produces `false`. `tests-e2e/webmcp.e2e.ts` asserts both halves
-   against the same button in the same session — the scripted click is refused
-   and never even mints, the real click approves. That is the attack an agent
-   can actually mount, so it is the one the suite runs.
+   Playwright's `.click()` produces `true` while a `click()` from page script
+   produces `false`. An agent driving the real page over CDP *can* produce a
+   trusted click and approve. That limit is inherent to any in-page gate and is
+   recorded here rather than papered over.
 
-   A consequence worth stating plainly: because no synthetic event can be
-   trusted, component tests cannot drive approval through a real click. RunView
-   therefore accepts an injected `trustGesture` used ONLY by tests, to exercise
-   what happens after the gate. Production omits it and the browser decides.
-
-2. The nonce reuses the existing magic-link/session token construction —
-   HMAC-SHA256 over a base64url JSON payload — with two additions:
-   - kind tag `"approve"`, so a session token cannot be spent as a nonce and a
-     nonce cannot be replayed as a session (both directions are tested);
-   - a **signed subject** carrying the run id, so a nonce minted for run A is
-     invalid on run B.
-
-   It is additionally bound to the approving user's email. TTL is 60 seconds.
+   A consequence worth stating: because no synthetic event can be trusted,
+   component tests cannot drive approval through a real click. RunView accepts
+   an injected `trustGesture` used ONLY by tests. Production omits it.
 
 3. **`POST /runs/approve-all` accepts cookie sessions only.** It is deliberately
    exempt from the per-run nonce — it is a live dashboard ergonomic and
@@ -143,12 +161,11 @@ exposes twelve tools and none of them approve — so nothing broke.
 
 ### What this does NOT claim
 
-**The nonce is not single-use.** A stateless token is replayable inside its
-60-second TTL. We did not add a nonce store, because the domain already closes
-this: `approvals` is `UNIQUE (run_id)` and `decideRun` returns 409 on an
-existing decision, so a replay hits an idempotency wall that predates this
-change. Stated here so nobody later reads "nonce" as "single-use" and builds on
-that assumption.
+**It does not prove a human clicked.** The challenge is readable by anything
+that can read the run view, an in-page agent included. Single use, run binding
+and user binding are what it does guarantee. See the Decision section: no
+server-side check can establish a gesture, and this document previously claimed
+otherwise for two iterations.
 
 **`approve-all` remains coarser than the per-run gate.** One cookie-authenticated
 click approves everything at the gate. It is a human gesture from a browser, but
@@ -190,9 +207,12 @@ makes them an accessibility hazard as well as unreliable.
 from clearing bad proposals, which is legitimate pre-gate work, and it buys no
 safety since rejection ships nothing.
 
-**D. Store nonces in D1 for true single-use.** Rejected as unnecessary given the
-`UNIQUE (run_id)` idempotency wall, and as a per-approval write on a hot path
-for a property we already have.
+**D. Store nonces in D1 for true single-use.** Originally rejected as
+unnecessary given the `UNIQUE (run_id)` idempotency wall, and as a per-approval
+write on a hot path. **This rejection was wrong and is now the accepted
+design.** The idempotency wall stops a run being approved twice; it does nothing
+about the credential being obtainable at all, which was the actual hole. The
+write is one row per run view, which is not a hot path.
 
 ## Detection versus evidence
 
@@ -201,9 +221,11 @@ agent runs in the page, as the user, with the user's session — at the HTTP and
 DOM layer there is no boundary between them to detect across. The platform
 confirms this (issue #105) rather than merely failing to help.
 
-The design instead asks **"did a human gesture happen?"** `isTrusted` is not
-detection — it is proof of a specific act, unforgeable by script, requiring no
-identity, and failing safe (no gesture ⇒ no nonce ⇒ no approval).
+The design instead asks **"was this challenge issued to this user for this run,
+and is it still unspent?"** That is answerable server-side and fails safe. The
+older framing — "did a human gesture happen?" — is not answerable server-side at
+all, and treating `isTrusted` as though it were is what produced two failed
+iterations of this ADR.
 
 The signals that *do* exist are used where being wrong is harmless:
 

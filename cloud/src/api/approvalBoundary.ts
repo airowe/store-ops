@@ -18,7 +18,7 @@
  * Both are PURE decisions over already-resolved inputs, so the policy is
  * exhaustively testable without a Request, a DB, or the network.
  */
-import { resolveSessionSecret, verifyApprovalNonce } from "../auth.js";
+import { consumeApprovalChallenge } from "../d1.js";
 import type { AuthMethod } from "./index.js";
 
 /**
@@ -84,104 +84,54 @@ export function requireHumanSession(auth: AuthMethod): BoundaryVerdict {
   };
 }
 
-/**
- * Does this request carry a valid approval nonce for `runId`?
- *
- * The nonce rides `x-approval-nonce`. It is bound to BOTH the run and the
- * approving user's email, so a nonce is useless on another run and useless to
- * another account. Verification is the shared HMAC path in auth.ts.
- *
- * Refusal is 403 with an explanation rather than 401: the caller IS
- * authenticated — they simply are not a human gesture.
- */
-export const APPROVAL_NONCE_HEADER = "x-approval-nonce";
+/** The header the run view's challenge rides back on. */
+export const APPROVAL_CHALLENGE_HEADER = "x-approval-challenge";
 
-export async function requireApprovalNonce(
-  req: Request,
-  env: { SESSION_SECRET?: string; APP_ENV: string },
-  user: { email: string },
+/**
+ * Does this request carry the single-use challenge issued with the run view?
+ *
+ * WHAT REPLACED WHAT, AND WHY: the first design minted a stateless HMAC nonce
+ * from `POST /runs/:id/approval-nonce`. Measured against production, a plain
+ * scripted fetch carrying the user's cookie received a valid nonce — the route
+ * existed to vend approval credentials and could not tell an agent from a
+ * person. A second attempt gated that route on `Sec-Fetch-*`, which
+ * distinguishes our page from another SITE but not a human from script running
+ * INSIDE our page, which is the actual threat. Both are gone.
+ *
+ * The challenge is issued when a person opens a run and spent when the run is
+ * approved. Being server-tracked is what a stateless token could never be:
+ * single-use. `consumeApprovalChallenge` marks it in the same UPDATE that
+ * checks it, so a replay — or two concurrent approvals racing — matches no rows
+ * the second time.
+ *
+ * HONEST LIMIT, recorded rather than papered over: an agent in the page can
+ * read the run view and therefore the challenge. This does NOT prove a human
+ * clicked, and nothing server-side can — `isTrusted` is a browser fact that
+ * never crosses the network. What it removes is the credential-vending
+ * endpoint, unlimited re-minting, replay, and approval by a caller that never
+ * loaded the run. The client still requires a trusted gesture; that check is
+ * the honest client, not the boundary.
+ */
+export async function requireApprovalChallenge(
+  env: { DB: D1Database },
+  user: { id: string },
   runId: string,
+  presented: { challenge: string | null },
 ): Promise<BoundaryVerdict> {
-  const refused: BoundaryVerdict = {
-    ok: false,
-    status: 403,
-    error:
-      "Approving requires a human gesture in the page. This request carried no " +
-      "valid approval nonce, so it was not approved. An agent can read, draft and " +
-      "stage a proposal — only a person can approve it.",
-    boundary: "human-approval-required",
-    youCan: AGENT_CAPABILITIES,
-    humanMustDo: "approve in the page — a real click, which mints the nonce",
-  };
-  const nonce = req.headers.get(APPROVAL_NONCE_HEADER)?.trim();
-  if (!nonce) return refused;
-  const secret = resolveSessionSecret(env.SESSION_SECRET, env.APP_ENV);
-  const res = await verifyApprovalNonce(secret, nonce, runId);
-  if (!res.ok) return refused;
-  // Bind to the APPROVING user: a nonce minted for one account must not spend on
-  // another's run, even though ownership is separately enforced downstream.
-  if (res.email !== user.email.trim().toLowerCase()) return refused;
-  return { ok: true };
-}
-
-/**
- * May this caller MINT an approval nonce?
- *
- * WHY THIS EXISTS: the nonce was documented as unobtainable without a trusted
- * gesture, but the mint route only checked ownership. Measured in real Chrome
- * 151 against production, a plain scripted `fetch` carrying the user's own
- * cookie received a valid nonce (200) — and since the spend path can only
- * verify signature, kind, subject and email, all of which a server-minted
- * nonce satisfies by construction, an in-page agent could mint and spend
- * without a human ever clicking. The gate was decorative.
- *
- * WHAT THE SERVER CAN AND CANNOT KNOW: `isTrusted` is a browser-side fact
- * about a DOM event. It never crosses the network, and no header can carry it
- * honestly — anything page script can set, page script can forge. So the
- * server cannot verify that a human clicked. This function does not pretend
- * to.
- *
- * WHAT IT DOES VERIFY: that the request came from OUR OWN DOCUMENT in a real
- * browser. `Sec-Fetch-*` are forbidden header names (WHATWG Fetch): script
- * cannot set or override them, only the user agent can. A cross-site page, a
- * curl, or a non-browser agent client therefore cannot present the same shape.
- *
- * This is defence in depth, not a proof of humanity:
- *   • the CLIENT still requires a trusted click before it calls this route;
- *   • the SERVER now requires that the caller be our page in a browser;
- *   • the SPEND path still requires the nonce, bound to run and user.
- * An agent driving the real page via CDP can still produce a trusted click —
- * that limit is inherent and documented in ADR-001, not closed here.
- *
- * Bearer credentials are refused outright: an API key is not a browser, and a
- * key holder that could mint would route straight around the gate.
- */
-export function requireBrowserOrigin(
-  auth: AuthMethod,
-  headers: { site: string | null; mode: string | null },
-): BoundaryVerdict {
   const refused: BoundaryRefusal = {
     ok: false,
     status: 403,
     error:
-      "Minting an approval nonce requires the ShipASO dashboard in a browser. " +
-      "This request did not come from it, so no nonce was issued. An agent can " +
-      "read, draft and stage a proposal — only a person can approve it.",
+      "Approving requires the single-use challenge issued when this run was " +
+      "opened. This request carried none, or one already spent, so nothing was " +
+      "approved. An agent can read, draft and stage a proposal — approving it " +
+      "is the person's step.",
     boundary: "human-approval-required",
     youCan: AGENT_CAPABILITIES,
-    humanMustDo: "approve in the page — a real click, which mints the nonce",
+    humanMustDo: "open the run and approve it there",
   };
-  // An API key is not a browser. Refuse before looking at anything else.
-  if (auth !== "cookie") return refused;
-  // Absent Sec-Fetch-Site means a non-browser client: every browser that can
-  // reach this route sends it. Absence is refusal, never a pass-through —
-  // defaulting to "allow when unknown" is how this check would silently rot.
-  if (headers.site === null) return refused;
-  // "same-origin" and "same-site" are our own document (app.shipaso.com →
-  // api.shipaso.com is same-site). "cross-site" and "none" (a user typing a
-  // URL, or another site) are not.
-  if (headers.site !== "same-origin" && headers.site !== "same-site") return refused;
-  // A navigation cannot carry our nonce request; the dashboard calls fetch().
-  if (headers.mode !== "cors" && headers.mode !== "same-origin") return refused;
-  return { ok: true };
+  const challenge = presented.challenge?.trim();
+  if (!challenge) return refused;
+  const ok = await consumeApprovalChallenge(env.DB, { challenge, runId, userId: user.id });
+  return ok ? { ok: true } : refused;
 }

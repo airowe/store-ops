@@ -13,10 +13,15 @@
  * an agent works around; it is a property of the platform.
  *
  * It is also NOT the enforcement. The server refuses an approval with no valid
- * nonce regardless of what this file does — this is the honest client, and the
- * server is the boundary. A rewritten client gets nowhere.
+ * challenge regardless of what this file does — this is the honest client, and
+ * the server is the boundary. A rewritten client gets nowhere.
+ *
+ * The challenge is NOT fetched here. It arrives with the run the person is
+ * looking at, and is passed in. An earlier design had this file call a mint
+ * endpoint, which meant any caller could obtain an approval credential on
+ * demand; removing that call is most of the fix.
  */
-import { approveRunWithNonce, mintApprovalNonce } from "@shipaso/api";
+import { approveRunWithChallenge } from "@shipaso/api";
 import type { ApiClient, RunDecision } from "@shipaso/api";
 
 export const UNTRUSTED_MESSAGE =
@@ -24,6 +29,9 @@ export const UNTRUSTED_MESSAGE =
 
 /** The single field we need off a React or DOM event. */
 type GestureLike = { isTrusted?: unknown };
+
+export const NO_CHALLENGE_MESSAGE =
+  "This run has no approval challenge, so it is not awaiting approval. Nothing was approved.";
 
 /**
  * Is this a real user gesture? `=== true`, never coerced: an object carrying
@@ -48,9 +56,12 @@ export async function approveFromGesture(
   client: ApiClient,
   runId: string,
   event: GestureLike | undefined,
+  challenge: string | undefined,
   trust: (e: GestureLike | undefined) => boolean = isTrustedGesture,
 ): Promise<RunDecision> {
   if (!trust(event)) throw new Error(UNTRUSTED_MESSAGE);
-  const { nonce } = await mintApprovalNonce(client, runId);
-  return approveRunWithNonce(client, runId, nonce);
+  // Absent means the run is not at the gate. Saying so beats sending a request
+  // we know the server will refuse and reporting its 403 as a mystery.
+  if (!challenge) throw new Error(NO_CHALLENGE_MESSAGE);
+  return approveRunWithChallenge(client, runId, challenge);
 }

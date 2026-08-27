@@ -552,6 +552,12 @@ export type RunDetail = {
   /** Present on runs opened after the field shipped; absent on older rows. */
   trigger?: RunTrigger | null;
   result: RunResult;
+  /**
+   * ADR-001: the single-use value `approveRunWithChallenge` must present.
+   * Present only for a run actually awaiting approval — absent means there is
+   * nothing here to approve, not that the challenge failed to arrive.
+   */
+  approval_challenge?: ApprovalChallenge;
 };
 
 /**
@@ -842,7 +848,13 @@ export type ScheduleResult = { schedule: SweepSchedule };
  * POST /runs/:id/approval-nonce — the token that lets the NEXT request approve
  * this run (ADR-001). Minting is harmless: it writes nothing and expires unused.
  */
-export type ApprovalNonce = { nonce: string; expiresInSeconds: number };
+/**
+ * The single-use challenge carried by a run view for a run at the gate.
+ *
+ * Absent when the run is not awaiting approval — there is nothing to approve —
+ * so the field is optional and its absence is meaningful rather than a default.
+ */
+export type ApprovalChallenge = string;
 
 /** POST /runs/:id/edits — a staged proposal edit. Never a decision. */
 export type StagedEdit = {

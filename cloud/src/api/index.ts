@@ -139,7 +139,7 @@ import { createApiKey, listApiKeys, looksLikeApiKey, resolveApiKey, revokeApiKey
 import { serializeAsaBundle, verifyAsaCredentials, type AsaKeyBundle } from "../engine/asaAuth.js";
 import localesData from "../engine/locales-data.json";
 import { validateThresholdPatch } from "../thresholds.js";
-import { type BoundaryRefusal, requireApprovalNonce, requireBrowserOrigin, requireHumanSession } from "./approvalBoundary.js";
+import { APPROVAL_CHALLENGE_HEADER, type BoundaryRefusal, requireApprovalChallenge, requireHumanSession } from "./approvalBoundary.js";
 import { notifyRunReadyForEnv } from "../notify/forEnv.js";
 import { checkDailyCadenceBound, checkRunTriggerBound, RUN_TRIGGER_WINDOW_SECONDS } from "./agentBounds.js";
 import { validateSchedule } from "../schedule.js";
@@ -219,6 +219,7 @@ import {
   addNotificationChannel,
   consumeChannelLinkCode,
   createChannelLinkCode,
+  issueApprovalChallenge,
   listNotificationChannels,
   pendingChannelLinkCount,
   removeNotificationChannel,
@@ -228,8 +229,6 @@ import {
 import { editSourceFor } from "./editProvenance.js";
 import { decryptField, importKeyFromBase64 } from "../crypto/rlhfCrypto.js";
 import {
-  APPROVAL_NONCE_TTL_SECONDS,
-  mintApprovalNonce,
   mintMagicToken,
   mintSessionToken,
   parseCookie,
@@ -404,7 +403,7 @@ async function readJson<T>(req: Request): Promise<T> {
  * run has been approved (status 'approved', or a legacy 'shipped' row). Before that they are
  * withheld so a pre-approval client literally cannot read them.
  */
-async function runView(env: Env, runId: string) {
+async function runView(env: Env, runId: string, userId?: string) {
   const run = await getRun(env.DB, runId);
   if (!run) throw new HttpError(404, "run not found");
   const approval = await getApproval(env.DB, runId);
@@ -422,6 +421,16 @@ async function runView(env: Env, runId: string) {
       : null,
     trigger: trace.trigger,
     result: serializeRunResult(trace, approved),
+    // ADR-001: the challenge `POST /runs/:id/approve` will require. It rides
+    // the run view because opening a run is the human action that precedes
+    // approving one — the previous design vended it from a dedicated endpoint
+    // that handed a credential to anyone who asked. Only for a run actually at
+    // the gate: there is nothing to approve otherwise, and issuing one anyway
+    // would leave unspendable rows behind every list render.
+    approval_challenge:
+      userId && run.status === "awaiting_approval"
+        ? await issueApprovalChallenge(env.DB, { runId, userId })
+        : undefined,
   };
 }
 
@@ -3875,7 +3884,7 @@ async function getRunRoute(env: Env, userId: string, runId: string): Promise<unk
   const run = await getRun(env.DB, runId);
   if (!run) throw new HttpError(404, "run not found");
   await requireOwnedApp(env, run.app_id, userId); // ownership check via app
-  return runView(env, runId);
+  return runView(env, runId, userId);
 }
 
 /**
@@ -3906,32 +3915,6 @@ type ApproveBody = {
    */
   editedCopy?: Partial<CopyFields>;
 };
-
-/**
- * POST /runs/:id/approval-nonce — mint the token that lets the NEXT request
- * approve this run (ADR-001).
- *
- * The dashboard calls this from a trusted (isTrusted) click handler and sends
- * the result back on `x-approval-nonce`. A scripted fetch — including one made
- * by an agent holding the user's own session — cannot produce the gesture, so
- * it cannot obtain a nonce, so it cannot approve.
- *
- * Minting is deliberately harmless on its own: it writes nothing, changes no
- * status, and a nonce with no follow-up POST expires unused in 60s. Ownership
- * is checked here so a nonce is never minted for someone else's run.
- */
-async function mintApprovalNonceRoute(
-  env: Env,
-  user: AuthedUser,
-  runId: string,
-): Promise<unknown> {
-  const run = await getRun(env.DB, runId);
-  if (!run) throw new HttpError(404, "run not found");
-  await requireOwnedApp(env, run.app_id, user.id);
-  const nonce = await mintApprovalNonce(sessionSecret(env), user.email, runId);
-  return { nonce, expiresInSeconds: APPROVAL_NONCE_TTL_SECONDS };
-}
-
 
 // ── notification channels (migration 0014/0015) ──────────────────────────────
 
@@ -5783,20 +5766,6 @@ export async function handleApi(req: Request, env: Env, ctx?: ExecutionContext):
       if (seg.length === 2 && method === "GET") {
         return json(await getRunRoute(env, user.id, runId), 200, origin);
       }
-      // ADR-001: minting an approval nonce. The dashboard calls this from a
-      // trusted (isTrusted) click handler. The server cannot see `isTrusted`
-      // — it never crosses the network — so it verifies what it CAN: that the
-      // caller is our own document in a real browser, via forbidden
-      // `Sec-Fetch-*` headers that script cannot forge. Read-only — minting
-      // approves nothing, and the nonce is worthless without the spend POST.
-      if (seg.length === 3 && seg[2] === "approval-nonce" && method === "POST") {
-        const gate = requireBrowserOrigin(user.auth, {
-          site: req.headers.get("sec-fetch-site"),
-          mode: req.headers.get("sec-fetch-mode"),
-        });
-        if (!gate.ok) return json(gate, gate.status, origin, env);
-        return json(await mintApprovalNonceRoute(env, user, runId), 200, origin, env);
-      }
       // The agent's one write at the gate: stage an edit to the proposed copy.
       // Changes WHAT would be approved, never WHETHER it is — the run stays
       // awaiting_approval and the response says so.
@@ -5808,7 +5777,12 @@ export async function handleApi(req: Request, env: Env, ctx?: ExecutionContext):
         // shipping anything, so an agent clearing bad proposals is legitimate
         // pre-gate triage and stays available to it.
         if (seg[2] === "approve") {
-          const gate = await requireApprovalNonce(req, env, user, runId);
+          // Spend the challenge issued with the run view. Single-use and
+          // server-tracked, so a replay fails at the database rather than at a
+          // signature check with no memory.
+          const gate = await requireApprovalChallenge(env, user, runId, {
+            challenge: req.headers.get(APPROVAL_CHALLENGE_HEADER),
+          });
           if (!gate.ok) return json(boundaryRefusalBody(gate), gate.status, origin, env);
         }
         return json(await decideRun(req, env, user.id, runId, seg[2]), 200, origin);

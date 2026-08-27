@@ -53,6 +53,9 @@ const RUN_DETAIL = {
   status: "awaiting_approval",
   created_at: iso,
   approval: null,
+  // ADR-001: the real server issues this with a run at the gate, and approving
+  // spends it. Present here so the e2e drives the production sequence.
+  approval_challenge: "c_e2e",
   result: {
     currentCopy: { name: "Weatherly", subtitle: "Weather app", keywords: "weather,forecast" },
     proposedCopy: { name: "Weatherly — Forecasts", subtitle: "Honest hourly forecasts", keywords: "weather,forecast,radar,rain" },

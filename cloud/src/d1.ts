@@ -2965,3 +2965,122 @@ export async function sweepExpiredChannelLinkCodes(
     .bind(at.toISOString())
     .run();
 }
+
+// ── approval challenges (migration 0016, ADR-001) ────────────────────────────
+
+/**
+ * How long an issued challenge stays spendable.
+ *
+ * Longer than the 60s nonce it replaces, because it is now issued when a person
+ * OPENS a run rather than at the moment they click: someone reading a proposal
+ * carefully should not have their approval refused for taking five minutes over
+ * it. Single-use is what carries the security here; the TTL only bounds how
+ * long an unspent row is worth keeping.
+ */
+export const APPROVAL_CHALLENGE_TTL_SECONDS = 15 * 60;
+
+/**
+ * Issue (or re-issue) the challenge that `POST /runs/:id/approve` will require.
+ *
+ * WHY THIS REPLACES THE MINT ENDPOINT: the previous design had a route whose
+ * entire job was handing an approval credential to any caller with the user's
+ * cookie. For an agent running inside our own page that is no barrier at all —
+ * measured against production, a plain scripted fetch received a valid nonce.
+ * A dedicated vending endpoint cannot be defended; the credential has to ride
+ * something the person was already doing.
+ *
+ * So the challenge is attached to the run view. Opening a run is the human
+ * action that precedes approving one.
+ *
+ * HONEST LIMIT: an agent can read the run view too, so this does not prove a
+ * human clicked — nothing server-side can, since `isTrusted` never crosses the
+ * network. What it removes is the vending endpoint, the unlimited re-mint, and
+ * approval by an agent that never loaded the run. ADR-001 records the residual.
+ *
+ * A live, unspent challenge is REUSED rather than replaced, so re-rendering a
+ * run does not pile up rows or invalidate the value the open page is holding.
+ */
+export async function issueApprovalChallenge(
+  db: D1Database,
+  args: { runId: string; userId: string; ttlSeconds?: number; now?: () => Date },
+): Promise<string> {
+  const at = args.now?.() ?? new Date();
+  const nowIso = at.toISOString();
+  const existing = await db
+    .prepare(
+      "SELECT challenge FROM approval_challenges " +
+        "WHERE run_id = ? AND user_id = ? AND spent_at IS NULL AND expires_at > ? " +
+        "ORDER BY created_at DESC LIMIT 1",
+    )
+    .bind(args.runId, args.userId, nowIso)
+    .first<{ challenge: string }>();
+  if (existing) return existing.challenge;
+
+  const bytes = crypto.getRandomValues(new Uint8Array(16));
+  const challenge = btoa(String.fromCharCode(...bytes))
+    .replace(/\+/g, "-")
+    .replace(/\//g, "_")
+    .replace(/=+$/, "");
+  const ttl = args.ttlSeconds ?? APPROVAL_CHALLENGE_TTL_SECONDS;
+  await db
+    .prepare(
+      "INSERT INTO approval_challenges (challenge, run_id, user_id, created_at, expires_at) " +
+        "VALUES (?, ?, ?, ?, ?)",
+    )
+    .bind(
+      challenge,
+      args.runId,
+      args.userId,
+      nowIso,
+      new Date(at.getTime() + ttl * 1000).toISOString(),
+    )
+    .run();
+  return challenge;
+}
+
+/**
+ * Spend a challenge. Returns true exactly once per issued value.
+ *
+ * The single UPDATE is deliberate and load-bearing. A read-then-write would let
+ * two concurrent approvals both observe an unspent row before either marked it,
+ * and both would proceed — the exact double-spend this table exists to stop.
+ * Here the database arbitrates: `spent_at IS NULL` is part of the WHERE, so the
+ * second writer matches no rows and gets `changes === 0`.
+ *
+ * Binding run and user into the WHERE means a challenge is useless on another
+ * run and useless to another account, without a separate check that could drift
+ * out of step with this one.
+ */
+export async function consumeApprovalChallenge(
+  db: D1Database,
+  args: { challenge: string; runId: string; userId: string; now?: () => Date },
+): Promise<boolean> {
+  const value = args.challenge.trim();
+  if (!value) return false; // never let an empty string match a blank row
+  const nowIso = (args.now?.() ?? new Date()).toISOString();
+  const res = await db
+    .prepare(
+      "UPDATE approval_challenges SET spent_at = ? " +
+        "WHERE challenge = ? AND run_id = ? AND user_id = ? " +
+        "AND spent_at IS NULL AND expires_at > ?",
+    )
+    .bind(nowIso, value, args.runId, args.userId, nowIso)
+    .run();
+  return (res.meta?.changes ?? 0) > 0;
+}
+
+/**
+ * Drop challenges that are long past use. Called from the same sweep that
+ * clears expired link codes — unspent rows are otherwise immortal, and a table
+ * that only ever grows is a slow outage.
+ */
+export async function sweepExpiredApprovalChallenges(
+  db: D1Database,
+  opts?: { now?: () => Date },
+): Promise<void> {
+  const cutoff = new Date(((opts?.now?.() ?? new Date()).getTime()) - 24 * 60 * 60 * 1000);
+  await db
+    .prepare("DELETE FROM approval_challenges WHERE expires_at < ?")
+    .bind(cutoff.toISOString())
+    .run();
+}
