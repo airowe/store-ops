@@ -100,6 +100,10 @@ const ROUTES: Array<[RegExp, unknown]> = [
   // true), which is exactly why this flow works here while a scripted fetch
   // cannot reproduce it.
   [/\/runs\/[^/]+\/approval-nonce$/, { nonce: "n_e2e", expiresInSeconds: 60 }],
+  // Delivery destinations. Fixtured because the settings page reads it on
+  // mount: with no fixture it resolves to {} and the card re-renders on
+  // undefined data, which detaches sibling buttons mid-click.
+  [/^\/account\/channels$/, { channels: [], pendingLinks: 0, available: ["email"] }],
   [/\/proof$/, { appsWithWins: 2, totalWins: 9, bestImprovement: 31, medianImprovement: 8 }],
   [/\/preview$/, {
     preview: {

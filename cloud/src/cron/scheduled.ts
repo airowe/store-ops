@@ -33,6 +33,7 @@ import {
   isAgentPaused,
   listAllApps,
   setLastSweepAt,
+  sweepExpiredChannelLinkCodes,
 } from "../d1.js";
 import { canRunCron } from "../billing.js";
 import { appIsLive } from "../engine/appIsLive.js";
@@ -333,6 +334,13 @@ export async function handleScheduled(env: Env): Promise<void> {
   const digests = await sendWeeklyDigests(env, report).catch((e) => {
     console.error(`[store-ops cron] digest pass failed: ${String(e)}`);
     return 0;
+  });
+  // Housekeeping, never the security boundary: link-code expiry is enforced
+  // when a code is READ, so a cron that fails to run cannot resurrect a stale
+  // one. This just stops the table growing forever. Best-effort by the same
+  // logic — tidying must never cost the sweep that already succeeded.
+  await sweepExpiredChannelLinkCodes(env.DB).catch((e) => {
+    console.error(`[store-ops cron] link-code sweep failed (non-fatal): ${String(e)}`);
   });
   console.log(
     `[store-ops cron] swept ${report.appsProcessed} apps, opened ${report.runsOpened} run(s), ` +

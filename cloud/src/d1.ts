@@ -2839,3 +2839,129 @@ export async function runCountSince(
     .first<{ n: number }>();
   return row?.n ?? 0;
 }
+
+// ── channel link codes (migration 0015) ──────────────────────────────────────
+
+/**
+ * A claim resolved from a link code — who was linking, and to what.
+ * `null` from `consumeChannelLinkCode` means unknown, spent, or expired, and
+ * the caller must not distinguish them: telling a stranger which of the three
+ * it was is free information about another account's state.
+ */
+export type ChannelLinkClaim = {
+  userId: string;
+  channel: ChannelKind;
+  label: string;
+};
+
+/** How long a link code stays usable. Short: it is pasted into a chat log. */
+export const CHANNEL_LINK_TTL_SECONDS = 15 * 60;
+
+/**
+ * Mint a single-use code for a deep link.
+ *
+ * OPAQUE AND SHORT rather than a signed token, because Telegram documents the
+ * start payload as "up to 64 base64url characters" and this codebase's signed
+ * tokens measure 116 and contain a '.'. 128 bits of randomness, base64url — no
+ * meaning in the string, all of it in the row.
+ */
+export async function createChannelLinkCode(
+  db: D1Database,
+  args: {
+    userId: string;
+    channel: ChannelKind;
+    label?: string;
+    ttlSeconds?: number;
+    now?: () => Date;
+  },
+): Promise<string> {
+  const at = args.now?.() ?? new Date();
+  const ttl = args.ttlSeconds ?? CHANNEL_LINK_TTL_SECONDS;
+  const bytes = crypto.getRandomValues(new Uint8Array(16));
+  const code = btoa(String.fromCharCode(...bytes))
+    .replace(/\+/g, "-")
+    .replace(/\//g, "_")
+    .replace(/=+$/, "");
+  await db
+    .prepare(
+      "INSERT INTO channel_link_codes (code, user_id, channel, label, created_at, expires_at) " +
+        "VALUES (?, ?, ?, ?, ?, ?)",
+    )
+    .bind(
+      code,
+      args.userId,
+      args.channel,
+      args.label ?? "",
+      at.toISOString(),
+      new Date(at.getTime() + ttl * 1000).toISOString(),
+    )
+    .run();
+  return code;
+}
+
+/**
+ * Resolve a code and SPEND it. Returns null when the code is unknown, already
+ * spent, or expired.
+ *
+ * Single use is the property that matters: a deep link sits in a chat log, so
+ * replay is the realistic attack, not forgery. Reading and deleting in that
+ * order means a second caller finds nothing.
+ *
+ * Expiry is enforced HERE rather than by the sweeper, so a cron that never runs
+ * cannot resurrect a stale code.
+ */
+export async function consumeChannelLinkCode(
+  db: D1Database,
+  code: string,
+  opts?: { now?: () => Date },
+): Promise<ChannelLinkClaim | null> {
+  const trimmed = code.trim();
+  if (!trimmed) return null; // never let an empty string match a blank row
+  const row = await db
+    .prepare("SELECT user_id, channel, label, expires_at FROM channel_link_codes WHERE code = ?")
+    .bind(trimmed)
+    .first<{ user_id: string; channel: string; label: string | null; expires_at: string }>();
+  if (!row) return null;
+  // Spend it regardless of freshness: an expired row has no further use, and
+  // deleting it here keeps a replayed stale code from lingering.
+  await db.prepare("DELETE FROM channel_link_codes WHERE code = ?").bind(trimmed).run();
+  const at = opts?.now?.() ?? new Date();
+  if (Date.parse(row.expires_at) <= at.getTime()) return null;
+  return {
+    userId: row.user_id,
+    channel: row.channel as ChannelKind,
+    label: row.label ?? "",
+  };
+}
+
+/**
+ * How many of this user's codes are still live — so a settings screen can say
+ * "waiting for you to open the link" rather than looking inert. Expired rows
+ * are NOT counted: a stale code is not a wait.
+ */
+export async function pendingChannelLinkCount(
+  db: D1Database,
+  userId: string,
+  opts?: { now?: () => Date },
+): Promise<number> {
+  const at = opts?.now?.() ?? new Date();
+  const row = await db
+    .prepare(
+      "SELECT COUNT(*) AS n FROM channel_link_codes WHERE user_id = ? AND expires_at > ?",
+    )
+    .bind(userId, at.toISOString())
+    .first<{ n: number }>();
+  return row?.n ?? 0;
+}
+
+/** Housekeeping. NOT the security boundary — expiry is enforced on read. */
+export async function sweepExpiredChannelLinkCodes(
+  db: D1Database,
+  opts?: { now?: () => Date },
+): Promise<void> {
+  const at = opts?.now?.() ?? new Date();
+  await db
+    .prepare("DELETE FROM channel_link_codes WHERE expires_at <= ?")
+    .bind(at.toISOString())
+    .run();
+}

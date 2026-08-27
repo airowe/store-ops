@@ -844,3 +844,39 @@ export type StagedEdit = {
   proposedCopy: CopyFields;
   note: string;
 };
+
+// ── notification channels (migrations 0014/0015) ─────────────────────────────
+export type ChannelKind = "email" | "telegram";
+
+/**
+ * One delivery destination. `verified` is safety-critical: an unverified row is
+ * an address nobody has proven they control, and is never delivered to.
+ * `enabled` is separate, so muting a channel never costs its proof.
+ */
+export type NotificationChannel = {
+  channel: ChannelKind;
+  address: string;
+  label: string;
+  enabled: boolean;
+  verified: boolean;
+  lastSentAt: string | null;
+  lastFailedAt: string | null;
+  lastError: string | null;
+};
+
+export type ChannelsResult = {
+  channels: NotificationChannel[];
+  /** Links minted but not yet opened — lets a UI say "waiting" honestly. */
+  pendingLinks: number;
+  /** What this deployment can actually deliver on. */
+  available: ChannelKind[];
+};
+
+/** POST /account/channels/link — the deep link that proves control of a chat. */
+export type ChannelLink = {
+  channel: ChannelKind;
+  code: string;
+  url: string;
+  expiresInSeconds: number;
+  note: string;
+};

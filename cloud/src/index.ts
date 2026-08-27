@@ -83,6 +83,18 @@ export type Env = {
   // emails the link via Resend; unset → ConsoleEmailSender (logs the link).
   RESEND_API_KEY?: string;
   RESEND_FROM?: string; // verified sender, e.g. "ShipASO <login@shipaso.com>"
+  // Telegram Bot API token, from @BotFather. Unset → the Telegram transport is
+  // ABSENT rather than broken: a Telegram destination on an env without this is
+  // reported as a configuration bug by deliverAll, never counted as delivered.
+  TELEGRAM_BOT_TOKEN?: string;
+  // The bot's @username, used to build the t.me deep link. Separate from the
+  // token because the token must stay secret and this appears in a URL.
+  TELEGRAM_BOT_USERNAME?: string;
+  // The shared secret Telegram echoes on every webhook delivery
+  // (X-Telegram-Bot-Api-Secret-Token). Unset ⇒ the webhook refuses everything:
+  // an open endpoint that links chats to accounts is worse than an unreachable
+  // one.
+  TELEGRAM_WEBHOOK_SECRET?: string;
   // Opt-in gate for the direct ASC metadata WRITE (#11). Unset → the push
   // endpoint returns 403 (the credential-free Fastlane handoff stays the default).
   // Set to "1"/"true" only after verifying against a test app.

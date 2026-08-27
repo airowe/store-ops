@@ -19,6 +19,7 @@ import { deleteCredential, getCredentials, logout, me, pauseAgent, resumeAgent, 
 import { GithubCard } from "./GithubCard.js";
 import { AsaCard } from "./AsaCard.js";
 import { ApiKeysCard } from "./ApiKeysCard.js";
+import { ChannelsCard } from "./ChannelsCard.js";
 import { applyTheme, storedMode, storeMode, type ThemeMode } from "../../shell/theme.js";
 
 type Prefs = { push: boolean; digest: boolean; cadence: RankCadence; paused: boolean };
@@ -225,6 +226,7 @@ export function SettingsView({ client, onSignedOut }: { client: ApiClient; onSig
           <AsaCard client={client} hasAsaKey={creds.some((c) => c.kind === "asa")} />
         </Panel>
 
+        <ChannelsCard client={client} />
         <ApiKeysCard client={client} />
 
         <Panel

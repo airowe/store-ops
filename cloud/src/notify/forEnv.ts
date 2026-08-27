@@ -17,6 +17,8 @@ import {
 } from "../d1.js";
 import type { CopyFields } from "../engine/optimize.js";
 import { emailDeliverer } from "./emailDeliverer.js";
+import { telegramDeliverer } from "./telegramDeliverer.js";
+import { fetchForEnv } from "../fetchAdapter.js";
 import { notifyRunReady, type NotifyRunReadyResult } from "./notifyRunReady.js";
 import type { Deliverer } from "./channel.js";
 
@@ -45,8 +47,19 @@ export function changedFields(
   });
 }
 
-/** The transports this environment can actually deliver on. */
-function deliverersForEnv(env: Env): Deliverer[] {
+/**
+ * The transports this environment can actually deliver on.
+ *
+ * A channel with no credentials is ABSENT from this list rather than present
+ * and broken. That is deliberate: `deliverAll` reports a destination with no
+ * transport as a configuration bug, so an unconfigured Telegram surfaces as
+ * exactly that — instead of being silently counted as delivered, which is how a
+ * channel nobody receives looks identical to a user who opted out.
+ *
+ * Exported for the wiring test: a deliverer that exists but is never added to
+ * this list passes every test of its own and delivers nothing.
+ */
+export function deliverersForEnv(env: Env): Deliverer[] {
   let unsubFor: ((address: string) => Promise<string | undefined>) | undefined;
   if (env.API_ORIGIN) {
     const origin = env.API_ORIGIN.replace(/\/+$/, "");
@@ -65,7 +78,10 @@ function deliverersForEnv(env: Env): Deliverer[] {
       }
     };
   }
-  return [emailDeliverer(emailSenderForEnv(env), unsubFor)];
+  const deliverers: Deliverer[] = [emailDeliverer(emailSenderForEnv(env), unsubFor)];
+  const telegramToken = env.TELEGRAM_BOT_TOKEN?.trim();
+  if (telegramToken) deliverers.push(telegramDeliverer(telegramToken, fetchForEnv(env)));
+  return deliverers;
 }
 
 /**
