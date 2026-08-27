@@ -37,19 +37,28 @@ export type ToolResult = {
 export type ToolDescriptor = {
   name: string;
   description: string;
+  /**
+   * REQUIRED, despite reading as optional in earlier drafts. Measured in Chrome
+   * 151: omitting it registers, but a descriptor without `execute` throws
+   * `TypeError: Required member is undefined`, and the schema is what the agent
+   * reads to build a call. Always send one, even `{type:"object",properties:{}}`.
+   */
   inputSchema?: ToolInputSchema;
   annotations?: ToolAnnotations;
   execute: (args: Record<string, unknown>) => Promise<ToolResult> | ToolResult;
 };
 
-/** Returned by registerTool so a caller can drop one tool without a full sweep. */
-export type RegisteredTool = { unregister: () => void };
+/**
+ * Registration options. `signal` is the ONLY way to unregister — measured in
+ * Chrome 151, where `unregisterTool` and `provideContext` do not exist and
+ * `registerTool` returns undefined. Aborting removes the tool and frees its
+ * name for re-registration.
+ */
+export type RegisterOptions = { signal?: AbortSignal };
 
 export type ModelContext = {
-  registerTool: (tool: ToolDescriptor) => RegisteredTool | void;
-  unregisterTool?: (name: string) => void;
-  provideContext?: (context: { tools?: readonly ToolDescriptor[] }) => void;
-  clearContext?: () => void;
+  registerTool: (tool: ToolDescriptor, options?: RegisterOptions) => Promise<void> | void;
+  getTools?: () => Promise<readonly { name: string }[]>;
 };
 
 /**

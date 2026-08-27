@@ -35,6 +35,20 @@ export type ToolSpec = {
   routes: readonly RoutePattern[];
   /** Short label for the panel — the tool's effect in a few words. */
   effect: string;
+  /**
+   * What the agent may pass. Omit for a tool that takes nothing — the registry
+   * substitutes an empty object schema.
+   *
+   * This is not decoration: an agent reads the schema to construct its call, so
+   * a tool whose handler reads `runId` while advertising no properties is
+   * callable only by accident. Every named argument a handler consumes belongs
+   * here.
+   */
+  inputSchema?: {
+    type: "object";
+    properties: Record<string, { type: string; description: string }>;
+    required?: readonly string[];
+  };
 };
 
 export const MANIFEST: readonly ToolSpec[] = [
@@ -69,6 +83,13 @@ export const MANIFEST: readonly ToolSpec[] = [
     readOnly: true,
     routes: ["/"],
     effect: "searches the store",
+    inputSchema: {
+      type: "object",
+      properties: {
+        query: { type: "string", description: "App name or search term." },
+      },
+      required: ["query"],
+    }
   },
   {
     name: "audit_app",
@@ -79,6 +100,13 @@ export const MANIFEST: readonly ToolSpec[] = [
     readOnly: true,
     routes: ["/"],
     effect: "audits a public listing",
+    inputSchema: {
+      type: "object",
+      properties: {
+        query: { type: "string", description: "App name or search term." },
+        bundleId: { type: "string", description: "Exact bundle id, e.g. com.acme.app." },
+      },
+    }
   },
   // ── app detail ────────────────────────────────────────────────────────────
   {
@@ -90,6 +118,13 @@ export const MANIFEST: readonly ToolSpec[] = [
     readOnly: false,
     routes: ["/apps/$id"],
     effect: "starts monitoring",
+    inputSchema: {
+      type: "object",
+      properties: {
+        query: { type: "string", description: "App name or search term." },
+        bundleId: { type: "string", description: "Exact bundle id, e.g. com.acme.app." },
+      },
+    }
   },
   {
     name: "trigger_run",
@@ -100,6 +135,12 @@ export const MANIFEST: readonly ToolSpec[] = [
     readOnly: false,
     routes: ["/apps/$id"],
     effect: "prepares a proposal",
+    inputSchema: {
+      type: "object",
+      properties: {
+        appId: { type: "string", description: "The app's id. Defaults to the app open on this page." },
+      },
+    }
   },
   {
     name: "get_schedule",
@@ -110,6 +151,12 @@ export const MANIFEST: readonly ToolSpec[] = [
     readOnly: true,
     routes: ["/apps/$id"],
     effect: "reads the cadence",
+    inputSchema: {
+      type: "object",
+      properties: {
+        appId: { type: "string", description: "The app's id. Defaults to the app open on this page." },
+      },
+    }
   },
   {
     name: "set_schedule",
@@ -120,6 +167,14 @@ export const MANIFEST: readonly ToolSpec[] = [
     readOnly: false,
     routes: ["/apps/$id"],
     effect: "changes the cadence",
+    inputSchema: {
+      type: "object",
+      properties: {
+        appId: { type: "string", description: "The app's id. Defaults to the app open on this page." },
+        cadence: { type: "string", description: "How often the sweep runs: \"weekly\", \"daily\" or \"off\"." },
+      },
+      required: ["cadence"],
+    }
   },
   // ── run index ─────────────────────────────────────────────────────────────
   {
@@ -141,6 +196,12 @@ export const MANIFEST: readonly ToolSpec[] = [
     readOnly: true,
     routes: ["/runs", "/runs/$id", "/dashboard"],
     effect: "explains a proposal",
+    inputSchema: {
+      type: "object",
+      properties: {
+        runId: { type: "string", description: "The run's id. Defaults to the run open on this page." },
+      },
+    }
   },
   // ── run detail ────────────────────────────────────────────────────────────
   {
@@ -152,6 +213,12 @@ export const MANIFEST: readonly ToolSpec[] = [
     readOnly: true,
     routes: ["/runs/$id"],
     effect: "reads the proposal",
+    inputSchema: {
+      type: "object",
+      properties: {
+        runId: { type: "string", description: "The run's id. Defaults to the run open on this page." },
+      },
+    }
   },
   {
     name: "draft_alternative",
@@ -162,6 +229,12 @@ export const MANIFEST: readonly ToolSpec[] = [
     readOnly: true,
     routes: ["/runs/$id"],
     effect: "drafts an option",
+    inputSchema: {
+      type: "object",
+      properties: {
+        runId: { type: "string", description: "The run's id. Defaults to the run open on this page." },
+      },
+    }
   },
   {
     name: "stage_for_approval",
@@ -172,6 +245,16 @@ export const MANIFEST: readonly ToolSpec[] = [
     readOnly: false,
     routes: ["/runs/$id"],
     effect: "edits the proposal",
+    inputSchema: {
+      type: "object",
+      properties: {
+        runId: { type: "string", description: "The run's id. Defaults to the run open on this page." },
+        title: { type: "string", description: "Replacement app name. 30 characters max." },
+        subtitle: { type: "string", description: "Replacement subtitle. 30 characters max." },
+        keywords: { type: "string", description: "Replacement keywords: comma-separated, no spaces, 100 characters max." },
+        promo: { type: "string", description: "Replacement promotional text. 170 characters max." },
+      },
+    }
   },
   {
     name: "request_notification",
@@ -182,6 +265,12 @@ export const MANIFEST: readonly ToolSpec[] = [
     readOnly: false,
     routes: ["/runs", "/runs/$id"],
     effect: "asks a human to look",
+    inputSchema: {
+      type: "object",
+      properties: {
+        runId: { type: "string", description: "The run's id. Defaults to the run open on this page." },
+      },
+    }
   },
 ];
 

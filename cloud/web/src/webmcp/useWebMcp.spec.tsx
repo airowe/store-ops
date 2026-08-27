@@ -8,15 +8,16 @@ import { renderHook, act } from "@testing-library/react";
 import { useWebMcp } from "./useWebMcp.js";
 import type { ModelContext, ToolDescriptor } from "./types.js";
 
+/** Chrome 151 as measured: no handle, no unregisterTool, abort-driven removal. */
 function fakeContext() {
   const registered = new Map<string, ToolDescriptor>();
   const ctx: ModelContext = {
-    registerTool: (tool) => {
+    registerTool: (tool, options) => {
+      if (registered.has(tool.name)) {
+        throw new DOMException("Duplicate tool name", "InvalidStateError");
+      }
       registered.set(tool.name, tool);
-      return { unregister: () => registered.delete(tool.name) };
-    },
-    unregisterTool: (name) => {
-      registered.delete(name);
+      options?.signal?.addEventListener("abort", () => registered.delete(tool.name));
     },
   };
   return { ctx, registered };

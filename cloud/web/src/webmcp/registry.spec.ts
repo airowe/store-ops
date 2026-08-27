@@ -7,17 +7,26 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createRegistry } from "./registry.js";
 import type { ModelContext, ToolDescriptor } from "./types.js";
+import type { ToolSpec } from "./manifest.js";
 
+/**
+ * Models Chrome 151 as MEASURED, not as earlier drafts described it:
+ * `registerTool` returns undefined, there is no `unregisterTool`, and the only
+ * way to remove a tool is to abort the signal passed at registration. A fake
+ * that offers an `unregister()` handle cannot fail on the accumulation bug that
+ * actually shipped, which is why the old one passed while production leaked.
+ */
 function fakeContext() {
   const registered = new Map<string, ToolDescriptor>();
   const ctx: ModelContext & { registered: Map<string, ToolDescriptor> } = {
     registered,
-    registerTool: (tool) => {
+    registerTool: (tool, options) => {
+      if (registered.has(tool.name)) {
+        throw new DOMException("Duplicate tool name", "InvalidStateError");
+      }
       registered.set(tool.name, tool);
-      return { unregister: () => registered.delete(tool.name) };
-    },
-    unregisterTool: (name: string) => {
-      registered.delete(name);
+      options?.signal?.addEventListener("abort", () => registered.delete(tool.name));
+      return undefined;
     },
   };
   return ctx;
@@ -159,14 +168,95 @@ describe("createRegistry", () => {
     expect(reg.liveTools()).toEqual([]);
   });
 
-  it("falls back to unregisterTool when registerTool returns no handle", () => {
-    const bare: ModelContext = {
-      registerTool: vi.fn(() => undefined),
-      unregisterTool: vi.fn(),
+  it("does not record a tool whose registration THREW as live", () => {
+    // Chrome has no unregisterTool to fall back on, so the only correctness
+    // question left is bookkeeping: a refused registration must not appear in
+    // liveTools(), or the panel would advertise a tool the agent cannot see.
+    const refusing: ModelContext = {
+      registerTool: vi.fn(() => {
+        throw new DOMException("Duplicate tool name", "InvalidStateError");
+      }),
     };
-    const reg = createRegistry({ context: bare, handlers: { a: async () => "ok" } });
-    reg.sync([spec("a")]);
-    reg.sync([]);
-    expect(bare.unregisterTool).toHaveBeenCalledWith("a");
+    const reg = createRegistry({ context: refusing, handlers: { a: async () => "ok" } });
+    expect(() => reg.sync([spec("a")])).not.toThrow();
+    expect(reg.liveTools()).toEqual([]);
+  });
+});
+
+/**
+ * LIFECYCLE against the REAL Chrome 151 contract.
+ *
+ * The earlier fake in this file modelled a `RegisteredTool.unregister()` handle
+ * and an `unregisterTool(name)` fallback. Measured in Chrome 151, NEITHER
+ * exists: `registerTool` returns undefined, the prototype is only
+ * {registerTool, getTools, executeTool, ontoolchange}, and re-registering a
+ * live name throws `InvalidStateError: Duplicate tool name`. Unregistration is
+ * via AbortSignal — verified in-browser: abort removes the tool and frees the
+ * name.
+ *
+ * So the old fake could never fail on the bug that shipped: drop() called
+ * methods that were not there, tools accumulated across routes, and the throw
+ * on the next visit was swallowed by the handler catch. This fake refuses to
+ * implement anything Chrome does not.
+ */
+describe("lifecycle on the real Chrome 151 contract", () => {
+  function chrome151() {
+    const live = new Map<string, ToolDescriptor>();
+    const context = {
+      registerTool(tool: ToolDescriptor, options?: { signal?: AbortSignal }) {
+        if (live.has(tool.name)) {
+          throw new DOMException("Duplicate tool name", "InvalidStateError");
+        }
+        live.set(tool.name, tool);
+        options?.signal?.addEventListener("abort", () => live.delete(tool.name));
+        // Chrome returns undefined — no handle to unregister with.
+        return undefined;
+      },
+    };
+    return { context, names: () => [...live.keys()].sort() };
+  }
+
+  const spec = (name: string): ToolSpec => ({
+    name, description: `${name} desc`, writes: false, readOnly: true,
+    routes: ["*"], effect: `does ${name}`,
+  });
+  const handlers = {
+    a: async () => "a", b: async () => "b", c: async () => "c",
+  };
+
+  it("REMOVES a tool that leaves the route — the accumulation bug", () => {
+    const { context, names } = chrome151();
+    const r = createRegistry({ context, handlers });
+    r.sync([spec("a"), spec("b")]);
+    expect(names()).toEqual(["a", "b"]);
+    r.sync([spec("b"), spec("c")]);
+    expect(names()).toEqual(["b", "c"]);
+  });
+
+  it("SURVIVES returning to a route — no InvalidStateError on re-register", () => {
+    const { context, names } = chrome151();
+    const r = createRegistry({ context, handlers });
+    r.sync([spec("a")]);
+    r.sync([spec("b")]);
+    expect(() => r.sync([spec("a")])).not.toThrow();
+    expect(names()).toEqual(["a"]);
+  });
+
+  it("teardown drops everything", () => {
+    const { context, names } = chrome151();
+    const r = createRegistry({ context, handlers });
+    r.sync([spec("a"), spec("b")]);
+    r.teardown();
+    expect(names()).toEqual([]);
+  });
+
+  it("always sends an inputSchema — the agent reads it to build a call", () => {
+    const seen: ToolDescriptor[] = [];
+    const context = {
+      registerTool(tool: ToolDescriptor) { seen.push(tool); return undefined; },
+    };
+    const r = createRegistry({ context, handlers });
+    r.sync([spec("a")]);
+    expect(seen[0]!.inputSchema).toMatchObject({ type: "object" });
   });
 });

@@ -12,7 +12,7 @@
  * RESULT, because an agent that receives a rejected promise learns nothing,
  * while one that receives "the API said no: 403" can tell the user why.
  */
-import { getModelContext, type ModelContext, type RegisteredTool, type ToolResult } from "./types.js";
+import { getModelContext, type ModelContext, type ToolResult } from "./types.js";
 import type { ToolSpec } from "./manifest.js";
 
 /** What a tool actually does. Returns the text handed back to the agent. */
@@ -36,7 +36,7 @@ export type Registry = {
   teardown: () => void;
 };
 
-type Live = { spec: ToolSpec; handle: RegisteredTool | null };
+type Live = { spec: ToolSpec; controller: AbortController };
 
 export function createRegistry(opts: {
   context?: ModelContext | null;
@@ -49,10 +49,12 @@ export function createRegistry(opts: {
   function drop(name: string) {
     const entry = live.get(name);
     if (!entry) return;
-    // registerTool's return value is the spec'd way to undo one registration;
-    // unregisterTool(name) is the fallback for implementations that return void.
-    if (entry.handle) entry.handle.unregister();
-    else context?.unregisterTool?.(name);
+    // AbortSignal is the ONLY unregistration path. Measured in Chrome 151:
+    // `unregisterTool` and `provideContext` do not exist, and `registerTool`
+    // returns undefined, so there is no handle to call. Aborting removes the
+    // tool AND frees its name — without which the next visit to this route
+    // throws `InvalidStateError: Duplicate tool name`.
+    entry.controller.abort();
     live.delete(name);
   }
 
@@ -62,9 +64,17 @@ export function createRegistry(opts: {
     // on first call. Better to never advertise it: an agent can only be honest
     // about a surface that is honest with it.
     if (!handler || !context) return;
-    const handle = context.registerTool({
+    const controller = new AbortController();
+    // A tool whose registration throws must not be recorded as live, or drop()
+    // would later abort a controller for a tool that was never added and the
+    // set would drift from what the agent actually sees.
+    try {
+      context.registerTool({
       name: spec.name,
       description: spec.description,
+      // Required in practice: the agent reads this to construct a call, and a
+      // tool advertised without one is a tool nothing can invoke correctly.
+      inputSchema: spec.inputSchema ?? { type: "object", properties: {} },
       annotations: { readOnlyHint: spec.readOnly },
       execute: async (args): Promise<ToolResult> => {
         opts.onActivity?.({ name: spec.name, phase: "start" });
@@ -78,8 +88,16 @@ export function createRegistry(opts: {
           return { content: [{ type: "text", text: message }], isError: true };
         }
       },
-    });
-    live.set(spec.name, { spec, handle: handle ?? null });
+      }, { signal: controller.signal });
+    } catch {
+      // Registration refused (a duplicate name that drop() failed to clear, or
+      // an implementation that rejects the descriptor). Staying silent here is
+      // deliberate: the panel derives what it shows from `liveTools()`, so an
+      // unregistered tool is simply never advertised rather than displayed as
+      // present-but-broken.
+      return;
+    }
+    live.set(spec.name, { spec, controller });
   }
 
   return {
