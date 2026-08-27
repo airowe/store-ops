@@ -704,6 +704,14 @@ export type NotificationPrefs = {
   email_run_ready: boolean;
 };
 export type Me = {
+  /**
+   * Whether there is a session at all. `/auth/me` answers `{authed:false}` to a
+   * signed-out caller — a 200, not a 401 — so a consumer that only reads the
+   * preference fields sees `undefined` for each and falls through to its own
+   * defaults, presenting them as though they were the user's. Model it, and
+   * "nobody is signed in" stays distinguishable from "signed in, nothing set".
+   */
+  authed?: boolean;
   email: string | null;
   push_run_ready?: boolean;
   email_digest?: EmailDigest;

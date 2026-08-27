@@ -215,3 +215,49 @@ describe("<SettingsView />", () => {
     await waitFor(() => expect(onSignedOut).toHaveBeenCalled());
   });
 });
+
+/**
+ * SIGNED OUT — measured-or-nothing applied to settings.
+ *
+ * `/auth/me` answers `{authed:false}` for a signed-out visitor, which is a
+ * truthy object. The view seeded from it and the `??` defaults rendered
+ * "Run-ready push: On", "Weekly digest: On" and "Weekly sweep: Active" —
+ * stating as fact preferences belonging to nobody. Observed in production
+ * Chrome against app.shipaso.com/settings while genuinely signed out.
+ *
+ * Nothing leaked: the server refuses the reads. The failure is honesty, not
+ * access — the page asserted measurements it had never taken, which is the
+ * same class as showing 0 for an unknown rank.
+ */
+describe("<SettingsView /> — signed out", () => {
+  function signedOutClient() {
+    const get = vi.fn(async (path: string) => {
+      if (path === "/auth/me") return { authed: false };
+      throw new Error("unexpected GET " + path);
+    });
+    const post = vi.fn(async () => { throw new Error("must not write while signed out"); });
+    return { client: { get, post, request: vi.fn() } as unknown as ApiClient, get, post };
+  }
+
+  it("does NOT render preference toggles it cannot have measured", async () => {
+    const { client } = signedOutClient();
+    renderView(client);
+    await waitFor(() => expect(screen.getByTestId("settings-signed-out")).toBeInTheDocument());
+    expect(screen.queryByTestId("push-toggle")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("digest-toggle")).not.toBeInTheDocument();
+  });
+
+  it("offers a way to sign in rather than a dead end", async () => {
+    const { client } = signedOutClient();
+    renderView(client);
+    const link = await screen.findByTestId("settings-signin-link");
+    expect(link).toHaveAttribute("href", "/login");
+  });
+
+  it("still renders the settings it CAN honour without a session (appearance)", async () => {
+    const { client } = signedOutClient();
+    renderView(client);
+    // Theme is stored in the browser, not the account — it remains truthful.
+    await waitFor(() => expect(screen.getByTestId("theme-system")).toBeInTheDocument());
+  });
+});
