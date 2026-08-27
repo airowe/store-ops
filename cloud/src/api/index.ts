@@ -139,7 +139,7 @@ import { createApiKey, listApiKeys, looksLikeApiKey, resolveApiKey, revokeApiKey
 import { serializeAsaBundle, verifyAsaCredentials, type AsaKeyBundle } from "../engine/asaAuth.js";
 import localesData from "../engine/locales-data.json";
 import { validateThresholdPatch } from "../thresholds.js";
-import { type BoundaryRefusal, requireApprovalNonce, requireHumanSession } from "./approvalBoundary.js";
+import { type BoundaryRefusal, requireApprovalNonce, requireBrowserOrigin, requireHumanSession } from "./approvalBoundary.js";
 import { notifyRunReadyForEnv } from "../notify/forEnv.js";
 import { checkDailyCadenceBound, checkRunTriggerBound, RUN_TRIGGER_WINDOW_SECONDS } from "./agentBounds.js";
 import { validateSchedule } from "../schedule.js";
@@ -5580,10 +5580,17 @@ export async function handleApi(req: Request, env: Env, ctx?: ExecutionContext):
         return json(await getRunRoute(env, user.id, runId), 200, origin);
       }
       // ADR-001: minting an approval nonce. The dashboard calls this from a
-      // trusted (isTrusted) click handler; a scripted fetch cannot produce the
-      // gesture, so it cannot obtain a nonce. Read-only — minting approves
-      // nothing, and the nonce is worthless without the subsequent POST.
+      // trusted (isTrusted) click handler. The server cannot see `isTrusted`
+      // — it never crosses the network — so it verifies what it CAN: that the
+      // caller is our own document in a real browser, via forbidden
+      // `Sec-Fetch-*` headers that script cannot forge. Read-only — minting
+      // approves nothing, and the nonce is worthless without the spend POST.
       if (seg.length === 3 && seg[2] === "approval-nonce" && method === "POST") {
+        const gate = requireBrowserOrigin(user.auth, {
+          site: req.headers.get("sec-fetch-site"),
+          mode: req.headers.get("sec-fetch-mode"),
+        });
+        if (!gate.ok) return json(gate, gate.status, origin, env);
         return json(await mintApprovalNonceRoute(env, user, runId), 200, origin, env);
       }
       // The agent's one write at the gate: stage an edit to the proposed copy.
