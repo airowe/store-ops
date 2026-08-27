@@ -50,6 +50,10 @@ import type {
   CppSetsResult,
   StoredCredential,
   WarRoomView,
+  ScheduleResult,
+  SweepSchedule,
+  ApprovalNonce,
+  StagedEdit,
 } from "./types.js";
 
 const enc = encodeURIComponent;
@@ -281,3 +285,42 @@ export const deleteCredential = (c: ApiClient, kind: "asc" | "play" | "asa", app
     `/account/credentials/${kind}${appId ? `?app=${enc(appId)}` : ""}`,
     { method: "DELETE" },
   );
+
+// ── sweep schedule (#52) ─────────────────────────────────────────────────────
+/** When does the unattended sweep next check this app? */
+export const getSchedule = (c: ApiClient, appId: string) =>
+  c.get<ScheduleResult>(`/apps/${enc(appId)}/schedule`);
+/** Set the FULL schedule. Changes when proposals are PREPARED, never approved. */
+export const setSchedule = (c: ApiClient, appId: string, schedule: SweepSchedule) =>
+  c.post<ScheduleResult>(`/apps/${enc(appId)}/schedule`, schedule);
+
+// ── the approval boundary (ADR-001) ──────────────────────────────────────────
+/**
+ * Mint the nonce that lets the next request approve `runId`.
+ *
+ * MUST be called from a handler where `event.isTrusted === true`. That is the
+ * whole contract: a scripted fetch — including one made by an agent holding the
+ * user's own session — cannot produce a real gesture, so it cannot obtain a
+ * nonce, so it cannot approve. Calling this from anywhere else would hand the
+ * capability straight back.
+ */
+export const mintApprovalNonce = (c: ApiClient, runId: string) =>
+  c.post<ApprovalNonce>(`/runs/${enc(runId)}/approval-nonce`);
+
+/** The header the minted nonce rides on. Mirrors APPROVAL_NONCE_HEADER server-side. */
+export const APPROVAL_NONCE_HEADER = "x-approval-nonce";
+
+/**
+ * Approve a run, presenting the nonce from a trusted gesture. Separate from
+ * `decideRun` because rejecting needs no nonce — only approval crosses the gate.
+ */
+export const approveRunWithNonce = (c: ApiClient, id: string, nonce: string) =>
+  c.post<RunDecision>(`/runs/${enc(id)}/approve`, { decision: "approve" }, { [APPROVAL_NONCE_HEADER]: nonce });
+
+/**
+ * Stage an edit to a run's proposed copy (ADR-001). The agent's one write at
+ * the gate: it changes WHAT would be approved, never WHETHER it is — the run
+ * stays `awaiting_approval` and the response says so.
+ */
+export const stageRunEdit = (c: ApiClient, runId: string, edit: Partial<CopyFields>) =>
+  c.post<StagedEdit>(`/runs/${enc(runId)}/edits`, edit);

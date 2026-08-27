@@ -55,6 +55,9 @@ function makeClient({
     throw new Error("unexpected GET " + path);
   });
   const post = vi.fn(async (path: string) => {
+    // ADR-001: approving is now two calls — mint the nonce from the click, then
+    // present it. The nonce route is harmless on its own (it writes nothing).
+    if (path.endsWith("/approval-nonce")) return { nonce: "n_test", expiresInSeconds: 60 };
     if (path.endsWith("/approve")) {
       return {
         id: "run1",
@@ -76,7 +79,7 @@ function renderView(client: ApiClient) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
     <QueryClientProvider client={qc}>
-      <RunView client={client} id="run1" />
+      <RunView trustGesture={() => true} client={client} id="run1" />
     </QueryClientProvider>,
   );
 }
@@ -87,7 +90,7 @@ beforeAll(() => {
     class { observe() {} disconnect() {} unobserve() {} };
 });
 
-describe("<RunView /> — the money screen", () => {
+describe("<RunView trustGesture={() => true} /> — the money screen", () => {
   it("pending: shows the diff + Approve/Reject, and NO handoff commands yet", async () => {
     const { client } = makeClient();
     renderView(client);
@@ -101,7 +104,9 @@ describe("<RunView /> — the money screen", () => {
     renderView(client);
     await waitFor(() => screen.getByTestId("approve"));
     fireEvent.click(screen.getByTestId("approve"));
-    await waitFor(() => expect(post).toHaveBeenCalledWith("/runs/run1/approve", { decision: "approve" }));
+    await waitFor(() => expect(post).toHaveBeenCalledWith("/runs/run1/approve", { decision: "approve" }, {
+        "x-approval-nonce": "n_test",
+      }));
     await waitFor(() => expect(screen.getByTestId("handoff")).toBeInTheDocument());
     // regression: the slim decision must MERGE, not replace — the diff (fed by
     // currentCopy, absent from the decision) must survive approval, not crash.
@@ -329,7 +334,7 @@ describe("<RunView /> — the money screen", () => {
   });
 });
 
-describe("<RunView /> — run shell (pending)", () => {
+describe("<RunView trustGesture={() => true} /> — run shell (pending)", () => {
   it("renders the status bar with the live app name", async () => {
     const { client } = makeClient({
       extra: { audit: { liveName: "Heathen" }, coverage: { coverageScore: 95.6, fieldFill: [], distinctTerms: 0, waste: [] } },

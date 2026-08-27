@@ -95,6 +95,11 @@ const RUN_DETAIL = {
 /** Per-path JSON, matched by URL suffix (most-specific first). */
 const ROUTES: Array<[RegExp, unknown]> = [
   [/\/auth\/me$/, { authed: true, email: "demo@shipaso.com" }],
+  // ADR-001: approving is two calls in a real browser — the trusted click mints
+  // a nonce, then presents it. Playwright's .click() IS trusted (isTrusted ===
+  // true), which is exactly why this flow works here while a scripted fetch
+  // cannot reproduce it.
+  [/\/runs\/[^/]+\/approval-nonce$/, { nonce: "n_e2e", expiresInSeconds: 60 }],
   [/\/proof$/, { appsWithWins: 2, totalWins: 9, bestImprovement: 31, medianImprovement: 8 }],
   [/\/preview$/, {
     preview: {

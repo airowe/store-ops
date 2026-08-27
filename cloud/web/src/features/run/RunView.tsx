@@ -36,6 +36,7 @@ import { RunDetailPane } from "./RunDetailPane.js";
 import { SectionRail, type RailItem, type RailGroup } from "./SectionRail.js";
 import { API_BASE } from "../../config.js";
 import { runStatusLabel } from "../../lib/status.js";
+import { approveFromGesture, isTrustedGesture } from "../../webmcp/trustedApprove.js";
 
 /** The ShipASO MCP endpoint the agent connects to (absolute when an API base is
  *  configured, else a relative path in the demo build). */
@@ -46,6 +47,7 @@ export function RunView({
   id,
   onConnect,
   onAccountSettings,
+  trustGesture,
 }: {
   client: import("@shipaso/api").ApiClient;
   id: string;
@@ -57,12 +59,31 @@ export function RunView({
   onConnect?: (appId: string) => void;
   /** Account-level settings (MCP/agent access). Not app-scoped. */
   onAccountSettings?: () => void;
+  /**
+   * The gesture check (ADR-001). Injected ONLY so component tests can reach the
+   * code after the gate — no synthetic event can ever be trusted, so without
+   * this seam jsdom could not exercise approval at all. Production omits it and
+   * the real browser decides.
+   */
+  trustGesture?: (event: { isTrusted?: unknown } | undefined) => boolean;
 }) {
   const qc = useQueryClient();
   const runQ = useQuery({ queryKey: ["run", id], queryFn: () => getRun(client, id) });
   const credsQ = useQuery({ queryKey: ["credentials"], queryFn: () => getCredentials(client) });
+  /**
+   * ADR-001: approving mints a nonce from the CLICK, rejecting does not.
+   *
+   * The gesture is threaded through the mutation rather than read inside it,
+   * because by the time an async mutationFn runs the event is long gone — and a
+   * gesture we cannot see is a gesture we must not assume. Rejecting needs no
+   * nonce: it closes the gate without shipping anything, so an agent clearing
+   * bad proposals is legitimate pre-gate triage.
+   */
   const decide = useMutation({
-    mutationFn: (d: "approve" | "reject") => decideRun(client, id, d),
+    mutationFn: (v: { decision: "approve" | "reject"; event?: { isTrusted?: unknown } }) =>
+      v.decision === "approve"
+        ? approveFromGesture(client, id, v.event, trustGesture ?? isTrustedGesture)
+        : decideRun(client, id, "reject"),
     // The decision is a SLIM partial (no `result`/`currentCopy`) — MERGE it onto
     // the cached RunDetail. Replacing outright dropped `result` and crashed the
     // diff on re-render. currentCopy is preserved; status + the revealed
@@ -293,10 +314,10 @@ export function RunView({
               </span>
             </span>
             <span className="db-actions">
-              <button type="button" className="btn ghost" data-testid="reject" disabled={decide.isPending} onClick={() => decide.mutate("reject")}>
+              <button type="button" className="btn ghost" data-testid="reject" disabled={decide.isPending} onClick={() => decide.mutate({ decision: "reject" })}>
                 Reject
               </button>
-              <button type="button" className="btn primary" data-testid="approve" disabled={decide.isPending} onClick={() => decide.mutate("approve")}>
+              <button type="button" className="btn primary" data-testid="approve" disabled={decide.isPending} onClick={(e) => decide.mutate({ decision: "approve", event: e.nativeEvent })}>
                 {decide.isPending ? "Approving…" : "Approve & reveal push"}
               </button>
             </span>

@@ -1,0 +1,73 @@
+-- 0013_run_ready_email_and_edit_source — the two schema changes the WebMCP
+-- entry needs: an out-of-band "work landed at the gate" email, and provenance
+-- on the RLHF preference signal.
+--
+-- ── 1. users.email_run_ready ─────────────────────────────────────────────────
+-- Issue #493: "Weekly runs generate 3–4 proposals each and tell no one —
+-- 'detected' is a silent drawer." The digest machinery (digest.ts, emailSender,
+-- unsubscribe tokens) all exists, but it only fires from the weekly cron AFTER
+-- a sweep. A run that reaches awaiting_approval by any other path — a connect,
+-- an on-demand /apps/:id/run, an agent-triggered run — notifies nobody.
+--
+-- That gap is load-bearing for the WebMCP entry: the whole proposition is
+-- "a standing agent did work while you were away", which requires something to
+-- tell you it happened.
+--
+-- WHY A SEPARATE COLUMN RATHER THAN A THIRD email_digest VALUE:
+--   • email_digest is CHECK (email_digest IN ('weekly','off')). SQLite cannot
+--     ALTER a CHECK constraint, so adding a value means rebuilding the users
+--     table (the 0010 approach). A rebuild of `users` — the table every other
+--     table has a FK into — is a large, one-way operation for a preference.
+--   • They are genuinely different questions. email_digest answers "send me the
+--     weekly roundup"; this answers "tell me when work lands at the gate". A
+--     user can reasonably want either without the other, and collapsing them
+--     into one enum would make "off" ambiguous.
+--   • push_run_ready already establishes the shape and the name.
+--
+-- DEFAULT 1, unlike 0011's deliberate DEFAULT 0. The defaults differ because
+-- the consents differ: 0011 gates an outward WRITE to a live App Store listing
+-- with a borrowed credential, which must never be assumed. This sends the user
+-- an email about their OWN run reaching their OWN gate — the notification that
+-- makes the approval queue usable at all, and the absence of which is a filed
+-- bug (#493). Existing users are already defaulted into the weekly digest on
+-- the same reasoning. Unsubscribe stays honored: the send path checks the
+-- subscribers suppression list and ships List-Unsubscribe headers exactly as
+-- the digest does.
+--
+-- Plain ALTER (no rebuild): this only APPENDS a NOT NULL column with a default,
+-- which SQLite applies to existing rows in place.
+ALTER TABLE users ADD COLUMN email_run_ready INTEGER NOT NULL DEFAULT 1;
+
+-- ── 2. proposal_edits.source ─────────────────────────────────────────────────
+-- The RLHF table's entire value is that it records (agent proposal → human
+-- final, decision) as a genuine human preference signal. WebMCP introduces a
+-- case that silently corrupts it.
+--
+-- THE PROBLEM: a visitor's browser agent can draft an alternative for a field.
+-- If the human then approves that draft unchanged, the existing capture writes
+-- edited = 0 — "shipped exactly as proposed" — when in truth a SECOND agent
+-- rewrote it and the human merely assented. The row looks like clean evidence
+-- that the proposing agent got it right. It is evidence of nothing of the sort.
+-- Worse, the corruption is invisible downstream: nothing distinguishes it from
+-- an ordinary unedited approval.
+--
+-- So the table needs to record not just WHAT shipped but WHERE THE FINAL TEXT
+-- CAME FROM:
+--   'human'       the human wrote/kept the final value themselves (today's
+--                 behavior — the only source that ever existed before now)
+--   'agent-draft' a page agent drafted the final value; the human approved it
+--
+-- BACKFILL: every existing row predates WebMCP, so 'human' is not a guess — it
+-- is the only thing those rows can be. DEFAULT 'human' therefore backfills
+-- correctly AND keeps the existing capture path writing correct rows without
+-- changing it.
+--
+-- NO CHECK CONSTRAINT, deliberately. Post-judging work (agent-delegated
+-- approval) will add at least one more source value, and a CHECK here would
+-- force a rebuild of a table holding encrypted rows that cannot be re-derived.
+-- The writer validates; see rlhfCapture.
+--
+-- PRIVACY UNCHANGED: 'human' | 'agent-draft' is a provenance class, not an
+-- identifier. The table stays fully anonymous — still no user_id, no app_id —
+-- and this column cannot be traced to anyone.
+ALTER TABLE proposal_edits ADD COLUMN source TEXT NOT NULL DEFAULT 'human';

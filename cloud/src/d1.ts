@@ -185,6 +185,13 @@ export type ReasoningTrace = {
   /** full proposed copy WITH validation (pass + per-field checks). */
   proposedCopy: ProposedCopy;
   /**
+   * Who authored the most recent STAGED edit to `proposedCopy` (migration
+   * 0013). Read at the gate so the RLHF row records an agent-drafted approval
+   * as such, instead of as a human preference. Absent on runs nothing staged
+   * and on every trace written before this field existed — both mean 'human'.
+   */
+  lastEditSource?: ProposalEditSource;
+  /**
    * #78 Phase 2: per-locale drafts the human APPROVED for handoff (locale →
    * fitted copy). Written ONLY by the explicit approve route; the fastlane
    * bundle emits exactly these locales and nothing else.
@@ -269,6 +276,8 @@ export type FindingsSummary = {
 };
 
 // ── id helper (Workers have crypto.randomUUID) ───────────────────────────────
+
+import type { ChannelKind, Destination } from "./notify/channel.js";
 
 export const uuid = (): string => crypto.randomUUID();
 
@@ -537,6 +546,16 @@ export async function setAscWriteOptIn(
 }
 
 /**
+ * Where the FINAL approved text came from (migration 0013).
+ *   'human'       the human wrote or kept the value themselves
+ *   'agent-draft' a page agent drafted it; the human approved that draft
+ * Deliberately not CHECK-constrained in SQL — post-judging work adds more
+ * sources, and a CHECK would force rebuilding a table of unrecoverable
+ * encrypted rows. This type is the validation.
+ */
+export type ProposalEditSource = "human" | "agent-draft";
+
+/**
  * Build the ANONYMOUS, ENCRYPTED `proposal_edits` INSERT statements for a decided
  * run (#39 Part 2), to be APPENDED to recordApproval's atomic batch so the
  * captured signal can never disagree with the recorded gate decision.
@@ -549,6 +568,15 @@ export async function setAscWriteOptIn(
  *     an opted-out user never reaches this function, so it writes zero rows.)
  *   • ENCRYPTED — `proposed`/`final` are AES-256-GCM sealed before binding; the
  *     plaintext copy is never stored.
+ *
+ * PROVENANCE (migration 0013): `source` records where the FINAL text came from.
+ * A page agent can draft an alternative that the human then approves unchanged
+ * — which writes edited = 0, "shipped as proposed", indistinguishable from the
+ * human assenting to the ORIGINAL agent's copy. Without this the RLHF signal
+ * silently records an agent decision as a human preference. Defaults to
+ * 'human', which is both today's behavior and the only thing pre-0013 rows can
+ * be. 'human' | 'agent-draft' is a provenance CLASS, not an identifier — the
+ * table stays fully anonymous.
  */
 export async function captureProposalEdits(
   db: D1Database,
@@ -557,9 +585,12 @@ export async function captureProposalEdits(
     proposed: Partial<CopyFields>;
     final: Partial<CopyFields>;
     decision: "approved" | "rejected";
+    /** Where the FINAL text came from. Omitted ⇒ 'human' (the pre-0013 path). */
+    source?: ProposalEditSource;
   },
 ): Promise<D1PreparedStatement[]> {
   if (!key) return []; // safe-degrade: no key ⇒ no capture, no error
+  const source: ProposalEditSource = args.source ?? "human";
   const rows = buildPreferenceRows(args);
   const stmts: D1PreparedStatement[] = [];
   for (const r of rows) {
@@ -568,9 +599,9 @@ export async function captureProposalEdits(
     stmts.push(
       db
         .prepare(
-          "INSERT INTO proposal_edits (id, field, decision, edited, proposed_enc, final_enc, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+          "INSERT INTO proposal_edits (id, field, decision, edited, proposed_enc, final_enc, created_at, source) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
         )
-        .bind(uuid(), r.field, r.decision, r.edited ? 1 : 0, proposedEnc, finalEnc, now()),
+        .bind(uuid(), r.field, r.decision, r.edited ? 1 : 0, proposedEnc, finalEnc, now(), source),
     );
   }
   return stmts;
@@ -670,17 +701,37 @@ export async function setRankCadence(
     .run();
 }
 
-/** The user's communication prefs (comms-prefs Phase 1). Missing/NULL → defaults. */
-export type NotificationPrefs = { email_digest: EmailDigest; push_run_ready: boolean };
+/**
+ * The user's communication prefs (comms-prefs Phase 1; email_run_ready added by
+ * migration 0013).
+ *
+ * `email_digest` and `email_run_ready` answer DIFFERENT questions and are
+ * deliberately independent: the digest is "send me the weekly roundup", while
+ * run-ready is "tell me when work lands at the gate". Silencing one must never
+ * silence the other — #493 is precisely the failure where work lands and
+ * nothing says so.
+ *
+ * Missing/NULL → defaults (fail-open to the historical behavior).
+ */
+export type NotificationPrefs = {
+  email_digest: EmailDigest;
+  push_run_ready: boolean;
+  email_run_ready: boolean;
+};
 
 export async function getNotificationPrefs(db: D1Database, userId: string): Promise<NotificationPrefs> {
   const row = await db
-    .prepare("SELECT email_digest, push_run_ready FROM users WHERE id = ?")
+    .prepare("SELECT email_digest, push_run_ready, email_run_ready FROM users WHERE id = ?")
     .bind(userId)
-    .first<{ email_digest: EmailDigest | null; push_run_ready: number | null }>();
+    .first<{
+      email_digest: EmailDigest | null;
+      push_run_ready: number | null;
+      email_run_ready: number | null;
+    }>();
   return {
     email_digest: row?.email_digest ?? "weekly",
     push_run_ready: row ? row.push_run_ready !== 0 : true,
+    email_run_ready: row ? row.email_run_ready !== 0 : true,
   };
 }
 
@@ -690,7 +741,12 @@ export async function getNotificationPrefs(db: D1Database, userId: string): Prom
  */
 export async function setNotificationPrefs(
   db: D1Database,
-  args: { userId: string; email_digest?: EmailDigest; push_run_ready?: boolean },
+  args: {
+    userId: string;
+    email_digest?: EmailDigest;
+    push_run_ready?: boolean;
+    email_run_ready?: boolean;
+  },
 ): Promise<void> {
   if (args.email_digest !== undefined) {
     await db
@@ -702,6 +758,12 @@ export async function setNotificationPrefs(
     await db
       .prepare("UPDATE users SET push_run_ready = ? WHERE id = ?")
       .bind(args.push_run_ready ? 1 : 0, args.userId)
+      .run();
+  }
+  if (args.email_run_ready !== undefined) {
+    await db
+      .prepare("UPDATE users SET email_run_ready = ? WHERE id = ?")
+      .bind(args.email_run_ready ? 1 : 0, args.userId)
       .run();
   }
 }
@@ -1383,7 +1445,13 @@ export async function recordApproval(
  */
 export async function updateRunCopy(
   db: D1Database,
-  args: { runId: string; copy: CopyFields; pushCommands: PushCommand[] },
+  args: {
+    runId: string;
+    copy: CopyFields;
+    pushCommands: PushCommand[];
+    /** Who authored this copy. Omitted leaves any existing provenance intact. */
+    source?: ProposalEditSource;
+  },
 ): Promise<void> {
   const run = await db
     .prepare("SELECT reasoning_json FROM runs WHERE id = ?")
@@ -1401,6 +1469,7 @@ export async function updateRunCopy(
     ...(prevValidation !== undefined ? { validation: prevValidation } : {}),
   } as ProposedCopy;
   trace.pushCommands = args.pushCommands;
+  if (args.source !== undefined) trace.lastEditSource = args.source;
 
   const stmts: D1PreparedStatement[] = [
     db
@@ -2541,4 +2610,232 @@ export async function getWebhookSecretByAscAppId(
   };
   const secret = await openCredential(rowKek, sealed, webhookSecretCtx(ascAppId, row.kek_version));
   return { app, secret };
+}
+
+// ── notification channels (migration 0014) ───────────────────────────────────
+
+/**
+ * One user's delivery destination. `verified` is the safety-critical field: an
+ * unverified row is an address nobody has proven they control, so it is never
+ * delivered to (see `deliverableDestinations`).
+ */
+export type NotificationChannelRow = {
+  channel: ChannelKind;
+  address: string;
+  label: string;
+  enabled: boolean;
+  verified: boolean;
+  lastSentAt: string | null;
+  lastFailedAt: string | null;
+  lastError: string | null;
+};
+
+type RawChannelRow = {
+  channel: string;
+  address: string;
+  label: string | null;
+  enabled: number | null;
+  verified_at: string | null;
+  last_sent_at: string | null;
+  last_failed_at: string | null;
+  last_error: string | null;
+};
+
+const mapChannelRow = (r: RawChannelRow): NotificationChannelRow => ({
+  channel: r.channel as ChannelKind,
+  address: r.address,
+  label: r.label ?? "",
+  enabled: r.enabled !== 0,
+  verified: r.verified_at !== null,
+  lastSentAt: r.last_sent_at,
+  lastFailedAt: r.last_failed_at,
+  lastError: r.last_error,
+});
+
+const CHANNEL_COLS =
+  "channel, address, label, enabled, verified_at, last_sent_at, last_failed_at, last_error";
+
+/**
+ * Add (or re-add) a destination. ALWAYS lands UNVERIFIED — proving ownership is
+ * a separate, explicit step, so a typo'd or hostile address cannot receive
+ * anything before someone demonstrates control of it.
+ *
+ * Re-adding the same (user, channel, address) UPDATES the label rather than
+ * inserting a duplicate: two identical rows would double-send every
+ * notification. It deliberately does NOT re-verify — a re-add is not proof.
+ */
+export async function addNotificationChannel(
+  db: D1Database,
+  args: { userId: string; channel: ChannelKind; address: string; label?: string },
+): Promise<void> {
+  await db
+    .prepare(
+      "INSERT INTO notification_channels (id, user_id, channel, address, label, created_at) " +
+        "VALUES (?, ?, ?, ?, ?, ?) " +
+        "ON CONFLICT (user_id, channel, address) DO UPDATE SET label = excluded.label",
+    )
+    .bind(uuid(), args.userId, args.channel, args.address, args.label ?? "", now())
+    .run();
+}
+
+/** Every destination this user has configured, verified or not (a settings view). */
+export async function listNotificationChannels(
+  db: D1Database,
+  userId: string,
+): Promise<NotificationChannelRow[]> {
+  const { results } = await db
+    .prepare(
+      `SELECT ${CHANNEL_COLS} FROM notification_channels WHERE user_id = ? ORDER BY created_at`,
+    )
+    .bind(userId)
+    .all<RawChannelRow>();
+  return (results ?? []).map(mapChannelRow);
+}
+
+/**
+ * The destinations a notification may actually go to.
+ *
+ * Both filters are load-bearing and neither is redundant:
+ *   • verified_at IS NOT NULL — ownership proven. Without it a typo'd chat id
+ *     sends another account's listing copy to a stranger.
+ *   • enabled = 1 — the user wants traffic here right now.
+ * Scoped to one user_id, so a query can never fan out across accounts.
+ */
+export async function deliverableDestinations(
+  db: D1Database,
+  userId: string,
+): Promise<Destination[]> {
+  const { results } = await db
+    .prepare(
+      "SELECT channel, address FROM notification_channels " +
+        "WHERE user_id = ? AND enabled = 1 AND verified_at IS NOT NULL ORDER BY created_at",
+    )
+    .bind(userId)
+    .all<{ channel: string; address: string }>();
+  return (results ?? []).map((r) => ({ channel: r.channel as ChannelKind, address: r.address }));
+}
+
+/** Mark a destination as proven. Idempotent — re-verifying keeps the first timestamp. */
+export async function verifyNotificationChannel(
+  db: D1Database,
+  args: { userId: string; channel: ChannelKind; address: string },
+): Promise<void> {
+  await db
+    .prepare(
+      "UPDATE notification_channels SET verified_at = COALESCE(verified_at, ?) " +
+        "WHERE user_id = ? AND channel = ? AND address = ?",
+    )
+    .bind(now(), args.userId, args.channel, args.address)
+    .run();
+}
+
+/** Mute / unmute WITHOUT touching verification — muting must not cost proof. */
+export async function setNotificationChannelEnabled(
+  db: D1Database,
+  args: { userId: string; channel: ChannelKind; address: string; enabled: boolean },
+): Promise<void> {
+  await db
+    .prepare(
+      "UPDATE notification_channels SET enabled = ? WHERE user_id = ? AND channel = ? AND address = ?",
+    )
+    .bind(args.enabled ? 1 : 0, args.userId, args.channel, args.address)
+    .run();
+}
+
+export async function removeNotificationChannel(
+  db: D1Database,
+  args: { userId: string; channel: ChannelKind; address: string },
+): Promise<void> {
+  await db
+    .prepare(
+      "DELETE FROM notification_channels WHERE user_id = ? AND channel = ? AND address = ?",
+    )
+    .bind(args.userId, args.channel, args.address)
+    .run();
+}
+
+/**
+ * Record what happened on a delivery attempt, so a destination that has gone
+ * dead is VISIBLE. A channel that silently stopped working is indistinguishable
+ * from a quiet week unless the failure is written down.
+ *
+ * Best-effort by contract: this is bookkeeping about a notification, and it must
+ * never throw into a caller whose real job was the run.
+ */
+export async function markChannelDelivery(
+  db: D1Database,
+  args: {
+    userId: string;
+    channel: ChannelKind;
+    address: string;
+    result: { ok: true } | { ok: false; error: string };
+  },
+): Promise<void> {
+  try {
+    if (args.result.ok) {
+      await db
+        .prepare(
+          "UPDATE notification_channels SET last_sent_at = ?, last_error = NULL " +
+            "WHERE user_id = ? AND channel = ? AND address = ?",
+        )
+        .bind(now(), args.userId, args.channel, args.address)
+        .run();
+      return;
+    }
+    await db
+      .prepare(
+        "UPDATE notification_channels SET last_failed_at = ?, last_error = ? " +
+          "WHERE user_id = ? AND channel = ? AND address = ?",
+      )
+      .bind(now(), args.result.error.slice(0, 500), args.userId, args.channel, args.address)
+      .run();
+  } catch (e) {
+    console.error("[store-ops] markChannelDelivery failed (non-fatal):", e);
+  }
+}
+
+/**
+ * How many of this user's apps are on the DAILY sweep, EXCLUDING one.
+ *
+ * Excluding the app under change is the point: re-setting an already-daily app
+ * to daily must not be blocked by its own existing row, which is exactly the
+ * off-by-one that would make the bound feel arbitrary.
+ *
+ * Fail-open on an unreadable schedule, matching parseSchedule's contract — a
+ * garbage row counts as its default (weekly), never as daily.
+ */
+export async function dailyAppCountExcluding(
+  db: D1Database,
+  args: { userId: string; exceptAppId: string },
+): Promise<number> {
+  const { results } = await db
+    .prepare(
+      "SELECT s.schedule_json AS schedule_json FROM app_settings s " +
+        "JOIN apps a ON a.id = s.app_id " +
+        "WHERE a.user_id = ? AND s.app_id != ?",
+    )
+    .bind(args.userId, args.exceptAppId)
+    .all<{ schedule_json: string | null }>();
+  return (results ?? []).filter((r) => parseSchedule(r.schedule_json).cadence === "daily").length;
+}
+
+/**
+ * How many runs this user has opened across all their apps since `sinceIso`.
+ *
+ * Backs the agent-triggered run bound. Counts every run regardless of status: a
+ * run that failed validation still spent the inference that the bound exists to
+ * damp, so excluding it would let a loop of failing runs run free.
+ */
+export async function runCountSince(
+  db: D1Database,
+  args: { userId: string; sinceIso: string },
+): Promise<number> {
+  const row = await db
+    .prepare(
+      "SELECT COUNT(*) AS n FROM runs r JOIN apps a ON a.id = r.app_id " +
+        "WHERE a.user_id = ? AND r.created_at >= ?",
+    )
+    .bind(args.userId, args.sinceIso)
+    .first<{ n: number }>();
+  return row?.n ?? 0;
 }

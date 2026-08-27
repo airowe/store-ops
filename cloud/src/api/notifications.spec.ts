@@ -21,6 +21,7 @@ type UserRecord = {
   rank_cadence: string;
   email_digest: string | null;
   push_run_ready: number | null;
+  email_run_ready: number | null;
 };
 
 function fakeDb() {
@@ -38,17 +39,31 @@ function fakeDb() {
       users.set(email!, {
         id: id!, email: email!, created_at: created_at!, tier: tier!, status: status!,
         agent_paused: 0, rlhf_opt_out: 0, rank_cadence: "weekly",
-        email_digest: null, push_run_ready: null, // DB defaults modeled as NULL → defaults
+        email_digest: null, push_run_ready: null, email_run_ready: null, // DB defaults modeled as NULL → defaults
       });
       return { row: null, changes: 1 };
     }
-    if (/^SELECT email_digest, push_run_ready FROM users WHERE id = \?$/.test(s)) {
+    if (/^SELECT email_digest, push_run_ready, email_run_ready FROM users WHERE id = \?$/.test(s)) {
       const u = byId(String(args[0]));
-      return { row: u ? { email_digest: u.email_digest, push_run_ready: u.push_run_ready } : null, changes: 0 };
+      return {
+        row: u
+          ? {
+              email_digest: u.email_digest,
+              push_run_ready: u.push_run_ready,
+              email_run_ready: u.email_run_ready,
+            }
+          : null,
+        changes: 0,
+      };
     }
     if (/^UPDATE users SET email_digest = \? WHERE id = \?$/.test(s)) {
       const u = byId(String(args[1]));
       if (u) u.email_digest = String(args[0]);
+      return { row: null, changes: u ? 1 : 0 };
+    }
+    if (/^UPDATE users SET email_run_ready = \? WHERE id = \?$/.test(s)) {
+      const u = byId(String(args[1]));
+      if (u) u.email_run_ready = Number(args[0]);
       return { row: null, changes: u ? 1 : 0 };
     }
     if (/^UPDATE users SET push_run_ready = \? WHERE id = \?$/.test(s)) {
@@ -96,25 +111,43 @@ describe("/account/notifications (comms-prefs)", () => {
     const env = makeEnv();
     const res = await handleApi(req("GET", "/account/notifications", { email: EMAIL }), env);
     expect(res.status).toBe(200);
-    expect(await res.json()).toEqual({ email_digest: "weekly", push_run_ready: true });
+    expect(await res.json()).toEqual({
+      email_digest: "weekly",
+      push_run_ready: true,
+      email_run_ready: true,
+    });
   });
 
   it("POST partially updates: digest off leaves push untouched, and vice versa", async () => {
     const env = makeEnv();
     const r1 = await (await handleApi(req("POST", "/account/notifications", { email: EMAIL, body: { email_digest: "off" } }), env)).json();
-    expect(r1).toEqual({ email_digest: "off", push_run_ready: true });
+    expect(r1).toEqual({ email_digest: "off", push_run_ready: true, email_run_ready: true });
 
     const r2 = await (await handleApi(req("POST", "/account/notifications", { email: EMAIL, body: { push_run_ready: false } }), env)).json();
-    expect(r2).toEqual({ email_digest: "off", push_run_ready: false });
+    expect(r2).toEqual({ email_digest: "off", push_run_ready: false, email_run_ready: true });
 
     const r3 = await (await handleApi(req("POST", "/account/notifications", { email: EMAIL, body: { email_digest: "weekly", push_run_ready: true } }), env)).json();
-    expect(r3).toEqual({ email_digest: "weekly", push_run_ready: true });
+    expect(r3).toEqual({ email_digest: "weekly", push_run_ready: true, email_run_ready: true });
+  });
+
+  it("email_run_ready toggles independently of the weekly digest (#493)", async () => {
+    const env = makeEnv();
+    // silencing the weekly roundup must NOT silence "work landed at your gate"
+    const off = await (await handleApi(req("POST", "/account/notifications", { email: EMAIL, body: { email_digest: "off" } }), env)).json();
+    expect(off).toMatchObject({ email_digest: "off", email_run_ready: true });
+
+    const quiet = await (await handleApi(req("POST", "/account/notifications", { email: EMAIL, body: { email_run_ready: false } }), env)).json();
+    expect(quiet).toMatchObject({ email_digest: "off", email_run_ready: false });
+
+    const back = await (await handleApi(req("POST", "/account/notifications", { email: EMAIL, body: { email_run_ready: true } }), env)).json();
+    expect(back).toMatchObject({ email_run_ready: true });
   });
 
   it("rejects bad values with 400, never silently coercing", async () => {
     const env = makeEnv();
     expect((await handleApi(req("POST", "/account/notifications", { email: EMAIL, body: { email_digest: "daily" } }), env)).status).toBe(400);
     expect((await handleApi(req("POST", "/account/notifications", { email: EMAIL, body: { push_run_ready: "yes" } }), env)).status).toBe(400);
+    expect((await handleApi(req("POST", "/account/notifications", { email: EMAIL, body: { email_run_ready: "yes" } }), env)).status).toBe(400);
     expect((await handleApi(req("POST", "/account/notifications", { email: EMAIL, body: {} }), env)).status).toBe(400);
   });
 

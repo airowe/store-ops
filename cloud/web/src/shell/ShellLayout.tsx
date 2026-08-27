@@ -18,6 +18,8 @@ import { NavRail } from "./NavRail.js";
 import { headerState, type Session } from "./headerState.js";
 import { pageTitle } from "./pageTitle.js";
 import { chromeFor, activeNav } from "./shellChrome.js";
+import { useWebMcp } from "../webmcp/useWebMcp.js";
+import { ToolsPanel } from "../webmcp/ToolsPanel.js";
 
 export function ShellLayout() {
   const { data } = useQuery({
@@ -29,6 +31,10 @@ export function ShellLayout() {
   const session: Session = data ?? null;
 
   const pathname = useRouterState({ select: (s) => s.location.pathname });
+  // The WebMCP surface: this route's tools are offered to the visitor's own
+  // browser agent, and swapped as they navigate. Registration is a no-op in a
+  // browser without `navigator.modelContext`, which is still nearly all of them.
+  const webmcp = useWebMcp({ pathname, client });
   useEffect(() => {
     document.title = pageTitle(pathname);
   }, [pathname]);
@@ -43,6 +49,7 @@ export function ShellLayout() {
           <RailTopbar pathname={pathname} />
           <main className="app-content">
             <Outlet />
+            <ToolsPanel {...webmcp} />
           </main>
         </div>
       </div>
@@ -54,6 +61,7 @@ export function ShellLayout() {
       <Topbar apiBase={hasApiBase ? API_BASE : null} session={session} />
       <main className="wrap">
         <Outlet />
+        <ToolsPanel {...webmcp} />
       </main>
     </>
   );

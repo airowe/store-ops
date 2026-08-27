@@ -23,7 +23,7 @@ export const SESSION_COOKIE = "store_ops_session";
 /** Fallback secret used ONLY in the demo env when SESSION_SECRET is unset. */
 const DEV_FALLBACK_SECRET = "store-ops-dev-insecure-secret-do-not-use-in-prod";
 
-type TokenKind = "magic" | "session" | "unsub" | "list-unsub" | "review";
+type TokenKind = "magic" | "session" | "unsub" | "list-unsub" | "review" | "approve";
 
 type TokenPayload = {
   /** normalized (trimmed, lowercased) email */
@@ -32,6 +32,12 @@ type TokenPayload = {
   x: number;
   /** token kind tag — binds a token to its path */
   t: TokenKind;
+  /**
+   * Optional SUBJECT the token is bound to (approval nonces: the run id). A
+   * nonce minted for run A must never spend on run B, so the subject is inside
+   * the signed payload rather than alongside it.
+   */
+  s?: string;
 };
 
 export type VerifyResult = { ok: true; email: string } | { ok: false };
@@ -102,12 +108,13 @@ async function mint(
   secret: string,
   email: string,
   kind: TokenKind,
-  opts: Clock & { ttlSeconds: number },
+  opts: Clock & { ttlSeconds: number; subject?: string },
 ): Promise<string> {
   const payload: TokenPayload = {
     e: normalizeEmail(email),
     x: nowSeconds(opts) + opts.ttlSeconds,
     t: kind,
+    ...(opts.subject !== undefined ? { s: opts.subject } : {}),
   };
   const encoded = encodePayload(payload);
   const sig = await hmac(secret, encoded);
@@ -118,7 +125,7 @@ async function verify(
   secret: string,
   token: string,
   kind: TokenKind,
-  opts?: Clock,
+  opts?: Clock & { subject?: string },
 ): Promise<VerifyResult> {
   if (typeof token !== "string" || !token) return { ok: false };
   const parts = token.split(".");
@@ -138,6 +145,12 @@ async function verify(
   }
   if (payload.t !== kind) return { ok: false };
   if (typeof payload.e !== "string" || typeof payload.x !== "number") return { ok: false };
+  // Subject binding: when the caller names a subject, the token MUST carry the
+  // same one. A nonce minted for run A is therefore invalid on run B.
+  if (opts?.subject !== undefined) {
+    if (typeof payload.s !== "string") return { ok: false };
+    if (!constantTimeEqual(payload.s, opts.subject)) return { ok: false };
+  }
   if (nowSeconds(opts) >= payload.x) return { ok: false };
   return { ok: true, email: payload.e };
 }
@@ -496,4 +509,52 @@ export function magicLinkMessage(link: string): { subject: string; html: string;
       `--\n${tagline} Every number it shows is measured, or it is marked ` +
       `unmeasured — never a guess.`,
   };
+}
+
+// ── approval nonces (WebMCP approval boundary, ADR-001) ─────────────────────────
+
+/**
+ * An APPROVAL NONCE proves a human gesture happened in the page.
+ *
+ * The problem it solves: a browser agent runs in the page with the user's own
+ * session, so withholding a WebMCP tool does not remove the capability to POST
+ * an approval — it only declines to advertise it. A nonce that can only be
+ * minted from a `isTrusted` DOM event (which scripted fetch cannot forge) makes
+ * "only a human approves" a property of the system rather than a promise about
+ * what we expose.
+ *
+ * Shape reuses the magic-link/session token exactly (HMAC-SHA256 over a
+ * base64url JSON payload, `payload.sig`), with two additions:
+ *   • kind tag "approve" — a session token can never be spent as a nonce, and a
+ *     nonce can never be replayed as a session (the existing `t` guarantee).
+ *   • subject `s` = the run id — a nonce minted for run A is invalid on run B.
+ *
+ * NOT single-use by itself: a stateless token is replayable inside its TTL. The
+ * domain already closes this — `approvals` is UNIQUE (run_id) and decideRun
+ * 409s on an existing decision, so a replay hits an idempotency wall that
+ * predates this mechanism. The TTL is short because a nonce is minted by a
+ * click and spent immediately.
+ */
+export const APPROVAL_NONCE_TTL_SECONDS = 60;
+
+export function mintApprovalNonce(
+  secret: string,
+  email: string,
+  runId: string,
+  opts?: Clock & { ttlSeconds?: number },
+): Promise<string> {
+  return mint(secret, email, "approve", {
+    ...opts,
+    ttlSeconds: opts?.ttlSeconds ?? APPROVAL_NONCE_TTL_SECONDS,
+    subject: runId,
+  });
+}
+
+export function verifyApprovalNonce(
+  secret: string,
+  token: string,
+  runId: string,
+  opts?: Clock,
+): Promise<VerifyResult> {
+  return verify(secret, token, "approve", { ...opts, subject: runId });
 }

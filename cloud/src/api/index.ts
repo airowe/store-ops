@@ -139,6 +139,9 @@ import { createApiKey, listApiKeys, looksLikeApiKey, resolveApiKey, revokeApiKey
 import { serializeAsaBundle, verifyAsaCredentials, type AsaKeyBundle } from "../engine/asaAuth.js";
 import localesData from "../engine/locales-data.json";
 import { validateThresholdPatch } from "../thresholds.js";
+import { type BoundaryRefusal, requireApprovalNonce, requireHumanSession } from "./approvalBoundary.js";
+import { notifyRunReadyForEnv } from "../notify/forEnv.js";
+import { checkDailyCadenceBound, checkRunTriggerBound, RUN_TRIGGER_WINDOW_SECONDS } from "./agentBounds.js";
 import { validateSchedule } from "../schedule.js";
 import { toLoopState } from "../loopState.js";
 import {
@@ -158,6 +161,8 @@ import {
   getThresholds,
   getOptOut,
   getUser,
+  dailyAppCountExcluding,
+  runCountSince,
   getApproval,
   getLatestCompetitorMap,
   getRankHistory,
@@ -206,8 +211,13 @@ import {
 } from "../d1.js";
 import { isExpoPushToken } from "../push.js";
 import { finalizeEditedCopy } from "./proposalEdit.js";
+import { validateCopy } from "../engine/optimize.js";
+import { stageDecision } from "./stageEdit.js";
+import { editSourceFor } from "./editProvenance.js";
 import { decryptField, importKeyFromBase64 } from "../crypto/rlhfCrypto.js";
 import {
+  APPROVAL_NONCE_TTL_SECONDS,
+  mintApprovalNonce,
   mintMagicToken,
   mintSessionToken,
   parseCookie,
@@ -303,7 +313,22 @@ const SESSION_TTL_SECONDS = 30 * 24 * 60 * 60; // 30 days
 
 // ── HTTP helpers ──────────────────────────────────────────────────────────────
 
-const JSON_HEADERS = { "content-type": "application/json" } as const;
+/**
+ * Every JSON response advertises the WebMCP surface.
+ *
+ * An agent that reaches this API programmatically has no way to discover that
+ * the same origin publishes page-declared tools with the user's own session —
+ * WebMCP has no identity or discovery mechanism pointing the other way (the
+ * spec's agent-identity work is still open). A `Link` header is the cheapest
+ * honest answer: it tells every caller where the richer surface is, grants
+ * nothing, and costs one header.
+ */
+const WEBMCP_LINK = '<https://shipaso.com/runs>; rel="webmcp"';
+
+const JSON_HEADERS = {
+  "content-type": "application/json",
+  link: WEBMCP_LINK,
+} as const;
 
 /**
  * CORS for a credentialed (cookie-bearing) cross-origin dashboard. We must echo a
@@ -621,7 +646,18 @@ function sessionSecret(env: Env): string {
  *   4. 401.
  * In every valid path the email get-or-creates the `users` row.
  */
-async function requireUser(req: Request, env: Env): Promise<{ id: string; email: string }> {
+/**
+ * HOW a caller authenticated. The approval boundary (ADR-001) needs this: a
+ * cookie session is a browser with a human at it, while a Bearer token is a
+ * script or agent holding a credential, and `x-user-email` is a demo-env
+ * convenience. Routes that must be human-driven (POST /runs/approve-all) accept
+ * only "cookie"; every other route ignores this field and behaves as before.
+ */
+export type AuthMethod = "cookie" | "bearer" | "demo-header";
+
+export type AuthedUser = { id: string; email: string; auth: AuthMethod };
+
+async function requireUser(req: Request, env: Env): Promise<AuthedUser> {
   // (1) session cookie
   const jar = parseCookie(req.headers.get("Cookie"));
   const token = jar[SESSION_COOKIE];
@@ -629,7 +665,7 @@ async function requireUser(req: Request, env: Env): Promise<{ id: string; email:
     const res = await verifySessionToken(sessionSecret(env), token);
     if (res.ok) {
       const user = await upsertUser(env.DB, res.email);
-      return { id: user.id, email: user.email };
+      return { id: user.id, email: user.email, auth: "cookie" };
     }
   }
 
@@ -644,12 +680,12 @@ async function requireUser(req: Request, env: Env): Promise<{ id: string; email:
     if (bearer) {
       if (looksLikeApiKey(bearer)) {
         const owner = await resolveApiKey(env.DB, bearer);
-        if (owner) return owner;
+        if (owner) return { ...owner, auth: "bearer" };
       } else {
         const res = await verifySessionToken(sessionSecret(env), bearer);
         if (res.ok) {
           const user = await upsertUser(env.DB, res.email);
-          return { id: user.id, email: user.email };
+          return { id: user.id, email: user.email, auth: "bearer" };
         }
       }
     }
@@ -660,7 +696,7 @@ async function requireUser(req: Request, env: Env): Promise<{ id: string; email:
     const email = req.headers.get("x-user-email")?.trim().toLowerCase();
     if (email && email.includes("@")) {
       const user = await upsertUser(env.DB, email);
-      return { id: user.id, email: user.email };
+      return { id: user.id, email: user.email, auth: "demo-header" };
     }
   }
 
@@ -1104,13 +1140,27 @@ async function notificationsGetRoute(env: Env, userId: string): Promise<unknown>
 }
 
 async function notificationsPostRoute(req: Request, env: Env, userId: string): Promise<unknown> {
-  const body = await readJson<{ email_digest?: unknown; push_run_ready?: unknown }>(req);
-  const patch: { email_digest?: "weekly" | "off"; push_run_ready?: boolean } = {};
+  const body = await readJson<{
+    email_digest?: unknown;
+    push_run_ready?: unknown;
+    email_run_ready?: unknown;
+  }>(req);
+  const patch: {
+    email_digest?: "weekly" | "off";
+    push_run_ready?: boolean;
+    email_run_ready?: boolean;
+  } = {};
   if (body.email_digest !== undefined) {
     if (body.email_digest !== "weekly" && body.email_digest !== "off") {
       throw new HttpError(400, "email_digest must be 'weekly' or 'off'");
     }
     patch.email_digest = body.email_digest;
+  }
+  if (body.email_run_ready !== undefined) {
+    if (typeof body.email_run_ready !== "boolean") {
+      throw new HttpError(400, "email_run_ready must be a boolean");
+    }
+    patch.email_run_ready = body.email_run_ready;
   }
   if (body.push_run_ready !== undefined) {
     if (typeof body.push_run_ready !== "boolean") {
@@ -1118,8 +1168,12 @@ async function notificationsPostRoute(req: Request, env: Env, userId: string): P
     }
     patch.push_run_ready = body.push_run_ready;
   }
-  if (patch.email_digest === undefined && patch.push_run_ready === undefined) {
-    throw new HttpError(400, "provide email_digest and/or push_run_ready");
+  if (
+    patch.email_digest === undefined &&
+    patch.push_run_ready === undefined &&
+    patch.email_run_ready === undefined
+  ) {
+    throw new HttpError(400, "provide email_digest, push_run_ready and/or email_run_ready");
   }
   await setNotificationPrefs(env.DB, { userId, ...patch });
   return getNotificationPrefs(env.DB, userId);
@@ -1671,8 +1725,77 @@ async function approveAll(env: Env, userId: string): Promise<unknown> {
   return { approved, approvedCount: approved.length, skipped: plan.skipped };
 }
 
+
+/**
+ * Fire the run_ready notification WITHOUT making the caller wait on a transport.
+ *
+ * With an ExecutionContext the send rides `waitUntil`, so `POST /apps` returns
+ * as soon as the run is recorded. Without one (tests, internal callers) it runs
+ * inline — the broadcastSendRoute precedent: a missing ctx must degrade to
+ * "still happens", never to "silently dropped".
+ *
+ * notifyRunReadyForEnv never throws, so nothing here can surface as a failed run.
+ */
+function notifyInBackground(
+  ctx: ExecutionContext | undefined,
+  env: Env,
+  args: Parameters<typeof notifyRunReadyForEnv>[1],
+): void {
+  const work = notifyRunReadyForEnv(env, args);
+  if (ctx) ctx.waitUntil(work);
+}
+
+
+/**
+ * Damp agent-triggered runs before one starts.
+ *
+ * Every run reasons with the Anthropic client, so an agent in a retry loop
+ * spends real money on our key. This is a DAMPER, not a spend cap — the same
+ * honesty publicReportGuard applies to its limiter. It bounds the obvious
+ * runaway; it does not account for cost.
+ *
+ * Throws 429 (with the tier's allowance explained) rather than returning a
+ * verdict, because every caller's response to a refusal is identical.
+ */
+async function enforceRunTriggerBound(env: Env, userId: string): Promise<void> {
+  const since = new Date(Date.now() - RUN_TRIGGER_WINDOW_SECONDS * 1000)
+    .toISOString()
+    .replace("T", " ")
+    .slice(0, 19);
+  const user = await getUser(env.DB, userId);
+  const bound = checkRunTriggerBound({
+    runsInWindow: await runCountSince(env.DB, { userId, sinceIso: since }),
+    tier: user?.tier ?? "free",
+  });
+  if (!bound.ok) throw new HttpError(429, bound.error);
+}
+
+
+/**
+ * The wire body for a refused approval (ADR-001).
+ *
+ * A human never sees this — the UI renders its own message. It exists for a
+ * caller that hit the endpoint directly, so it names the boundary with a stable
+ * code and lists what IS still available rather than leaving a bare 403 to be
+ * guessed at. It grants nothing: `youCan` restates capabilities the caller
+ * already had.
+ */
+function boundaryRefusalBody(refusal: BoundaryRefusal): Record<string, unknown> {
+  return {
+    error: refusal.error,
+    boundary: refusal.boundary,
+    youCan: refusal.youCan,
+    humanMustDo: refusal.humanMustDo,
+  };
+}
+
 /** POST /apps — connect + initial run. */
-async function connectApp(req: Request, env: Env, userId: string): Promise<unknown> {
+async function connectApp(
+  req: Request,
+  env: Env,
+  userId: string,
+  ctx?: ExecutionContext,
+): Promise<unknown> {
   const body = await readJson<ConnectBody>(req);
   const country = body.country?.trim() || env.DEFAULT_COUNTRY || "US";
 
@@ -1758,6 +1881,19 @@ async function connectApp(req: Request, env: Env, userId: string): Promise<unkno
     trigger: { source: "connect", reasons: ["app connected — initial audit"] },
   });
 
+  // #493: a run at the gate that nobody is told about is a silent drawer.
+  // Backgrounded via waitUntil so the caller never waits on an email send; with
+  // no ctx (tests, some internal paths) it runs inline rather than being
+  // silently dropped, mirroring broadcastSendRoute. Never throws either way.
+  notifyInBackground(ctx, env, {
+    userId,
+    appName: app.name,
+    runId,
+    status: "awaiting_approval",
+    proposed: result.proposedCopy,
+    current: result.currentCopy,
+  });
+
   // The dashboard's connect form reads `id` (the app id) and then fires the
   // first on-demand run. We return the app id plus a little run context.
   return {
@@ -1824,8 +1960,10 @@ async function runApp(
   env: Env,
   userId: string,
   appId: string,
+  ctx?: ExecutionContext,
 ): Promise<unknown> {
   const app = await requireOwnedApp(env, appId, userId);
+  await enforceRunTriggerBound(env, userId);
   const body = (await req
     .json()
     .catch(() => ({}))) as RunOverrides;
@@ -1912,6 +2050,15 @@ async function runApp(
     trigger: { source: "manual", reasons: ["manual run requested"] },
   });
 
+  notifyInBackground(ctx, env, {
+    userId,
+    appName: app.name,
+    runId,
+    status: "awaiting_approval",
+    proposed: result.proposedCopy,
+    current: result.currentCopy,
+  });
+
   // The dashboard reads `id` and navigates to #/runs/:id.
   return { id: runId, status: "awaiting_approval", digest: result.competitors.digest };
 }
@@ -1932,6 +2079,7 @@ async function runAppWithAsc(
   env: Env,
   userId: string,
   appId: string,
+  ctx?: ExecutionContext,
 ): Promise<unknown> {
   const app = await requireOwnedApp(env, appId, userId);
   const body = (await req.json().catch(() => ({}))) as RunAscBody & { store?: boolean; useStored?: boolean };
@@ -1994,6 +2142,16 @@ async function runAppWithAsc(
     result: resultWithSnapshot,
     trigger: { source: "manual", reasons: ["manual run requested (App Store Connect read)"] },
   });
+
+  notifyInBackground(ctx, env, {
+    userId,
+    appName: app.name,
+    runId,
+    status: "awaiting_approval",
+    proposed: result.proposedCopy,
+    current: result.currentCopy,
+  });
+
   return { id: runId, status: "awaiting_approval", digest: result.competitors.digest, ascRead: true };
 }
 
@@ -2925,6 +3083,20 @@ async function schedulePost(
   await requireOwnedApp(env, appId, userId);
   const v = validateSchedule(await readJson(req));
   if (!v.ok) throw new HttpError(400, v.error);
+  // Spend bound: `daily` multiplies recurring inference cost sevenfold per app,
+  // and this route is agent-drivable from the WebMCP surface. The app being
+  // changed is excluded from the count so re-setting an already-daily app never
+  // blocks on its own row. Weekly/biweekly are unbounded (checkDailyCadenceBound
+  // returns ok immediately), so the extra read only happens for `daily`.
+  if (v.schedule.cadence === "daily") {
+    const user = await getUser(env.DB, userId);
+    const bound = checkDailyCadenceBound({
+      cadence: v.schedule.cadence,
+      dailyAppCount: await dailyAppCountExcluding(env.DB, { userId, exceptAppId: appId }),
+      tier: user?.tier ?? "free",
+    });
+    if (!bound.ok) throw new HttpError(429, bound.error);
+  }
   await setSchedule(env.DB, appId, v.schedule);
   return { schedule: v.schedule };
 }
@@ -3724,6 +3896,99 @@ type ApproveBody = {
 };
 
 /**
+ * POST /runs/:id/approval-nonce — mint the token that lets the NEXT request
+ * approve this run (ADR-001).
+ *
+ * The dashboard calls this from a trusted (isTrusted) click handler and sends
+ * the result back on `x-approval-nonce`. A scripted fetch — including one made
+ * by an agent holding the user's own session — cannot produce the gesture, so
+ * it cannot obtain a nonce, so it cannot approve.
+ *
+ * Minting is deliberately harmless on its own: it writes nothing, changes no
+ * status, and a nonce with no follow-up POST expires unused in 60s. Ownership
+ * is checked here so a nonce is never minted for someone else's run.
+ */
+async function mintApprovalNonceRoute(
+  env: Env,
+  user: AuthedUser,
+  runId: string,
+): Promise<unknown> {
+  const run = await getRun(env.DB, runId);
+  if (!run) throw new HttpError(404, "run not found");
+  await requireOwnedApp(env, run.app_id, user.id);
+  const nonce = await mintApprovalNonce(sessionSecret(env), user.email, runId);
+  return { nonce, expiresInSeconds: APPROVAL_NONCE_TTL_SECONDS };
+}
+
+/**
+ * POST /runs/:id/edits — STAGE an edit to the proposed copy (ADR-001).
+ *
+ * The agent-facing counterpart to the gate. An agent that has drafted a better
+ * subtitle records it here, so the human at the gate sees — and approves — the
+ * version they actually want, rather than approving the machine's first guess
+ * and fixing it afterwards.
+ *
+ * It deliberately does NOT decide anything: the run stays `awaiting_approval`,
+ * and the response says so. Validation is the approve path's own
+ * `finalizeEditedCopy`, so nothing can be staged that a human could not type.
+ * The edit is attributed via the `source` column (migration 0013) so an
+ * agent-authored proposal is never silently recorded as the human's own.
+ */
+async function stageRunEdit(
+  req: Request,
+  env: Env,
+  user: AuthedUser,
+  runId: string,
+): Promise<unknown> {
+  const run = await getRun(env.DB, runId);
+  if (!run) throw new HttpError(404, "run not found");
+  const app = await requireOwnedApp(env, run.app_id, user.id);
+
+  type StageBody = Partial<CopyFields> & { editedCopy?: Partial<CopyFields> };
+  const body = await req.json<StageBody>().catch(() => ({}) as StageBody);
+  // Accept both the wrapped shape (mirroring the approve body) and a bare
+  // {subtitle: "..."} — an agent composing a call from the tool schema will
+  // reach for the flat one, and refusing it would be pedantry, not safety.
+  const edit: Partial<CopyFields> = body.editedCopy ?? body;
+
+  const trace = JSON.parse(run.reasoning_json) as ReasoningTrace;
+  const decision = stageDecision(trace.proposedCopy, edit, run.status);
+  if (!decision.ok) throw new HttpError(decision.status, decision.error);
+
+  const validation = validateCopy(decision.copy);
+  const pushCommands = buildPushCommands(app.bundle_id, { ...decision.copy, validation });
+  // Provenance, not a decision: record WHO authored this copy so the gate can
+  // attribute the eventual RLHF row correctly (migration 0013).
+  await updateRunCopy(env.DB, {
+    runId,
+    copy: decision.copy,
+    pushCommands,
+    source: "agent-draft",
+  });
+
+  // NO RLHF capture here, deliberately. `proposal_edits` rows carry a
+  // `decision` column and exist to record what a human DECIDED (#39 Part 2) —
+  // they are appended to recordApproval's own batch precisely so the captured
+  // signal can never disagree with the gate. Staging decides nothing, so any
+  // value written in that column would be fabricated: "approved" would invent
+  // a human approval that never happened, and "rejected" a rejection.
+  //
+  // The provenance the `source` column exists for is still captured — at the
+  // gate, where the human's real decision on this (agent-drafted) copy is
+  // recorded. Staging is a step on the way there, not an outcome.
+
+  return {
+    id: runId,
+    status: decision.status,
+    staged: Object.keys(decision.copy).filter(
+      (f) => (decision.copy as Record<string, unknown>)[f] !== (trace.proposedCopy as Record<string, unknown>)[f],
+    ),
+    proposedCopy: decision.copy,
+    note: "staged — this run is still awaiting approval and a person must approve it",
+  };
+}
+
+/**
  * POST /runs/:id/approve  and  POST /runs/:id/reject — the human gate.
  *
  * `action` comes from the URL segment ("approve"/"reject"); the JSON body's
@@ -3808,6 +4073,11 @@ async function decideRun(
         proposed: trace.proposedCopy,
         final: finalCopy,
         decision,
+        // Migration 0013: an agent-drafted proposal the human approved unchanged
+        // writes edited = 0, which is byte-identical to assent to the ORIGINAL
+        // copy. Without this the signal records the agent's authorship as the
+        // human's preference.
+        source: editSourceFor(trace),
       });
     }
   } catch (e) {
@@ -5150,6 +5420,10 @@ export async function handleApi(req: Request, env: Env, ctx?: ExecutionContext):
 
     // /runs/approve-all — bulk-approve every pending run (matched BEFORE /runs/:id)
     if (seg[0] === "runs" && seg[1] === "approve-all" && seg.length === 2 && method === "POST") {
+      // ADR-001: bulk approve is cookie-only. Without this, an agent credential
+      // could route around the per-run nonce by approving everything at once.
+      const gate = requireHumanSession(user.auth);
+      if (!gate.ok) return json(boundaryRefusalBody(gate), gate.status, origin, env);
       return json(await approveAll(env, user.id), 200, origin, env);
     }
 
@@ -5181,7 +5455,7 @@ export async function handleApi(req: Request, env: Env, ctx?: ExecutionContext):
     if (seg[0] === "apps") {
       if (seg.length === 1) {
         if (method === "POST") {
-          const result = await connectApp(req, env, user.id);
+          const result = await connectApp(req, env, user.id, ctx);
           // A pick-list (ambiguous query) is a 200, not a 201-created.
           const status =
             result && typeof result === "object" && "needsChoice" in result ? 200 : 201;
@@ -5195,10 +5469,10 @@ export async function handleApi(req: Request, env: Env, ctx?: ExecutionContext):
         if (method === "DELETE") return json(await disconnectApp(env, user.id, appId), 200, origin);
       }
       if (seg.length === 3 && seg[1] && seg[2] === "run" && method === "POST") {
-        return json(await runApp(req, env, user.id, seg[1]), 201, origin);
+        return json(await runApp(req, env, user.id, seg[1], ctx), 201, origin);
       }
       if (seg.length === 3 && seg[1] && seg[2] === "run-asc" && method === "POST") {
-        return json(await runAppWithAsc(req, env, user.id, seg[1]), 201, origin);
+        return json(await runAppWithAsc(req, env, user.id, seg[1], ctx), 201, origin);
       }
       if (seg.length === 3 && seg[1] && seg[2] === "audit-play" && method === "POST") {
         return json(await auditPlayRoute(req, env, user.id, seg[1]), 200, origin);
@@ -5305,7 +5579,27 @@ export async function handleApi(req: Request, env: Env, ctx?: ExecutionContext):
       if (seg.length === 2 && method === "GET") {
         return json(await getRunRoute(env, user.id, runId), 200, origin);
       }
+      // ADR-001: minting an approval nonce. The dashboard calls this from a
+      // trusted (isTrusted) click handler; a scripted fetch cannot produce the
+      // gesture, so it cannot obtain a nonce. Read-only — minting approves
+      // nothing, and the nonce is worthless without the subsequent POST.
+      if (seg.length === 3 && seg[2] === "approval-nonce" && method === "POST") {
+        return json(await mintApprovalNonceRoute(env, user, runId), 200, origin, env);
+      }
+      // The agent's one write at the gate: stage an edit to the proposed copy.
+      // Changes WHAT would be approved, never WHETHER it is — the run stays
+      // awaiting_approval and the response says so.
+      if (seg.length === 3 && seg[2] === "edits" && method === "POST") {
+        return json(await stageRunEdit(req, env, user, runId), 200, origin, env);
+      }
       if (seg.length === 3 && method === "POST" && (seg[2] === "approve" || seg[2] === "reject")) {
+        // The nonce gates APPROVE only. Rejecting closes the gate without
+        // shipping anything, so an agent clearing bad proposals is legitimate
+        // pre-gate triage and stays available to it.
+        if (seg[2] === "approve") {
+          const gate = await requireApprovalNonce(req, env, user, runId);
+          if (!gate.ok) return json(boundaryRefusalBody(gate), gate.status, origin, env);
+        }
         return json(await decideRun(req, env, user.id, runId, seg[2]), 200, origin);
       }
       if (seg.length === 3 && seg[2] === "localize" && method === "POST") {
