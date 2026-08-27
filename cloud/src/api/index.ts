@@ -213,6 +213,18 @@ import { isExpoPushToken } from "../push.js";
 import { finalizeEditedCopy } from "./proposalEdit.js";
 import { validateCopy } from "../engine/optimize.js";
 import { stageDecision } from "./stageEdit.js";
+import { CHANNEL_KINDS, type ChannelKind } from "../notify/channel.js";
+import {
+  CHANNEL_LINK_TTL_SECONDS,
+  addNotificationChannel,
+  consumeChannelLinkCode,
+  createChannelLinkCode,
+  listNotificationChannels,
+  pendingChannelLinkCount,
+  removeNotificationChannel,
+  setNotificationChannelEnabled,
+  verifyNotificationChannel,
+} from "../d1.js";
 import { editSourceFor } from "./editProvenance.js";
 import { decryptField, importKeyFromBase64 } from "../crypto/rlhfCrypto.js";
 import {
@@ -3920,6 +3932,172 @@ async function mintApprovalNonceRoute(
   return { nonce, expiresInSeconds: APPROVAL_NONCE_TTL_SECONDS };
 }
 
+
+// ── notification channels (migration 0014/0015) ──────────────────────────────
+
+/**
+ * The channels this deployment can actually deliver on.
+ *
+ * Derived from configuration, not from a hardcoded list: offering a channel
+ * whose credentials are unset produces a destination nothing can reach, which
+ * `deliverAll` then reports as a config bug. Better to refuse at the door.
+ */
+function configuredChannels(env: Env): ChannelKind[] {
+  const out: ChannelKind[] = ["email"];
+  if (env.TELEGRAM_BOT_TOKEN?.trim() && env.TELEGRAM_BOT_USERNAME?.trim()) out.push("telegram");
+  return out;
+}
+
+/**
+ * POST /account/channels/link — mint the deep link that binds a chat to this
+ * account.
+ *
+ * The verification story in one step: we cannot ask Telegram "does this user
+ * own chat 12345?", but a deep link makes the bot receive `/start CODE` FROM
+ * the chat the person opened it in. Arriving from the chat IS the proof of
+ * control, and the code says whose account to attach it to.
+ *
+ * The code is single-use and short-lived because the link lands in a chat log,
+ * where the realistic risk is replay rather than forgery.
+ */
+async function channelLinkRoute(req: Request, env: Env, userId: string): Promise<unknown> {
+  type LinkBody = { channel?: string; label?: string };
+  const body = await req.json<LinkBody>().catch(() => ({}) as LinkBody);
+  const channel = (body.channel ?? "").trim() as ChannelKind;
+  const available = configuredChannels(env);
+  if (!channel) throw new HttpError(400, "channel is required");
+  // Distinguish "we do not support that" from "this deployment has not set it
+  // up" — the first is the caller's mistake, the second is ours, and a 400 for
+  // an unconfigured bot would send someone hunting for a typo that isn't there.
+  if (!CHANNEL_KINDS.includes(channel)) {
+    throw new HttpError(400, `unknown channel "${channel}" — supported: ${CHANNEL_KINDS.join(", ")}`);
+  }
+  if (!available.includes(channel)) {
+    throw new HttpError(
+      503,
+      `${channel} is not configured on this deployment, so a link could not work`,
+    );
+  }
+  if (channel === "email") {
+    throw new HttpError(400, "email is verified by signing in, not by a link");
+  }
+
+  const code = await createChannelLinkCode(env.DB, {
+    userId,
+    channel,
+    ...(body.label ? { label: body.label.slice(0, 60) } : {}),
+  });
+  const username = env.TELEGRAM_BOT_USERNAME!.trim().replace(/^@/, "");
+  return {
+    channel,
+    code,
+    url: `https://t.me/${encodeURIComponent(username)}?start=${code}`,
+    expiresInSeconds: CHANNEL_LINK_TTL_SECONDS,
+    note: "Open this link and press Start. The chat it opens in becomes the destination.",
+  };
+}
+
+/** GET /account/channels — the caller's destinations, verified or not. */
+async function channelsListRoute(env: Env, userId: string): Promise<unknown> {
+  const [channels, pending] = await Promise.all([
+    listNotificationChannels(env.DB, userId),
+    pendingChannelLinkCount(env.DB, userId),
+  ]);
+  return { channels, pendingLinks: pending, available: configuredChannels(env) };
+}
+
+/** POST /account/channels/enabled — mute or unmute WITHOUT losing verification. */
+async function channelEnabledRoute(req: Request, env: Env, userId: string): Promise<unknown> {
+  type EnabledBody = { channel?: string; address?: string; enabled?: boolean };
+  const body = await req.json<EnabledBody>().catch(() => ({}) as EnabledBody);
+  const channel = (body.channel ?? "").trim() as ChannelKind;
+  const address = (body.address ?? "").trim();
+  if (!CHANNEL_KINDS.includes(channel) || !address) {
+    throw new HttpError(400, "channel and address are required");
+  }
+  if (typeof body.enabled !== "boolean") throw new HttpError(400, "enabled must be a boolean");
+  await setNotificationChannelEnabled(env.DB, { userId, channel, address, enabled: body.enabled });
+  return { channel, address, enabled: body.enabled };
+}
+
+/** DELETE /account/channels — forget a destination entirely. */
+async function channelRemoveRoute(req: Request, env: Env, userId: string): Promise<unknown> {
+  type RemoveBody = { channel?: string; address?: string };
+  const body = await req.json<RemoveBody>().catch(() => ({}) as RemoveBody);
+  const channel = (body.channel ?? "").trim() as ChannelKind;
+  const address = (body.address ?? "").trim();
+  if (!CHANNEL_KINDS.includes(channel) || !address) {
+    throw new HttpError(400, "channel and address are required");
+  }
+  await removeNotificationChannel(env.DB, { userId, channel, address });
+  return { removed: true, channel, address };
+}
+
+/**
+ * POST /telegram/webhook — where Telegram delivers updates.
+ *
+ * THIS IS AN UNAUTHENTICATED PUBLIC ENDPOINT. Anyone can POST it, so nothing in
+ * the body is trusted for identity: the ONLY thing that binds a chat to an
+ * account is a single-use code that account minted minutes earlier.
+ *
+ * Two deliberate response choices, both from Telegram's own documented
+ * behavior ("we will repeat the request and give up after a reasonable amount
+ * of attempts" on non-2XX):
+ *   • A BAD SECRET is 401. That request did not come from Telegram, and there
+ *     is nothing to retry.
+ *   • EVERYTHING ELSE — an unknown code, a bare /start, ordinary chatter,
+ *     unparseable JSON — is 200. Each is a permanent condition, so retrying
+ *     cannot help; answering non-2XX would just buy an hour of retries for an
+ *     update we are always going to ignore.
+ */
+async function telegramWebhookRoute(req: Request, env: Env): Promise<Response> {
+  const expected = env.TELEGRAM_WEBHOOK_SECRET?.trim();
+  const presented = req.headers.get("x-telegram-bot-api-secret-token")?.trim();
+  // No configured secret ⇒ refuse everything. An open webhook that links chats
+  // to accounts is worse than one nobody can reach.
+  if (!expected || !presented || !constantTimeEqual(presented, expected)) {
+    return new Response(JSON.stringify({ ok: false }), {
+      status: 401,
+      headers: { "content-type": "application/json" },
+    });
+  }
+
+  const ack = () =>
+    new Response(JSON.stringify({ ok: true }), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    });
+
+  const update = await req
+    .json<{ message?: { chat?: { id?: number | string }; text?: string } }>()
+    .catch(() => null);
+  const text = update?.message?.text?.trim();
+  const chatId = update?.message?.chat?.id;
+  if (!text || chatId === undefined || chatId === null) return ack();
+
+  const match = /^\/start\s+(\S+)$/.exec(text);
+  if (!match) return ack(); // bare /start, or ordinary conversation
+
+  const claim = await consumeChannelLinkCode(env.DB, match[1]!);
+  if (!claim) return ack(); // unknown, spent, or expired — indistinguishable on purpose
+
+  const address = String(chatId);
+  await addNotificationChannel(env.DB, {
+    userId: claim.userId,
+    channel: claim.channel,
+    address,
+    ...(claim.label ? { label: claim.label } : {}),
+  });
+  // Verified in the same breath: the update ARRIVED from this chat, which is
+  // the control we needed proof of. Nothing else in the request is trusted.
+  await verifyNotificationChannel(env.DB, {
+    userId: claim.userId,
+    channel: claim.channel,
+    address,
+  });
+  return ack();
+}
+
 /**
  * POST /runs/:id/edits — STAGE an edit to the proposed copy (ADR-001).
  *
@@ -5273,6 +5451,15 @@ export async function handleApi(req: Request, env: Env, ctx?: ExecutionContext):
     if (seg[0] === "admin" && seg[1] === "preference-data" && seg.length === 2 && method === "GET") {
       return preferenceDataExport(req, env, origin);
     }
+
+    // POST /telegram/webhook — PUBLIC by necessity: Telegram has no session and
+    // cannot present one. It authenticates with the shared secret token it was
+    // registered with, checked inside the handler, and nothing in the body is
+    // trusted for identity. Dispatched here, BEFORE requireUser, because a 401
+    // from the auth gate would be indistinguishable from a bad secret.
+    if (seg[0] === "telegram" && seg[1] === "webhook" && seg.length === 2 && method === "POST") {
+      return telegramWebhookRoute(req, env);
+    }
   } catch (e) {
     if (e instanceof HttpError) return json({ error: e.message }, e.status, origin, env);
     // Log the real error server-side; return a generic message so unexpected
@@ -5415,6 +5602,23 @@ export async function handleApi(req: Request, env: Env, ctx?: ExecutionContext):
       }
       if (method === "POST") {
         return json(await notificationsPostRoute(req, env, user.id), 200, origin, env);
+      }
+    }
+
+    // /account/channels — delivery destinations (Telegram today; the same flow
+    // serves any channel that can deep-link).
+    if (seg[0] === "account" && seg[1] === "channels") {
+      if (seg.length === 2 && method === "GET") {
+        return json(await channelsListRoute(env, user.id), 200, origin, env);
+      }
+      if (seg.length === 2 && method === "DELETE") {
+        return json(await channelRemoveRoute(req, env, user.id), 200, origin, env);
+      }
+      if (seg.length === 3 && seg[2] === "link" && method === "POST") {
+        return json(await channelLinkRoute(req, env, user.id), 200, origin, env);
+      }
+      if (seg.length === 3 && seg[2] === "enabled" && method === "POST") {
+        return json(await channelEnabledRoute(req, env, user.id), 200, origin, env);
       }
     }
 

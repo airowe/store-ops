@@ -54,6 +54,9 @@ import type {
   SweepSchedule,
   ApprovalNonce,
   StagedEdit,
+  ChannelKind,
+  ChannelsResult,
+  ChannelLink,
 } from "./types.js";
 
 const enc = encodeURIComponent;
@@ -324,3 +327,27 @@ export const approveRunWithNonce = (c: ApiClient, id: string, nonce: string) =>
  */
 export const stageRunEdit = (c: ApiClient, runId: string, edit: Partial<CopyFields>) =>
   c.post<StagedEdit>(`/runs/${enc(runId)}/edits`, edit);
+
+// ── notification channels ────────────────────────────────────────────────────
+/** This account's delivery destinations, plus what this deployment supports. */
+export const getChannels = (c: ApiClient) => c.get<ChannelsResult>("/account/channels");
+/**
+ * Mint the deep link that binds a chat to this account. Opening it and pressing
+ * Start is what proves control — the chat the bot hears from becomes the
+ * destination. Single-use and short-lived, because the link lands in a chat log.
+ */
+export const linkChannel = (c: ApiClient, channel: ChannelKind, label?: string) =>
+  c.post<ChannelLink>("/account/channels/link", { channel, ...(label ? { label } : {}) });
+/** Mute / unmute a destination WITHOUT losing its verification. */
+export const setChannelEnabled = (
+  c: ApiClient,
+  channel: ChannelKind,
+  address: string,
+  enabled: boolean,
+) => c.post<{ enabled: boolean }>("/account/channels/enabled", { channel, address, enabled });
+/** Forget a destination entirely. */
+export const removeChannel = (c: ApiClient, channel: ChannelKind, address: string) =>
+  c.request<{ removed: boolean }>("/account/channels", {
+    method: "DELETE",
+    body: { channel, address },
+  });

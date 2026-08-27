@@ -41,8 +41,16 @@ export type Notification = {
   lines?: readonly string[];
 };
 
+/**
+ * Every channel the system knows about, as a VALUE — so a route can validate
+ * user input against it. `ChannelKind` is derived from this list rather than
+ * declared alongside it, because two hand-maintained copies drift and the
+ * drift is silent: a channel missing from the array is simply never accepted.
+ */
+export const CHANNEL_KINDS = ["email", "telegram"] as const;
+
 /** Where a notification can go for one user. */
-export type ChannelKind = "email" | "telegram";
+export type ChannelKind = (typeof CHANNEL_KINDS)[number];
 
 /**
  * One user's destination on one channel — a row, not a column, because a user
