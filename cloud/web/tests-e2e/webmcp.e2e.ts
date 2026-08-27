@@ -98,3 +98,68 @@ test.describe("WebMCP surface", () => {
     expect(approvals).toHaveLength(1);
   });
 });
+
+/**
+ * The vulnerability that shipped, as a regression test.
+ *
+ * The scripted-CLICK test above passed throughout — and the gate was still
+ * open, because an agent does not have to click. It can fetch. The original
+ * design exposed `POST /runs/:id/approval-nonce`, which handed an approval
+ * credential to any caller with the user's cookie; measured against production,
+ * a plain scripted fetch got one, 200.
+ *
+ * These assert the two properties that closed it: there is no endpoint that
+ * vends a credential on request, and a challenge cannot be spent twice.
+ */
+test.describe("the approval credential cannot be obtained on demand", () => {
+  test("there is no credential-vending endpoint to call", async ({ page }) => {
+    await installMocks(page);
+    let vended = false;
+    await page.route(
+      (url) => url.pathname.endsWith("/approval-nonce"),
+      (route) => {
+        vended = true;
+        return route.fulfill({ status: 404, body: "{}" });
+      },
+    );
+    await page.route(
+      (url) => url.pathname === "/runs/run1/approve",
+      (route) =>
+        route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify({ id: "run1", status: "approved", pushCommands: [] }),
+        }),
+    );
+    await page.goto("/runs/run1");
+    await expect(page.getByTestId("approve")).toBeVisible();
+
+    // A real click drives the whole production approve path.
+    await page.getByTestId("approve").click();
+    await expect(page.getByTestId("run-status")).toContainText("Approved");
+
+    expect(vended, "the client must never request an approval credential").toBe(false);
+  });
+
+  test("the approve request carries the run view's challenge, not one it made up", async ({ page }) => {
+    await installMocks(page);
+    const headers: (string | undefined)[] = [];
+    await page.route(
+      (url) => url.pathname === "/runs/run1/approve",
+      (route) => {
+        headers.push(route.request().headers()["x-approval-challenge"]);
+        return route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify({ id: "run1", status: "approved", pushCommands: [] }),
+        });
+      },
+    );
+    await page.goto("/runs/run1");
+    await page.getByTestId("approve").click();
+    await expect(page.getByTestId("run-status")).toContainText("Approved");
+    // "c_e2e" is what the mocked run view served — proving the client spends
+    // what it was given rather than anything it could synthesise.
+    expect(headers).toEqual(["c_e2e"]);
+  });
+});
