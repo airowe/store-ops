@@ -73,7 +73,27 @@ Two further facts made the decision urgent rather than theoretical:
    gesture occurred — it can only ensure a nonce was obtained and is valid for
    this run and user. This half of the boundary lives in the client and is
    stated here because it is the half a future refactor could quietly break.
-   (As of this ADR the approve UI is not yet built; the server side is.)
+
+   **Discharged.** The contract now has exactly one implementation:
+   `cloud/web/src/webmcp/trustedApprove.ts`. It is the only code that calls the
+   mint route, it compares `isTrusted === true` (never a truthy coercion, since
+   `{isTrusted: "true"}` is precisely what a caller synthesises), and RunView's
+   approve button is its only caller. Rejecting deliberately needs no nonce: it
+   closes the gate without shipping anything, so an agent clearing bad proposals
+   remains legitimate pre-gate triage.
+
+   **Measured, not assumed.** In jsdom, `fireEvent.click()` and
+   `element.click()` both produce `isTrusted === false`; in real Chromium,
+   Playwright's `.click()` produces `true` while a `click()` issued from page
+   script produces `false`. `tests-e2e/webmcp.e2e.ts` asserts both halves
+   against the same button in the same session — the scripted click is refused
+   and never even mints, the real click approves. That is the attack an agent
+   can actually mount, so it is the one the suite runs.
+
+   A consequence worth stating plainly: because no synthetic event can be
+   trusted, component tests cannot drive approval through a real click. RunView
+   therefore accepts an injected `trustGesture` used ONLY by tests, to exercise
+   what happens after the gate. Production omits it and the browser decides.
 
 2. The nonce reuses the existing magic-link/session token construction —
    HMAC-SHA256 over a base64url JSON payload — with two additions:

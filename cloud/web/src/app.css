@@ -1828,3 +1828,132 @@ pre {
 }
 .kw-standing-row.is-selected .kw-standing-hit { fill: var(--nav-active); }
 .kw-standing-row.is-selected .kw-standing-label { font-weight: 600; }
+
+/* ── WebMCP tools panel ──────────────────────────────────────────────────────
+   Always visible. Not a Human/Agent toggle: the page cannot tell who is looking
+   at it, so it shows everyone the same honest offer. Colours come from tokens
+   only (see noRawHex.test.ts). */
+.webmcp-panel {
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--panel);
+  padding: 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+.webmcp-title {
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--ink);
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+.webmcp-subtitle {
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--dim);
+  margin: 0 0 0.4rem;
+}
+.webmcp-count {
+  font-family: var(--mono);
+  font-size: 0.7rem;
+  padding: 0.1rem 0.4rem;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  color: var(--dim);
+}
+.webmcp-note {
+  font-size: 0.75rem;
+  color: var(--dim);
+  margin: 0;
+  line-height: 1.4;
+}
+.webmcp-tools {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+.webmcp-tool {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.3rem 0.5rem;
+  border-radius: calc(var(--radius) / 2);
+  border-left: 2px solid transparent;
+  transition: background var(--duration-hover) var(--ease-out);
+}
+.webmcp-tool[data-mode="reads"] { border-left-color: var(--line); }
+.webmcp-tool[data-mode="writes"] { border-left-color: var(--warn); }
+/* A call in flight: the person watching sees their agent working. */
+.webmcp-tool[data-active="true"] {
+  background: var(--brand-glow);
+  border-left-color: var(--brand);
+}
+.webmcp-tool-name {
+  font-family: var(--mono);
+  font-size: 0.75rem;
+  color: var(--ink);
+}
+.webmcp-tool-effect {
+  font-size: 0.7rem;
+  color: var(--dim);
+  text-align: right;
+}
+.webmcp-legend {
+  display: flex;
+  gap: 0.75rem;
+  font-size: 0.7rem;
+  color: var(--dim);
+}
+.webmcp-key { display: flex; align-items: center; gap: 0.3rem; }
+.webmcp-key::before {
+  content: "";
+  width: 2px;
+  height: 0.8em;
+  background: var(--line);
+}
+.webmcp-key-writes::before { background: var(--warn); }
+/* The claim the entry rests on — styled as a boundary, not a footnote. */
+.webmcp-boundary {
+  font-size: 0.75rem;
+  line-height: 1.5;
+  color: var(--ink);
+  margin: 0;
+  padding: 0.6rem;
+  border-radius: calc(var(--radius) / 2);
+  border: 1px dashed var(--line);
+  /* --raise, not --faint: the latter is a TEXT colour, and using it as a
+     surface put light-grey behind body text in the dark theme. */
+  background: var(--raise);
+}
+.webmcp-log {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  max-height: 9rem;
+  overflow-y: auto;
+}
+.webmcp-log-row {
+  display: flex;
+  gap: 0.5rem;
+  align-items: baseline;
+  font-size: 0.7rem;
+  font-family: var(--mono);
+  color: var(--dim);
+}
+.webmcp-log-name { color: var(--ink); }
+.webmcp-log-row[data-phase="error"] .webmcp-log-phase { color: var(--bad); }
+.webmcp-log-row[data-phase="done"] .webmcp-log-phase { color: var(--signal); }
+.webmcp-log-message { color: var(--bad); }

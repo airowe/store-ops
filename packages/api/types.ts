@@ -692,11 +692,22 @@ export type PreviewResult = {
 // ── settings (comms-prefs) ──────────────────────────────────────────────────
 export type RankCadence = "weekly" | "daily";
 export type EmailDigest = "weekly" | "off";
-export type NotificationPrefs = { push_run_ready: boolean; email_digest: EmailDigest };
+/**
+ * `email_run_ready` is separate from `email_digest` rather than a third digest
+ * value: SQLite cannot ALTER a CHECK constraint, so widening the enum would
+ * have meant rebuilding `users` (migration 0013).
+ */
+export type NotificationPrefs = {
+  push_run_ready: boolean;
+  email_digest: EmailDigest;
+  /** Tell me on my verified channels the moment a run reaches the gate. */
+  email_run_ready: boolean;
+};
 export type Me = {
   email: string | null;
   push_run_ready?: boolean;
   email_digest?: EmailDigest;
+  email_run_ready?: boolean;
   rank_cadence?: RankCadence;
   /** the per-user master switch for the weekly autonomous sweep (#51). */
   paused?: boolean;
@@ -811,4 +822,25 @@ export type CppSetsInputs = {
   findings?: string[];
   brandPalette?: string[];
   recommendedCount?: number;
+};
+
+// ── sweep schedule (#52) — WHEN the unattended sweep checks an app ───────────
+export type SweepCadence = "daily" | "weekly" | "biweekly";
+/** Day is UTC 0=Sunday…6=Saturday, ignored for daily; hourUtc is 0–23. */
+export type SweepSchedule = { cadence: SweepCadence; day: number; hourUtc: number };
+export type ScheduleResult = { schedule: SweepSchedule };
+
+/**
+ * POST /runs/:id/approval-nonce — the token that lets the NEXT request approve
+ * this run (ADR-001). Minting is harmless: it writes nothing and expires unused.
+ */
+export type ApprovalNonce = { nonce: string; expiresInSeconds: number };
+
+/** POST /runs/:id/edits — a staged proposal edit. Never a decision. */
+export type StagedEdit = {
+  id: string;
+  status: "awaiting_approval";
+  staged: string[];
+  proposedCopy: CopyFields;
+  note: string;
 };

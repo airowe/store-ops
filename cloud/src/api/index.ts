@@ -211,6 +211,9 @@ import {
 } from "../d1.js";
 import { isExpoPushToken } from "../push.js";
 import { finalizeEditedCopy } from "./proposalEdit.js";
+import { validateCopy } from "../engine/optimize.js";
+import { stageDecision } from "./stageEdit.js";
+import { editSourceFor } from "./editProvenance.js";
 import { decryptField, importKeyFromBase64 } from "../crypto/rlhfCrypto.js";
 import {
   APPROVAL_NONCE_TTL_SECONDS,
@@ -3918,6 +3921,74 @@ async function mintApprovalNonceRoute(
 }
 
 /**
+ * POST /runs/:id/edits — STAGE an edit to the proposed copy (ADR-001).
+ *
+ * The agent-facing counterpart to the gate. An agent that has drafted a better
+ * subtitle records it here, so the human at the gate sees — and approves — the
+ * version they actually want, rather than approving the machine's first guess
+ * and fixing it afterwards.
+ *
+ * It deliberately does NOT decide anything: the run stays `awaiting_approval`,
+ * and the response says so. Validation is the approve path's own
+ * `finalizeEditedCopy`, so nothing can be staged that a human could not type.
+ * The edit is attributed via the `source` column (migration 0013) so an
+ * agent-authored proposal is never silently recorded as the human's own.
+ */
+async function stageRunEdit(
+  req: Request,
+  env: Env,
+  user: AuthedUser,
+  runId: string,
+): Promise<unknown> {
+  const run = await getRun(env.DB, runId);
+  if (!run) throw new HttpError(404, "run not found");
+  const app = await requireOwnedApp(env, run.app_id, user.id);
+
+  type StageBody = Partial<CopyFields> & { editedCopy?: Partial<CopyFields> };
+  const body = await req.json<StageBody>().catch(() => ({}) as StageBody);
+  // Accept both the wrapped shape (mirroring the approve body) and a bare
+  // {subtitle: "..."} — an agent composing a call from the tool schema will
+  // reach for the flat one, and refusing it would be pedantry, not safety.
+  const edit: Partial<CopyFields> = body.editedCopy ?? body;
+
+  const trace = JSON.parse(run.reasoning_json) as ReasoningTrace;
+  const decision = stageDecision(trace.proposedCopy, edit, run.status);
+  if (!decision.ok) throw new HttpError(decision.status, decision.error);
+
+  const validation = validateCopy(decision.copy);
+  const pushCommands = buildPushCommands(app.bundle_id, { ...decision.copy, validation });
+  // Provenance, not a decision: record WHO authored this copy so the gate can
+  // attribute the eventual RLHF row correctly (migration 0013).
+  await updateRunCopy(env.DB, {
+    runId,
+    copy: decision.copy,
+    pushCommands,
+    source: "agent-draft",
+  });
+
+  // NO RLHF capture here, deliberately. `proposal_edits` rows carry a
+  // `decision` column and exist to record what a human DECIDED (#39 Part 2) —
+  // they are appended to recordApproval's own batch precisely so the captured
+  // signal can never disagree with the gate. Staging decides nothing, so any
+  // value written in that column would be fabricated: "approved" would invent
+  // a human approval that never happened, and "rejected" a rejection.
+  //
+  // The provenance the `source` column exists for is still captured — at the
+  // gate, where the human's real decision on this (agent-drafted) copy is
+  // recorded. Staging is a step on the way there, not an outcome.
+
+  return {
+    id: runId,
+    status: decision.status,
+    staged: Object.keys(decision.copy).filter(
+      (f) => (decision.copy as Record<string, unknown>)[f] !== (trace.proposedCopy as Record<string, unknown>)[f],
+    ),
+    proposedCopy: decision.copy,
+    note: "staged — this run is still awaiting approval and a person must approve it",
+  };
+}
+
+/**
  * POST /runs/:id/approve  and  POST /runs/:id/reject — the human gate.
  *
  * `action` comes from the URL segment ("approve"/"reject"); the JSON body's
@@ -4002,6 +4073,11 @@ async function decideRun(
         proposed: trace.proposedCopy,
         final: finalCopy,
         decision,
+        // Migration 0013: an agent-drafted proposal the human approved unchanged
+        // writes edited = 0, which is byte-identical to assent to the ORIGINAL
+        // copy. Without this the signal records the agent's authorship as the
+        // human's preference.
+        source: editSourceFor(trace),
       });
     }
   } catch (e) {
@@ -5509,6 +5585,12 @@ export async function handleApi(req: Request, env: Env, ctx?: ExecutionContext):
       // nothing, and the nonce is worthless without the subsequent POST.
       if (seg.length === 3 && seg[2] === "approval-nonce" && method === "POST") {
         return json(await mintApprovalNonceRoute(env, user, runId), 200, origin, env);
+      }
+      // The agent's one write at the gate: stage an edit to the proposed copy.
+      // Changes WHAT would be approved, never WHETHER it is — the run stays
+      // awaiting_approval and the response says so.
+      if (seg.length === 3 && seg[2] === "edits" && method === "POST") {
+        return json(await stageRunEdit(req, env, user, runId), 200, origin, env);
       }
       if (seg.length === 3 && method === "POST" && (seg[2] === "approve" || seg[2] === "reject")) {
         // The nonce gates APPROVE only. Rejecting closes the gate without

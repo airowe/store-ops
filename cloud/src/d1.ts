@@ -185,6 +185,13 @@ export type ReasoningTrace = {
   /** full proposed copy WITH validation (pass + per-field checks). */
   proposedCopy: ProposedCopy;
   /**
+   * Who authored the most recent STAGED edit to `proposedCopy` (migration
+   * 0013). Read at the gate so the RLHF row records an agent-drafted approval
+   * as such, instead of as a human preference. Absent on runs nothing staged
+   * and on every trace written before this field existed — both mean 'human'.
+   */
+  lastEditSource?: ProposalEditSource;
+  /**
    * #78 Phase 2: per-locale drafts the human APPROVED for handoff (locale →
    * fitted copy). Written ONLY by the explicit approve route; the fastlane
    * bundle emits exactly these locales and nothing else.
@@ -1438,7 +1445,13 @@ export async function recordApproval(
  */
 export async function updateRunCopy(
   db: D1Database,
-  args: { runId: string; copy: CopyFields; pushCommands: PushCommand[] },
+  args: {
+    runId: string;
+    copy: CopyFields;
+    pushCommands: PushCommand[];
+    /** Who authored this copy. Omitted leaves any existing provenance intact. */
+    source?: ProposalEditSource;
+  },
 ): Promise<void> {
   const run = await db
     .prepare("SELECT reasoning_json FROM runs WHERE id = ?")
@@ -1456,6 +1469,7 @@ export async function updateRunCopy(
     ...(prevValidation !== undefined ? { validation: prevValidation } : {}),
   } as ProposedCopy;
   trace.pushCommands = args.pushCommands;
+  if (args.source !== undefined) trace.lastEditSource = args.source;
 
   const stmts: D1PreparedStatement[] = [
     db
