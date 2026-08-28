@@ -29,6 +29,10 @@ export type WebMcpState = {
   tools: readonly ToolSpec[];
   /** Most-recent-first log of tool calls, for the panel. */
   activity: readonly ActivityEntry[];
+  /** Reads live tools through modelContext. Null when WebMCP is absent. */
+  getTools: (() => Promise<readonly { name: string; description?: string }[]>) | null;
+  /** Runs one tool through modelContext. Null when WebMCP is absent. */
+  executeTool: ((tool: { name: string }, args: string) => Promise<unknown>) | null;
 };
 
 /** Extract the run/app id from the current path, so tools need no arguments. */
@@ -97,5 +101,29 @@ export function useWebMcp(opts: {
   // navigation, which an agent sees as the page's capabilities flickering.
   useEffect(() => () => registry.teardown(), [registry]);
 
-  return { supported: registry.supported, tools, activity };
+  // Handed to the in-page chat so it drives tools through `modelContext` — the
+  // same path an external agent uses — rather than reaching into the handlers.
+  // What the drawer shows is then the real surface, not a demo-only shadow.
+  const getTools = useCallback(
+    async () => (context?.getTools ? await context.getTools() : []),
+    [context],
+  );
+  const executeTool = useCallback(
+    async (tool: { name: string }, args: string) => {
+      const ctx = context as unknown as {
+        executeTool?: (t: unknown, a: string) => Promise<unknown>;
+      } | null;
+      if (!ctx?.executeTool) throw new Error("this browser cannot execute WebMCP tools");
+      return ctx.executeTool(tool, args);
+    },
+    [context],
+  );
+
+  return {
+    supported: registry.supported,
+    tools,
+    activity,
+    getTools: context ? getTools : null,
+    executeTool: context ? executeTool : null,
+  };
 }
