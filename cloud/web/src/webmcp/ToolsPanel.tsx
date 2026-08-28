@@ -162,31 +162,89 @@ export function ToolsPanel({
 
         <div className="webmcp-chat" data-testid="webmcp-chat">
           <h3 className="webmcp-subtitle">Ask your agent</h3>
-          {chat.status === "unsupported" ? (
-            <p className="webmcp-note" data-testid="webmcp-chat-unsupported">
-              This browser has no on-device model available, so there is no agent to ask here.
-              The tools above are still offered to any agent that can reach them.
-            </p>
+          {/*
+            The transcript renders in EVERY state. It used to live inside the
+            agent-only branch, which meant the scripted tour ran invisibly —
+            the tools fired and nobody saw a thing.
+          */}
+          {chat.turns.length > 0 ? (
+            <ol className="webmcp-turns" data-testid="webmcp-turns">
+              {chat.turns.map((t, i) => (
+                <li key={i} className="webmcp-turn" data-kind={t.kind}>
+                  {t.kind === "tool" ? (
+                    <>
+                      <span className="webmcp-turn-who">ran</span>
+                      <span className="webmcp-turn-tool">{t.name}</span>
+                      <span className="webmcp-turn-text">{t.text.split("\n")[0]}</span>
+                    </>
+                  ) : (
+                    <>
+                      <span className="webmcp-turn-who">
+                        {t.kind === "user" ? "you" : chat.status === "touring" ? "script" : "agent"}
+                      </span>
+                      <span className="webmcp-turn-text">{t.text}</span>
+                    </>
+                  )}
+                </li>
+              ))}
+            </ol>
+          ) : null}
+          {chat.status === "offerable" || chat.status === "downloading" ? (
+            /*
+              The model is not here yet but the browser can fetch it. Offering
+              that beats declaring no agent exists — which is what this used to
+              do, and it was wrong: `create()` performs the download.
+            */
+            <div data-testid="webmcp-chat-offer">
+              <p className="webmcp-note">
+                An AI agent can run on this page, entirely on your device — no account and no
+                data leaving the browser. Chrome needs to download the model first.
+              </p>
+              {chat.status === "downloading" ? (
+                <p className="webmcp-note" data-testid="webmcp-download-progress">
+                  Downloading… {Math.round(chat.progress * 100)}%
+                </p>
+              ) : (
+                <button
+                  type="button"
+                  className="webmcp-ask-send"
+                  data-testid="webmcp-download"
+                  onClick={() => void chat.download()}
+                >
+                  Download the model
+                </button>
+              )}
+            </div>
+          ) : chat.status === "unavailable" || chat.status === "touring" ? (
+            /*
+              No on-device model here and none obtainable. The tour drives the
+              REAL tools against real data; only the narration is scripted, and
+              it says so rather than passing itself off as an agent.
+            */
+            <div data-testid="webmcp-chat-unsupported">
+              <p className="webmcp-note">
+                This browser has no on-device model, so there is no agent to ask here. The tools
+                above are still offered to any agent that can reach them — and you can watch them
+                run.
+              </p>
+              <button
+                type="button"
+                className="webmcp-ask-send"
+                data-testid="webmcp-tour"
+                disabled={chat.status === "touring"}
+                onClick={() => void chat.runTour()}
+              >
+                {chat.status === "touring" ? "Running…" : "Run a scripted tour"}
+              </button>
+              {chat.turns.length > 0 ? (
+                <p className="webmcp-scripted" data-testid="webmcp-scripted-label">
+                  Scripted walkthrough — the tool calls and their results are real; the wording
+                  between them is written, not generated.
+                </p>
+              ) : null}
+            </div>
           ) : (
             <>
-              <ol className="webmcp-turns">
-                {chat.turns.map((t, i) => (
-                  <li key={i} className="webmcp-turn" data-kind={t.kind}>
-                    {t.kind === "tool" ? (
-                      <>
-                        <span className="webmcp-turn-who">ran</span>
-                        <span className="webmcp-turn-tool">{t.name}</span>
-                        <span className="webmcp-turn-text">{t.text.split("\n")[0]}</span>
-                      </>
-                    ) : (
-                      <>
-                        <span className="webmcp-turn-who">{t.kind === "user" ? "you" : "agent"}</span>
-                        <span className="webmcp-turn-text">{t.text}</span>
-                      </>
-                    )}
-                  </li>
-                ))}
-              </ol>
               <form
                 className="webmcp-ask"
                 onSubmit={(e) => {

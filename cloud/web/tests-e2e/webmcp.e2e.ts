@@ -163,3 +163,45 @@ test.describe("the approval credential cannot be obtained on demand", () => {
     expect(headers).toEqual(["c_e2e"]);
   });
 });
+
+/**
+ * THE FALLBACK PATH — a browser with WebMCP but no on-device model, which is
+ * where most visitors are and quite possibly where a judge will be.
+ *
+ * The tour has to drive the REAL tools, not a mock of them, or it is a video
+ * pretending to be a product. And it has to say it is scripted, or it is a
+ * claim we cannot support: the tool calls are genuine, the wording between them
+ * is written.
+ */
+test.describe("no on-device model", () => {
+  test("the scripted tour drives real tools", async ({ page }) => {
+  await installMocks(page);
+  // WebMCP present, Prompt API absent — the exact state most visitors are in.
+  await page.addInitScript(() => {
+    const live = new Map<string, unknown>();
+    (navigator as never as { modelContext: unknown }).modelContext = {
+      registerTool: (t: { name: string }, o?: { signal?: AbortSignal }) => {
+        live.set(t.name, t);
+        o?.signal?.addEventListener("abort", () => live.delete(t.name));
+      },
+      getTools: async () => [...live.values()],
+      executeTool: async (t: { execute: (a: unknown) => Promise<unknown> }, a: string) =>
+        JSON.stringify(await t.execute(JSON.parse(a))),
+    };
+    delete (window as never as { LanguageModel?: unknown }).LanguageModel;
+  });
+  await page.goto("/runs");
+  await page.getByTestId("webmcp-toggle").click();
+
+  const tour = page.getByTestId("webmcp-tour");
+  await expect(tour).toBeVisible();
+  await tour.click();
+
+  // Real tool calls land in the activity log, which the tour shares with the agent.
+  await expect(page.getByTestId("webmcp-turns")).toBeVisible();
+  await expect(page.getByTestId("webmcp-scripted-label")).toBeVisible();
+  await expect(page.getByTestId("webmcp-activity")).toContainText("list_pending_runs");
+  // And it ends where an agent would.
+  await expect(page.getByTestId("webmcp-turns")).toContainText(/approves, ships or publishes/i);
+});
+});

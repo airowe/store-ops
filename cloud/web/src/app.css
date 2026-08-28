@@ -1972,6 +1972,14 @@ pre {
   white-space: nowrap;
 }
 .webmcp-turn[data-kind="tool"] .webmcp-turn-who { grid-column: 1; }
+/* Says the narration is written. Amber rather than green: this is a caveat,
+   and it should not read as a status the way a live tool call does. */
+.webmcp-scripted {
+  margin: 0.5rem 0 0;
+  font-size: 0.7rem;
+  color: var(--warn);
+  line-height: 1.4;
+}
 .webmcp-ask { display: flex; gap: 0.5rem; }
 .webmcp-ask-input {
   flex: 1;

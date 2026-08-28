@@ -30,10 +30,21 @@ export type LanguageModelSession = {
   prompt: (input: string) => Promise<string>;
   destroy: () => void;
 };
+/** Reports model-download progress; `loaded` runs 0..1 per the spec. */
+export type DownloadMonitor = {
+  addEventListener: (type: string, cb: (e: { loaded: number }) => void) => void;
+};
+
 export type LanguageModelApi = {
   availability: () => Promise<string>;
   create: (opts?: {
     initialPrompts?: Array<{ role: string; content: string }>;
+    /**
+     * Passing this is what makes a download observable. `create()` itself
+     * performs the download when the model is not yet present — there is no
+     * separate trigger — and resolves once the session is usable.
+     */
+    monitor?: (m: DownloadMonitor) => void;
   }) => Promise<LanguageModelSession>;
 };
 
@@ -134,4 +145,65 @@ export function readToolText(raw: unknown): string {
   } catch {
     return raw;
   }
+}
+
+/**
+ * What the page can offer, given what the browser has.
+ *
+ * `availability()` returns four documented states and they are NOT
+ * interchangeable. An earlier version collapsed everything but "available"
+ * into one refusal, which meant a browser that merely had not downloaded the
+ * model yet was told there was no agent — when `create()` would have fetched
+ * it. The spec is explicit: calling `create()` while "downloadable" or
+ * "downloading" starts and awaits the download, with progress reported through
+ * a `monitor`.
+ *
+ * So: "available" runs an agent, "downloadable"/"downloading" can OFFER to,
+ * and only "unavailable" (or no API at all) genuinely cannot.
+ */
+export type ModelReadiness = "ready" | "offerable" | "none";
+
+export function readinessOf(availability: string | null): ModelReadiness {
+  if (availability === "available") return "ready";
+  if (availability === "downloadable" || availability === "downloading") return "offerable";
+  return "none";
+}
+
+/**
+ * One step of the scripted tour.
+ *
+ * The tour exists for browsers with no on-device model, and it drives the REAL
+ * tools — the same `modelContext.executeTool` path the agent uses, against the
+ * same live data. What it does NOT do is pretend to be an agent: `say` is text
+ * this file wrote, and the UI labels it as scripted. A canned walkthrough
+ * presented as a model making decisions would be exactly the kind of claim
+ * this codebase refuses to make about anything else.
+ *
+ * The final step has no tool on purpose. It is where a real agent stops, and
+ * the tour stops there too.
+ */
+export type TourStep = { say: string; tool?: string };
+
+export const TOUR: readonly TourStep[] = [
+  { say: "Let me see who this account belongs to.", tool: "whoami" },
+  { say: "Now the queue — what is waiting for a decision.", tool: "list_pending_runs" },
+  { say: "And what the gate actually permits me to do here.", tool: "describe_boundary" },
+  {
+    say:
+      "That is as far as I go. There is no tool on this page that approves, ships or " +
+      "publishes anything — approving is a person's click, and the server refuses an " +
+      "approval that did not come from one.",
+  },
+];
+
+/**
+ * The tour steps that can actually run here.
+ *
+ * Route scoping is real — `list_pending_runs` is not registered on an app
+ * detail page — so a step naming a tool this route does not offer is dropped
+ * rather than run against nothing. Steps with no tool always survive: they are
+ * narration, and the last one is the point of the whole tour.
+ */
+export function tourFor(available: readonly string[]): readonly TourStep[] {
+  return TOUR.filter((s) => !s.tool || available.includes(s.tool));
 }

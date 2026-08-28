@@ -258,3 +258,40 @@ describe("ToolsPanel — on a public page", () => {
     expect(screen.getByTestId("webmcp-boundary")).toBeInTheDocument();
   });
 });
+
+/**
+ * The tour offer, and the label that keeps it honest.
+ *
+ * jsdom has no Prompt API, so the panel renders its no-model branch — which is
+ * the state most visitors will be in. What matters is that the fallback offers
+ * something real and never passes itself off as an agent.
+ */
+describe("ToolsPanel — the scripted tour offer", () => {
+  it("offers a tour instead of a dead end when there is no model", () => {
+    render(<ToolsPanel supported tools={tools} activity={[]} />);
+    fireEvent.click(screen.getByTestId("webmcp-toggle"));
+    expect(screen.getByTestId("webmcp-tour")).toBeInTheDocument();
+  });
+
+  it("does NOT offer a download when the model cannot be downloaded", () => {
+    // Offering a download that would fail is worse than offering the tour.
+    render(<ToolsPanel supported tools={tools} activity={[]} />);
+    fireEvent.click(screen.getByTestId("webmcp-toggle"));
+    expect(screen.queryByTestId("webmcp-download")).not.toBeInTheDocument();
+  });
+
+  it("still says plainly that there is no agent to ask", () => {
+    render(<ToolsPanel supported tools={tools} activity={[]} />);
+    fireEvent.click(screen.getByTestId("webmcp-toggle"));
+    expect(screen.getByTestId("webmcp-chat-unsupported")).toHaveTextContent(
+      /no on-device model/i,
+    );
+  });
+
+  it("keeps the boundary statement in the no-model state", () => {
+    // The claim the entry rests on does not depend on there being an agent.
+    render(<ToolsPanel supported tools={tools} activity={[]} />);
+    fireEvent.click(screen.getByTestId("webmcp-toggle"));
+    expect(screen.getByTestId("webmcp-boundary")).toBeInTheDocument();
+  });
+});

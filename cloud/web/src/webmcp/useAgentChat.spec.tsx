@@ -25,21 +25,37 @@ const TOOLS = [
 ];
 
 /** Install a fake Prompt API. `replies` are returned in order. */
-function fakeModel(replies: string[], opts: { availability?: string } = {}) {
+function fakeModel(
+  replies: string[],
+  opts: { availability?: string; progress?: number[]; failCreate?: boolean } = {},
+) {
   const prompts: string[] = [];
   let i = 0;
+  let creates = 0;
   const destroy = vi.fn();
   (globalThis as never as { LanguageModel: unknown }).LanguageModel = {
     availability: async () => opts.availability ?? "available",
-    create: async () => ({
-      prompt: async (input: string) => {
-        prompts.push(input);
-        return replies[i++] ?? "";
-      },
-      destroy,
-    }),
+    create: async (o?: { monitor?: (m: unknown) => void }) => {
+      creates += 1;
+      if (opts.failCreate) throw new Error("download refused");
+      // Replay download progress the way the spec describes it.
+      if (o?.monitor && opts.progress) {
+        const listeners: Array<(e: { loaded: number }) => void> = [];
+        o.monitor({
+          addEventListener: (_t: string, cb: (e: { loaded: number }) => void) => listeners.push(cb),
+        } as never);
+        for (const loaded of opts.progress) for (const cb of listeners) cb({ loaded });
+      }
+      return {
+        prompt: async (input: string) => {
+          prompts.push(input);
+          return replies[i++] ?? "";
+        },
+        destroy,
+      };
+    },
   };
-  return { prompts, destroy };
+  return { prompts, destroy, created: () => creates };
 }
 
 function harness(over: { execute?: (t: { name: string }, a: string) => Promise<unknown> } = {}) {
@@ -61,27 +77,42 @@ afterEach(() => {
 });
 
 describe("useAgentChat — availability", () => {
-  it("is unsupported when the browser has no Prompt API", async () => {
+  it("is unavailable when the browser has no Prompt API at all", async () => {
     const h = harness();
     const { result } = renderHook(() => useAgentChat(h));
-    await waitFor(() => expect(result.current.status).toBe("unsupported"));
+    await waitFor(() => expect(result.current.status).toBe("unavailable"));
   });
 
-  it("is unsupported when the model is present but NOT downloaded", async () => {
-    // "downloadable" is not something to silently wait on: the download is
-    // large and not ours to start.
+  it("is OFFERABLE when the model can be downloaded — not a refusal", async () => {
+    // The distinction that matters: `create()` performs the download, so
+    // telling this browser there is no agent would be false.
     fakeModel([], { availability: "downloadable" });
     const h = harness();
     const { result } = renderHook(() => useAgentChat(h));
-    await waitFor(() => expect(result.current.status).toBe("unsupported"));
+    await waitFor(() => expect(result.current.status).toBe("offerable"));
   });
 
-  it("is unsupported when WebMCP itself is absent, model or no model", async () => {
+  it("is offerable mid-download too", async () => {
+    fakeModel([], { availability: "downloading" });
+    const h = harness();
+    const { result } = renderHook(() => useAgentChat(h));
+    await waitFor(() => expect(result.current.status).toBe("offerable"));
+  });
+
+  it("does NOT start a ~2GB download on its own", async () => {
+    const { created } = fakeModel([], { availability: "downloadable" });
+    const h = harness();
+    const { result } = renderHook(() => useAgentChat(h));
+    await waitFor(() => expect(result.current.status).toBe("offerable"));
+    expect(created()).toBe(0);
+  });
+
+  it("is unavailable when WebMCP itself is absent, model or no model", async () => {
     fakeModel([]);
     const { result } = renderHook(() =>
       useAgentChat({ getTools: null, executeTool: null }),
     );
-    await waitFor(() => expect(result.current.status).toBe("unsupported"));
+    await waitFor(() => expect(result.current.status).toBe("unavailable"));
   });
 
   it("becomes ready once the session warms", async () => {
@@ -225,5 +256,111 @@ describe("useAgentChat — a tool call", () => {
     });
     expect(result.current.status).toBe("ready");
     expect(result.current.turns.at(-1)).toMatchObject({ kind: "agent", text: "model unavailable" });
+  });
+});
+
+describe("useAgentChat — downloading the model", () => {
+  it("becomes ready once the download completes", async () => {
+    fakeModel(["whoami"], { availability: "downloadable", progress: [0.5, 1] });
+    const h = harness();
+    const { result } = renderHook(() => useAgentChat(h));
+    await waitFor(() => expect(result.current.status).toBe("offerable"));
+    await act(async () => {
+      await result.current.download();
+    });
+    expect(result.current.status).toBe("ready");
+  });
+
+  it("reports progress while it runs", async () => {
+    fakeModel([], { availability: "downloadable", progress: [0.25, 0.75] });
+    const h = harness();
+    const { result } = renderHook(() => useAgentChat(h));
+    await waitFor(() => expect(result.current.status).toBe("offerable"));
+    await act(async () => {
+      await result.current.download();
+    });
+    // The last reported value survives; 0.75 was seen, not invented.
+    expect(result.current.progress).toBeCloseTo(0.75);
+  });
+
+  it("falls back to unavailable when the download fails", async () => {
+    fakeModel([], { availability: "downloadable", failCreate: true });
+    const h = harness();
+    const { result } = renderHook(() => useAgentChat(h));
+    await waitFor(() => expect(result.current.status).toBe("offerable"));
+    await act(async () => {
+      await result.current.download();
+    });
+    expect(result.current.status).toBe("unavailable");
+  });
+});
+
+/**
+ * The tour drives REAL tools. What it must never do is claim to be an agent —
+ * the narration is written, and the surrounding UI says so.
+ */
+describe("useAgentChat — the scripted tour", () => {
+  it("runs the real tools, in order, against real data", async () => {
+    const h = harness();
+    const { result } = renderHook(() => useAgentChat(h));
+    await waitFor(() => expect(result.current.status).toBe("unavailable"));
+    await act(async () => {
+      await result.current.runTour();
+    });
+    expect(h.executed).toEqual(["whoami", "list_pending_runs"]);
+    const toolTurns = result.current.turns.filter((t) => t.kind === "tool");
+    expect(toolTurns).toHaveLength(2);
+    expect(toolTurns[0]).toMatchObject({ ok: true, text: "12 runs waiting" });
+  });
+
+  it("SKIPS steps whose tool this route does not offer", async () => {
+    // describe_boundary is not in the harness's tool list, so its step drops
+    // rather than running against nothing.
+    const h = harness();
+    const { result } = renderHook(() => useAgentChat(h));
+    await waitFor(() => expect(result.current.status).toBe("unavailable"));
+    await act(async () => {
+      await result.current.runTour();
+    });
+    expect(h.executed).not.toContain("describe_boundary");
+  });
+
+  it("ALWAYS ends on the boundary, which runs no tool", async () => {
+    const h = harness();
+    const { result } = renderHook(() => useAgentChat(h));
+    await waitFor(() => expect(result.current.status).toBe("unavailable"));
+    await act(async () => {
+      await result.current.runTour();
+    });
+    const last = result.current.turns.at(-1)!;
+    expect(last.kind).toBe("agent");
+    expect(last.text).toMatch(/approves, ships or publishes/i);
+  });
+
+  it("does not leave the chat claiming to have an agent afterwards", async () => {
+    const h = harness();
+    const { result } = renderHook(() => useAgentChat(h));
+    await waitFor(() => expect(result.current.status).toBe("unavailable"));
+    await act(async () => {
+      await result.current.runTour();
+    });
+    expect(result.current.status).toBe("unavailable");
+  });
+
+  it("reports a failing tool honestly mid-tour rather than stopping", async () => {
+    const h = harness({
+      execute: async () => {
+        throw new Error("authentication required");
+      },
+    });
+    const { result } = renderHook(() => useAgentChat(h));
+    await waitFor(() => expect(result.current.status).toBe("unavailable"));
+    await act(async () => {
+      await result.current.runTour();
+    });
+    const toolTurns = result.current.turns.filter((t) => t.kind === "tool");
+    expect(toolTurns.every((t) => t.kind === "tool" && !t.ok)).toBe(true);
+    // and it still reaches the boundary statement
+    expect(result.current.turns.at(-1)!.text).toMatch(/approves, ships or publishes/i);
   });
 });
