@@ -198,3 +198,63 @@ describe("ToolsPanel — the agent chat", () => {
     for (const t of tools) expect(screen.getByText(t.name)).toBeInTheDocument();
   });
 });
+
+/**
+ * THE PUBLIC DRAWER.
+ *
+ * It stays on the marketing pages because the tools there are real — a
+ * signed-out visitor's agent can run `audit_app` and get a genuine
+ * credential-free listing audit, which is the product working with no account.
+ * But a visitor who has never heard of ShipASO gets a quieter version: it says
+ * what it is, and it never opens itself, because an unexplained panel springing
+ * open mid-scroll is an interruption rather than an invitation.
+ */
+describe("ToolsPanel — on a public page", () => {
+  const publicTools = toolsForRoute("/");
+  const running = [{ name: "audit_app", phase: "start" as const, at: 1001, seq: 1 }];
+
+  it("does NOT auto-open, even while a tool is running", () => {
+    const { rerender } = render(
+      <ToolsPanel supported tools={publicTools} activity={[]} context="public" />,
+    );
+    rerender(
+      <ToolsPanel supported tools={publicTools} activity={running} context="public" />,
+    );
+    expect(screen.getByTestId("webmcp-panel")).toHaveAttribute("data-open", "false");
+  });
+
+  it("still opens when the visitor asks it to", () => {
+    render(<ToolsPanel supported tools={publicTools} activity={[]} context="public" />);
+    fireEvent.click(screen.getByTestId("webmcp-toggle"));
+    expect(screen.getByTestId("webmcp-panel")).toHaveAttribute("data-open", "true");
+  });
+
+  it("still reports live work in the bar — quieter is not hidden", () => {
+    render(<ToolsPanel supported tools={publicTools} activity={running} context="public" />);
+    expect(screen.getByTestId("webmcp-status")).toHaveTextContent("audit_app");
+  });
+
+  it("explains what it is to someone who has never seen this before", () => {
+    render(<ToolsPanel supported tools={publicTools} activity={[]} context="public" />);
+    fireEvent.click(screen.getByTestId("webmcp-toggle"));
+    expect(screen.getByText(/AI agent running in your browser/i)).toBeInTheDocument();
+    // And it does not overclaim: the boundary is stated here too.
+    expect(screen.getByText(/without an account/i)).toBeInTheDocument();
+  });
+
+  it("keeps auto-open INSIDE the app — the quiet rule is public-only", () => {
+    const { rerender } = render(
+      <ToolsPanel supported tools={publicTools} activity={[]} context="app" />,
+    );
+    rerender(<ToolsPanel supported tools={publicTools} activity={running} context="app" />);
+    expect(screen.getByTestId("webmcp-panel")).toHaveAttribute("data-open", "true");
+  });
+
+  it("offers no gate-crossing tool to a signed-out visitor either", () => {
+    render(<ToolsPanel supported tools={publicTools} activity={[]} context="public" />);
+    for (const t of publicTools) {
+      expect(t.name).not.toMatch(/approve|ship|push|publish|submit/i);
+    }
+    expect(screen.getByTestId("webmcp-boundary")).toBeInTheDocument();
+  });
+});

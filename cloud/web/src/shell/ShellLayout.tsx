@@ -49,7 +49,7 @@ export function ShellLayout() {
           <RailTopbar pathname={pathname} />
           <main className="app-content">
             <Outlet />
-            <ToolsPanel {...webmcp} />
+            <ToolsPanel {...webmcp} context="app" />
           </main>
         </div>
       </div>
@@ -61,7 +61,7 @@ export function ShellLayout() {
       <Topbar apiBase={hasApiBase ? API_BASE : null} session={session} />
       <main className="wrap">
         <Outlet />
-        <ToolsPanel {...webmcp} />
+        <ToolsPanel {...webmcp} context="public" />
       </main>
     </>
   );

@@ -37,12 +37,22 @@ export function ToolsPanel({
   activity,
   getTools = null,
   executeTool = null,
+  context = "app",
 }: {
   supported: boolean;
   tools: readonly ToolSpec[];
   activity: readonly ActivityEntry[];
   getTools?: (() => Promise<readonly LiveTool[]>) | null;
   executeTool?: ((tool: LiveTool, args: string) => Promise<unknown>) | null;
+  /**
+   * "public" on the marketing pages, where the visitor may have no idea what
+   * any of this is. The drawer stays there because the tools are real — a
+   * signed-out agent can run `audit_app` and get a genuine credential-free
+   * listing audit — but it behaves more quietly: it explains itself, and it
+   * never opens itself, because an unexplained panel springing open on a
+   * marketing page is an interruption rather than an invitation.
+   */
+  context?: "app" | "public";
 }) {
   const [open, setOpen] = useState(false);
   const [draft, setDraft] = useState("");
@@ -56,11 +66,12 @@ export function ToolsPanel({
   // every call would fight someone who deliberately collapsed it.
   const autoOpened = useRef(false);
   useEffect(() => {
+    if (context === "public") return;
     if (!autoOpened.current && summary.runningCount > 0) {
       autoOpened.current = true;
       setOpen(true);
     }
-  }, [summary.runningCount]);
+  }, [summary.runningCount, context]);
 
   if (!supported) {
     return (
@@ -119,7 +130,9 @@ export function ToolsPanel({
 
       <div className="webmcp-body" id="webmcp-body" hidden={!open}>
         <p className="webmcp-note">
-          Offered to your browser agent on this page, and swapped as you navigate.
+          {context === "public"
+            ? "This page offers these tools to an AI agent running in your browser. They are real: an agent can audit any App Store listing here without an account. None of them can approve or ship anything."
+            : "Offered to your browser agent on this page, and swapped as you navigate."}
         </p>
 
         <ul className="webmcp-tools">
