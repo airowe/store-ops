@@ -1833,6 +1833,188 @@ pre {
    Always visible. Not a Human/Agent toggle: the page cannot tell who is looking
    at it, so it shows everyone the same honest offer. Colours come from tokens
    only (see noRawHex.test.ts). */
+/*
+ * The agent drawer. Fixed to the viewport rather than flowing at the end of the
+ * page: on a real queue the old panel sat ~11,000px down, so the only
+ * human-visible evidence of the agent surface was invisible without scrolling.
+ */
+.webmcp-drawer {
+  position: fixed;
+  left: 50%;
+  transform: translateX(-50%);
+  bottom: 0;
+  z-index: 40;
+  width: min(920px, calc(100vw - 2rem));
+  border: 1px solid var(--line);
+  border-bottom: none;
+  border-radius: var(--radius) var(--radius) 0 0;
+  background: var(--panel);
+  box-shadow: 0 -12px 40px rgba(0, 0, 0, 0.45);
+  display: flex;
+  flex-direction: column;
+  max-height: 70vh;
+}
+/* The collapsed bar is a button: the whole strip is the hit target. */
+.webmcp-bar {
+  all: unset;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  width: 100%;
+  padding: 0.7rem 1rem;
+  cursor: pointer;
+  font-family: inherit;
+}
+.webmcp-bar:focus-visible {
+  outline: 2px solid var(--brand);
+  outline-offset: -2px;
+}
+.webmcp-caret {
+  color: var(--dim);
+  font-size: 0.7rem;
+  transition: transform var(--duration-dropdown) var(--ease-drawer);
+}
+.webmcp-drawer[data-open="true"] .webmcp-caret { transform: rotate(0deg); }
+.webmcp-bar-title {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--ink);
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+.webmcp-bar-status {
+  margin-left: auto;
+  font-family: var(--mono);
+  font-size: 0.7rem;
+  color: var(--dim);
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+.webmcp-bar-failed { color: var(--bad); }
+/* The live dot. Motion is the signal that something is happening RIGHT NOW —
+   the one thing a collapsed drawer can convey at a glance. */
+.webmcp-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--signal);
+  box-shadow: 0 0 0 0 var(--signal-glow);
+  animation: webmcp-ping 1.4s var(--ease-in-out) infinite;
+}
+@keyframes webmcp-ping {
+  0%   { box-shadow: 0 0 0 0 var(--signal-glow); opacity: 1; }
+  70%  { box-shadow: 0 0 0 7px rgba(52, 211, 153, 0); opacity: 0.75; }
+  100% { box-shadow: 0 0 0 0 rgba(52, 211, 153, 0); opacity: 1; }
+}
+/* `hidden` must win over the layout display, or the collapsed drawer renders
+   its whole body anyway — which is exactly what it did on first build. */
+.webmcp-body[hidden] { display: none; }
+.webmcp-body {
+  padding: 0 1rem 1rem;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  animation: webmcp-open var(--duration-dropdown) var(--ease-drawer);
+}
+@keyframes webmcp-open {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+/* ── the in-page agent chat ─────────────────────────────────────────────── */
+.webmcp-chat {
+  border-top: 1px solid var(--line-soft);
+  padding-top: 0.75rem;
+}
+.webmcp-turns {
+  list-style: none;
+  margin: 0 0 0.6rem;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  max-height: 220px;
+  overflow-y: auto;
+}
+.webmcp-turn {
+  display: grid;
+  grid-template-columns: 3.2rem auto 1fr;
+  gap: 0.5rem;
+  align-items: baseline;
+  font-size: 0.78rem;
+  line-height: 1.45;
+}
+.webmcp-turn-who {
+  font-family: var(--mono);
+  font-size: 0.62rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--faint);
+  text-align: right;
+}
+.webmcp-turn[data-kind="user"] .webmcp-turn-text { color: var(--ink); }
+.webmcp-turn[data-kind="agent"] .webmcp-turn-text { color: var(--dim); }
+/* A tool call inside the transcript: the evidence under the agent's claim. */
+.webmcp-turn[data-kind="tool"] { color: var(--faint); }
+.webmcp-turn-tool {
+  font-family: var(--mono);
+  font-size: 0.7rem;
+  color: var(--signal);
+}
+.webmcp-turn[data-kind="tool"] .webmcp-turn-text {
+  font-size: 0.72rem;
+  color: var(--faint);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.webmcp-turn[data-kind="tool"] .webmcp-turn-who { grid-column: 1; }
+.webmcp-ask { display: flex; gap: 0.5rem; }
+.webmcp-ask-input {
+  flex: 1;
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: calc(var(--radius) / 2);
+  padding: 0.45rem 0.6rem;
+  color: var(--ink);
+  font-family: inherit;
+  font-size: 0.8rem;
+}
+.webmcp-ask-input::placeholder { color: var(--faint); }
+.webmcp-ask-input:focus-visible { outline: 1px solid var(--brand); border-color: var(--brand); }
+.webmcp-ask-input:disabled { opacity: 0.6; }
+.webmcp-ask-send {
+  border: 1px solid var(--line);
+  background: var(--raise);
+  color: var(--ink);
+  border-radius: calc(var(--radius) / 2);
+  padding: 0.45rem 0.9rem;
+  font-size: 0.78rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+.webmcp-ask-send:disabled { opacity: 0.45; cursor: default; }
+
+.webmcp-log-ms {
+  font-family: var(--mono);
+  font-size: 0.68rem;
+  color: var(--faint);
+  margin-left: auto;
+}
+/*
+ * Motion is decoration here, never information on its own: the live dot's
+ * meaning is duplicated by the tool name beside it, and the drawer's open state
+ * is structural. Honouring the preference costs nothing.
+ */
+@media (prefers-reduced-motion: reduce) {
+  .webmcp-dot { animation: none; }
+  .webmcp-body { animation: none; }
+  .webmcp-caret { transition: none; }
+}
+
 .webmcp-panel {
   border: 1px solid var(--line);
   border-radius: var(--radius);
@@ -1881,22 +2063,51 @@ pre {
   flex-direction: column;
   gap: 0.25rem;
 }
+/*
+ * Tool rows.
+ *
+ * The first version used a `border-left` stub on a rounded row, which rendered
+ * as a curved fragment floating beside each name — it read as a broken card
+ * rather than as a capability marker. Replaced with the app's existing badge
+ * vocabulary (see `.badge`, `.kwchip`): a pill whose border and text carry the
+ * meaning, which is already how status is shown everywhere else here.
+ *
+ * The row is a 3-column grid rather than `space-between`, so the name, the
+ * effect and the badge hold their columns at any drawer width. Pushed to
+ * opposite edges of a wide drawer, a name and its description stop reading as
+ * one thing.
+ */
 .webmcp-tool {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 0.5rem;
-  padding: 0.3rem 0.5rem;
+  display: grid;
+  grid-template-columns: minmax(0, auto) 1fr auto;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.4rem 0.55rem;
   border-radius: calc(var(--radius) / 2);
-  border-left: 2px solid transparent;
   transition: background var(--duration-hover) var(--ease-out);
 }
-.webmcp-tool[data-mode="reads"] { border-left-color: var(--line); }
-.webmcp-tool[data-mode="writes"] { border-left-color: var(--warn); }
+.webmcp-tool + .webmcp-tool { margin-top: 1px; }
+.webmcp-tool:nth-child(odd) { background: var(--raise); }
 /* A call in flight: the person watching sees their agent working. */
 .webmcp-tool[data-active="true"] {
-  background: var(--brand-glow);
-  border-left-color: var(--brand);
+  background: var(--signal-glow);
+  box-shadow: inset 0 0 0 1px var(--signal-dim);
+}
+/* The capability badge — the app's pill vocabulary, not a bespoke bar. */
+.webmcp-mode {
+  font-family: var(--mono);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  padding: 2px 8px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  color: var(--faint);
+  white-space: nowrap;
+}
+.webmcp-tool[data-mode="writes"] .webmcp-mode {
+  color: var(--warn);
+  border-color: var(--warn-border);
 }
 .webmcp-tool-name {
   font-family: var(--mono);
@@ -1906,7 +2117,9 @@ pre {
 .webmcp-tool-effect {
   font-size: 0.7rem;
   color: var(--dim);
-  text-align: right;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .webmcp-legend {
   display: flex;
