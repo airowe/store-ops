@@ -89,16 +89,37 @@ export function createHandlers(opts: {
       );
     },
 
+    /**
+     * The agent-facing account of the gate.
+     *
+     * This is a CONTRACT, not marketing copy: it is what a well-behaved agent
+     * reads to decide what not to attempt, so an overstated claim here is a
+     * falsehood told to the one party that would test it.
+     *
+     * It said "approving requires a nonce minted by a real click, which a
+     * script cannot produce" for as long as that mechanism had been deleted.
+     * That design was measured NOT to hold and was replaced (#513, ADR-001).
+     * The text now states only what `requireApprovalChallenge` enforces, and
+     * states the limit that function's own docblock records: an agent in the
+     * page can read the run view and therefore the challenge, and nothing
+     * server-side can prove a human clicked — `isTrusted` never crosses the
+     * network. What the challenge removes is credential vending, re-minting,
+     * replay, and approval by a caller that never opened the run.
+     */
     async describe_boundary() {
       return (
         "ShipASO's approval boundary: Autopilot prepares proposals on its own, and every " +
         "one of them stops at a gate. In this page you can list the queue, explain any " +
         "proposal, draft alternative copy, stage an edit so it is what the person sees, " +
-        "and ask them to come and look. You cannot approve — that is enforced on the " +
-        "server, not just left out of this tool list: approving requires a nonce minted " +
-        "by a real click, which a script cannot produce. Approving is also not shipping. " +
-        "It reveals the push commands to the owner; nothing reaches the App Store without " +
-        "a further, separate, human action."
+        "and ask them to come and look. You cannot approve — no tool here approves, and " +
+        "the server enforces that independently: approving a run requires a single-use " +
+        "challenge issued when that run is opened and spent the moment it is used, so it " +
+        "cannot be replayed or reused, and a caller that never opened the run has none. " +
+        "That is a real constraint, not a claim about who you are — approving is the " +
+        "person's step, and this page is built so an agent brings them a decision rather " +
+        "than making it. Approving is also not shipping: it reveals the push commands to " +
+        "the owner, and nothing reaches the App Store without a further, separate, human " +
+        "action."
       );
     },
 

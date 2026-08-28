@@ -70,6 +70,53 @@ describe("createHandlers", () => {
     expect(text).toMatch(/cannot|only a person|human/i);
   });
 
+  /**
+   * The boundary text is the agent-facing CONTRACT: it is what a well-behaved
+   * agent reads to decide what not to attempt. It drifted once already — it
+   * described `requireApprovalNonce` ("a nonce minted by a real click, which a
+   * script cannot produce") for as long as that function had been deleted, and
+   * nothing caught it because the test above passes on any text mentioning
+   * approval.
+   *
+   * These are negative controls on the specific claims that went stale. Each
+   * one fails against the text that shipped.
+   */
+  it("does NOT claim a click mints anything — that mechanism was deleted", async () => {
+    const { client } = fakeClient({});
+    const h = createHandlers({ client: client as never });
+    const text = await h.describe_boundary!({});
+    // The deleted design, verbatim enough to catch its return.
+    expect(text).not.toMatch(/nonce/i);
+    expect(text).not.toMatch(/minted|mint/i);
+  });
+
+  it("does NOT claim a script is incapable of producing the credential", async () => {
+    // The honest limit (approvalBoundary.ts): an agent in the page CAN read the
+    // run view and therefore the challenge. Server-side nothing proves a human
+    // clicked — `isTrusted` never crosses the network. Claiming otherwise tells
+    // the one party that would test it a falsehood.
+    const { client } = fakeClient({});
+    const h = createHandlers({ client: client as never });
+    const text = await h.describe_boundary!({});
+    expect(text).not.toMatch(/script cannot|cannot be scripted|only a real click/i);
+  });
+
+  it("describes what IS enforced: a single-use challenge, spent server-side", async () => {
+    const { client } = fakeClient({});
+    const h = createHandlers({ client: client as never });
+    const text = await h.describe_boundary!({});
+    expect(text).toMatch(/single-use|single use/i);
+    expect(text).toMatch(/challenge/i);
+  });
+
+  it("still separates approving from shipping", async () => {
+    // Unchanged invariant — the rewrite must not drop it.
+    const { client } = fakeClient({});
+    const h = createHandlers({ client: client as never });
+    const text = await h.describe_boundary!({});
+    expect(text).toMatch(/not shipping|nothing reaches|separate/i);
+  });
+
   it("get_run reports the proposal without claiming anything shipped", async () => {
     const { client } = fakeClient({ "/runs/r_1": RUN });
     const h = createHandlers({ client: client as never, runId: () => "r_1" });
