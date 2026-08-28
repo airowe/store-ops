@@ -37,6 +37,7 @@ export function ToolsPanel({
   activity,
   getTools = null,
   executeTool = null,
+  route = null,
   context = "app",
 }: {
   supported: boolean;
@@ -44,6 +45,8 @@ export function ToolsPanel({
   activity: readonly ActivityEntry[];
   getTools?: (() => Promise<readonly LiveTool[]>) | null;
   executeTool?: ((tool: LiveTool, args: string) => Promise<unknown>) | null;
+  /** The manifest route pattern, so the tour uses this page's own tools. */
+  route?: string | null;
   /**
    * "public" on the marketing pages, where the visitor may have no idea what
    * any of this is. The drawer stays there because the tools are real — a
@@ -57,7 +60,7 @@ export function ToolsPanel({
   const [open, setOpen] = useState(false);
   const [draft, setDraft] = useState("");
   const summary = summarize(activity);
-  const chat = useAgentChat({ getTools, executeTool });
+  const chat = useAgentChat({ getTools, executeTool, route: route ?? undefined });
 
   // Auto-expand the first time a tool actually runs: the moment worth seeing is
   // the one where an agent starts working, and a visitor who has never opened

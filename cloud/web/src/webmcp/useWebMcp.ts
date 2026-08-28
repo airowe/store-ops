@@ -12,7 +12,7 @@
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ApiClient } from "@shipaso/api";
-import { toolsForRoute, type ToolSpec } from "./manifest.js";
+import { patternFor, toolsForRoute, type ToolSpec } from "./manifest.js";
 import { createHandlers } from "./handlers.js";
 import { createRegistry, type ActivityEvent } from "./registry.js";
 import { getModelContext, type ModelContext } from "./types.js";
@@ -33,6 +33,8 @@ export type WebMcpState = {
   getTools: (() => Promise<readonly { name: string; description?: string }[]>) | null;
   /** Runs one tool through modelContext. Null when WebMCP is absent. */
   executeTool: ((tool: { name: string }, args: string) => Promise<unknown>) | null;
+  /** This route's manifest PATTERN, so the tour can match its tools. */
+  route: string | null;
 };
 
 /** Extract the run/app id from the current path, so tools need no arguments. */
@@ -125,5 +127,6 @@ export function useWebMcp(opts: {
     activity,
     getTools: context ? getTools : null,
     executeTool: context ? executeTool : null,
+    route: patternFor(pathname),
   };
 }

@@ -179,31 +179,87 @@ export function readinessOf(availability: string | null): ModelReadiness {
  * presented as a model making decisions would be exactly the kind of claim
  * this codebase refuses to make about anything else.
  *
- * The final step has no tool on purpose. It is where a real agent stops, and
- * the tour stops there too.
+ * `args` exists because some tools genuinely need input — `audit_app` throws
+ * without a query — so a tour that passed `{}` everywhere would demonstrate
+ * failures rather than the product.
  */
-export type TourStep = { say: string; tool?: string };
+export type TourStep = { say: string; tool?: string; args?: Record<string, string> };
 
-export const TOUR: readonly TourStep[] = [
-  { say: "Let me see who this account belongs to.", tool: "whoami" },
-  { say: "Now the queue — what is waiting for a decision.", tool: "list_pending_runs" },
-  { say: "And what the gate actually permits me to do here.", tool: "describe_boundary" },
-  {
-    say:
-      "That is as far as I go. There is no tool on this page that approves, ships or " +
-      "publishes anything — approving is a person's click, and the server refuses an " +
-      "approval that did not come from one.",
-  },
+/**
+ * The closing line, on every route.
+ *
+ * It runs no tool on purpose: it is where a real agent stops, so it is where
+ * the tour stops. Shared rather than repeated so no route can quietly end
+ * without it — a tour that trailed off after a tool result would leave the one
+ * claim this whole surface exists to make unsaid.
+ */
+const BOUNDARY_STEP: TourStep = {
+  say:
+    "That is as far as I go. There is no tool on this page that approves, ships or " +
+    "publishes anything — approving is a person's click, and the server refuses an " +
+    "approval that did not come from one.",
+};
+
+/**
+ * Per-route scripts, because one script could not fit every route.
+ *
+ * MEASURED: a single tour of whoami / list_pending_runs / describe_boundary ran
+ * 3 of 3 steps on /runs but only 2 of 3 on "/" — where it ignored `search_app`
+ * and `audit_app`, the only two tools that do real work there — and 2 of 3 on
+ * an app page, ignoring four. On the landing page, which is where a visitor
+ * arrives first, that made the tour close to a no-op.
+ *
+ * The landing script audits a real App Store listing. It needs no credentials
+ * and no account, so a signed-out stranger watches genuine findings arrive.
+ */
+const ROUTE_TOURS: Record<string, readonly TourStep[]> = {
+  "/": [
+    {
+      say: "Let me audit a real App Store listing — no account needed for this.",
+      tool: "audit_app",
+      args: { query: "Duolingo" },
+    },
+    { say: "And what this page would let me do with what I found.", tool: "describe_boundary" },
+  ],
+  "/runs": [
+    { say: "First, who this account belongs to.", tool: "whoami" },
+    { say: "Now the queue — what is waiting for a decision.", tool: "list_pending_runs" },
+    { say: "And what the gate actually permits me to do here.", tool: "describe_boundary" },
+  ],
+  "/dashboard": [
+    { say: "First, who this account belongs to.", tool: "whoami" },
+    { say: "Now the queue — what is waiting for a decision.", tool: "list_pending_runs" },
+    { say: "And what the gate actually permits me to do here.", tool: "describe_boundary" },
+  ],
+  "/apps/$id": [
+    { say: "Let me check when this app is next swept.", tool: "get_schedule" },
+    { say: "And what the gate permits me to do with what a sweep produces.", tool: "describe_boundary" },
+  ],
+  "/runs/$id": [
+    { say: "Let me read this proposal and why it was opened.", tool: "explain_run" },
+    { say: "And what I am allowed to do with it.", tool: "describe_boundary" },
+  ],
+};
+
+/** The generic script, for a route with no tour of its own. */
+const DEFAULT_TOUR: readonly TourStep[] = [
+  { say: "Let me see what this page offers me.", tool: "whoami" },
+  { say: "And what the gate permits.", tool: "describe_boundary" },
 ];
 
 /**
- * The tour steps that can actually run here.
+ * The tour for this route, filtered to the tools actually registered.
  *
- * Route scoping is real — `list_pending_runs` is not registered on an app
- * detail page — so a step naming a tool this route does not offer is dropped
- * rather than run against nothing. Steps with no tool always survive: they are
- * narration, and the last one is the point of the whole tour.
+ * Route scoping is real, so a step naming an absent tool is dropped rather than
+ * run against nothing. The boundary line always survives: it names no tool, and
+ * it is appended here rather than written into each script so that no route can
+ * end without it.
  */
-export function tourFor(available: readonly string[]): readonly TourStep[] {
-  return TOUR.filter((s) => !s.tool || available.includes(s.tool));
+export function tourFor(
+  available: readonly string[],
+  route: string = "/runs",
+): readonly TourStep[] {
+  const script = ROUTE_TOURS[route] ?? DEFAULT_TOUR;
+  const usable = script.filter((s) => !s.tool || available.includes(s.tool));
+  return [...usable, BOUNDARY_STEP];
 }

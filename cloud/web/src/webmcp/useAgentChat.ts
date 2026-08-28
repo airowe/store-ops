@@ -48,12 +48,14 @@ export function useAgentChat(opts: {
   getTools: (() => Promise<readonly LiveTool[]>) | null;
   /** Runs one tool and returns its raw result. */
   executeTool: ((tool: LiveTool, args: string) => Promise<unknown>) | null;
+  /** The route PATTERN, so the tour can use the tools actually on this page. */
+  route?: string;
 }) {
   const [turns, setTurns] = useState<readonly Turn[]>([]);
   const [status, setStatus] = useState<ChatStatus>("warming");
   const [progress, setProgress] = useState(0);
   const session = useRef<LanguageModelSession | null>(null);
-  const { getTools, executeTool } = opts;
+  const { getTools, executeTool, route } = opts;
 
   // Warm the model once, on mount. Guarded against StrictMode's double-invoke
   // and against the component unmounting mid-load, which would otherwise leave
@@ -198,7 +200,7 @@ export function useAgentChat(opts: {
     setTurns([]);
     try {
       const tools = await getTools();
-      const steps = tourFor(tools.map((t) => t.name));
+      const steps = tourFor(tools.map((t) => t.name), route);
       for (const step of steps) {
         setTurns((t) => [...t, { kind: "agent", text: step.say }]);
         if (!step.tool) continue;
@@ -207,7 +209,10 @@ export function useAgentChat(opts: {
         let out: string;
         let ok = true;
         try {
-          out = readToolText(await executeTool(tool, "{}"));
+          // Some tools genuinely need input — `audit_app` throws without a
+          // query — so a step carries its own arguments rather than passing an
+          // empty object and demonstrating a failure.
+          out = readToolText(await executeTool(tool, JSON.stringify(step.args ?? {})));
         } catch (e) {
           ok = false;
           out = e instanceof Error ? e.message : String(e);
@@ -218,7 +223,7 @@ export function useAgentChat(opts: {
       // Back to whatever it was: a tour does not grant an agent.
       setStatus(session.current ? "ready" : "unavailable");
     }
-  }, [getTools, executeTool]);
+  }, [getTools, executeTool, route]);
 
   return { turns, status, progress, send, download, runTour };
 }
