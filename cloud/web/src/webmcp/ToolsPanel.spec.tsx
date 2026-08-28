@@ -7,7 +7,7 @@
  * who is viewing it, and a control that claims otherwise would be theatre.
  */
 import { describe, expect, it } from "vitest";
-import { render, screen, within } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import { ToolsPanel } from "./ToolsPanel.js";
 import { toolsForRoute } from "./manifest.js";
 
@@ -95,5 +95,203 @@ describe("ToolsPanel", () => {
   it("says nothing has been called yet rather than showing a bare empty box", () => {
     render(<ToolsPanel supported tools={tools} activity={[]} />);
     expect(screen.getByTestId("webmcp-activity")).toHaveTextContent(/no tool calls yet/i);
+  });
+});
+
+/**
+ * DRAWER BEHAVIOUR.
+ *
+ * The tests above render the panel and query its contents, which passes whether
+ * the drawer opens or not — testing-library finds `hidden` content by default.
+ * These assert the thing a visitor actually experiences: it starts collapsed,
+ * it opens on click, and it opens ITSELF the first time an agent starts working,
+ * because that is the moment worth seeing and a collapsed drawer would hide it.
+ */
+describe("ToolsPanel — the drawer", () => {
+  const entry = (name: string, phase: "start" | "done" | "error", seq: number) => ({
+    name, phase, at: 1000 + seq, seq,
+  });
+
+  it("starts COLLAPSED — the page is not obstructed by default", () => {
+    render(<ToolsPanel supported tools={tools} activity={[]} />);
+    expect(screen.getByTestId("webmcp-panel")).toHaveAttribute("data-open", "false");
+    expect(screen.getByTestId("webmcp-toggle")).toHaveAttribute("aria-expanded", "false");
+  });
+
+  it("opens on click and closes again", () => {
+    render(<ToolsPanel supported tools={tools} activity={[]} />);
+    const toggle = screen.getByTestId("webmcp-toggle");
+    fireEvent.click(toggle);
+    expect(screen.getByTestId("webmcp-panel")).toHaveAttribute("data-open", "true");
+    fireEvent.click(toggle);
+    expect(screen.getByTestId("webmcp-panel")).toHaveAttribute("data-open", "false");
+  });
+
+  it("AUTO-OPENS the first time a tool runs — the moment worth watching", () => {
+    const { rerender } = render(<ToolsPanel supported tools={tools} activity={[]} />);
+    expect(screen.getByTestId("webmcp-panel")).toHaveAttribute("data-open", "false");
+    rerender(<ToolsPanel supported tools={tools} activity={[entry("whoami", "start", 1)]} />);
+    expect(screen.getByTestId("webmcp-panel")).toHaveAttribute("data-open", "true");
+  });
+
+  it("does NOT re-open a drawer the person deliberately closed", () => {
+    // Auto-open is a one-time courtesy. Yanking it back open on every call
+    // would fight someone who closed it on purpose.
+    const { rerender } = render(
+      <ToolsPanel supported tools={tools} activity={[entry("whoami", "start", 1)]} />,
+    );
+    expect(screen.getByTestId("webmcp-panel")).toHaveAttribute("data-open", "true");
+    fireEvent.click(screen.getByTestId("webmcp-toggle"));
+    expect(screen.getByTestId("webmcp-panel")).toHaveAttribute("data-open", "false");
+    rerender(<ToolsPanel supported tools={tools} activity={[entry("explain_run", "start", 2)]} />);
+    expect(screen.getByTestId("webmcp-panel")).toHaveAttribute("data-open", "false");
+  });
+
+  it("shows the running tool in the collapsed bar, so live work is visible closed", () => {
+    render(<ToolsPanel supported tools={tools} activity={[entry("explain_run", "start", 1)]} />);
+    expect(screen.getByTestId("webmcp-status")).toHaveTextContent("explain_run");
+  });
+
+  it("reports failures in the bar rather than counting them as calls", () => {
+    render(
+      <ToolsPanel
+        supported
+        tools={tools}
+        activity={[entry("whoami", "error", 2), entry("whoami", "start", 1)]}
+      />,
+    );
+    expect(screen.getByTestId("webmcp-status")).toHaveTextContent("1 failed");
+  });
+
+  it("reads idle with no activity at all", () => {
+    render(<ToolsPanel supported tools={tools} activity={[]} />);
+    expect(screen.getByTestId("webmcp-status")).toHaveTextContent("idle");
+  });
+
+  it("marks each tool as reads or writes, and never mislabels a writer", () => {
+    render(<ToolsPanel supported tools={tools} activity={[]} />);
+    for (const t of tools) {
+      const row = screen.getByTestId(`tool-${t.name}`);
+      expect(row).toHaveAttribute("data-mode", t.writes ? "writes" : "reads");
+      expect(within(row).getByText(t.writes ? "writes" : "reads")).toBeInTheDocument();
+    }
+  });
+});
+
+/**
+ * The chat degrades honestly. Without an on-device model there is no agent to
+ * ask, and the drawer says so rather than rendering a dead input.
+ */
+describe("ToolsPanel — the agent chat", () => {
+  it("says there is no agent when the browser has no model", () => {
+    render(<ToolsPanel supported tools={tools} activity={[]} />);
+    fireEvent.click(screen.getByTestId("webmcp-toggle"));
+    // jsdom has no LanguageModel, which is the majority case in the wild too.
+    expect(screen.getByTestId("webmcp-chat-unsupported")).toBeInTheDocument();
+    expect(screen.queryByTestId("webmcp-ask-input")).not.toBeInTheDocument();
+  });
+
+  it("still offers the tools — the surface does not depend on the chat", () => {
+    render(<ToolsPanel supported tools={tools} activity={[]} />);
+    fireEvent.click(screen.getByTestId("webmcp-toggle"));
+    expect(screen.getByTestId("webmcp-boundary")).toBeInTheDocument();
+    for (const t of tools) expect(screen.getByText(t.name)).toBeInTheDocument();
+  });
+});
+
+/**
+ * THE PUBLIC DRAWER.
+ *
+ * It stays on the marketing pages because the tools there are real — a
+ * signed-out visitor's agent can run `audit_app` and get a genuine
+ * credential-free listing audit, which is the product working with no account.
+ * But a visitor who has never heard of ShipASO gets a quieter version: it says
+ * what it is, and it never opens itself, because an unexplained panel springing
+ * open mid-scroll is an interruption rather than an invitation.
+ */
+describe("ToolsPanel — on a public page", () => {
+  const publicTools = toolsForRoute("/");
+  const running = [{ name: "audit_app", phase: "start" as const, at: 1001, seq: 1 }];
+
+  it("does NOT auto-open, even while a tool is running", () => {
+    const { rerender } = render(
+      <ToolsPanel supported tools={publicTools} activity={[]} context="public" />,
+    );
+    rerender(
+      <ToolsPanel supported tools={publicTools} activity={running} context="public" />,
+    );
+    expect(screen.getByTestId("webmcp-panel")).toHaveAttribute("data-open", "false");
+  });
+
+  it("still opens when the visitor asks it to", () => {
+    render(<ToolsPanel supported tools={publicTools} activity={[]} context="public" />);
+    fireEvent.click(screen.getByTestId("webmcp-toggle"));
+    expect(screen.getByTestId("webmcp-panel")).toHaveAttribute("data-open", "true");
+  });
+
+  it("still reports live work in the bar — quieter is not hidden", () => {
+    render(<ToolsPanel supported tools={publicTools} activity={running} context="public" />);
+    expect(screen.getByTestId("webmcp-status")).toHaveTextContent("audit_app");
+  });
+
+  it("explains what it is to someone who has never seen this before", () => {
+    render(<ToolsPanel supported tools={publicTools} activity={[]} context="public" />);
+    fireEvent.click(screen.getByTestId("webmcp-toggle"));
+    expect(screen.getByText(/AI agent running in your browser/i)).toBeInTheDocument();
+    // And it does not overclaim: the boundary is stated here too.
+    expect(screen.getByText(/without an account/i)).toBeInTheDocument();
+  });
+
+  it("keeps auto-open INSIDE the app — the quiet rule is public-only", () => {
+    const { rerender } = render(
+      <ToolsPanel supported tools={publicTools} activity={[]} context="app" />,
+    );
+    rerender(<ToolsPanel supported tools={publicTools} activity={running} context="app" />);
+    expect(screen.getByTestId("webmcp-panel")).toHaveAttribute("data-open", "true");
+  });
+
+  it("offers no gate-crossing tool to a signed-out visitor either", () => {
+    render(<ToolsPanel supported tools={publicTools} activity={[]} context="public" />);
+    for (const t of publicTools) {
+      expect(t.name).not.toMatch(/approve|ship|push|publish|submit/i);
+    }
+    expect(screen.getByTestId("webmcp-boundary")).toBeInTheDocument();
+  });
+});
+
+/**
+ * The tour offer, and the label that keeps it honest.
+ *
+ * jsdom has no Prompt API, so the panel renders its no-model branch — which is
+ * the state most visitors will be in. What matters is that the fallback offers
+ * something real and never passes itself off as an agent.
+ */
+describe("ToolsPanel — the scripted tour offer", () => {
+  it("offers a tour instead of a dead end when there is no model", () => {
+    render(<ToolsPanel supported tools={tools} activity={[]} />);
+    fireEvent.click(screen.getByTestId("webmcp-toggle"));
+    expect(screen.getByTestId("webmcp-tour")).toBeInTheDocument();
+  });
+
+  it("does NOT offer a download when the model cannot be downloaded", () => {
+    // Offering a download that would fail is worse than offering the tour.
+    render(<ToolsPanel supported tools={tools} activity={[]} />);
+    fireEvent.click(screen.getByTestId("webmcp-toggle"));
+    expect(screen.queryByTestId("webmcp-download")).not.toBeInTheDocument();
+  });
+
+  it("still says plainly that there is no agent to ask", () => {
+    render(<ToolsPanel supported tools={tools} activity={[]} />);
+    fireEvent.click(screen.getByTestId("webmcp-toggle"));
+    expect(screen.getByTestId("webmcp-chat-unsupported")).toHaveTextContent(
+      /no on-device model/i,
+    );
+  });
+
+  it("keeps the boundary statement in the no-model state", () => {
+    // The claim the entry rests on does not depend on there being an agent.
+    render(<ToolsPanel supported tools={tools} activity={[]} />);
+    fireEvent.click(screen.getByTestId("webmcp-toggle"));
+    expect(screen.getByTestId("webmcp-boundary")).toBeInTheDocument();
   });
 });
