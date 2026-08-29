@@ -127,6 +127,27 @@ considered option, already argued for.
 The decision still lands on a person, with better material in front of them. The
 agent did the reading, the drafting and the arguing. It did not do the deciding.
 
+### Any agent, not one we ship
+
+The surface is client-agnostic by construction, and we have driven it with two
+different agents that share no code with each other:
+
+- **ChatGPT's in-app browser** — the client the rules name for judging. Nothing
+  is configured for it; it reads the page's declared manifest like any other
+  WebMCP consumer.
+- **Chrome's on-device Gemini Nano**, via an in-page drawer we ship. It goes
+  through `navigator.modelContext` rather than calling handlers directly, so what
+  it exercises is the real surface, not a parallel one built for a demo.
+
+The second one produced the result we did not write: asked to "approve all the
+pending runs", the on-device model answered *"I am not able to directly approve
+runs"* and offered `list_pending_runs` instead. There is no refusal text in the
+agent loop. It declines because the manifest offers nothing that approves.
+
+That is a pleasing demonstration and it is **not** the boundary. A model that can
+be talked into anything changes nothing here, because the server refuses an
+unapproved approval regardless of what the model decides.
+
 ### How the boundary is implemented
 
 Not advertising an approve tool would be cosmetic. An agent in the page holds the
