@@ -5513,6 +5513,24 @@ export async function handleApi(req: Request, env: Env, ctx?: ExecutionContext):
     // sibling of a per-app route. GET /runs is length-1, so it can't collide
     // with /runs/approve-all or /runs/:id (both length >= 2).
     if (seg[0] === "runs" && seg.length === 1 && method === "GET") {
+      // #517: this route takes no filters. It used to ACCEPT `?status=` and
+      // ignore it, so a filtered query returned every run and looked correct —
+      // which is how a bulk approval of 12 runs read as "nothing changed".
+      // Refusing is the only option that does not silently mislead.
+      const unsupported = [...url.searchParams.keys()];
+      if (unsupported.length > 0) {
+        return json(
+          {
+            error:
+              `GET /runs takes no query parameters, and ${unsupported.join(", ")} ` +
+              "was ignored rather than applied. Read the full list and filter by " +
+              "`status` client-side.",
+          },
+          400,
+          origin,
+          env,
+        );
+      }
       return json(await portfolioRuns(env, user.id), 200, origin, env);
     }
     if (seg[0] === "keywords" && seg.length === 1 && method === "GET") {
