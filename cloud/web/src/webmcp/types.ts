@@ -1,5 +1,5 @@
 /**
- * WebMCP (`navigator.modelContext`) typings.
+ * WebMCP (`document.modelContext` / `navigator.modelContext`) typings.
  *
  * Hand-written on purpose: the API ships in Chrome 146 behind a flag and has no
  * published @types package, so there is nothing to depend on. Kept to the subset
@@ -59,17 +59,69 @@ export type RegisterOptions = { signal?: AbortSignal };
 export type ModelContext = {
   registerTool: (tool: ToolDescriptor, options?: RegisterOptions) => Promise<void> | void;
   getTools?: () => Promise<readonly { name: string }[]>;
+  executeTool?: (tool: unknown, args: string) => Promise<unknown>;
 };
 
 /**
- * Read `navigator.modelContext` without asserting it exists. Returns null in
- * every browser that has not shipped WebMCP (today: nearly all of them), which
- * is the case the whole surface has to stay usable in.
+ * Inputs used to make `getModelContext` deterministic in tests without
+ * replacing the browser globals.
  */
-export function getModelContext(nav: unknown = typeof navigator === "undefined" ? undefined : navigator): ModelContext | null {
-  if (!nav || typeof nav !== "object") return null;
-  const mc = (nav as { modelContext?: unknown }).modelContext;
+export type ModelContextSources = {
+  document?: unknown;
+  navigator?: unknown;
+};
+
+function readModelContext(source: unknown): ModelContext | null {
+  if (!source || typeof source !== "object") return null;
+  const mc = (source as { modelContext?: unknown }).modelContext;
   if (!mc || typeof mc !== "object") return null;
   if (typeof (mc as ModelContext).registerTool !== "function") return null;
   return mc as ModelContext;
+}
+
+/**
+ * Read the WebMCP context exposed by the current browser. The canonical API is
+ * on `document`, while older Chromium builds exposed it on `navigator`. If a
+ * browser exposes both, the returned facade registers on both surfaces while
+ * ensuring the same object is only called once.
+ */
+export function getModelContext(sources?: ModelContextSources): ModelContext | null {
+  const documentSource = sources === undefined
+    ? (typeof document === "undefined" ? undefined : document)
+    : sources.document;
+  const navigatorSource = sources === undefined
+    ? (typeof navigator === "undefined" ? undefined : navigator)
+    : sources.navigator;
+  const contexts = [readModelContext(documentSource), readModelContext(navigatorSource)]
+    .filter((context): context is ModelContext => context !== null)
+    .filter((context, index, all) => all.indexOf(context) === index);
+
+  if (contexts.length === 0) return null;
+  if (contexts.length === 1) return contexts[0]!;
+
+  const primary = contexts[0]!;
+  return {
+    async registerTool(tool, options) {
+      let registered = false;
+      let lastError: unknown;
+      const pending: Promise<void>[] = [];
+
+      for (const context of contexts) {
+        try {
+          const result = context.registerTool(tool, options);
+          registered = true;
+          if (result && typeof (result as Promise<void>).then === "function") {
+            pending.push(result as Promise<void>);
+          }
+        } catch (error) {
+          lastError = error;
+        }
+      }
+
+      if (pending.length > 0) await Promise.all(pending);
+      if (!registered && lastError !== undefined) throw lastError;
+    },
+    getTools: primary.getTools?.bind(primary),
+    executeTool: primary.executeTool?.bind(primary),
+  };
 }

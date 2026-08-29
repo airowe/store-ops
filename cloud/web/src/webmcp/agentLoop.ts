@@ -5,7 +5,7 @@
  * WHY THIS EXISTS: the tools were only ever reachable from a console, so nobody
  * could watch an agent use them. This runs a real one — `LanguageModel`
  * (Gemini Nano, on-device, no key and no network) picks a tool from the page's
- * live manifest, the tool executes through `navigator.modelContext` exactly as
+ * live manifest, the tool executes through the browser's `modelContext` exactly as
  * an external agent would, and the model reports what came back.
  *
  * It goes through `modelContext` deliberately rather than calling handlers
@@ -48,7 +48,7 @@ export type LanguageModelApi = {
   }) => Promise<LanguageModelSession>;
 };
 
-/** A tool as `navigator.modelContext.getTools()` returns it. */
+/** A tool as `modelContext.getTools()` returns it. */
 export type LiveTool = { name: string; description?: string };
 
 export type Turn =

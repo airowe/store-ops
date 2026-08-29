@@ -2,7 +2,7 @@
  * Conversation state for the in-page agent.
  *
  * The loop per turn: the model picks a tool from the live manifest, the tool
- * runs through `navigator.modelContext`, and the model reports the result. If
+ * runs through the browser's `modelContext`, and the model reports the result. If
  * it names no tool, its answer stands on its own — which is what a refusal
  * looks like, and it is left intact rather than retried into compliance.
  *

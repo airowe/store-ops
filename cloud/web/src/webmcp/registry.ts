@@ -1,5 +1,5 @@
 /**
- * The one place that touches `navigator.modelContext`.
+ * The one place that touches the browser's WebMCP model context.
  *
  * Isolated for two reasons. First, WebMCP ships in Chrome 146 behind a flag, so
  * the overwhelmingly common case is that it is ABSENT — every entry point here
@@ -69,7 +69,7 @@ export function createRegistry(opts: {
     // would later abort a controller for a tool that was never added and the
     // set would drift from what the agent actually sees.
     try {
-      context.registerTool({
+      const registration = context.registerTool({
       name: spec.name,
       description: spec.description,
       // Required in practice: the agent reads this to construct a call, and a
@@ -89,6 +89,12 @@ export function createRegistry(opts: {
         }
       },
       }, { signal: controller.signal });
+      // WebMCP implementations may return void or a promise. Keep the live
+      // set optimistic for the synchronous API, but turn an async rejection
+      // into the same cleanup as a synchronous registration failure.
+      void Promise.resolve(registration).catch(() => {
+        if (live.get(spec.name)?.controller === controller) drop(spec.name);
+      });
     } catch {
       // Registration refused (a duplicate name that drop() failed to clear, or
       // an implementation that rejects the descriptor). Staying silent here is

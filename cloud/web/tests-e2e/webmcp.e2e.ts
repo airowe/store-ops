@@ -24,7 +24,7 @@ test.describe("WebMCP surface", () => {
   test("says WebMCP is unavailable rather than showing an empty tool list", async ({ page }) => {
     await installMocks(page);
     await page.goto("/runs/run1");
-    // Chromium in CI has no navigator.modelContext, so this is the honest branch.
+    // Chromium in CI has no WebMCP model context, so this is the honest branch.
     await expect(page.getByTestId("webmcp-unsupported")).toBeVisible();
     await expect(page.getByTestId("webmcp-count")).toHaveCount(0);
   });
