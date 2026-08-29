@@ -224,15 +224,43 @@ describe("<PortfolioRunsView /> history grouping and filters", () => {
 describe("<PortfolioRunsView /> approve all", () => {
   it("posts to approve-all and reports the count the server actually approved", async () => {
     const { client, post } = makeClient([
-      row("q1", "awaiting_approval", "2026-07-25T09:00:00Z"),
+      row("q1", "awaiting_approval", "2026-07-25T09:00:00Z", { approval_challenge: "c-q1" }),
+      row("q2", "awaiting_approval", "2026-07-24T09:00:00Z", { approval_challenge: "c-q2" }),
+    ]);
+    renderView(client);
+    await screen.findByTestId("runs-queue");
+    fireEvent.click(screen.getByTestId("approve-all"));
+    // #515: the challenge for every queued run rides along, or the server
+    // refuses. Asserting the PATH alone would pass against a request that
+    // presents nothing — which is the request that approved 12 runs in prod.
+    await waitFor(() =>
+      expect(post).toHaveBeenCalledWith("/runs/approve-all", {
+        challenges: [
+          { runId: "q1", challenge: "c-q1" },
+          { runId: "q2", challenge: "c-q2" },
+        ],
+      }),
+    );
+    await waitFor(() =>
+      expect(screen.getByTestId("approve-all-result")).toHaveTextContent("Approved 2 runs."),
+    );
+  });
+
+  it("omits a queued run that carries no challenge rather than inventing one", async () => {
+    // The server refuses a partial set, and that refusal is correct. Sending a
+    // fabricated or blank challenge to make the request look complete would be
+    // the client lying about what it holds.
+    const { client, post } = makeClient([
+      row("q1", "awaiting_approval", "2026-07-25T09:00:00Z", { approval_challenge: "c-q1" }),
       row("q2", "awaiting_approval", "2026-07-24T09:00:00Z"),
     ]);
     renderView(client);
     await screen.findByTestId("runs-queue");
     fireEvent.click(screen.getByTestId("approve-all"));
-    await waitFor(() => expect(post).toHaveBeenCalledWith("/runs/approve-all"));
     await waitFor(() =>
-      expect(screen.getByTestId("approve-all-result")).toHaveTextContent("Approved 2 runs."),
+      expect(post).toHaveBeenCalledWith("/runs/approve-all", {
+        challenges: [{ runId: "q1", challenge: "c-q1" }],
+      }),
     );
   });
 

@@ -143,3 +143,78 @@ export async function requireApprovalChallenge(
   const ok = await consumeApprovalChallenge(env.DB, { challenge, runId, userId: user.id });
   return ok ? { ok: true } : refused;
 }
+
+/** One run's challenge, as the bulk-approve request presents it. */
+export type PresentedChallenge = { runId: string; challenge: string };
+
+/**
+ * May this caller BULK-approve `runIds`?
+ *
+ * WHY THIS EXISTS (#515): `requireHumanSession` was the entire gate here, and
+ * it returns ok for any cookie session. A browser-resident agent runs in the
+ * tab on the user's own cookie, so it passed — measured in production, a
+ * scripted same-origin fetch with no human gesture approved 12 runs in one
+ * call. Refusing bearer tokens never addressed that caller.
+ *
+ * The rule is now the same one the per-run path already enforced: approving a
+ * run costs a single-use challenge issued when that run was opened. Bulk is no
+ * longer an exemption, it is N of the same check. A caller that never opened a
+ * run cannot approve it, one run's challenge cannot be replayed under another
+ * run's id, and partial credit is refused outright — otherwise opening a single
+ * run would clear the whole queue.
+ *
+ * HONEST LIMIT, unchanged from the per-run gate: an agent in the page can read
+ * a run view and therefore its challenge. Nothing server-side proves a human
+ * clicked, because `isTrusted` never crosses the network. What this removes is
+ * approving in bulk without having opened anything — which is exactly the cheap,
+ * one-call path an agent takes.
+ */
+export async function requireBulkApprovalChallenges(
+  env: { DB: D1Database },
+  user: { id: string },
+  runIds: readonly string[],
+  presented: { challenges: readonly PresentedChallenge[] },
+): Promise<BoundaryVerdict> {
+  const refused: BoundaryRefusal = {
+    ok: false,
+    status: 403,
+    error:
+      "Bulk approval requires the single-use challenge issued for each run when " +
+      "it was opened. This request did not carry one for every run it tried to " +
+      "approve, so nothing was approved. An agent can read, draft and stage — " +
+      "approving is the person's step.",
+    boundary: "human-approval-required",
+    youCan: AGENT_CAPABILITIES,
+    humanMustDo: "open each run and approve it in the dashboard",
+  };
+
+  // An empty queue is not an attack. Nothing to approve, nothing to prove.
+  if (runIds.length === 0) return { ok: true };
+
+  // A challenge for a run outside the queue is refused before anything spends:
+  // accepting it would let one run's challenge approve a different run.
+  const queued = new Set(runIds);
+  for (const p of presented.challenges) {
+    if (!queued.has(p.runId)) return refused;
+  }
+
+  // Every run must have exactly one challenge offered for it.
+  const offered = new Map<string, string>();
+  for (const p of presented.challenges) offered.set(p.runId, p.challenge);
+  for (const id of runIds) {
+    if (!offered.get(id)?.trim()) return refused;
+  }
+
+  // Spend them. Sequential, not concurrent: `consumeApprovalChallenge` marks
+  // the row in the same UPDATE that checks it, and a failure part-way must not
+  // race the remaining spends.
+  for (const id of runIds) {
+    const ok = await consumeApprovalChallenge(env.DB, {
+      challenge: offered.get(id)!,
+      runId: id,
+      userId: user.id,
+    });
+    if (!ok) return refused;
+  }
+  return { ok: true };
+}

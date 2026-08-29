@@ -59,14 +59,24 @@ const SKELETON_ROWS = [0, 1, 2, 3, 4];
 export function PortfolioRunsView({ client }: { client: ApiClient }) {
   const qc = useQueryClient();
   const runsQ = useQuery({ queryKey: ["portfolio", "runs"], queryFn: () => getPortfolioRuns(client) });
-  const approveAll = useMutation({
-    mutationFn: () => approveAllRuns(client),
-    onSuccess: () => void qc.invalidateQueries({ queryKey: ["portfolio", "runs"] }),
-  });
   const [filter, setFilter] = useState<HistoryFilter>("all");
 
   const runs = runsQ.data?.runs;
   const { queue, history } = useMemo(() => partition(runs ?? []), [runs]);
+  const approveAll = useMutation({
+    // #515: every queued run's challenge must be presented, or the server
+    // refuses. They ride back on the same list this page already renders, so a
+    // person who can see the queue can approve it — and a caller that never
+    // loaded it cannot.
+    mutationFn: () =>
+      approveAllRuns(
+        client,
+        queue.flatMap((r) =>
+          r.approval_challenge ? [{ runId: r.id, challenge: r.approval_challenge }] : [],
+        ),
+      ),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: ["portfolio", "runs"] }),
+  });
   // `now` is read once per render pass of the data, not per row, so every
   // relative age on the page is measured from the same instant.
   const days = useMemo(() => groupByDay(applyFilter(history, filter), Date.now()), [history, filter]);
