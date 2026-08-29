@@ -20,6 +20,11 @@ everything before it exists to make the refusal land.
 - [ ] Close the agent drawer before starting so its opening is on camera.
 - [ ] Full-screen the browser. Hide bookmarks. Check for a personal email in the
       account chip — `whoami` will read it aloud in beat 1.
+- [ ] **Third-party trademarks.** The rules bar "third-party trademarks or
+      copyrighted material without permission." Competitor names and icons in a
+      rank table are incidental UI and read as fair use, but do not let a rival's
+      branding fill the frame. Prefer your own apps for close-ups. Apple's marks
+      are unavoidable in an App Store product; keep them incidental too.
 
 ---
 
@@ -88,7 +93,22 @@ The agent should decline and explain — it has no approve tool, and
 > No tool here approves. But an agent in this page holds my session — it could
 > just POST the endpoint. So watch.
 
-**Do:** open DevTools console and run:
+**Do:** open DevTools console and run ONE of these.
+
+**Option A — the per-run gate. VERIFIED LIVE, and the safer take.**
+Observed in production 2026-08-29: twelve scripted attempts, real session
+cookie, no human gesture, all refused 403 with the full boundary body. Fails
+safe — a broken gate would approve one run, not the queue.
+
+```js
+await fetch('https://api.shipaso.com/runs/<RUN_ID>/approve', {
+  method:'POST', credentials:'include',
+  headers:{'content-type':'application/json'},
+  body: JSON.stringify({decision:'approve'})
+}).then(async r => ({status: r.status, body: await r.json()}))
+```
+
+**Option B — bulk. More dramatic, NOT yet observed.**
 
 ```js
 await fetch('https://api.shipaso.com/runs/approve-all', {
@@ -97,7 +117,13 @@ await fetch('https://api.shipaso.com/runs/approve-all', {
 }).then(async r => ({status: r.status, body: await r.text()}))
 ```
 
+Only use B after seeing it return 403 on a non-empty queue in a rehearsal. On an
+empty queue it correctly returns 200 — the empty-queue guard, not a bypass — and
+that would show a success in the beat built around a refusal.
+
 **403.** Zoom the response so `"boundary": "human-approval-required"` is legible.
+The body also lists `youCan` — the five things the agent may still do — which is
+worth pointing at: the refusal is a handoff, not a dead end.
 
 **Say:**
 

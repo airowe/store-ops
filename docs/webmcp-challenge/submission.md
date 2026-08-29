@@ -12,7 +12,71 @@ Deadline: **2026-09-03, 1:00pm PT**. Submit at https://webmcp.devpost.com/
 | <3-min public YouTube demo, with audio | **TODO** |
 | Text description | **Draft below** |
 
-Judging: WebMCP leverage · execution · potential impact · creativity & ambition.
+Judging (Stage Two, four **equally weighted** criteria, quoted from the rules):
+
+1. **WebMCP Leverage** — "How thoroughly and skillfully does the project use
+   WebMCP? Does the code reflect genuine effort and a working, non-trivial
+   implementation?"
+2. **Execution** — "Does the project deliver a working or runnable project that
+   has a complete, coherent product experience — not just a technical proof of
+   concept?"
+3. **Potential Impact** — "Does the project make a credible, specific case for
+   solving a real problem for a real audience?"
+4. **Creativity & Ambition** — "How creative and novel is the concept and does
+   the project differ from existing concepts?"
+
+**Deadline discrepancy — check before submitting.** The rules page states
+**1:00pm PT on 2026-09-03**; a secondary source states 5:00pm PT. Devpost's own
+countdown on the submission form is authoritative. Assume 1:00pm until confirmed.
+
+---
+
+## Prior work vs. new work
+
+Required by the rules: a pre-existing project must provide "clear documentation
+distinguishing prior work from new work, including evidence that it was
+meaningfully extended with WebMCP within the Submission Period (e.g.,
+timestamped, dated commit history, or equivalent)."
+
+**Submission period: 2026-08-25 11:00 PT → 2026-09-03.**
+
+### Prior work (not submitted as new)
+
+ShipASO is a pre-existing product. First commit `837a897`, **2026-06-13** — the
+ASO engine, the audit, the run pipeline, App Store Connect integration, the
+dashboard, and the mobile app all predate the challenge by roughly ten weeks.
+
+### New work — every line built inside the submission period
+
+The entire WebMCP surface and the server-side approval boundary. **22 files,
+4,514 insertions**, none of it existing before 2026-08-26:
+
+| Commit | When (PT) | What |
+|---|---|---|
+| `defe93d` | 08-26 22:08 | The approval boundary, server-side and in the page (ADR-001 + WebMCP) — #510 |
+| `5d58718` | 08-27 13:00 | The nonce was mintable by script; tools never unregistered — #512 |
+| `287f7e6` | 08-27 19:25 | Replace the mintable nonce with a single-use approval challenge — #513 |
+| `ad662d6` | 08-28 16:37 | Dock the agent drawer; run a real on-device agent in the page — #514 |
+| `279e5e5` | 08-28 20:06 | Describe the challenge the server actually enforces — #519 |
+| `2ffaf6e` | 08-29 10:23 | Bulk approve is no longer exempt from the challenge — #520 |
+
+Verifiable directly:
+
+```
+git log --format="%h %ad %s" --date=iso \
+  -- cloud/web/src/webmcp cloud/src/api/approvalBoundary.ts
+```
+
+The negative control matters as much as the list: querying the same paths for
+anything committed **before** the period opens returns nothing. There is no
+pre-existing WebMCP work being passed off as new.
+
+New artifacts: `cloud/web/src/webmcp/` (19 files — manifest, registry, handlers,
+agent loop, tools panel, trusted-approve, panel state, and their tests) and
+`cloud/src/api/approvalBoundary.ts` with its unit and integration specs.
+
+The product being mature is the point of the entry rather than a complication:
+the boundary is enforced over real runs for real apps, not over a demo fixture.
 
 ---
 
