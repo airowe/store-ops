@@ -1,5 +1,5 @@
 /**
- * The registry is the only code that touches `navigator.modelContext`. Its
+ * The registry is the only code that touches the browser's model context. Its
  * contract: register exactly the current route's tools, drop the previous
  * route's, never throw in a browser that has no WebMCP at all, and report every
  * call so the panel can show the agent working.
@@ -179,6 +179,18 @@ describe("createRegistry", () => {
     };
     const reg = createRegistry({ context: refusing, handlers: { a: async () => "ok" } });
     expect(() => reg.sync([spec("a")])).not.toThrow();
+    expect(reg.liveTools()).toEqual([]);
+  });
+
+  it("removes a tool whose promise-returning registration rejects", async () => {
+    const refusing: ModelContext = {
+      registerTool: () => Promise.reject(new Error("registration refused")),
+    };
+    const reg = createRegistry({ context: refusing, handlers: { a: async () => "ok" } });
+
+    reg.sync([spec("a")]);
+    expect(reg.liveTools().map((tool) => tool.name)).toEqual(["a"]);
+    await new Promise<void>((resolve) => setTimeout(resolve, 0));
     expect(reg.liveTools()).toEqual([]);
   });
 });

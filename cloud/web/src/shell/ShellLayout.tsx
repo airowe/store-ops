@@ -33,7 +33,7 @@ export function ShellLayout() {
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   // The WebMCP surface: this route's tools are offered to the visitor's own
   // browser agent, and swapped as they navigate. Registration is a no-op in a
-  // browser without `navigator.modelContext`, which is still nearly all of them.
+  // browser without a WebMCP model context, which is still nearly all of them.
   const webmcp = useWebMcp({ pathname, client });
   useEffect(() => {
     document.title = pageTitle(pathname);

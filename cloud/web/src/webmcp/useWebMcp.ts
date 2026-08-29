@@ -47,7 +47,7 @@ function scopeFrom(pathname: string): { runId: string | null; appId: string | nu
 export function useWebMcp(opts: {
   pathname: string;
   client: ApiClient;
-  /** Injected in tests; defaults to the real navigator.modelContext. */
+  /** Injected in tests; defaults to the browser's document/navigator model context. */
   context?: ModelContext | null;
 }): WebMcpState {
   const { pathname, client } = opts;
@@ -55,7 +55,7 @@ export function useWebMcp(opts: {
   const [tools, setTools] = useState<readonly ToolSpec[]>([]);
   const seq = useRef(0);
 
-  // The context is resolved ONCE. Re-reading navigator per render would make the
+  // The context is resolved ONCE. Re-reading the browser globals per render would make the
   // registry identity churn and re-register every tool on every route change.
   const context = useMemo(
     () => (opts.context === undefined ? getModelContext() : opts.context),

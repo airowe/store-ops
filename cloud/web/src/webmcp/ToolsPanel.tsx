@@ -2,7 +2,7 @@
  * The agent activity drawer — docked, always visible, expandable.
  *
  * Deliberately NOT a Human/Agent toggle. The page cannot tell whether a person
- * or an agent is looking at it — `navigator.modelContext` says only that the
+ * or an agent is looking at it — the browser's `modelContext` says only that the
  * browser supports WebMCP, and the W3C's own agent-identity work (webmcp#105)
  * is still open precisely because tools "cannot determine who is calling them".
  * A toggle would ask the visitor to declare something the platform can't verify,
