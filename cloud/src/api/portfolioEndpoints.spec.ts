@@ -41,6 +41,16 @@ function d1From(schema: string): Harness {
   // the pre-0002 baseline). Apply it so the country column the keywords route
   // reads exists — same shape the deploy pipeline produces.
   sqlite.exec("ALTER TABLE rank_snapshots ADD COLUMN country TEXT NOT NULL DEFAULT ''");
+  // approval_challenges arrives in migration 0016, after this baseline. GET
+  // /runs issues a challenge per queued run (#515), so the table has to exist
+  // or the route throws. Applied from the migration itself rather than a
+  // hand-copied CREATE, so this cannot drift from what deploy produces.
+  sqlite.exec(
+    readFileSync(
+      new URL("../../migrations/0016_approval_challenges.sql", import.meta.url),
+      "utf8",
+    ),
+  );
   const sql: string[] = [];
   const db = {
     prepare(stmtSql: string) {
@@ -102,6 +112,44 @@ beforeEach(async () => {
 });
 
 // ── GET /runs ────────────────────────────────────────────────────────────────
+
+/**
+ * UNSUPPORTED QUERY PARAMS (#517).
+ *
+ * `GET /runs?status=awaiting_approval` returned all 117 runs in production —
+ * the parameter was accepted and silently ignored, so a filtered query gave a
+ * wrong answer that looked like a right one. That is what masked #515: the
+ * unchanged total read as "nothing was approved" when 12 runs had been.
+ *
+ * The route takes no filters and the client does not use any, so the fix is to
+ * REFUSE an unrecognised param rather than invent filtering. Accepting one and
+ * ignoring it is the only option that actively misleads.
+ */
+
+
+describe.skipIf(!sqliteAvailable)("GET /runs — unsupported query params (#517)", () => {
+  it("REFUSES ?status=, rather than accepting it and returning everything", async () => {
+    await exec(
+      `INSERT INTO runs (id, app_id, status, created_at, reasoning_json)
+       VALUES ('run_q', 'a1', 'awaiting_approval', '2026-07-25T09:00:00Z', '{}'),
+              ('run_h', 'a1', 'approved', '2026-07-24T09:00:00Z', '{}')`,
+    );
+    const res = await handleApi(get("/runs?status=awaiting_approval"), makeEnv(h.db));
+    expect(res.status).toBe(400);
+    const body = (await res.json()) as { error?: string };
+    expect(body.error).toMatch(/status/i);
+  });
+
+  it("still serves the unfiltered list — the fix must not break the real caller", async () => {
+    // Negative control: a 400 on EVERY request would also pass the test above.
+    await exec(
+      `INSERT INTO runs (id, app_id, status, created_at, reasoning_json)
+       VALUES ('run_ok', 'a1', 'approved', '2026-07-24T09:00:00Z', '{}')`,
+    );
+    const res = await handleApi(get("/runs"), makeEnv(h.db));
+    expect(res.status).toBe(200);
+  });
+});
 
 describe.skipIf(!sqliteAvailable)("GET /runs", () => {
   it("returns every run across the user's apps, app-first", async () => {

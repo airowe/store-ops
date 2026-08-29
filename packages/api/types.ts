@@ -442,6 +442,11 @@ export type PortfolioRunRow = RunRow & {
   app_id: string;
   app_name: string;
   findings_summary: FindingsSummary | null;
+  /**
+   * The single-use challenge bulk approve spends for this run (#515). Present
+   * only on a run at the gate — a settled run has nothing to approve.
+   */
+  approval_challenge?: ApprovalChallenge;
 };
 export type PortfolioRunsResponse = { runs: PortfolioRunRow[] };
 

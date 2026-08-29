@@ -139,7 +139,13 @@ import { createApiKey, listApiKeys, looksLikeApiKey, resolveApiKey, revokeApiKey
 import { serializeAsaBundle, verifyAsaCredentials, type AsaKeyBundle } from "../engine/asaAuth.js";
 import localesData from "../engine/locales-data.json";
 import { validateThresholdPatch } from "../thresholds.js";
-import { APPROVAL_CHALLENGE_HEADER, type BoundaryRefusal, requireApprovalChallenge, requireHumanSession } from "./approvalBoundary.js";
+import {
+  APPROVAL_CHALLENGE_HEADER,
+  type BoundaryRefusal,
+  requireApprovalChallenge,
+  requireBulkApprovalChallenges,
+  requireHumanSession,
+} from "./approvalBoundary.js";
 import { notifyRunReadyForEnv } from "../notify/forEnv.js";
 import { checkDailyCadenceBound, checkRunTriggerBound, RUN_TRIGGER_WINDOW_SECONDS } from "./agentBounds.js";
 import { validateSchedule } from "../schedule.js";
@@ -1537,15 +1543,25 @@ async function proofStats(env: Env, origin: string | null): Promise<Response> {
 async function portfolioRuns(env: Env, userId: string): Promise<unknown> {
   const rows = await listRunsForUser(env.DB, userId);
   return {
-    runs: rows.map((r) => ({
-      id: r.id,
-      app_id: r.app_id,
-      app_name: r.app_name,
-      status: r.status,
-      created_at: r.created_at,
-      findings_summary: findingsSummaryFromTrace(r.reasoning_json),
-      trigger: triggerFromTrace(r.reasoning_json),
-    })),
+    runs: await Promise.all(
+      rows.map(async (r) => ({
+        id: r.id,
+        app_id: r.app_id,
+        app_name: r.app_name,
+        status: r.status,
+        created_at: r.created_at,
+        findings_summary: findingsSummaryFromTrace(r.reasoning_json),
+        trigger: triggerFromTrace(r.reasoning_json),
+        // #515: the challenge the bulk button spends for this run. Same rule as
+        // the single run view — only for a run actually at the gate, since a
+        // settled run has nothing to approve and issuing one anyway would leave
+        // unspendable rows behind every list render.
+        approval_challenge:
+          r.status === "awaiting_approval"
+            ? await issueApprovalChallenge(env.DB, { runId: r.id, userId })
+            : undefined,
+      })),
+    ),
   };
 }
 
@@ -1725,15 +1741,25 @@ async function portfolioView(env: Env, userId: string): Promise<unknown> {
  * (strictly awaiting_approval); we recordApproval each, ownership already
  * guaranteed by only gathering the caller's own runs.
  */
-async function approveAll(env: Env, userId: string): Promise<unknown> {
+/**
+ * Which runs would a bulk approve touch? Read separately from doing it, so the
+ * approval boundary (#515) can be checked against that exact list BEFORE
+ * anything is written.
+ */
+async function bulkApprovePlan(env: Env, userId: string) {
   const apps = await listAppsForUser(env.DB, userId);
   const refs: RunRef[] = [];
   for (const a of apps) {
     const runs = await listRunsForApp(env.DB, a.id);
     for (const r of runs) refs.push({ runId: r.id, appId: a.id, status: r.status });
   }
-  const plan = planBulkApprove(refs);
+  return planBulkApprove(refs);
+}
 
+async function approveAll(
+  env: Env,
+  plan: { approvable: readonly string[]; skipped: unknown },
+): Promise<unknown> {
   const approved: string[] = [];
   for (const runId of plan.approvable) {
     // Re-check no prior approval (defensive — a concurrent single-approve could
@@ -5487,6 +5513,24 @@ export async function handleApi(req: Request, env: Env, ctx?: ExecutionContext):
     // sibling of a per-app route. GET /runs is length-1, so it can't collide
     // with /runs/approve-all or /runs/:id (both length >= 2).
     if (seg[0] === "runs" && seg.length === 1 && method === "GET") {
+      // #517: this route takes no filters. It used to ACCEPT `?status=` and
+      // ignore it, so a filtered query returned every run and looked correct —
+      // which is how a bulk approval of 12 runs read as "nothing changed".
+      // Refusing is the only option that does not silently mislead.
+      const unsupported = [...url.searchParams.keys()];
+      if (unsupported.length > 0) {
+        return json(
+          {
+            error:
+              `GET /runs takes no query parameters, and ${unsupported.join(", ")} ` +
+              "was ignored rather than applied. Read the full list and filter by " +
+              "`status` client-side.",
+          },
+          400,
+          origin,
+          env,
+        );
+      }
       return json(await portfolioRuns(env, user.id), 200, origin, env);
     }
     if (seg[0] === "keywords" && seg.length === 1 && method === "GET") {
@@ -5607,11 +5651,28 @@ export async function handleApi(req: Request, env: Env, ctx?: ExecutionContext):
 
     // /runs/approve-all — bulk-approve every pending run (matched BEFORE /runs/:id)
     if (seg[0] === "runs" && seg[1] === "approve-all" && seg.length === 2 && method === "POST") {
-      // ADR-001: bulk approve is cookie-only. Without this, an agent credential
-      // could route around the per-run nonce by approving everything at once.
+      // ADR-001: bulk approve is cookie-only. Refuses API keys and agent
+      // credentials — but NOT a browser agent, which holds the user's cookie.
       const gate = requireHumanSession(user.auth);
       if (!gate.ok) return json(boundaryRefusalBody(gate), gate.status, origin, env);
-      return json(await approveAll(env, user.id), 200, origin, env);
+
+      // #515: the cookie check alone let a scripted same-origin fetch approve
+      // 12 runs with no human gesture (measured in production). Bulk approve is
+      // no longer exempt from the challenge — it is N of the per-run check, so
+      // a caller that never opened the runs cannot approve them.
+      const plan = await bulkApprovePlan(env, user.id);
+      const body = (await req.json().catch(() => ({}))) as {
+        challenges?: Array<{ runId?: unknown; challenge?: unknown }>;
+      };
+      const challenges = (Array.isArray(body.challenges) ? body.challenges : [])
+        .map((c) => ({ runId: String(c?.runId ?? ""), challenge: String(c?.challenge ?? "") }))
+        .filter((c) => c.runId && c.challenge);
+      const bulkGate = await requireBulkApprovalChallenges(env, { id: user.id }, plan.approvable, {
+        challenges,
+      });
+      if (!bulkGate.ok) return json(boundaryRefusalBody(bulkGate), bulkGate.status, origin, env);
+
+      return json(await approveAll(env, plan), 200, origin, env);
     }
 
     // /github — connect a repo (+ installation id) / status for the metadata-PR path

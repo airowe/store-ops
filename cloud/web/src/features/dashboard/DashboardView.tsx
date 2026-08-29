@@ -10,7 +10,14 @@
 import { useState } from "react";
 import { useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { ApiClient, AppListItem } from "@shipaso/api";
-import { ApiError, approveAllRuns, getApps, getDeltas, getRanks } from "@shipaso/api";
+import {
+  ApiError,
+  approveAllRuns,
+  getApps,
+  getDeltas,
+  getPortfolioRuns,
+  getRanks,
+} from "@shipaso/api";
 import { Navigate } from "@tanstack/react-router";
 import { ConnectAppCard } from "../connect/ConnectAppCard.js";
 import { formatRank } from "@shipaso/honesty";
@@ -31,9 +38,28 @@ export function DashboardView({ client, onOpen }: { client: ApiClient; onOpen: (
     // retry only delays the signed-out state below.
     retry: (count, err) => !(err instanceof ApiError && err.status === 401) && count < 3,
   });
+  // #515: bulk approve must present a challenge per queued run, and the apps
+  // list does not carry them — they ride back on the runs list. Fetched here so
+  // this button can present them; the KPI count still comes from `apps`.
+  const runsQ = useQuery({
+    queryKey: ["portfolio", "runs"],
+    queryFn: () => getPortfolioRuns(client),
+    retry: (count, err) => !(err instanceof ApiError && err.status === 401) && count < 3,
+  });
   const approveAll = useMutation({
-    mutationFn: () => approveAllRuns(client),
-    onSuccess: () => void qc.invalidateQueries({ queryKey: ["apps"] }),
+    mutationFn: () =>
+      approveAllRuns(
+        client,
+        (runsQ.data?.runs ?? []).flatMap((r) =>
+          r.status === "awaiting_approval" && r.approval_challenge
+            ? [{ runId: r.id, challenge: r.approval_challenge }]
+            : [],
+        ),
+      ),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ["apps"] });
+      void qc.invalidateQueries({ queryKey: ["portfolio", "runs"] });
+    },
   });
 
   // isPending, NOT isLoading — see the ported note: isLoading goes false during a
