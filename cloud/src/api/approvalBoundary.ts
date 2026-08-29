@@ -9,14 +9,22 @@
  * confirmation step", i.e. page-declared tool semantics get trusted. These two
  * checks are the answer: the boundary is enforced where the agent cannot reach.
  *
- *   • requireApprovalNonce — POST /runs/:id/approve needs a nonce minted by a
- *     trusted (isTrusted) user gesture. Scripted fetch cannot forge one.
- *   • requireHumanSession  — POST /runs/approve-all accepts ONLY a cookie
+ *   • requireApprovalChallenge — POST /runs/:id/approve needs the single-use
+ *     challenge issued with the run view, spent in the same UPDATE that checks
+ *     it. Replay and re-mint both fail; a caller that never opened the run has
+ *     no challenge to present.
+ *   • requireHumanSession — POST /runs/approve-all accepts ONLY a cookie
  *     session. Bearer tokens (API keys, agent credentials) and the demo-env
- *     header are refused, so bulk approval can't route around the nonce.
+ *     header are refused.
  *
- * Both are PURE decisions over already-resolved inputs, so the policy is
- * exhaustively testable without a Request, a DB, or the network.
+ * KNOWN GAP (#515): approve-all is exempt from the challenge, so
+ * requireHumanSession is the whole of its gate — and a browser-resident agent
+ * runs on the user's own cookie, which that check admits. It stops API keys,
+ * not an agent in the tab, which is the threat this boundary exists for.
+ *
+ * requireHumanSession is a PURE decision over an already-resolved input;
+ * requireApprovalChallenge needs the DB because single-use is a fact about
+ * stored state, not something a token can carry.
  */
 import { consumeApprovalChallenge } from "../d1.js";
 import type { AuthMethod } from "./index.js";
