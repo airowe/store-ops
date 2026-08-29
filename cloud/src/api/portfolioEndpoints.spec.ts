@@ -41,6 +41,16 @@ function d1From(schema: string): Harness {
   // the pre-0002 baseline). Apply it so the country column the keywords route
   // reads exists — same shape the deploy pipeline produces.
   sqlite.exec("ALTER TABLE rank_snapshots ADD COLUMN country TEXT NOT NULL DEFAULT ''");
+  // approval_challenges arrives in migration 0016, after this baseline. GET
+  // /runs issues a challenge per queued run (#515), so the table has to exist
+  // or the route throws. Applied from the migration itself rather than a
+  // hand-copied CREATE, so this cannot drift from what deploy produces.
+  sqlite.exec(
+    readFileSync(
+      new URL("../../migrations/0016_approval_challenges.sql", import.meta.url),
+      "utf8",
+    ),
+  );
   const sql: string[] = [];
   const db = {
     prepare(stmtSql: string) {

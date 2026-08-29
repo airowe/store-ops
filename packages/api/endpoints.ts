@@ -236,8 +236,18 @@ export const ascCreateVersion = (
 /** Pause / resume the weekly autonomous sweep (#51) — per-user master switch. */
 export const pauseAgent = (c: ApiClient) => c.post<{ paused: boolean }>("/agent/pause");
 export const resumeAgent = (c: ApiClient) => c.post<{ paused: boolean }>("/agent/resume");
-/** Approve every run currently at the gate across the user's apps. */
-export const approveAllRuns = (c: ApiClient) => c.post<ApproveAllResult>("/runs/approve-all");
+/**
+ * Approve every run currently at the gate across the user's apps.
+ *
+ * #515: bulk approve is no longer exempt from the approval challenge. Each
+ * queued run's challenge rides back on `GET /runs`, and every one of them must
+ * be presented here — a caller that never loaded the queue has none, and the
+ * server refuses partial sets outright.
+ */
+export const approveAllRuns = (
+  c: ApiClient,
+  challenges: ReadonlyArray<{ runId: string; challenge: string }> = [],
+) => c.post<ApproveAllResult>("/runs/approve-all", { challenges });
 
 // ── GitHub metadata-PR path (#8) ─────────────────────────────────────────────
 export const getGithubStatus = (c: ApiClient) => c.get<GithubStatus>("/github/status");

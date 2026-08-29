@@ -14,9 +14,16 @@ vi.mock("@tanstack/react-router", () => ({
   },
 }));
 
-function client(apps: unknown[], over: Partial<Record<"post", any>> = {}) {
+function client(
+  apps: unknown[],
+  over: Partial<Record<"post", any>> = {},
+  runs: unknown[] = [],
+) {
   const get = vi.fn(async (path: string) => {
     if (path === "/apps") return { apps };
+    // #515: the bulk button reads the queue for its challenges — the apps list
+    // does not carry them.
+    if (path === "/runs") return { runs };
     throw new Error("unexpected GET " + path);
   });
   const post = over.post ?? vi.fn(async () => ({ candidates: [] }));
@@ -116,12 +123,25 @@ describe("<DashboardView />", () => {
       if (path === "/runs/approve-all") return { approved: ["r1", "r2"], approvedCount: 2, skipped: [] };
       return { candidates: [] };
     });
-    const { c } = client([pending("a1"), pending("a2")], { post });
+    const queued = [
+      { id: "r1", status: "awaiting_approval", approval_challenge: "c-r1" },
+      { id: "r2", status: "awaiting_approval", approval_challenge: "c-r2" },
+      // Settled: carries no challenge and must not be presented.
+      { id: "r3", status: "approved" },
+    ];
+    const { c } = client([pending("a1"), pending("a2")], { post }, queued);
     renderView(c);
     await waitFor(() => expect(screen.getByTestId("approve-all-card")).toBeInTheDocument());
     expect(screen.getByText(/never ships anything/i)).toBeInTheDocument();
     fireEvent.click(screen.getByTestId("approve-all"));
-    await waitFor(() => expect(post).toHaveBeenCalledWith("/runs/approve-all"));
+    await waitFor(() =>
+      expect(post).toHaveBeenCalledWith("/runs/approve-all", {
+        challenges: [
+          { runId: "r1", challenge: "c-r1" },
+          { runId: "r2", challenge: "c-r2" },
+        ],
+      }),
+    );
     expect(await screen.findByTestId("approve-all-result")).toHaveTextContent("Approved 2 runs.");
   });
 
