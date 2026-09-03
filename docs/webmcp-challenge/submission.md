@@ -1,6 +1,6 @@
 # WebMCP Challenge — ShipASO submission
 
-Deadline: **2026-09-03, 1:00pm PT**. Submit at https://webmcp.devpost.com/
+Deadline: **2026-09-03, 5:00pm PT**. Submit at https://webmcp.devpost.com/
 
 ## Required components
 
@@ -55,9 +55,9 @@ Alternative client, sanctioned by the rules: **Chrome 149+** with
 
 ---
 
-**Deadline discrepancy — check before submitting.** The rules page states
-**1:00pm PT on 2026-09-03**; a secondary source states 5:00pm PT. Devpost's own
-countdown on the submission form is authoritative. Assume 1:00pm until confirmed.
+**Deadline: 2026-09-03, 5:00pm PT.** Confirmed against Devpost's countdown on
+the submission form, which is authoritative. An earlier draft of this document
+hedged between 1:00pm and 5:00pm; the discrepancy is resolved.
 
 ---
 
