@@ -30,6 +30,8 @@ export type Registry = {
   readonly supported: boolean;
   /** Make the live set exactly `specs` — registering and unregistering to match. */
   sync: (specs: readonly ToolSpec[]) => void;
+  /** Wait until registrations begun by the most recent sync have settled. */
+  whenSettled: () => Promise<void>;
   /** The specs currently registered. */
   liveTools: () => readonly ToolSpec[];
   /** Drop every tool. */
@@ -45,6 +47,7 @@ export function createRegistry(opts: {
 }): Registry {
   const context = opts.context === undefined ? getModelContext() : opts.context;
   const live = new Map<string, Live>();
+  const pendingRegistrations = new Set<Promise<void>>();
 
   function drop(name: string) {
     const entry = live.get(name);
@@ -75,7 +78,10 @@ export function createRegistry(opts: {
       // Required in practice: the agent reads this to construct a call, and a
       // tool advertised without one is a tool nothing can invoke correctly.
       inputSchema: spec.inputSchema ?? { type: "object", properties: {} },
-      annotations: { readOnlyHint: spec.readOnly },
+      annotations: {
+        readOnlyHint: spec.readOnly,
+        ...(spec.untrustedContent ? { untrustedContentHint: true } : {}),
+      },
       execute: async (args): Promise<ToolResult> => {
         opts.onActivity?.({ name: spec.name, phase: "start" });
         try {
@@ -92,9 +98,11 @@ export function createRegistry(opts: {
       // WebMCP implementations may return void or a promise. Keep the live
       // set optimistic for the synchronous API, but turn an async rejection
       // into the same cleanup as a synchronous registration failure.
-      void Promise.resolve(registration).catch(() => {
+      const settled = Promise.resolve(registration).catch(() => {
         if (live.get(spec.name)?.controller === controller) drop(spec.name);
       });
+      pendingRegistrations.add(settled);
+      void settled.finally(() => pendingRegistrations.delete(settled));
     } catch {
       // Registration refused (a duplicate name that drop() failed to clear, or
       // an implementation that rejects the descriptor). Staying silent here is
@@ -116,6 +124,7 @@ export function createRegistry(opts: {
       for (const spec of specs) if (!live.has(spec.name)) add(spec);
     },
     liveTools: () => [...live.values()].map((l) => l.spec),
+    whenSettled: () => Promise.all([...pendingRegistrations]).then(() => undefined),
     teardown() {
       for (const name of [...live.keys()]) drop(name);
     },

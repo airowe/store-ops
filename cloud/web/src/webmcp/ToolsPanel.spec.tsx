@@ -24,6 +24,11 @@ describe("ToolsPanel", () => {
     expect(screen.getByTestId("webmcp-count")).toHaveTextContent(String(tools.length));
   });
 
+  it("shows a browser-verified count when native inspection is available", () => {
+    render(<ToolsPanel supported tools={tools} verifiedTools={tools.map((tool) => tool.name)} activity={[]} />);
+    expect(screen.getByTestId("webmcp-native-proof")).toHaveTextContent(String(tools.length));
+  });
+
   it("states plainly that no tool here can approve", () => {
     render(<ToolsPanel supported tools={tools} activity={[]} />);
     expect(screen.getByTestId("webmcp-boundary")).toHaveTextContent(/approv/i);

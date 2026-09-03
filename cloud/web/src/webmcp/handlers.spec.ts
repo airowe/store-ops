@@ -157,12 +157,15 @@ describe("createHandlers", () => {
   it("stage_for_approval sends the edit and reports the run still needs a person", async () => {
     const { client, calls } = fakeClient({
       "/runs/r_1": RUN,
-      "/runs/r_1/edits": { id: "r_1", status: "awaiting_approval", staged: ["subtitle"], proposedCopy: {}, note: "still awaiting approval" },
+      "/runs/r_1/edits": { id: "r_1", status: "awaiting_approval", staged: ["subtitle"], proposedCopy: { subtitle: "Third subtitle" }, note: "still awaiting approval" },
     });
     const h = createHandlers({ client: client as never, runId: () => "r_1" });
     const text = await h.stage_for_approval!({ subtitle: "Third subtitle" });
     expect(calls.some((c) => c.path === "/runs/r_1/edits")).toBe(true);
     expect(text).toMatch(/still|awaiting|approv/i);
+    expect(text).toMatch(/stage receipt/i);
+    expect(text).toMatch(/14\/30/);
+    expect(text).toMatch(/agent draft/i);
   });
 
   it("stage_for_approval rejects an edit with no recognised copy field", async () => {

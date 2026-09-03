@@ -34,6 +34,7 @@ const PHASE_LABEL: Record<ActivityEntry["phase"], string> = {
 export function ToolsPanel({
   supported,
   tools,
+  verifiedTools = null,
   activity,
   getTools = null,
   executeTool = null,
@@ -42,6 +43,8 @@ export function ToolsPanel({
 }: {
   supported: boolean;
   tools: readonly ToolSpec[];
+  /** Names read back from native `modelContext.getTools()`, if available. */
+  verifiedTools?: readonly string[] | null;
   activity: readonly ActivityEntry[];
   getTools?: (() => Promise<readonly LiveTool[]>) | null;
   executeTool?: ((tool: LiveTool, args: string) => Promise<unknown>) | null;
@@ -137,6 +140,11 @@ export function ToolsPanel({
             ? "This page offers these tools to an AI agent running in your browser. They are real: an agent can audit any App Store listing here without an account. None of them can approve or ship anything."
             : "Offered to your browser agent on this page, and swapped as you navigate."}
         </p>
+        {verifiedTools ? (
+          <p className="webmcp-note" data-testid="webmcp-native-proof">
+            Browser verified: {verifiedTools.length} active tool{verifiedTools.length === 1 ? "" : "s"}.
+          </p>
+        ) : null}
 
         <ul className="webmcp-tools">
           {tools.map((t) => (
@@ -158,9 +166,9 @@ export function ToolsPanel({
 
         <p className="webmcp-boundary" data-testid="webmcp-boundary">
           <strong>No tool here can approve.</strong> An agent can read, explain, draft and stage —
-          approving needs a real click, and the server rejects an approval that didn’t come from
-          one. Approving isn’t shipping either: nothing reaches the App Store without a further
-          human step.
+          the server independently guards approval with a single-use challenge tied to the run,
+          and approving remains the person’s decision. Approving isn’t shipping either: nothing
+          reaches the App Store without a further human step.
         </p>
 
         <div className="webmcp-chat" data-testid="webmcp-chat">

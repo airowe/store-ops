@@ -35,6 +35,13 @@ export const SHIPPED_WORDS = ["shipped", "published", "went live", "pushed to th
 
 const CADENCES: readonly SweepCadence[] = ["daily", "weekly", "biweekly"];
 const EDITABLE = ["name", "title", "subtitle", "keywords", "promo"] as const;
+type StageableCopyField = "name" | "subtitle" | "keywords" | "promo";
+const COPY_LIMITS: Record<StageableCopyField, number> = {
+  name: 30,
+  subtitle: 30,
+  keywords: 100,
+  promo: 170,
+};
 
 /** Render a value that may not exist. Never invents, never substitutes 0. */
 const orDash = (v: unknown): string =>
@@ -309,11 +316,24 @@ export function createHandlers(opts: {
         throw new Error("stage_for_approval needs at least one of: title, subtitle, keywords, promo");
       }
       const staged = await stageRunEdit(c, id, edit);
-      return (
-        `Staged ${staged.staged.join(", ") || "the edit"} on run ${orDash(staged.id)}. ` +
-        `The run is still awaiting approval — a person has to approve it, and this only ` +
-        `changed what they will be approving.`
-      );
+      const proposed = (staged.proposedCopy ?? edit) as Partial<CopyFields>;
+      const changed = (staged.staged.length ? staged.staged : Object.keys(edit))
+        .map((field) => field === "title" ? "name" : field)
+        .filter((field): field is StageableCopyField => field in COPY_LIMITS);
+      const receipt = changed.map((field) => {
+        const value = proposed[field] ?? edit[field];
+        const label = field === "name" ? "title" : field;
+        return typeof value === "string"
+          ? `${label} “${value}” (${value.length}/${COPY_LIMITS[field]})`
+          : label;
+      });
+      return [
+        `Stage receipt: run ${orDash(staged.id)}.`,
+        `Changed: ${receipt.join("; ") || "the edit"}.`,
+        "Recorded as an agent draft.",
+        `Status: ${orDash(staged.status)}.`,
+        "This changed what the person will review, never whether it is approved.",
+      ].join(" ");
     },
 
     async request_notification(args) {

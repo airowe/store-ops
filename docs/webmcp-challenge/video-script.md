@@ -24,8 +24,12 @@ But a video of our own bundled agent calling our own tools demonstrates an app
 with a chatbot in it. WebMCP's actual proposition is that a visitor's agent, one
 we neither ship nor control, reads the manifest and acts.
 
-**Primary client: ChatGPT's in-app browser.** No setup — it supports WebMCP
-natively.
+**Primary client: ChatGPT's in-app browser.** It does need setup, and the
+failure is silent — OpenAI calls the feature **Site tools**, and it requires
+**GPT-5.6 Sol or Terra** (Luna has WebMCP disabled), the toggle at Settings →
+Browser → Permissions → Enable site tools, and a non-Enterprise/Edu workspace.
+Confirm all three before a take: an unmet gate looks exactly like a page that
+declares nothing. Tools appear under **Site tools** in the address bar.
 
 **Fallback: Chrome 149+** with `chrome://flags/#enable-webmcp-testing`.
 

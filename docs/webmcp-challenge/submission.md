@@ -25,6 +25,36 @@ Judging (Stage Two, four **equally weighted** criteria, quoted from the rules):
 4. **Creativity & Ambition** — "How creative and novel is the concept and does
    the project differ from existing concepts?"
 
+## If the tools do not appear, check the client first
+
+OpenAI ships WebMCP as **Site tools**, and it is gated in the ChatGPT desktop
+app in three ways that produce no error message when unmet — the page simply
+looks as though it declares nothing:
+
+| Gate | Requirement |
+|---|---|
+| Model | **GPT-5.6 Sol or Terra**. Luna has WebMCP **disabled**. |
+| Setting | Settings → Browser → Permissions → **Enable site tools** |
+| Workspace | Unavailable in **Enterprise or Edu** workspaces |
+
+Then open the page in the built-in browser and select **Site tools** in the
+address bar. On `/runs` you should see five: `describe_boundary`, `explain_run`,
+`list_pending_runs`, `request_notification`, `whoami`.
+
+We hit this ourselves. A rehearsal in the desktop app reported no WebMCP
+capability at all while the page was registering correctly — measured the same
+day in Chrome 151, where `getTools()` returned all five with their schemas and
+annotations intact. The surface was fine; the client was not configured. It is
+recorded here because a judge meeting the same silent failure would have no way
+to tell the difference.
+
+Source: https://learn.chatgpt.com/docs/webmcp
+
+Alternative client, sanctioned by the rules: **Chrome 149+** with
+`chrome://flags/#enable-webmcp-testing`.
+
+---
+
 **Deadline discrepancy — check before submitting.** The rules page states
 **1:00pm PT on 2026-09-03**; a secondary source states 5:00pm PT. Devpost's own
 countdown on the submission form is authoritative. Assume 1:00pm until confirmed.
@@ -82,15 +112,18 @@ the boundary is enforced over real runs for real apps, not over a demo fixture.
 
 ## Text description (draft)
 
-**ShipASO — the agent can do everything except the one thing that matters.**
+**ShipASO — the agent prepares the decision. The person owns it.**
 
 ShipASO is App Store Optimization on autopilot. It watches an app's keywords and
 rivals, and when something moves it drafts new store copy — title, subtitle,
 keywords — and puts the proposal in a queue. A person approves. Then, and only
 then, it hands over the commands to push.
 
-The WebMCP surface declares 14 tools. A visitor's own agent can find an app,
-audit it, trigger a run, read the queue, explain why any proposal exists, draft
+The WebMCP surface declares 14 tools, scoped to the page the agent is actually
+on. The browser reads its live tool list back after registration, so the
+visible drawer distinguishes a declared manifest from a tool surface the
+browser actually received. A visitor's own agent can find an app, audit it,
+trigger a run, read the queue, explain why any proposal exists, draft
 alternative copy, stage an edit so it becomes what the person sees, set the
 schedule, and ask for the person's attention.
 
@@ -120,9 +153,11 @@ reasoning.
 Now they can ask their own agent, in their own words: *why is this being
 proposed, is the new subtitle actually better, and can you try one that keeps the
 brand name in front?* The agent calls `explain_run`, reads the finding, calls
-`draft_alternative`, and stages its best attempt with `stage_for_approval` — so
-what the owner sees when they arrive is not the machine's first guess but a
-considered option, already argued for.
+`draft_alternative`, and stages its best attempt with `stage_for_approval`. The
+write returns a stage receipt: the exact changed field and character count, the
+run id, agent-draft provenance, and the unchanged `awaiting_approval` status.
+The shared drawer also shows the actual call, so the owner can see both the
+agent's activity and the proposal it left behind.
 
 The decision still lands on a person, with better material in front of them. The
 agent did the reading, the drafting and the arguing. It did not do the deciding.
@@ -135,9 +170,12 @@ different agents that share no code with each other:
 - **ChatGPT's in-app browser** — the client the rules name for judging. Nothing
   is configured for it; it reads the page's declared manifest like any other
   WebMCP consumer.
-- **Chrome's on-device Gemini Nano**, via an in-page drawer we ship. It goes
-  through `navigator.modelContext` rather than calling handlers directly, so what
-  it exercises is the real surface, not a parallel one built for a demo.
+- **Chrome's on-device Gemini Nano**, via an in-page drawer we ship. It reaches
+  tools through whichever `modelContext` the browser exposes — we read both
+  `document` and `navigator`, which are the same object in Chrome 151 and are
+  registered once — and then reads `getTools()` back from the browser rather
+  than calling handlers directly. What it exercises is the real surface, not a
+  parallel one built for a demo.
 
 The second one produced the result we did not write: asked to "approve all the
 pending runs", the on-device model answered *"I am not able to directly approve
@@ -157,6 +195,13 @@ notes that a page-declared `readOnlyHint` "may cause the agent to skip a
 confirmation step": what a page says about itself gets trusted.
 
 So the boundary is enforced on the server, where the agent cannot reach.
+
+Separately, and much more weakly: read tools that return external App Store
+material or recorded proposal text are marked `untrustedContentHint`, so a
+cooperative agent treats those results as data to inspect rather than as
+instructions. That is advisory metadata about a different risk — prompt
+injection through content we did not write — and it is not what stops an
+approval. Nothing a page declares about itself is.
 
 Approving a run requires a **single-use challenge**, issued when that run is
 opened and spent in the same `UPDATE` that checks it. A replay matches no rows.

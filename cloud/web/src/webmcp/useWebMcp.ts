@@ -27,6 +27,8 @@ export type WebMcpState = {
   supported: boolean;
   /** The tools registered right now, for this route. */
   tools: readonly ToolSpec[];
+  /** Native `modelContext.getTools()` readback, after registration settles. */
+  verifiedTools: readonly string[] | null;
   /** Most-recent-first log of tool calls, for the panel. */
   activity: readonly ActivityEntry[];
   /** Reads live tools through modelContext. Null when WebMCP is absent. */
@@ -53,6 +55,7 @@ export function useWebMcp(opts: {
   const { pathname, client } = opts;
   const [activity, setActivity] = useState<readonly ActivityEntry[]>([]);
   const [tools, setTools] = useState<readonly ToolSpec[]>([]);
+  const [verifiedTools, setVerifiedTools] = useState<readonly string[] | null>(null);
   const seq = useRef(0);
 
   // The context is resolved ONCE. Re-reading the browser globals per render would make the
@@ -96,6 +99,29 @@ export function useWebMcp(opts: {
   useEffect(() => {
     registry.sync(toolsForRoute(pathname));
     setTools(registry.liveTools());
+    setVerifiedTools(null);
+
+    // The panel's manifest list is useful context, but this readback is the
+    // proof that the BROWSER received the declared tools. Wait for promise-
+    // returning implementations too; Chrome's current synchronous API simply
+    // resolves this immediately.
+    const readNativeTools = context?.getTools?.bind(context);
+    if (!readNativeTools) return;
+    let cancelled = false;
+    void registry.whenSettled()
+      .then(readNativeTools)
+      .then((nativeTools) => {
+        if (!cancelled) setVerifiedTools(nativeTools.map((tool) => tool.name).sort());
+      })
+      .catch(() => {
+        // Inspection is supporting evidence, not a prerequisite for the
+        // registered surface. A browser may expose registerTool without
+        // getTools, or refuse the latter independently.
+        if (!cancelled) setVerifiedTools(null);
+      });
+    return () => {
+      cancelled = true;
+    };
   }, [registry, pathname]);
 
   // Teardown is its own effect keyed only on the registry: folding it into the
@@ -124,6 +150,7 @@ export function useWebMcp(opts: {
   return {
     supported: registry.supported,
     tools,
+    verifiedTools,
     activity,
     getTools: context ? getTools : null,
     executeTool: context ? executeTool : null,

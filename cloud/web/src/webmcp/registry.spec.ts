@@ -32,11 +32,12 @@ function fakeContext() {
   return ctx;
 }
 
-const spec = (name: string, writes = false) => ({
+const spec = (name: string, writes = false, untrustedContent = false) => ({
   name,
   description: `does ${name}`,
   writes,
   readOnly: !writes,
+  untrustedContent,
   routes: ["*"] as const,
   effect: name,
 });
@@ -79,6 +80,12 @@ describe("createRegistry", () => {
     reg.sync([spec("r"), spec("w", true)]);
     expect(ctx.registered.get("r")?.annotations?.readOnlyHint).toBe(true);
     expect(ctx.registered.get("w")?.annotations?.readOnlyHint).toBe(false);
+  });
+
+  it("marks results that include external or recorded content as untrusted", () => {
+    const reg = createRegistry({ context: ctx, handlers: { audit: async () => "ok" } });
+    reg.sync([spec("audit", false, true)]);
+    expect(ctx.registered.get("audit")?.annotations?.untrustedContentHint).toBe(true);
   });
 
   it("skips a tool with no handler rather than registering something that throws", () => {

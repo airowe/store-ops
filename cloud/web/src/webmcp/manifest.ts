@@ -32,6 +32,12 @@ export type ToolSpec = {
   writes: boolean;
   /** Advertised via annotations.readOnlyHint. Must be the inverse of `writes`. */
   readOnly: boolean;
+  /**
+   * Advertised via annotations.untrustedContentHint. The result includes
+   * external or user-controlled text, which an agent must treat as data rather
+   * than instructions.
+   */
+  untrustedContent?: boolean;
   routes: readonly RoutePattern[];
   /** Short label for the panel — the tool's effect in a few words. */
   effect: string;
@@ -81,6 +87,7 @@ export const MANIFEST: readonly ToolSpec[] = [
       "identifiers, so the right one can be chosen before connecting it to Autopilot.",
     writes: false,
     readOnly: true,
+    untrustedContent: true,
     routes: ["/"],
     effect: "searches the store",
     inputSchema: {
@@ -98,6 +105,7 @@ export const MANIFEST: readonly ToolSpec[] = [
       "what its current metadata says, and which keyword and conversion opportunities are measurable.",
     writes: false,
     readOnly: true,
+    untrustedContent: true,
     routes: ["/"],
     effect: "audits a public listing",
     inputSchema: {
@@ -184,6 +192,7 @@ export const MANIFEST: readonly ToolSpec[] = [
       "it belongs to and why Autopilot opened it. This is the triage queue.",
     writes: false,
     readOnly: true,
+    untrustedContent: true,
     routes: ["/runs", "/dashboard"],
     effect: "reads the queue",
   },
@@ -194,6 +203,7 @@ export const MANIFEST: readonly ToolSpec[] = [
       "Autopilot opened a proposal, and what approving it would and would not do.",
     writes: false,
     readOnly: true,
+    untrustedContent: true,
     routes: ["/runs", "/runs/$id", "/dashboard"],
     effect: "explains a proposal",
     inputSchema: {
@@ -211,6 +221,7 @@ export const MANIFEST: readonly ToolSpec[] = [
       "behind it, and the run's status. Push commands stay hidden until a person approves.",
     writes: false,
     readOnly: true,
+    untrustedContent: true,
     routes: ["/runs/$id"],
     effect: "reads the proposal",
     inputSchema: {
@@ -227,6 +238,7 @@ export const MANIFEST: readonly ToolSpec[] = [
       "and return it for comparison. Drafting is not staging: nothing is recorded until it is staged.",
     writes: false,
     readOnly: true,
+    untrustedContent: true,
     routes: ["/runs/$id"],
     effect: "drafts an option",
     inputSchema: {

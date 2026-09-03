@@ -4,7 +4,7 @@
  * is never offered a tool for a screen nobody is on.
  */
 import { describe, expect, it } from "vitest";
-import { renderHook, act } from "@testing-library/react";
+import { renderHook, act, waitFor } from "@testing-library/react";
 import { useWebMcp } from "./useWebMcp.js";
 import type { ModelContext, ToolDescriptor } from "./types.js";
 
@@ -73,6 +73,14 @@ describe("useWebMcp", () => {
     const { result } = renderHook(() => useWebMcp({ pathname: "/runs", client, context: ctx }));
     expect(result.current.tools.map((t) => t.name)).toContain("list_pending_runs");
     expect(result.current.supported).toBe(true);
+  });
+
+  it("reads the native tool list back after registering it", async () => {
+    const { ctx, registered } = fakeContext();
+    ctx.getTools = async () => [...registered.values()].map((tool) => ({ name: tool.name }));
+    const { result } = renderHook(() => useWebMcp({ pathname: "/runs", client, context: ctx }));
+    await waitFor(() => expect(result.current.verifiedTools).toContain("list_pending_runs"));
+    expect(result.current.verifiedTools).toContain("describe_boundary");
   });
 
   it("reports unsupported — and NO tools — in a browser without WebMCP", () => {
