@@ -29,10 +29,16 @@ Last updated: 2026-09-03
 - The deadline is recorded as **2026-09-03, 5:00pm PT**, confirmed against the
   Devpost submission countdown.
 - Editable demo: `docs/webmcp-challenge/hyperframes-polish/`.
-- Current rendered demo: `docs/webmcp-challenge/hyperframes-polish/renders/hyperframes-polish_2026-09-02_22-47-45.mp4`
-  (44 seconds, 1920×1080, 30fps, H.264/AAC).
+- Superseded render (do not upload):
+  `docs/webmcp-challenge/hyperframes-polish/renders/hyperframes-polish_2026-09-02_22-47-45.mp4`.
+- Final, upload-ready render:
+  `docs/webmcp-challenge/hyperframes-polish/renders/shipaso-webmcp-webmcp-challenge-final.mp4`
+  (44.0 seconds, 1920×1080, 30fps, H.264/AAC, 25.4 MB).
+- The final render was inspected at its end card.  The personal-email account
+  region is fully masked; the panel reports browser verification of seven
+  run-detail tools and uses the current truthful boundary language.
 
-## Do not upload the current render
+## Superseded render — do not upload
 
 Two public-facing problems must be fixed before upload:
 
@@ -47,13 +53,7 @@ The seven-tool count in that footage is **not** a problem: the captured route
 is a run detail page, where seven tools are expected.  The submission’s
 five-tool count refers specifically to `/runs`.
 
-## Required next steps
+## Remaining submission steps
 
-1. Let the main-branch deployment for `706b61d8` succeed and confirm
-   `app.shipaso.com` serves it.
-2. Capture a fresh, sanitized run-detail screen from deployed code.  It must
-   show the current truthful boundary copy and no personal email.
-3. Replace the stale footage in the HyperFrames composition, validate, render,
-   then inspect the final frames for disclosure/overlap.
-4. Upload the clean render to public YouTube with audio, add its URL to
+1. Upload the final render to public YouTube with audio, add its URL to
    `submission.md`, and submit through Devpost.
