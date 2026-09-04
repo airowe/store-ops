@@ -84,6 +84,61 @@ mechanism shipped; the notes never carried the token.
    rejections happened at sign-in, and in `8d82affb` the three subscription items
    were still `READY_FOR_REVIEW`, never evaluated.
 
+### The submission container is EMPTY (found 2026-09-04)
+
+A draft review submission exists and reads `READY_FOR_REVIEW` — which means
+*the container may be submitted*, *not* that anything is in it:
+
+| Submission | State | Items |
+|---|---|---|
+| `741b079c-de60-4e3d-880b-fd0aa9668e78` | `READY_FOR_REVIEW` | **0** |
+
+Submitting it as-is sends Apple nothing to review. This is very likely the same
+reason the three subscriptions were never evaluated in the rejected `8d82affb`.
+
+**Item IDs are NOT product IDs.** `asc review items add --item-type
+subscriptionVersions` takes a subscription *version* ID; the numeric IDs from
+`asc subscriptions list` are product IDs and are a different resource (the CLI
+says so itself: "Version IDs are distinct from subscription product IDs").
+Resolved 2026-09-04 via `asc subscriptions versions list --subscription-id`:
+
+| Item | Type | ID |
+|---|---|---|
+| 0.1.1 version | `appStoreVersions` | `353d561b-06de-4921-ae54-2407d0ea8394` |
+| Indie | `subscriptionVersions` | `46489f0d-80bb-4acd-8441-955ebab8bd03` |
+| Startup | `subscriptionVersions` | `16d974c2-4dd0-4a17-bccd-85690c7b7319` |
+| Scale | `subscriptionVersions` | `f62767b5-f7f3-435c-9c7b-f75af58fbd57` |
+
+All three subscription versions are `READY_FOR_REVIEW`; the version is
+`REJECTED` until a new build is attached to it. Attach the build FIRST, then add
+the four items, then submit. Re-read the IDs before using them — a new
+subscription version gets a new ID.
+
+### Build 202609042158 — uploaded with a live key (verified 2026-09-04)
+
+First build carrying a real RevenueCat key. `fastlane ios beta` → signed .ipa
+(33 MB) → uploaded to App Store Connect. Not yet submitted; `upload_to_testflight`
+deliberately stops short of review.
+
+The key was verified **by reading it out of the uploaded .ipa**, not inferred
+from the build succeeding — the guard proves the key was in the environment,
+which is a different claim from it reaching the binary:
+
+    Payload/ShipASO.app/EXConstants.bundle/app.config
+    extra.revenueCat = {"ios": "appl_zxBw…", "android": ""}
+
+Note the location: Expo bakes `extra` into `EXConstants.bundle/app.config`, NOT
+into `main.jsbundle`. A grep of the JS bundle returns nothing for both a live
+and an empty key, so it cannot tell them apart — the first check run here did
+exactly that and had to be redone.
+
+### The review token is live in ASC (verified 2026-09-04)
+
+Read back out of App Store Connect and exchanged against production:
+`POST /auth/review-exchange` → **HTTP 200** (garbage token → 400 as the negative
+control). The reviewer's sign-in path is proven, not assumed. Token expires
+2026-12-03.
+
 ### Open, not blocking the submission
 
 - `ANTHROPIC_API_KEY` unset → `/health` `claude_reasoner: false`; the agent runs
