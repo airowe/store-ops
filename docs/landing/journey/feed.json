@@ -2,6 +2,12 @@
   "version": 1,
   "entries": [
     {
+      "date": "2026-09-04",
+      "kind": "story",
+      "title": "Rejected again — and the bug was in the instructions, not the app",
+      "body": "0.1.1 came back on Guideline 2.1(a): “the Connect button was not responsive after sign in,” on an iPad. We went looking for a broken button and found something worse. Sign-in is passwordless, so our review notes told the reviewer to tap “Send magic link” and open the email — an email sent to a mailbox only we can read. The notes even explained why no sign-in token was included: our magic tokens expire in 15 minutes. So the reviewer had no way in, and reported the login screen as broken. They were right. Worse: after the previous rejection we had already built the fix — a 90-day review token and a “Have a sign-in token?” field, put there for exactly this. The code shipped. Nobody put the token in the notes. Today we minted one, verified it against production, and signed in on an iPad simulator to watch it work; the Connect screen we suspected turned out to be fine. Two review rounds spent on a documentation gap in front of a working feature."
+    },
+    {
       "date": "2026-08-08",
       "kind": "milestone",
       "title": "The agent's brain is now Claude",
