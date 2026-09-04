@@ -110,14 +110,21 @@ Pages projects.
 - **The iOS app is built with FASTLANE, not EAS.** `mobile/eas.json` exists and
   `eas whoami` succeeds, so `eas build` looks like the path — it is not. The
   real pipeline is `mobile/fastlane/Fastfile` (#247):
-  `bundle exec fastlane build` (expo prebuild → pod install → match signing →
+  `fastlane build` (expo prebuild → pod install → match signing →
   `build_app` → **`mobile/builds/ShipASO.ipa`** — the lane's `output_directory:
   "./builds"` is relative to `mobile/`, not to `fastlane/`, and the lane's own
   success message misreports this) then
-  `bundle exec fastlane upload` (`upload_to_testflight`, and deliberately **no**
+  `fastlane upload` (`upload_to_testflight`, and deliberately **no**
   review submit). Build numbers are minute-stamped `%Y%m%d%H%M`, chosen to avoid
   colliding with the leftover EAS-era remote numbers. Signing is `match`
-  (readonly) with API-key auth, so no 2FA prompt.
+  (readonly) with API-key auth, so no 2FA prompt. **There is no Gemfile** — the
+  command is bare `fastlane`. Four docs prefixed it with a bundler invocation,
+  which dies with "Could not locate Gemfile" before running anything; a guard in
+  `packages/docpaths/buildPipeline.test.mjs` now keeps them honest. The `build` lane refuses
+  to start unless `REVENUECAT_IOS_KEY` is set and `appl_`-prefixed: an unset key
+  is baked in as `""` by `app.config.ts`, and every step then succeeds while the
+  paywall ships dead — Guideline 3.1.1, the 0.1.0 rejection. Source `.env`
+  first: `set -a && . ../.env && set +a`.
 - **Stale docs beat stale code.** Several modules have described work as
   unbuilt long after it shipped. Verify against the source before trusting a
   comment, an issue, or this file.

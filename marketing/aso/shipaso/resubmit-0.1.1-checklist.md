@@ -124,10 +124,12 @@ now ships in the binary. Update the ASC **App Privacy** questionnaire:
 ```bash
 # A. Build + upload 0.1.1 to TestFlight in one pass (runs on a Mac with Xcode;
 #    needs fastlane/AuthKey_NC235A8728.p8 in place, git-ignored).
-#    REVENUECAT_IOS_KEY MUST be exported: mobile/app.config.ts reads it at
+#    REVENUECAT_IOS_KEY must be exported: mobile/app.config.ts reads it at
 #    `expo prebuild` time — without it the binary ships an empty SDK key and
 #    the paywall shows its "unavailable" state (a guaranteed re-rejection).
-cd mobile && REVENUECAT_IOS_KEY="appl_…" bundle exec fastlane ios beta
+#    The lane now aborts before prebuild rather than building one of these,
+#    so sourcing .env is all that is required.
+cd mobile && set -a && . ../.env && set +a && fastlane ios beta
 #    Artifact: mobile/builds/ShipASO.ipa; upload_to_testflight does NOT submit
 #    for review (deliberate).
 

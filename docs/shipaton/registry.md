@@ -71,10 +71,14 @@ mechanism shipped; the notes never carried the token.
 1. Replace `<REVIEW_TOKEN>` in `review-notes-0.1.1.md` with a freshly minted
    token, **in App Store Connect only** — it is a bearer credential and must not
    be committed.
-2. Build with the real key: `REVENUECAT_IOS_KEY="appl_…" bundle exec fastlane ios beta`.
-   A placeholder key logs `Invalid API Key` and leaves the paywall dead — the
-   same 3.1.1 failure that rejected 0.1.0. (Observed on the 2026-09-04 sim build,
-   which used a placeholder deliberately.)
+2. Build with the real key: `cd mobile && set -a && . ../.env && set +a &&
+   fastlane ios beta`. A placeholder or empty key logs `Invalid API Key` and
+   leaves the paywall dead — the same 3.1.1 failure that rejected 0.1.0.
+   (Observed on the 2026-09-04 sim build, which used a placeholder
+   deliberately.) The `build` lane now **aborts before `expo prebuild`** unless
+   `REVENUECAT_IOS_KEY` is set and starts with `appl_`; previously four docs
+   asked for the key and nothing enforced it, so a forgotten export uploaded a
+   dead paywall with every step reporting success.
 3. Prove the sandbox purchase round-trip on a device: buy → webhook → tier
    applied. **Still unproven.** App Review has never seen the paywall — both
    rejections happened at sign-in, and in `8d82affb` the three subscription items

@@ -58,6 +58,38 @@ def seed_react_prebuilt_frameworks
   SHELL
 end
 
+# The RevenueCat public SDK key must be present AND look like an iOS key.
+#
+# `mobile/app.config.ts` reads `process.env.REVENUECAT_IOS_KEY ?? ""` during
+# `expo prebuild`. Unset it and nothing fails: prebuild bakes in an empty key,
+# the archive signs, the .ipa uploads, and the paywall dies at runtime with
+# `Invalid API Key` — indistinguishable, to a reviewer, from "nothing is
+# purchasable". That is Guideline 3.1.1, and it is what rejected 0.1.0.
+#
+# Four separate docs instructed the operator to export this and none enforced
+# it. A build that reaches App Store Connect has already escaped; the only
+# useful place to fail is here, before prebuild.
+def require_revenuecat_ios_key
+  key = ENV["REVENUECAT_IOS_KEY"].to_s.strip
+  if key.empty?
+    UI.user_error!(
+      "REVENUECAT_IOS_KEY is not set. app.config.ts would bake in an empty key " \
+      "and ship a dead paywall (Guideline 3.1.1 — the 0.1.0 rejection). " \
+      "Run: set -a; . ../.env; set +a   then re-run this lane.",
+    )
+  end
+  # Android and Stripe keys are non-empty and just as fatal. RevenueCat's iOS
+  # public SDK keys are prefixed `appl_`.
+  unless key.start_with?("appl_")
+    UI.user_error!(
+      "REVENUECAT_IOS_KEY does not start with `appl_` (got #{key[0, 6]}…). " \
+      "That is not an iOS RevenueCat public SDK key — an Android (`goog_`) or " \
+      "Stripe key builds fine and leaves the paywall dead.",
+    )
+  end
+  UI.success("REVENUECAT_IOS_KEY present (#{key[0, 9]}…) — paywall will have a live key.")
+end
+
 platform :ios do
   before_all do
     load_api_key
@@ -72,6 +104,9 @@ platform :ios do
 
   desc "Prebuild ios/, install pods, sync signing via match, and build a signed App Store .ipa"
   lane :build do
+    # 0) Fail before doing any work if the paywall would ship dead.
+    require_revenuecat_ios_key
+
     api_key = load_api_key
 
     # 1) Regenerate ios/ from app.config.ts so version/Info.plist match source.

@@ -10,8 +10,8 @@ Every claim here was verified against the source or the live API.
 Mint the real value with:
 
 ```bash
-cd cloud && SESSION_SECRET=… REVIEW_ACCOUNT_EMAIL=adaminsley+shipaso-review@gmail.com \
-  npx tsx scripts/mint-review-token.mts
+set -a && . .env && set +a          # SESSION_SECRET + REVIEW_ACCOUNT_EMAIL
+npx tsx cloud/scripts/mint-review-token.mts
 ```
 
 Paste the token it prints into the block below **in App Store Connect only**.

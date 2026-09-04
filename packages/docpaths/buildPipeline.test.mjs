@@ -120,3 +120,64 @@ test("the codebase context records that builds go through fastlane, not EAS", ()
     "the context must name mobile/fastlane/Fastfile so the reader can find the real pipeline",
   );
 });
+
+/**
+ * A build with no RevenueCat key uploads successfully and ships a DEAD paywall.
+ *
+ * `mobile/app.config.ts` reads `process.env.REVENUECAT_IOS_KEY ?? ""` at
+ * prebuild time. Forget to export it and every step still succeeds: prebuild
+ * writes an empty key, the archive signs, the .ipa uploads, and the paywall
+ * fails at runtime with `Invalid API Key`. That is the same "nothing is
+ * purchasable" 3.1.1 failure that rejected 0.1.0.
+ *
+ * Four docs told the operator to export it and none enforced it. That is the
+ * shape of the bug that rejected 0.1.1 twice — a working mechanism with only a
+ * sentence of English standing in front of it. The lane must FAIL instead.
+ */
+test("the build lane refuses to build without a real RevenueCat iOS key", () => {
+  const src = read("mobile/fastlane/Fastfile");
+  assert.match(
+    src,
+    /REVENUECAT_IOS_KEY/,
+    "mobile/fastlane/Fastfile must read REVENUECAT_IOS_KEY — app.config.ts defaults it to \"\", so an unset key builds and uploads a dead paywall rather than failing",
+  );
+  assert.match(
+    src,
+    /UI\.user_error!.*REVENUECAT_IOS_KEY|REVENUECAT_IOS_KEY[\s\S]{0,400}?UI\.user_error!/,
+    "the Fastfile must abort (UI.user_error!) when REVENUECAT_IOS_KEY is missing — a warning is not enough, an uploaded build is already in App Store Connect",
+  );
+  assert.match(
+    src,
+    /appl_/,
+    "the guard should check the key's `appl_` prefix — a non-empty but wrong-platform key (a Stripe or Android key) fails just as silently",
+  );
+});
+
+/**
+ * `bundle exec fastlane` does not work in this repo — there is no Gemfile.
+ *
+ * The registry, the gates runsheet, the resubmit checklist and the codebase
+ * context all spelled the build command `bundle exec fastlane …`. No Gemfile
+ * has ever been tracked here (git log --diff-filter=A over Gemfile paths is
+ * empty) and fastlane is installed globally via rbenv, so that command dies
+ * with "Could not locate Gemfile" before it does anything.
+ *
+ * An operator copying the documented command hits an error that looks like a
+ * broken toolchain rather than a wrong doc. Keep every doc on the command that
+ * actually runs.
+ */
+test("no doc tells the operator to run the build with `bundle exec`", () => {
+  const docs = [
+    ".claude/codebase-context.md",
+    "docs/shipaton/gates-runsheet.md",
+    "docs/shipaton/registry.md",
+    "marketing/aso/shipaso/resubmit-0.1.1-checklist.md",
+  ];
+  for (const doc of docs) {
+    assert.doesNotMatch(
+      read(doc),
+      /bundle exec fastlane/,
+      `${doc} says \x60bundle exec fastlane\x60, but this repo has no Gemfile — that command fails with "Could not locate Gemfile". The working command is \x60fastlane ios <lane>\x60.`,
+    );
+  }
+});
