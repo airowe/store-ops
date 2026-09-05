@@ -46,10 +46,23 @@ python3 lib/aso_rank_check.py --bundle com.burbn.instagram "photo,stories,reels"
 You get a per-field ASO score of your live listing and the exact next skill to
 run for each gap. → Full walkthrough + what you'll see: **https://shipaso.com/install**
 
-> **Prefer tools over files?** The same engine is exposed as 12 MCP tools at
-> `https://api.shipaso.com/mcp` — MCP is vendor-neutral, so it works from any
-> MCP client. Read/draft only; nothing pushes to a live store. See
-> `skills/shipaso-mcp/SKILL.md`.
+### Zero install: point your agent at the hosted MCP
+
+No clone, no key, no account:
+
+```
+claude mcp add shipaso --transport http https://api.shipaso.com/mcp
+```
+
+Your agent immediately gets `preview_app` — a real, measured teaser of any App
+Store app (audit grade, lead organic rank, how many keywords crack the top 10)
+— and `proof`, the aggregate rank-win record. The other ten tools (listing
+audit, keyword gaps, rank check, screenshot scoring, competitor watch, war room,
+localization gaps, draft copy, and the two Google Play audits) unlock with a
+free `shipaso_` key from app.shipaso.com → Settings → Agent access; re-add the
+server with `--header "Authorization: Bearer <key>"`. MCP is vendor-neutral, so
+Cursor and any other MCP client work the same way. Every tool is read or draft;
+nothing pushes to a live store. Details: `skills/shipaso-mcp/SKILL.md`.
 
 ## What's in this repo
 
