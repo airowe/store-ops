@@ -1860,10 +1860,16 @@ describe("promo_text_unused is wired into every auditFindings call site", () => 
 
   it("api/index.ts passes currentCopy wherever it passes proposedCopy", () => {
     const src = read("src/api/index.ts");
-    const proposed = (src.match(/proposedCopy: result\.proposedCopy/g) ?? []).length;
-    const current = (src.match(/currentCopy: result\.currentCopy/g) ?? []).length;
-    expect(proposed, "expected auditFindings call sites in api/index.ts").toBeGreaterThan(0);
-    expect(current, "a call site passes proposedCopy but not currentCopy").toBe(proposed);
+    // Per CALL SITE, not a file-wide count: a site that passes neither (the
+    // public report card, #437, has no proposal) must not be able to mask a
+    // site that passes proposedCopy alone.
+    const sites = src.split("auditFindings({").slice(1).map((s) => s.slice(0, s.indexOf("});")));
+    expect(sites.length, "expected auditFindings call sites in api/index.ts").toBeGreaterThan(0);
+    const withProposed = sites.filter((s) => /proposedCopy: result\.proposedCopy/.test(s));
+    expect(withProposed.length).toBeGreaterThan(0);
+    for (const s of withProposed) {
+      expect(s, "a call site passes proposedCopy but not currentCopy").toMatch(/currentCopy: result\.currentCopy/);
+    }
   });
 
   it("mcp/tools.ts passes currentCopy too", () => {

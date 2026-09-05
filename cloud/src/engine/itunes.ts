@@ -152,6 +152,13 @@ export type ItunesResult = {
   artworkUrl512?: string;
   artworkUrl100?: string;
   artworkUrl60?: string;
+  /** Developer display name, as the store shows it. */
+  sellerName?: string;
+  /** ISO timestamps: first release, and the current version's release. */
+  releaseDate?: string;
+  currentVersionReleaseDate?: string;
+  /** Apple returns this as a decimal STRING of bytes. */
+  fileSizeBytes?: string;
 };
 
 /**

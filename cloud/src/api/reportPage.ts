@@ -19,12 +19,15 @@
  *   - every interpolated string is escaped.
  */
 import type { AppPreview } from "../engine/preview.js";
+import type { AuditCard, CardValue } from "../engine/auditCard.js";
 
 export type ReportPageData = {
   appId: string;
   bundleId: string;
   country: string;
   preview: AppPreview;
+  /** The shareable audit card (#437). Absent on cache entries written before it existed. */
+  card?: AuditCard | undefined;
 };
 
 export type ReportPageOptions = {
@@ -104,10 +107,89 @@ const CSS =
   `.btn{display:inline-block;padding:10px 16px;border-radius:9px;text-decoration:none;font-weight:600;font-size:14.5px;margin-right:10px;margin-bottom:8px}.btn-primary{background:var(--signal);color:#04110b}.btn-ghost{border:1px solid var(--line);color:var(--ink)}` +
   `footer{margin-top:34px;color:var(--faint);font-size:13.5px}@media(max-width:600px){.frow{grid-template-columns:1fr 64px;grid-template-areas:"n p" "t t" "b b"}.fname{grid-area:n}.fpts{grid-area:p}.fnote{grid-area:t}.fbar{grid-area:b}}`;
 
+// ── the audit card (#437) ────────────────────────────────────────────────────
+//
+// One block sized to screenshot. Every value goes through `cardValue`, so a
+// number cannot reach the page without its state: measured renders the value,
+// pending renders "requested" with Apple's window, unavailable renders "—" with
+// the reason, absent renders "—" alone. There is no fifth branch.
+
+const CARD_CSS =
+  `.card{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:22px 24px;margin:0 0 22px}` +
+  `.cid{display:flex;align-items:center;gap:14px;margin-bottom:14px}.cid img{width:56px;height:56px;border-radius:13px;flex:none}.cid h2{margin:0;font-size:20px;line-height:1.2}.cid .dev{color:var(--dim);font-size:14px}` +
+  `.chips{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:16px}.chip{font-size:12.5px;padding:3px 9px;border:1px solid var(--line);border-radius:999px;color:var(--dim)}` +
+  `.hl{font-size:19px;font-weight:700;line-height:1.3;margin:0 0 4px}.hls{color:var(--faint);font-size:12.5px;margin:0 0 16px}` +
+  `.hero{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px}.ht{border:1px solid var(--line);border-radius:10px;padding:12px 14px}.hk{font-size:12px;text-transform:uppercase;letter-spacing:.06em;color:var(--dim)}.hv{font-size:26px;font-weight:700;font-variant-numeric:tabular-nums;margin:2px 0}.hv.none{color:var(--faint)}.hr{font-size:12.5px;color:var(--faint)}` +
+  `.tiles{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:14px}.tile{border:1px solid var(--line);border-radius:10px;padding:10px 12px}.ck{font-size:12px;text-transform:uppercase;letter-spacing:.06em;color:var(--dim)}.cv{font-size:18px;font-weight:600;font-variant-numeric:tabular-nums}.cv.none{color:var(--faint);font-weight:400}.cv small{font-size:12.5px;color:var(--dim);font-weight:400}` +
+  `.fx{border-top:1px solid var(--line);padding-top:12px;margin-top:4px}.fx .ft{font-weight:600;font-size:14.5px}.fx .ff{color:var(--dim);font-size:14px;margin-bottom:8px}` +
+  `.strip{display:flex;gap:8px;margin-top:12px}.strip img{width:calc(33.333% - 6px);border-radius:8px;border:1px solid var(--line)}` +
+  `.cfoot{display:flex;justify-content:space-between;margin-top:14px;font-size:12.5px;color:var(--faint)}` +
+  `@media(max-width:600px){.tiles{grid-template-columns:1fr 1fr}}`;
+
+/** Renders one CardValue as [value html, note html]. The four states, no default arm. */
+function cardValue<T>(v: CardValue<T>, show: (value: T) => string): { html: string; note: string; none: boolean } {
+  switch (v.state) {
+    case "measured":
+      return { html: show(v.value), note: "", none: false };
+    case "pending":
+      return { html: DASH, note: escapeHtml(v.reason), none: true };
+    case "unavailable":
+      return { html: DASH, note: escapeHtml(v.reason), none: true };
+    case "absent":
+      return { html: DASH, note: "", none: true };
+  }
+}
+
+function heroTile(label: string, v: CardValue<number>): string {
+  const r = cardValue(v, (n) => escapeHtml(n.toLocaleString("en-US")));
+  return `<div class="ht"><div class="hk">${escapeHtml(label)}</div><div class="hv${r.none ? " none" : ""}">${r.html}</div>${r.note ? `<div class="hr">${r.note}</div>` : ""}</div>`;
+}
+
+function tile(label: string, r: { html: string; none: boolean }): string {
+  return `<div class="tile"><div class="ck">${escapeHtml(label)}</div><div class="cv${r.none ? " none" : ""}">${r.html}</div></div>`;
+}
+
+function dateOnly(iso: string): string {
+  return iso.slice(0, 10);
+}
+
+function renderCard(c: AuditCard, canonical: string): string {
+  const dev = cardValue(c.identity.developer, (s) => escapeHtml(s));
+  const category = cardValue(c.chips.category, (s) => escapeHtml(s));
+  const price = cardValue(c.chips.price, (s) => escapeHtml(s));
+  const released = cardValue(c.identity.released, (s) => `Since ${escapeHtml(dateOnly(s))}`);
+  const chips = [category, price, released].filter((x) => !x.none).map((x) => `<span class="chip">${x.html}</span>`).join("");
+
+  const rating = cardValue(c.tiles.rating, (r) => `${escapeHtml(r.avg.toFixed(1))} <small>★ ${escapeHtml(r.count.toLocaleString("en-US"))}</small>`);
+  const size = cardValue(c.tiles.size, (s) => escapeHtml(s));
+  const score = cardValue(c.aso.score, (n) => `${escapeHtml(String(n))}<small>/100${c.aso.grade ? ` · ${escapeHtml(c.aso.grade)}` : ""}</small>`);
+  const rankNote = cardValue(c.aso.rankSummary, (s) => escapeHtml(`${s.found} of ${s.tested} keywords found`));
+
+  const fixes = c.aso.topFindings
+    .map((f) => `<div class="ft">${escapeHtml(f.title)}</div><div class="ff">${escapeHtml(f.fix)}</div>`)
+    .join("");
+  const strip = c.screenshots.map((u) => `<img src="${escapeHtml(u)}" alt="" loading="lazy">`).join("");
+
+  return (
+    `<section class="card" id="card">` +
+    `<div class="cid">${c.identity.iconUrl ? `<img src="${escapeHtml(c.identity.iconUrl)}" alt="">` : ""}<div><h2>${escapeHtml(c.identity.name)}</h2>` +
+    `<div class="dev">${dev.none ? DASH : dev.html}</div></div></div>` +
+    (chips ? `<div class="chips">${chips}</div>` : "") +
+    `<p class="hl">${escapeHtml(c.aso.headline)}</p>` +
+    `<p class="hls">${c.aso.rankSummary.state === "measured" ? escapeHtml(c.aso.rankSummary.source) : "ShipASO rank check"}${rankNote.none ? "" : ` · ${rankNote.html}`}</p>` +
+    `<div class="hero">${heroTile("Downloads", c.hero.downloads)}${heroTile("Proceeds", c.hero.proceeds)}</div>` +
+    `<div class="tiles">${tile("Listing score", score)}${tile("Rating", rating)}${tile("Size", size)}</div>` +
+    (fixes ? `<div class="fx">${fixes}</div>` : "") +
+    (strip ? `<div class="strip">${strip}</div>` : "") +
+    `<div class="cfoot"><span>Measured ${escapeHtml(dateOnly(c.measuredAt))} · ${escapeHtml(c.country)} · every number measured or ${DASH}</span><span>${escapeHtml(canonical.replace(/^https?:\/\//, ""))}</span></div>` +
+    `</section>`
+  );
+}
+
 function shell(title: string, head: string, body: string): string {
   return (
     `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">` +
-    `<title>${escapeHtml(title)}</title>${head}<style>${CSS}</style></head><body><div class="wrap">` +
+    `<title>${escapeHtml(title)}</title>${head}<style>${CSS}${CARD_CSS}</style></head><body><div class="wrap">` +
     `<div class="top"><a class="mark" href="https://shipaso.com">ShipASO</a><nav class="nav"><a href="https://shipaso.com/report">Score another app</a><a href="https://shipaso.com/install">Free plugin</a><a href="https://app.shipaso.com">Hosted agent</a></nav></div>` +
     body +
     `<footer><strong>ShipASO</strong> — MIT-licensed ASO for App Store &amp; Google Play. Every number on this page was measured from the public App Store, or shown as ${DASH}.</footer>` +
@@ -152,6 +234,8 @@ export function renderReportPage(data: ReportPageData, opts: ReportPageOptions):
       `<div class="msg">Heads up: only <b>${measured} of ${total}</b> fields were readable from the public App Store page, ` +
       `so this score reflects just those. Connect the app (or run the plugin with your key) to score the rest.</div>`;
   }
+
+  if (data.card) body += renderCard(data.card, canonical);
 
   if (breakdown.length) {
     body += `<div class="panel"><div class="ph">Listing breakdown</div><div class="pb">${breakdown.map(fieldRow).join("")}</div></div>`;
