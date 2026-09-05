@@ -14,14 +14,32 @@ libs, or want a teammate's agent to hit the same account.
 > of them writes to a live App Store / Play listing. Shipping stays a human,
 > approved action in the ShipASO app.
 
-## One-time setup
+## Try it with no key, no account
+
+```
+claude mcp add shipaso --transport http https://api.shipaso.com/mcp
+```
+
+That is the whole install. Without a key the server serves the **public tier** —
+the same two things that are already public on the website:
+
+- `preview_app` — a real, measured teaser of any App Store app (audit grade,
+  lead organic rank, how many keywords crack the top 10, a ranked sample).
+- `proof` — the anonymized aggregate rank-win proof.
+
+Every other tool is listed too, so your agent can see what a key unlocks; call
+one without a key and the reply is a tool error that says exactly where to mint
+one (the connection stays up). Anonymous previews are cached for six hours and
+per-app rate-damped, the same as the public report page.
+
+## Unlock the rest (one-time)
 
 1. **Mint a key.** In the ShipASO app (app.shipaso.com) → Settings → Agent
    access → *Generate key*. The raw `shipaso_…` key is shown **once** — copy it
    then (only its hash is stored; it can never be shown again). Revoke any time;
    it doesn't touch your login.
 
-2. **Add the MCP server to your agent.** In Claude Code:
+2. **Re-add the server with the key.** In Claude Code:
 
    ```
    claude mcp add shipaso --transport http https://api.shipaso.com/mcp \
@@ -29,8 +47,9 @@ libs, or want a teammate's agent to hit the same account.
    ```
 
    Cursor / other MCP clients: point them at `https://api.shipaso.com/mcp` with
-   the same `Authorization: Bearer <key>` header. An invalid or missing key gets
-   a 401 before any tool runs.
+   the same `Authorization: Bearer <key>` header. A key that is present but
+   invalid (a typo, a revoked key) is a **401** — it is never silently downgraded
+   to the public tier, so you always know which tier you are on.
 
 ## The tools it exposes
 

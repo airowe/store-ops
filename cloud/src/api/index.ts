@@ -731,6 +731,21 @@ async function requireUser(req: Request, env: Env): Promise<AuthedUser> {
 }
 
 /**
+ * The MCP front door (loop 2026-09-05): a caller with NO credential at all is
+ * anonymous and reaches only the public tool tier. A caller who PRESENTS a
+ * credential — a Bearer key or a session cookie — is held to it: a typo'd or
+ * revoked key is a 401, never a silent downgrade to the public tier, so a
+ * paying user cannot be fooled into thinking the product is limited.
+ */
+async function optionalUser(req: Request, env: Env): Promise<AuthedUser | null> {
+  const presented =
+    Boolean(parseCookie(req.headers.get("Cookie"))[SESSION_COOKIE]) ||
+    Boolean(req.headers.get("Authorization"));
+  if (!presented) return null;
+  return requireUser(req, env);
+}
+
+/**
  * The email sender is selected by `emailSenderForEnv` (shared with the cron's
  * weekly digest) — Resend when configured, else the console logger.
  */
@@ -5461,6 +5476,24 @@ export async function handleApi(req: Request, env: Env, ctx?: ExecutionContext):
       return preferenceDataExport(req, env, origin);
     }
 
+    // POST /mcp — the ShipASO MCP server (#93), now the FRONT DOOR (loop
+    // 2026-09-05). Dispatched before requireUser so a stranger with no key can
+    // run initialize/tools/list and the public tier (preview_app, proof — the
+    // tools already public over HTTP). Every other tool is gated INSIDE the
+    // registry (tools.ts `keyed`), so an anonymous call to a keyed tool is a
+    // tool error carrying the mint instructions, never a reachable handler. A
+    // presented-but-invalid credential is still a 401 (optionalUser). The
+    // anonymous preview is cost-bounded by the same cache + damper as /report.
+    // The transport owns its own JSON-RPC response, so it is returned verbatim.
+    if (seg[0] === "mcp" && seg.length === 1) {
+      const user = await optionalUser(req, env);
+      return handleMcp(req, {
+        env,
+        user,
+        guard: { cache: defaultReportCache(), limiter: env.REPORT_LIMITER as ReportLimiter | undefined },
+      });
+    }
+
     // POST /telegram/webhook — PUBLIC by necessity: Telegram has no session and
     // cannot present one. It authenticates with the shared secret token it was
     // registered with, checked inside the handler, and nothing in the body is
@@ -5480,14 +5513,7 @@ export async function handleApi(req: Request, env: Env, ctx?: ExecutionContext):
   try {
     const user = await requireUser(req, env);
 
-    // /mcp — the ShipASO MCP server (#93). Read-only/draft tools over Streamable
-    // HTTP for agent IDEs (Claude Code / Cursor). Gated by requireUser above
-    // (cookie OR Bearer session token), so an unauthed call never reaches a tool.
-    // The transport owns its own JSON-RPC response (status, content-type), so we
-    // return it verbatim rather than wrapping it in json().
-    if (seg[0] === "mcp" && seg.length === 1) {
-      return handleMcp(req, { env, user });
-    }
+    // (/mcp is now dispatched in the PUBLIC block above — it is the front door.)
 
     // /billing/checkout — authenticated (the buyer is the signed-in user)
     if (seg[0] === "billing" && seg[1] === "checkout" && seg.length === 2 && method === "POST") {

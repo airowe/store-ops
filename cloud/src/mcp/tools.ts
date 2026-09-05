@@ -27,6 +27,13 @@ import { analyzeIconSet, iconAnalyzerForEnv } from "../api/aiIconVision.js";
 import { buildPreview } from "../engine/preview.js";
 import { fetchForEnv, fetchLikeForEnv } from "../fetchAdapter.js";
 import { reasonerForEnv } from "../api/aiReasoner.js";
+import {
+  allowReport,
+  cachedByKey,
+  previewCacheKey,
+  type ReportCache,
+  type ReportLimiter,
+} from "../api/publicReportGuard.js";
 import { getApp, getRankHistory, getRun, listAllApps, listRunsForApp } from "../d1.js";
 import type { ReasoningTrace } from "../d1.js";
 import { extractWins, aggregateProof } from "../proof.js";
@@ -42,25 +49,49 @@ import type { FetchLike, GoogleServiceAccount } from "../engine/index.js";
 
 const MAX_WAR_ROOM_COMPETITORS = 4;
 
-/** The per-request context every tool handler receives (the authed caller). */
+/**
+ * The per-request context every tool handler receives. `user` is null for the
+ * anonymous front door (loop 2026-09-05): a caller who presented no credential.
+ * `guard` carries the same cache + damper `GET /report` uses, so the anonymous
+ * preview is cost-bounded the same way; both are optional and fail open.
+ */
 export type ToolContext = {
   env: Env;
-  user: { id: string; email: string };
+  user: { id: string; email: string } | null;
+  guard?: { cache?: ReportCache | undefined; limiter?: ReportLimiter | undefined } | undefined;
 };
+
+/** What an anonymous caller is told when they reach a keyed tool. */
+export const KEY_REQUIRED_MESSAGE =
+  "This tool needs a ShipASO key. Mint one free at app.shipaso.com → Settings → " +
+  "Agent access (it is shown once), then re-add the server:\n" +
+  '  claude mcp add shipaso --transport http https://api.shipaso.com/mcp --header "Authorization: Bearer <your shipaso_ key>"\n' +
+  "preview_app and proof work without a key.";
 
 /**
  * A registered MCP tool. `readOnly: true` is a LITERAL (not `boolean`) so the type
  * system itself forbids a mutating tool from entering the registry; the spec
  * double-checks at runtime. `inputSchema` is a Zod raw shape (the SDK turns it
- * into the JSON Schema clients see).
+ * into the JSON Schema clients see). `access: "public"` opts a tool into the
+ * anonymous tier; absent means keyed, and the registry wraps the handler so an
+ * anonymous call is refused before any work is done.
  */
 export type McpToolDef = {
   name: string;
   description: string;
   readOnly: true;
+  access?: "public";
   inputSchema: z.ZodRawShape;
   handler: (args: Record<string, unknown>, ctx: ToolContext) => Promise<unknown>;
 };
+
+/** Wraps a keyed handler: no user → the mint instructions, and nothing else runs. */
+function keyed(handler: McpToolDef["handler"]): McpToolDef["handler"] {
+  return async (args, ctx) => {
+    if (ctx.user === null) throw new Error(KEY_REQUIRED_MESSAGE);
+    return handler(args, ctx);
+  };
+}
 
 // ── shared input fragments ──────────────────────────────────────────────────────
 
@@ -109,6 +140,16 @@ async function resolveAndRun(
   opts: { competitors?: string[] } = {},
 ): Promise<{ app: ResolvedApp; result: Awaited<ReturnType<typeof runReadOnlyAgent>> }> {
   const fetchFn = fetchForEnv(ctx.env);
+  const app = await resolveTarget(fetchFn, args, ctx);
+  return { app, result: await runResolved(fetchFn, ctx, app, opts) };
+}
+
+/** The resolve half: the caller's selector → ONE app, or an actionable error. */
+async function resolveTarget(
+  fetchFn: ReturnType<typeof fetchForEnv>,
+  args: Record<string, unknown>,
+  ctx: ToolContext,
+): Promise<ResolvedApp> {
   const out = await resolveOne(fetchFn, {
     query: typeof args.query === "string" ? args.query : undefined,
     bundleId: typeof args.bundleId === "string" ? args.bundleId : undefined,
@@ -124,13 +165,22 @@ async function resolveAndRun(
       .join("; ");
     throw new Error(`"${out.query}" is ambiguous — re-call with one bundleId. Candidates: ${list}`);
   }
+  return out.app;
+}
+
+/** The run half: the read-only public agent over one resolved app. */
+async function runResolved(
+  fetchFn: ReturnType<typeof fetchForEnv>,
+  ctx: ToolContext,
+  app: ResolvedApp,
+  opts: { competitors?: string[] } = {},
+): Promise<Awaited<ReturnType<typeof runReadOnlyAgent>>> {
   const reasoner = reasonerForEnv(ctx.env);
-  const result = await runReadOnlyAgent(fetchFn, {
-    app: out.app,
+  return runReadOnlyAgent(fetchFn, {
+    app,
     ...(reasoner ? { reasoner } : {}),
     ...(opts.competitors ? { competitors: opts.competitors } : {}),
   });
-  return { app: out.app, result };
 }
 
 /**
@@ -167,6 +217,9 @@ async function iconFindings(env: Env, result: Awaited<ReturnType<typeof runReadO
 
 /** Load an app and assert it belongs to the caller (owner-scoped; 404-equivalent). */
 async function requireOwnedApp(ctx: ToolContext, appId: string) {
+  // Owner-scoped tools are keyed, so `user` is set by the time this runs; the
+  // check is kept so the invariant does not depend on the wrapper alone.
+  if (ctx.user === null) throw new Error(KEY_REQUIRED_MESSAGE);
   const app = await getApp(ctx.env.DB, appId);
   if (!app || app.user_id !== ctx.user.id) throw new Error("app not found");
   return app;
@@ -174,18 +227,35 @@ async function requireOwnedApp(ctx: ToolContext, appId: string) {
 
 // ── the registry ────────────────────────────────────────────────────────────────
 
-export const TOOLS: McpToolDef[] = [
+const RAW_TOOLS: McpToolDef[] = [
   {
     name: "preview_app",
     description:
       "Read-only ASO snapshot of any App Store app (grade, lead rank, top-10 count, " +
       "sample). No account or store push — the optimized copy + push commands stay " +
-      "behind the human-approved loop.",
+      "behind the human-approved loop. Works without a key.",
     readOnly: true,
+    access: "public",
     inputSchema: appSelector,
     async handler(args, ctx) {
-      const { result } = await resolveAndRun(args, ctx);
-      return buildPreview(result);
+      const fetchFn = fetchForEnv(ctx.env);
+      let target: ResolvedApp | undefined;
+      const compute = async () =>
+        buildPreview(await runResolved(fetchFn, ctx, (target ??= await resolveTarget(fetchFn, args, ctx))));
+
+      // A keyed caller is on their own quota: no damper, no shared cache.
+      if (ctx.user !== null) return compute();
+
+      // Anonymous: the same cost bounds as GET /report. The cache is the real
+      // bound; the damper is a per-app damper that fails open (see the guard's
+      // caveats — never a spend cap). A direct bundle id is checked against the
+      // cache BEFORE any network call; a free-text query must resolve first.
+      const direct = typeof args.bundleId === "string" ? args.bundleId.trim() : "";
+      const bundleId = direct || (target = await resolveTarget(fetchFn, args, ctx)).bundleId;
+      if (!(await allowReport(ctx.guard?.limiter, bundleId))) {
+        throw new Error("Too many requests for this app just now — try again shortly.");
+      }
+      return cachedByKey(previewCacheKey(bundleId, country(ctx.env, args)), ctx.guard?.cache, compute);
     },
   },
   {
@@ -481,8 +551,9 @@ export const TOOLS: McpToolDef[] = [
     description:
       "Read-only, anonymized aggregate proof across all tracked apps (real rank-win " +
       "numbers — no app names, no user data). This is the 'prove the rank moved' " +
-      "surface that closes the prepare → approve → push → prove loop.",
+      "surface that closes the prepare → approve → push → prove loop. Works without a key.",
     readOnly: true,
+    access: "public",
     inputSchema: {},
     async handler(_args, ctx) {
       const apps = await listAllApps(ctx.env.DB);
@@ -511,6 +582,26 @@ export const TOOLS: McpToolDef[] = [
     },
   },
 ];
+
+/**
+ * The registry every transport serves. Keyed tools are wrapped here, at the
+ * source of truth, so the gate holds for any caller of a handler — not only
+ * the HTTP transport. `publicTier.spec.ts` iterates this and proves each keyed
+ * tool refuses an anonymous context before touching the network.
+ */
+export const TOOLS: McpToolDef[] = RAW_TOOLS.map((t) =>
+  t.access === "public" ? t : { ...t, handler: keyed(t.handler) },
+);
+
+/**
+ * The public tier, read off the registry: EXACTLY the tools that are already
+ * public over HTTP — `POST /preview` and `GET /proof`. It mirrors the product's
+ * existing try-before-signup policy and does not widen it; `publicTier.spec.ts`
+ * pins the set so widening it is a deliberate, reviewed change.
+ */
+export const PUBLIC_TOOL_NAMES: ReadonlySet<string> = new Set(
+  TOOLS.filter((t) => t.access === "public").map((t) => t.name),
+);
 
 /** Lookup a tool by name (used by the server dispatch + tests). */
 export function toolByName(name: string): McpToolDef | undefined {
