@@ -486,7 +486,15 @@ export type AppListItem = {
   findings_summary: FindingsSummary | null;
   /** Optional: a Worker predating this field omits the key entirely. */
   loop?: LoopState | null;
+  /**
+   * #493: what the last week's `detected` runs proposed without pushing to
+   * the user. Optional for the same reason as `loop`; null when unreadable.
+   */
+  recorded_proposals?: RecordedProposals | null;
 };
+
+/** The last week's recorded proposals (#493): runs counted, fields proposed, window start. */
+export type RecordedProposals = { runs: number; proposals: number; since: string };
 
 export type AppList = { apps: AppListItem[] };
 
