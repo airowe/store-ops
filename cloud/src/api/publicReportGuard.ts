@@ -33,7 +33,17 @@ const CACHE_SECONDS = 6 * 60 * 60;
  * app's key collide with another's.
  */
 export function reportCacheKey(appId: string, country: string): string {
-  return `https://cache.shipaso.internal/report/${encodeURIComponent(appId)}/${encodeURIComponent(country)}`;
+  return `https://cache.shipaso.internal/report/${encodeURIComponent(appId)}/${encodeURIComponent(storefront(country))}`;
+}
+
+/**
+ * Country arrives as "us" from the web page's query string and as "US" from
+ * the mobile app and the MCP default. A case-sensitive key split the cache in
+ * two for the same app, so a preview warmed by one client was cold for the
+ * next. One storefront, one key.
+ */
+function storefront(country: string): string {
+  return country.trim().toUpperCase();
 }
 
 /**
@@ -42,7 +52,7 @@ export function reportCacheKey(appId: string, country: string): string {
  * own path segment keeps the two namespaces apart even for identical text.
  */
 export function previewCacheKey(bundleId: string, country: string): string {
-  return `https://cache.shipaso.internal/preview/${encodeURIComponent(bundleId)}/${encodeURIComponent(country)}`;
+  return `https://cache.shipaso.internal/preview/${encodeURIComponent(bundleId)}/${encodeURIComponent(storefront(country))}`;
 }
 
 /** The slice of the Cache API this module needs, so tests can supply a fake. */

@@ -1432,10 +1432,13 @@ async function runPreview(req: Request, env: Env): Promise<unknown> {
 
   // #537 — measured on production: Slack 299 s, Notion 150 s, and every repeat
   // cost the same again because this route ran the engine uncached while the
-  // report page and the anonymous MCP preview shared a six-hour cache. The same
-  // key (bundle id + country) is used here, so a preview computed on any of the
-  // three surfaces serves the other two. The per-app damper is the same one
-  // /report uses: a damper, never a spend cap (see publicReportGuard.ts).
+  // anonymous MCP preview_app shared a six-hour cache. The same key (bundle id
+  // + country) is used here, so this route and the MCP tool serve each other's
+  // entries. GET /report/:appId keys on the NUMERIC id and resolves it inside
+  // its own cached compute (#533 moved that lookup inside on purpose), so it is
+  // a separate entry — measured after deploy: a warm preview did not warm the
+  // report page. The per-app damper is the same one /report uses: a damper,
+  // never a spend cap (see publicReportGuard.ts).
   if (!(await allowReport(env.REPORT_LIMITER as ReportLimiter | undefined, bundleId))) {
     throw new HttpError(429, "Too many requests for this app just now — try again shortly.");
   }

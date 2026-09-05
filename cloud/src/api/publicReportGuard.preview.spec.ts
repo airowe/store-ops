@@ -47,3 +47,18 @@ describe("cachedByKey", () => {
     expect(cache.put).not.toHaveBeenCalled();
   });
 });
+
+/**
+ * Country arrives as "us" from the web page's query string and as "US" from
+ * the mobile app and the MCP default. A case-sensitive key split the cache in
+ * two for the same app, so a warm preview from one client was cold for the
+ * other. The storefront is the same storefront whatever the casing.
+ */
+describe("cache keys ignore country casing", () => {
+  it("previewCacheKey and reportCacheKey treat us and US as one storefront", () => {
+    expect(previewCacheKey("com.a", "us")).toBe(previewCacheKey("com.a", "US"));
+    expect(reportCacheKey("123", "gb")).toBe(reportCacheKey("123", "GB"));
+    // and still distinct across storefronts
+    expect(previewCacheKey("com.a", "us")).not.toBe(previewCacheKey("com.a", "gb"));
+  });
+});
