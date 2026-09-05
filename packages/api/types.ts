@@ -920,3 +920,34 @@ export type ChannelLink = {
   expiresInSeconds: number;
   note: string;
 };
+
+// ── screenshot caption localization (#78 item 3, v1-A) ───────────────────────
+/** One caption slot of a layered screenshot source, in the same px units as fontSize. */
+export type CaptionSlot = {
+  id: string;
+  text: string;
+  box: { width: number; height: number };
+  fontSize: number;
+  minFontSize?: number;
+  maxLines?: number;
+  lineHeight?: number;
+};
+export type CaptionFit = {
+  fontSize: number;
+  lines: number;
+  action: "fit" | "shrunk" | "overflow";
+  note?: string;
+};
+export type LocalizedCaptionSlot = { id: string; text: string; fit: CaptionFit };
+export type LocalizedCaptionSet = {
+  locale: string;
+  slots: LocalizedCaptionSlot[];
+  /** the verbatim draft caveat — rendered, never hidden. */
+  label: string;
+  /** true when any slot overflows or shrank to its floor. */
+  needsReview: boolean;
+};
+export type CaptionLocalizationResult = {
+  localized: LocalizedCaptionSet[];
+  excluded: { locale: string; reason: string }[];
+};
