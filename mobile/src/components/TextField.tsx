@@ -4,7 +4,7 @@
  */
 import React, { useMemo } from "react";
 import { StyleSheet, TextInput, type KeyboardTypeOptions } from "react-native";
-import { fontSize, radius, spacing, usePalette, type Palette } from "../theme/index.js";
+import { fontSize, radius, spacing, typeface, usePalette, type Palette } from "../theme/index.js";
 
 const makeStyles = (p: Palette) =>
   StyleSheet.create({
@@ -17,6 +17,7 @@ const makeStyles = (p: Palette) =>
       paddingHorizontal: spacing.md,
       paddingVertical: spacing.md,
       fontSize: fontSize.body,
+      fontFamily: typeface.sans,
       minHeight: 48,
     },
     multiline: { minHeight: 120, textAlignVertical: "top" },

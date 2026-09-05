@@ -18,7 +18,7 @@ import {
   type ViewStyle,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { fontSize, radius, spacing } from "../theme/index.js";
+import { fontSize, radius, spacing, typeface } from "../theme/index.js";
 import { usePalette } from "../theme/index.js";
 import type { Palette } from "../theme/index.js";
 import { useLayout } from "../theme/responsive.js";
@@ -75,16 +75,21 @@ export function Screen({
 
 type TextKind = "display" | "title" | "lead" | "body" | "dim" | "mono" | "micro";
 
-/** Per-kind styles that depend on the live palette (color) + static scale. */
+/**
+ * Per-kind styles: live palette (color), static scale (size), and the brand
+ * typeface. The weight lives in the FACE (`typeface.*` names a loaded static
+ * face), never in `fontWeight` — a synthesized weight on a static face makes
+ * iOS fall back to the system font, which is exactly the bland look this fixes.
+ */
 function textStyle(palette: Palette, kind: TextKind): TextStyle {
   switch (kind) {
-    case "display": return { color: palette.ink, fontSize: fontSize.display, fontWeight: "700" };
-    case "title":   return { color: palette.ink, fontSize: fontSize.title, fontWeight: "700" };
-    case "lead":    return { color: palette.ink, fontSize: fontSize.lead, fontWeight: "600" };
-    case "body":    return { color: palette.ink, fontSize: fontSize.body };
-    case "dim":     return { color: palette.dim, fontSize: fontSize.small };
-    case "mono":    return { color: palette.ink, fontSize: fontSize.small, fontFamily: "monospace" };
-    case "micro":   return { color: palette.faint, fontSize: fontSize.micro };
+    case "display": return { color: palette.ink, fontSize: fontSize.display, fontFamily: typeface.display, letterSpacing: -0.5 };
+    case "title":   return { color: palette.ink, fontSize: fontSize.title, fontFamily: typeface.title, letterSpacing: -0.3 };
+    case "lead":    return { color: palette.ink, fontSize: fontSize.lead, fontFamily: typeface.lead };
+    case "body":    return { color: palette.ink, fontSize: fontSize.body, fontFamily: typeface.sans };
+    case "dim":     return { color: palette.dim, fontSize: fontSize.small, fontFamily: typeface.sans };
+    case "mono":    return { color: palette.ink, fontSize: fontSize.small, fontFamily: typeface.mono };
+    case "micro":   return { color: palette.faint, fontSize: fontSize.micro, fontFamily: typeface.sans };
   }
 }
 
@@ -188,5 +193,5 @@ const styles = StyleSheet.create({
   button: { borderRadius: radius.base, paddingVertical: spacing.md, paddingHorizontal: spacing.lg, alignItems: "center", justifyContent: "center", minHeight: 48 },
   buttonDisabled: { opacity: 0.5 },
   buttonPressed: { opacity: 0.85 },
-  buttonLabel: { fontSize: fontSize.body, fontWeight: "700" },
+  buttonLabel: { fontSize: fontSize.body, fontFamily: typeface.title },
 });

@@ -84,3 +84,35 @@ describe("primitives track the live palette", () => {
     expect(flatStyle(screen.getByText("Go")).color).toBe(lightPalette.signal);
   });
 });
+
+import { typeface } from "../theme/fonts.js";
+
+/**
+ * The brand typefaces (Fraunces display, Space Grotesk text, JetBrains Mono)
+ * were declared in the tokens and never applied: every kind rendered in the
+ * system font with a fontWeight, and `mono` was the literal "monospace". Each
+ * kind now names a loaded face, and the weight lives in the face, not in
+ * fontWeight (a synthesized weight on a static face falls back to the system
+ * font on iOS).
+ */
+describe("AppText is set in the brand typefaces", () => {
+  it.each([
+    ["display", typeface.display],
+    ["title", typeface.title],
+    ["lead", typeface.lead],
+    ["body", typeface.sans],
+    ["dim", typeface.sans],
+    ["micro", typeface.sans],
+    ["mono", typeface.mono],
+  ] as const)("kind=%s uses %s", (kind, face) => {
+    render(<AppText kind={kind}>Hi</AppText>);
+    const style = flatStyle(screen.getByText("Hi"));
+    expect(style.fontFamily).toBe(face);
+    expect(style.fontWeight).toBeUndefined();
+  });
+
+  it("Button labels are set in the bold text face, not the system font", () => {
+    render(<Button label="Go" onPress={() => {}} />);
+    expect(flatStyle(screen.getByText("Go")).fontFamily).toBe(typeface.title);
+  });
+});

@@ -3,9 +3,13 @@
  * (`tokens.ts`) hold BOTH palettes; this decides which one is live and lets any
  * screen read it via `usePalette()` / switch it via `useThemeMode()`.
  *
- * Resolution: an explicit user choice (persisted) wins; otherwise we follow the
- * OS (`useColorScheme`). The web mirror is the `data-theme` attribute + the same
- * `store-ops:theme` storage key, so the two surfaces behave identically.
+ * Resolution: an explicit user choice (persisted) wins; "system" follows the OS
+ * (`useColorScheme`). A FRESH install starts in "dark" — the brand is dark-first
+ * (the landing page has no light mode, and "dark stays the default on both
+ * surfaces" has been the rule since #155), but the mode used to default to
+ * "system", so a light-OS phone showed the undesigned light palette on first
+ * launch. Light is one tap away in Settings → Appearance. The web mirror is the
+ * `data-theme` attribute + the same `store-ops:theme` storage key.
  *
  * No-provider fallback: components rendered in isolation (many unit tests mount a
  * single card with no app shell) get the dark scheme — exactly the pre-theming
@@ -45,12 +49,25 @@ export function resolveScheme(mode: ThemeMode, system: "light" | "dark" | null |
   return system === "light" ? "light" : "dark";
 }
 
-export function ThemeProvider({ children }: { children: React.ReactNode }) {
+export function ThemeProvider({
+  children,
+  initialMode = "system",
+}: {
+  children: React.ReactNode;
+  /**
+   * The mode before the saved preference hydrates. The provider itself is
+   * neutral ("system"); the APP passes "dark" at the root (`app/_layout.tsx`)
+   * so a fresh install paints the brand default, and component tests keep
+   * following the mocked OS. The product decision lives in one place.
+   */
+  initialMode?: ThemeMode;
+}) {
   const system = useColorScheme();
-  const [mode, setModeState] = useState<ThemeMode>("system");
+  const [mode, setModeState] = useState<ThemeMode>(initialMode);
 
-  // Hydrate the saved preference once. Until it lands we show the OS default,
-  // which is the right first paint anyway.
+  // Hydrate the saved preference once. Until it lands we paint `initialMode`
+  // (dark at the app root — the brand default and the right first frame for a
+  // fresh install).
   useEffect(() => {
     let alive = true;
     AsyncStorage.getItem(THEME_STORAGE_KEY)

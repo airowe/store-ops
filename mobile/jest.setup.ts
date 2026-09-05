@@ -119,3 +119,16 @@ jest.mock("react-native-purchases", () => {
     },
   };
 });
+
+// expo-font / expo-splash-screen: the root FontGate loads the brand typefaces
+// and holds the splash until they land. Headless tests treat fonts as loaded
+// instantly; FontGate.test.tsx overrides this per case.
+jest.mock("expo-font", () => ({
+  useFonts: () => [true, null],
+  loadAsync: async () => {},
+  isLoaded: () => true,
+}));
+jest.mock("expo-splash-screen", () => ({
+  preventAutoHideAsync: async () => true,
+  hideAsync: async () => true,
+}));
