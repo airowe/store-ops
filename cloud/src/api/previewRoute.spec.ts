@@ -61,15 +61,19 @@ describe("POST /preview shares the report cache", () => {
     expect(await second.json()).toEqual(await first.json());
   });
 
-  it("the entry is the SAME one the report page and the MCP preview use", async () => {
-    // Warm the cache through /preview, then read the report page: no new fetch.
+  it("keys on bundle id + storefront — the entry the anonymous MCP preview_app shares", async () => {
+    // The report page keys on the NUMERIC App Store id (its lookup lives inside
+    // its own cached compute), so it is a separate entry; the MCP tool is the
+    // surface that shares this one. Storefront casing is normalised (#537
+    // follow-up): "us" from the web page and "US" from the app are one key.
     const fetchSpy = itunesFake();
     vi.stubGlobal("fetch", fetchSpy);
     const caches = fakeCaches();
     vi.stubGlobal("caches", caches);
     await handleApi(post({ bundle_id: "com.acme.app", country: "us" }), ENV);
     const keys = [...caches.store.keys()];
-    expect(keys.some((k) => k.includes("/preview/com.acme.app/us"))).toBe(true);
+    expect(keys.some((k) => k.includes("/preview/com.acme.app/US"))).toBe(true);
+    expect(keys.some((k) => k.includes("/report/"))).toBe(false);
   });
 
   it("negative control: without a cache the second call computes again", async () => {
