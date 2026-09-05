@@ -126,6 +126,14 @@ font renderer), exactly as `screenshotBrief` produces a plan not an image.
   consumes the manifest + the user's background art + a Noto fallback font stack
   to produce the actual per-locale PNGs. This is the licensing + asset-weight
   decision the PRD flags; it lives outside the pure Worker engine.
-- **Upload UI** for the layered source + a per-locale review lane showing the
-  `needsReview`/`overflow` flags before anything ships. Draft-only, never
-  auto-pushed — same gate as text localization.
+- ✅ **Review lane** (2026-09-05, owner picked localization as next): the
+  app page's "Localize your screenshot captions" card
+  (`cloud/web/src/features/appDetail/ScreenshotCaptionsCard.tsx`) takes the
+  slot list (id, source text, box, size), brand tokens and markets, calls
+  `POST /localize/screenshots`, and shows every locale with its verbatim draft
+  label, a `needs review` badge, and a per-slot verdict — `fits`, `shrunk to
+  Npx`, or `overflow` with the engine's note. Excluded locales are listed
+  with the reason. "Copy renderer manifest" hands the flattened
+  `locale → slot → {text, fontSize}` tree to `lib/render_localized_shots.py`.
+  Draft-only; nothing renders or ships from the card. Still open: uploading a
+  real layered design file rather than describing its slots by hand.
