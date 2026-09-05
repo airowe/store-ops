@@ -85,9 +85,11 @@ minute-stamped by the lane. The full pre-submit detail lives in
 `marketing/aso/shipaso/resubmit-0.1.1-checklist.md` — this is the ordering:
 
 - [ ] **Build + upload** (Mac with Xcode; `fastlane/AuthKey_NC235A8728.p8` in
-  place): `cd mobile && REVENUECAT_IOS_KEY="appl_…" bundle exec fastlane ios beta`
-  — the env var is read at `expo prebuild` time; forgetting it ships an empty
-  SDK key and a dead paywall.
+  place): `cd mobile && set -a && . ../.env && set +a && fastlane ios beta`
+  — the key is read at `expo prebuild` time; forgetting it would ship an empty
+  SDK key and a dead paywall, so the lane now refuses to start without a
+  `appl_`-prefixed `REVENUECAT_IOS_KEY` (guard verified against unset, wrong-
+  prefix, and real keys on 2026-09-04).
 - [ ] **TestFlight on a real device** — the four rejection fixes + the IAP path
   (checklist Parts 1–2): magic link opens the app; `getOfferings()` shows 3
   packages; a **sandbox purchase round-trips** (buy → webhook → `GET /me` shows

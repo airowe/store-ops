@@ -37,6 +37,7 @@ die.
 |---|---|---|
 | now | **"Apple rejected us on 4 guidelines. Here's all of them."** — from `marketing/aso/shipaso/rejection-2026-07-29.md` | Transparency axis. Rejection stories out-engage launch posts, and ours ends with a real fix (IAP) |
 | now | **The monetization architecture post** — Stripe on web + RevenueCat IAP in-app, server as source of truth, "highest active tier wins" so nobody double-pays | HAMM crossover evidence + shows real engineering in public |
+| now | **"Rejected again — and the bug was in the instructions"** — 2.1(a) on 08-24; the reviewer could not sign in because our own notes sent them to a mailbox only we can read, while the fix (a 90-day review token) had already shipped in code and nobody put it in the notes. Draft: `docs/shipaton/posts/2026-09-04-rejected-again.md` | The strongest learning-&-iteration beat we have: a documented misdiagnosis, corrected in public, with the receipt (signed in on an iPad sim to prove it). Ships the "wins AND challenges" advice literally |
 | 0.1.1 submitted | **"Resubmission day"** — what changed since the rejection, screenshot of the ASC submit screen | A cliffhanger judges can follow |
 | 0.1.1 live | **Launch post** — store link + the first real IAP sandbox→production story | The hard gate, celebrated in public |
 | first real win | **The first automated win post** + a quote-post explaining the pipeline behind it | The product IS the growth loop — say so over the receipt |
