@@ -13,6 +13,17 @@ ShipASO proposes, you approve, then it ships.
 
 All paid tiers are recurring subscriptions. There is no one-time plan.
 
+## Priced on apps, not seats or keywords
+
+- **No seat metering.** Every plan is for your whole team. Invite whoever
+  needs to approve; the price does not move.
+- **No keyword quotas.** Track what you need to track. The tiers meter
+  connected apps only.
+- **Deliberately below the incumbents.** Scale is 50 apps for $64.99 a month.
+  The leading App Store intelligence platform's entry tier is $79 a month for
+  5 apps and one seat (their public pricing, September 2026). That gap is on
+  purpose: the loop is the product, not the data feed.
+
 ## What every plan includes
 
 - **Measured numbers only.** An unmeasured value renders as "—", never a guess
