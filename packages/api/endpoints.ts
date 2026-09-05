@@ -7,6 +7,8 @@ import type { ApiClient } from "./client.js";
 import type {
   AnalyticsIngestResult,
   AnalyticsState,
+  CaptionLocalizationResult,
+  CaptionSlot,
   ApiKeyCreated,
   ApiKeyMeta,
   AppDetail,
@@ -366,3 +368,9 @@ export const removeChannel = (c: ApiClient, channel: ChannelKind, address: strin
     method: "DELETE",
     body: { channel, address },
   });
+
+/** POST /localize/screenshots — per-locale caption plans for a layered source. Stateless; renders nothing. */
+export const localizeScreenshotCaptions = (
+  c: ApiClient,
+  body: { source: { slots: CaptionSlot[] }; targetLocales: string[]; brandTokens: string[] },
+) => c.post<CaptionLocalizationResult>("/localize/screenshots", body);

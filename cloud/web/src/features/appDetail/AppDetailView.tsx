@@ -43,6 +43,7 @@ import { PlayDataSafetyCard } from "./PlayDataSafetyCard.js";
 import { PlayFunnelCard } from "./PlayFunnelCard.js";
 import { CompetitorsCard } from "./CompetitorsCard.js";
 import { LocaleKeywordsCard } from "./LocaleKeywordsCard.js";
+import { ScreenshotCaptionsCard } from "./ScreenshotCaptionsCard.js";
 import { RejectionAssistantCard } from "./RejectionAssistantCard.js";
 import { shareWin as defaultShareWin, type ShareWinResult } from "../../lib/shareWin.js";
 
@@ -407,6 +408,10 @@ export function AppDetailView({
         <CompetitorsCard client={client} appId={app.id} />
         <LocaleKeywordsCard client={client} appId={app.id} />
       </div>
+
+      {/* Screenshot caption localization (#78 item 3): the planner shipped
+          curl-only in July; this is its first product surface. Draft-only. */}
+      <ScreenshotCaptionsCard client={client} />
 
       {/* The four credential cards used to sit here; they now live on the
           Connections tab below. RejectionAssistantCard stays — it is a
