@@ -42,6 +42,7 @@ const read = (rel) => readFileSync(join(repoRoot, rel), "utf8");
 const SCREENSHOT_SURFACES = [
   "mobile/app/(public)/preview.tsx",
   "mobile/app/(public)/login.tsx",
+  "mobile/src/components/brand.tsx",
   "cloud/web/src/features/public/PreviewView.tsx",
 ];
 

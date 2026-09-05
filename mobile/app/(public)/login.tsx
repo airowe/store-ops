@@ -11,8 +11,9 @@ import { View } from "react-native";
 import { Redirect, useRouter } from "expo-router";
 import { useAuth } from "../../src/auth/AuthProvider.js";
 import { Screen, AppText, Button, Card } from "../../src/components/primitives.js";
+import { BrandMark, Eyebrow, Headline, Highlight, Kicker, LoopTerminal } from "../../src/components/brand.js";
 import { TextField } from "../../src/components/TextField.js";
-import { usePalette } from "../../src/theme/index.js";
+import { spacing, usePalette } from "../../src/theme/index.js";
 
 export default function Login() {
   const { status, requestLink, completeMagicLink } = useAuth();
@@ -46,24 +47,38 @@ export default function Login() {
 
   return (
     <Screen>
-      <View style={{ gap: 6, marginTop: 48 }}>
-        <AppText kind="display">ShipASO</AppText>
-        <AppText kind="dim">Honest ASO. Real numbers or an explicit “unmeasured” — never a guess.</AppText>
+      {/* The hero mirrors the landing page (docs/landing/index.html): mark,
+          kicker, the Fraunces headline with its signal-green clause, the lede. */}
+      <View style={{ gap: spacing.md, marginTop: spacing.lg }}>
+        <BrandMark />
+        <Kicker>App Store + Google Play · open source</Kicker>
+        <Headline>
+          The ASO loop that ships your metadata and <Highlight>proves the rank moved.</Highlight>
+        </Headline>
+        <AppText kind="dim">
+          Other tools tell you what to do. ShipASO does the work — and reads the rank back to check it worked.
+        </AppText>
       </View>
 
-      {/* Try-before-signup: the free audit needs no account. Surfaced up top so a
+      {/* Try-before-signup: the audit needs no account. Surfaced up top so a
           logged-out visitor (and App Review) reaches the real value without a
-          sign-in wall — mirrors the web landing. */}
-      <Card>
+          sign-in wall — mirrors the web landing.
+
+          CARD ORDER IS A CONTRACT: the App Review notes in App Store Connect say
+          "scroll to the third card: Have a sign-in token?". The loop block lives
+          INSIDE this first card so the token card stays third (login.test.tsx). */}
+      <Card testID="card-audit">
         {/* No price language (Guideline 2.3.7) — see preview.tsx. Worded
             differently from the body line below so the card does not say
             "audit any listing" twice. */}
-        <AppText kind="lead">Start with any listing — no signup</AppText>
+        <Eyebrow>Try it — no signup</Eyebrow>
+        <AppText kind="lead">Start with any listing</AppText>
         <AppText kind="dim">Audit any App Store listing on real keyword data. Sign in only to run the fix.</AppText>
+        <LoopTerminal style={{ marginVertical: spacing.xs }} />
         <Button label="Audit any listing" testID="audit-free" onPress={() => router.push("/(public)/preview")} />
       </Card>
 
-      <Card>
+      <Card testID="card-signin">
         <AppText kind="lead">Sign in</AppText>
         {sent ? (
           <>
@@ -106,7 +121,7 @@ export default function Login() {
 function PasteTokenCard({ onPaste }: { onPaste: (token: string) => void }) {
   const [token, setToken] = useState("");
   return (
-    <Card>
+    <Card testID="card-token">
       <AppText kind="lead">Have a sign-in token?</AppText>
       <AppText kind="dim">
         App Review: paste the token from the review notes here to sign in without email.

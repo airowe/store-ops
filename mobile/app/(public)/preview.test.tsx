@@ -194,3 +194,34 @@ describe("Preview theming", () => {
     expect(lightPalette.signal).not.toBe(palette.signal);
   });
 });
+
+describe("Preview screen composition + honesty", () => {
+  it("shows what an audit returns while there is nothing to show yet, and hides it once there is", async () => {
+    const { client } = fakeClient([
+      { preview: { appName: "Paprika", auditGrade: "C", leadKeyword: "recipes", leadRank: 7,
+        keywordsChecked: 12, inTop10: 2, sample: [{ keyword: "recipes", rank: 7 }] } },
+    ]);
+    renderPreview(client);
+    expect(screen.getByTestId("preview-empty")).toBeTruthy();
+    fireEvent.changeText(screen.getByTestId("preview-query"), "Paprika");
+    fireEvent.press(screen.getByTestId("preview-search"));
+    await waitFor(() => expect(screen.getByTestId("preview-grade")).toBeTruthy());
+    expect(screen.queryByTestId("preview-empty")).toBeNull();
+  });
+
+  // #536 — "?" is the engine's "screenshots unreadable" sentinel, paired with a
+  // null score. Rendering it in a grade pill shows a question mark as a value.
+  // Measured-or-nothing: an unmeasured grade is absent, not a placeholder.
+  it("omits the grade pill when the grade is the '?' sentinel", async () => {
+    const { client } = fakeClient([
+      { preview: { appName: "Heathen", auditGrade: "?", leadKeyword: "secular", leadRank: 1,
+        keywordsChecked: 11, inTop10: 2, sample: [{ keyword: "secular", rank: 1 }] } },
+    ]);
+    renderPreview(client);
+    fireEvent.changeText(screen.getByTestId("preview-query"), "Heathen");
+    fireEvent.press(screen.getByTestId("preview-search"));
+    await waitFor(() => expect(screen.getByTestId("preview-summary")).toBeTruthy());
+    expect(screen.queryByTestId("preview-grade-pill")).toBeNull();
+    expect(screen.queryByText("?")).toBeNull();
+  });
+});

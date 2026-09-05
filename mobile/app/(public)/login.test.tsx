@@ -122,3 +122,34 @@ describe("Login screen", () => {
     expect(pushed).toContain("/(public)/preview");
   });
 });
+
+/**
+ * The App Review notes (in App Store Connect) tell the reviewer to "scroll to
+ * the third card: Have a sign-in token?". The card ORDER is therefore a
+ * contract with a document we cannot edit from here: audit, sign in, token.
+ * The composition pass added the loop block INSIDE the first card for this
+ * reason — it must not become a fourth card or shift the token card.
+ */
+describe("Login screen composition", () => {
+  it("keeps exactly three cards in the order the review notes describe", () => {
+    render(
+      <AuthProvider clientOverride={fakeClient(() => {})}>
+        <Login />
+      </AuthProvider>,
+    );
+    const ids = screen.getAllByTestId(/^card-/).map((n) => n.props.testID);
+    expect(ids).toEqual(["card-audit", "card-signin", "card-token"]);
+    expect(screen.getByText("Have a sign-in token?")).toBeTruthy();
+    expect(screen.getByPlaceholderText("Paste sign-in token")).toBeTruthy();
+  });
+
+  it("leads with the brand headline and shows the loop, not a bare wordmark", () => {
+    render(
+      <AuthProvider clientOverride={fakeClient(() => {})}>
+        <Login />
+      </AuthProvider>,
+    );
+    expect(screen.getByText(/proves the rank moved/)).toBeTruthy();
+    expect(screen.getByTestId("loop-terminal")).toBeTruthy();
+  });
+});
