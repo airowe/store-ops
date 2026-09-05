@@ -12,7 +12,7 @@
 | Posting to X | ✅ manual-paste loop (decided) | `packages/postedge/cli.mjs` — prepare → paste into X → `--mark-posted <url>` records + journals. X API auto-post skipped: no free write tier, and we're not paying for one |
 | Posting to Bluesky | ✅ automated | `packages/postedge/bsky-post.mjs` (`--post-cmd`, AT Protocol, no deps) — needs the ShipASO Bluesky account + an app password (**yours**) |
 | **Workstream A** — RevenueCat dashboard + store config | ✅ **done** — verified 2026-09-04 | Group `ShipASO Tiers` (22297926) + 3 products all `READY_TO_SUBMIT`; 4 × `REVENUECAT_*` secrets set; `GET /health` → `ready: true`, both `revenuecat_*` ok. Webhook proven live in prod: unauthed `POST /billing/revenuecat` → **401, not 503** |
-| **Ship 0.1.1 live in-window** (the hard gate) | 🔴 **REJECTED TWICE** — 2.1(a), cause found + fixed, needs rebuild + resubmit | See "Review history" below. Fix = a review token in the ASC notes (`review-notes-0.1.1.md`); verified signing in on an iPad sim 2026-09-04 |
+| **Ship 0.1.1 live in-window** (the hard gate) | 🔵 **IN REVIEW** — submitted 2026-09-05 01:41 UTC (submission `741b079c`, build `202609042158`) | Rejected twice before; see "Review history". Version + 3 subscriptions + group version all `WAITING_FOR_REVIEW` — the first submission in which App Review will evaluate the subscriptions. Sandbox purchase still unexercised |
 | #BuildInPublic playbook (cadence + beats + evidence ledger) | ✅ | `docs/shipaton/buildinpublic-playbook.md` |
 | Public /journey page on shipaso.com | ✅ built | `docs/landing/journey.html` + `docs/landing/journey/feed.json` (guard: `packages/docpaths/journeyFeed.test.mjs`); wins auto-journal via postedge `--journal` |
 | Claude brain Phase 1 (reasoning + authored subtitles) | ✅ code; needs `ANTHROPIC_API_KEY` Worker secret (**yours**) | `cloud/src/api/aiReasoner.ts` (Claude > Workers AI > deterministic) + `cloud/src/engine/copyAuthor.ts`; `/health` `claude_reasoner` warn shows which brain is live |
@@ -66,7 +66,7 @@ mechanism shipped; the notes never carried the token.
   **The Connect picker is not broken on iPad** — that risk is closed.
 - `SESSION_SECRET` was rotated 2026-09-04. Any token minted before that is dead.
 
-### Before the next submission
+### Before the next submission (all three done 2026-09-04/05 — kept for the next version)
 
 1. Replace `<REVIEW_TOKEN>` in `review-notes-0.1.1.md` with a freshly minted
    token, **in App Store Connect only** — it is a bearer credential and must not
@@ -84,23 +84,43 @@ mechanism shipped; the notes never carried the token.
    rejections happened at sign-in, and in `8d82affb` the three subscription items
    were still `READY_FOR_REVIEW`, never evaluated.
 
-### The submission container is EMPTY (found 2026-09-04)
+### Submitted 2026-09-05 — and a correction to what this file said earlier
 
-A draft review submission exists and reads `READY_FOR_REVIEW` — which means
-*the container may be submitted*, *not* that anything is in it:
+An earlier revision of this section claimed the draft submission was **empty**
+and that this "very likely" explained why the subscriptions were never
+evaluated in the rejected `8d82affb`. **Both claims were wrong.** The `Items`
+column in `asc review submissions list` reads `0` for *every* submission,
+including completed ones — it is not populated. `asc review submissions-items-ids`
+is the real read, and it showed `8d82affb` carrying five items: the version,
+all three subscription versions, and the subscription group version. The
+subscriptions were attached; they were simply never reached, because the
+review stopped at the sign-in failure.
 
-| Submission | State | Items |
-|---|---|---|
-| `741b079c-de60-4e3d-880b-fd0aa9668e78` | `READY_FOR_REVIEW` | **0** |
+What actually blocked the resubmission: the rejected `8d82affb` sat in
+`UNRESOLVED_ISSUES` and **still held the 0.1.1 version**, so adding it to a new
+submission failed with "already added to another reviewSubmission". Cancelling
+`8d82affb` (state `CANCELING` → `COMPLETE`, ~1 min) released it.
 
-Submitting it as-is sends Apple nothing to review. This is very likely the same
-reason the three subscriptions were never evaluated in the rejected `8d82affb`.
+| Step | Result |
+|---|---|
+| Attach build `202609042158` to 0.1.1 | `asc review submit --dry-run` → `alreadyAttached: true`, `currentBuildId` matches |
+| Items on `741b079c` | 5 — version, Indie/Startup/Scale subscription versions, group version `d76a5ffa` (identical shape to `8d82affb`) |
+| `asc review submissions-submit --confirm` | `WAITING_FOR_REVIEW`, submitted `2026-09-05T01:41:31Z` |
+| Subscription products after submit | all three `READY_TO_SUBMIT` → `WAITING_FOR_REVIEW` |
 
-**Item IDs are NOT product IDs.** `asc review items add --item-type
-subscriptionVersions` takes a subscription *version* ID; the numeric IDs from
-`asc subscriptions list` are product IDs and are a different resource (the CLI
-says so itself: "Version IDs are distinct from subscription product IDs").
-Resolved 2026-09-04 via `asc subscriptions versions list --subscription-id`:
+Two tool traps, so the next person does not repeat them:
+
+- **`asc review doctor` and the `asc review submit` wrapper both warn that the
+  subscriptions "are not included".** They key on the *product* state
+  (`READY_TO_SUBMIT`), which only flips after submission, and cannot see items
+  already staged on the container. The post-submit product states above are
+  the proof they were included.
+- **Item IDs are not product IDs.** `--item-type subscriptionVersions` takes the
+  ID from `asc subscriptions versions list --subscription-id`; the numeric IDs
+  from `asc subscriptions list` are a different resource. Group version IDs
+  come from `asc subscriptions groups versions list --group-id`.
+
+Item IDs used (re-read before reusing — a new version gets a new ID):
 
 | Item | Type | ID |
 |---|---|---|
@@ -108,11 +128,7 @@ Resolved 2026-09-04 via `asc subscriptions versions list --subscription-id`:
 | Indie | `subscriptionVersions` | `46489f0d-80bb-4acd-8441-955ebab8bd03` |
 | Startup | `subscriptionVersions` | `16d974c2-4dd0-4a17-bccd-85690c7b7319` |
 | Scale | `subscriptionVersions` | `f62767b5-f7f3-435c-9c7b-f75af58fbd57` |
-
-All three subscription versions are `READY_FOR_REVIEW`; the version is
-`REJECTED` until a new build is attached to it. Attach the build FIRST, then add
-the four items, then submit. Re-read the IDs before using them — a new
-subscription version gets a new ID.
+| Group `ShipASO Tiers` | `subscriptionGroupVersions` | `d76a5ffa-d3ef-4dd3-a942-1dd855601678` |
 
 ### Build 202609042158 — uploaded with a live key (verified 2026-09-04)
 
