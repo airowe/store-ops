@@ -54,9 +54,11 @@ it refuses an anonymous context before touching the network.
 
 ## Open
 
-- **Registry listing.** A `server.json` for the MCP Registry is prepared at the
-  repo root (the `mcp-publisher` convention); publishing it is a public act and
-  stays a human step.
+- **Registry listing — published 2026-09-05.** `io.github.airowe/shipaso`
+  version `0.1.0` is live in the MCP Registry (status `active`, remote
+  `https://api.shipaso.com/mcp`), verified by reading it back from the
+  registry API after `mcp-publisher publish`. Bumping it is the runbook in
+  `docs/mcp-registry-publish.md`; the guard keeps `server.json` honest.
 - **Usage is unmeasured.** No count of anonymous vs keyed calls exists yet.
   Per the measured-or-nothing rule this document states no number.
 
