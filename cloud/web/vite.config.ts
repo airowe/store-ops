@@ -2,6 +2,7 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import { fileURLToPath } from "node:url";
+import { spaBypass } from "./src/devProxyBypass";
 
 /** Consume the shared spine by alias (workspace wiring lands with the monorepo). */
 const alias = {
@@ -27,6 +28,12 @@ export default defineConfig({
       "^/(auth|apps|runs|keywords|competitors|preview|account|agent|billing|proof|github|resolve|rejection-assistant)(/|$)": {
         target: "http://127.0.0.1:8787",
         changeOrigin: false,
+        // #482: `/apps/:id`, `/runs/:id`, `/apps/:id/war-room` are ALSO SPA
+        // routes, and the proxy wins over the SPA fallback — opening the app
+        // detail page in a browser returned the API's JSON. A browser
+        // navigation asks for text/html; the spine's fetches never do. Hand
+        // navigations to the shell, proxy everything else (devProxyBypass.ts).
+        bypass: spaBypass,
       },
     },
   },
