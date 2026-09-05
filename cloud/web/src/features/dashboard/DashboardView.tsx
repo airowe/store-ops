@@ -24,7 +24,7 @@ import { formatRank } from "@shipaso/honesty";
 import { runStatusLabel } from "../../lib/status.js";
 import { Sparkline } from "../charts/Sparkline.js";
 import { MultiLineChart, SERIES_COLORS } from "../charts/MultiLineChart.js";
-import { greeting, kpis, heroApp, pendingCount } from "./dashboardModel.js";
+import { greeting, kpis, heroApp, pendingCount, recordedProposalsLabel } from "./dashboardModel.js";
 import { loopSummary } from "./loopSummary.js";
 import { LoopStatus } from "./LoopStatus.js";
 import { movers, series, type FleetDeltas, type FleetRanks } from "./fleetModel.js";
@@ -349,6 +349,10 @@ function TrackedRow({ app, onOpen }: { app: AppListItem; onOpen: (id: string) =>
       <div className="tracked-status">
         {app.latest_run ? (
           <span className={"badge " + app.latest_run.status}>{runStatusLabel(app.latest_run.status)}</span>
+        ) : null}
+        {/* #493: the detected runs' output, discoverable without a nag. */}
+        {recordedProposalsLabel(app) ? (
+          <div className="micro" data-testid="recorded-proposals">{recordedProposalsLabel(app)}</div>
         ) : null}
       </div>
       <div className="tracked-cta">

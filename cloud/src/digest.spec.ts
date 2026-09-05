@@ -882,3 +882,46 @@ describe("planDigests (pure: who gets a digest, and what's in it)", () => {
     expect(planDigests([], { dashboardUrl: "https://app.shipaso.com" })).toEqual([]);
   });
 });
+
+describe("recorded proposals (#493) — the detected runs' output, said out loud", () => {
+  const dashboardUrl = "https://app.shipaso.com/dashboard";
+  const base = {
+    appId: "a1",
+    appName: "Swoop",
+    email: "dev@example.com",
+    tier: "indie" as const,
+    hasPendingApproval: false,
+    rankHistory: [snap("no login chat", 64, WEEK1), snap("no login chat", 31, WEEK2)],
+  };
+
+  it("says how many proposals were recorded and why nothing was pushed, in text and html", () => {
+    const [msg] = planDigests(
+      [{ ...base, recordedProposals: { runs: 1, proposals: 3, since: "2026-08-29T00:00:00.000Z" } }],
+      { dashboardUrl },
+    );
+    expect(msg!.text).toMatch(/3 proposals recorded/);
+    expect(msg!.text).toMatch(/not pushed to you because no rank moved/);
+    expect(msg!.html).toMatch(/3 proposals recorded/);
+    expect(msg!.html).toContain(dashboardUrl);
+  });
+
+  it("uses the singular for one", () => {
+    const [msg] = planDigests(
+      [{ ...base, recordedProposals: { runs: 1, proposals: 1, since: "2026-08-29T00:00:00.000Z" } }],
+      { dashboardUrl },
+    );
+    expect(msg!.text).toMatch(/1 proposal recorded/);
+  });
+
+  it("says nothing when zero were recorded, and nothing when the count is absent", () => {
+    const [zero] = planDigests(
+      [{ ...base, recordedProposals: { runs: 2, proposals: 0, since: "2026-08-29T00:00:00.000Z" } }],
+      { dashboardUrl },
+    );
+    const [absent] = planDigests([base], { dashboardUrl });
+    for (const m of [zero!, absent!]) {
+      expect(m.text).not.toMatch(/proposals? recorded/);
+      expect(m.html).not.toMatch(/proposals? recorded/);
+    }
+  });
+});

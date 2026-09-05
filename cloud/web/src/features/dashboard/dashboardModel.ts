@@ -70,6 +70,19 @@ export function heroApp(apps: AppListItem[]): AppListItem | null {
 }
 
 /** Count of runs awaiting approval — drives the nav badge, greeting, KPI card. */
+/**
+ * The line an app row shows for the output of its `detected` runs (#493):
+ * "3 proposals recorded · nothing moved". Null when there is nothing to say —
+ * no count, a count of zero, or a run already at the gate (that row says
+ * "Review →" instead, and stacking both would double-count the same work).
+ */
+export function recordedProposalsLabel(app: AppListItem): string | null {
+  const r = app.recorded_proposals;
+  if (!r || r.proposals <= 0) return null;
+  if (app.latest_run?.status === "awaiting_approval") return null;
+  return `${r.proposals} ${r.proposals === 1 ? "proposal" : "proposals"} recorded · nothing moved`;
+}
+
 export function pendingCount(apps: AppListItem[]): number {
   return apps.filter(isAwaiting).length;
 }
