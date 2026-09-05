@@ -1,0 +1,26 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.github.airowe/shipaso",
+  "title": "ShipASO",
+  "description": "Audit any App Store or Google Play listing: measured ranks, keyword gaps, draft copy. Read-only.",
+  "version": "0.1.0",
+  "websiteUrl": "https://shipaso.com",
+  "repository": {
+    "url": "https://github.com/airowe/store-ops",
+    "source": "github"
+  },
+  "remotes": [
+    {
+      "type": "streamable-http",
+      "url": "https://api.shipaso.com/mcp",
+      "headers": [
+        {
+          "name": "Authorization",
+          "description": "Optional. `Bearer <shipaso_ key>` unlocks the keyed tools; omit it for the public tier (preview_app, proof). Keys are minted free at app.shipaso.com → Settings → Agent access.",
+          "isRequired": false,
+          "isSecret": true
+        }
+      ]
+    }
+  ]
+}
