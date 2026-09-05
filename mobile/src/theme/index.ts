@@ -5,7 +5,7 @@
  * baseline for module-scope use (StyleSheet defaults, tests) and stays
  * backward-compatible.
  */
-export { theme, palette, lightPalette, palettes, paletteFor, fonts, radius, fontSize, spacing } from "./tokens.js";
+export { theme, palette, lightPalette, palettes, paletteFor, fonts, typeface, radius, fontSize, spacing } from "./tokens.js";
 export type { Theme, Palette, PaletteKey, FontKey, ThemeMode, Scheme } from "./tokens.js";
 export { ThemeProvider, usePalette, useThemeMode, resolveScheme, THEME_STORAGE_KEY } from "./ThemeProvider.js";
 

@@ -13,6 +13,7 @@ import { Stack } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { AuthProvider } from "../src/auth/AuthProvider.js";
 import { NotificationsBridge } from "../src/notifications/NotificationsBridge.js";
+import { FontGate } from "../src/theme/FontGate.js";
 import { ThemeProvider, usePalette, useThemeMode } from "../src/theme/index.js";
 
 const queryClient = new QueryClient({
@@ -43,14 +44,20 @@ export default function RootLayout() {
     // GestureHandlerRootView is required for react-native-graph's pan-scrubber.
     <GestureHandlerRootView style={{ flex: 1 }}>
       <SafeAreaProvider>
-        <ThemeProvider>
-          <QueryClientProvider client={queryClient}>
-            <AuthProvider>
-              <NotificationsBridge />
-              <AppShell />
-            </AuthProvider>
-          </QueryClientProvider>
-        </ThemeProvider>
+        {/* FontGate holds the splash until the brand typefaces are loaded, so
+            the first frame is already set in Fraunces / Space Grotesk. */}
+        <FontGate>
+          {/* Dark first on a fresh install: the brand is dark-first and the
+              light palette was never designed. Settings → Appearance switches. */}
+          <ThemeProvider initialMode="dark">
+            <QueryClientProvider client={queryClient}>
+              <AuthProvider>
+                <NotificationsBridge />
+                <AppShell />
+              </AuthProvider>
+            </QueryClientProvider>
+          </ThemeProvider>
+        </FontGate>
       </SafeAreaProvider>
     </GestureHandlerRootView>
   );

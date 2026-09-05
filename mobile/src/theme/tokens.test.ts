@@ -136,3 +136,11 @@ describe("theme tokens", () => {
     expect(fontSize.body).toBeGreaterThanOrEqual(16);
   });
 });
+
+import { typeface as loadedTypeface } from "./fonts.js";
+
+describe("theme exposes the loaded typefaces", () => {
+  it("bundles the typeface map alongside palette + fonts", () => {
+    expect(theme.typeface).toBe(loadedTypeface);
+  });
+});

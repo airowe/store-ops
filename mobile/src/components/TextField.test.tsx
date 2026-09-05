@@ -49,3 +49,10 @@ describe("TextField", () => {
     expect(lightPalette.ink).not.toBe(palette.ink);
   });
 });
+
+import { typeface } from "../theme/fonts.js";
+
+it("TextField input is set in the brand text face, not the system font", () => {
+  render(<TextField value="" onChangeText={() => {}} testID="f" />);
+  expect(flatStyle(screen.getByTestId("f")).fontFamily).toBe(typeface.sans);
+});

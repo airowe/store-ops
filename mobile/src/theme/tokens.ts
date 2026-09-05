@@ -98,6 +98,27 @@ export const fonts = {
 
 export type FontKey = keyof typeof fonts;
 
+/**
+ * The loaded FACE for each text role — the `fontFamily` value components use.
+ * These are the names @expo-google-fonts registers (one static face per
+ * weight), so the weight is in the face and `fontWeight` is never set: a
+ * synthesized weight on a static face falls back to the system font on iOS.
+ * `fonts.ts` bundles exactly these faces; `fonts.test.ts` proves every entry
+ * here is loaded there, so a rename fails a test instead of falling back.
+ */
+export const typeface = {
+  /** Editorial display headings — the one piece of serif on the page. */
+  display: "Fraunces_600SemiBold",
+  /** Screen titles and button labels. */
+  title: "SpaceGrotesk_700Bold",
+  /** Card headings, leads. */
+  lead: "SpaceGrotesk_600SemiBold",
+  /** Body, dim, micro. */
+  sans: "SpaceGrotesk_400Regular",
+  /** Ranks, ids, keys — the terminal voice. */
+  mono: "JetBrainsMono_500Medium",
+} as const;
+
 export const radius = {
   base: 14,
 } as const;
@@ -125,6 +146,7 @@ export const spacing = {
 export const theme = {
   palette,
   fonts,
+  typeface,
   radius,
   fontSize,
   spacing,
