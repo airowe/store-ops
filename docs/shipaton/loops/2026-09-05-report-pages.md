@@ -71,7 +71,7 @@ upstream load.
 
 - 2026-09-05 — scoped after loop 1's four PRs (#528–#531) went green.
 - 2026-09-05 — Criteria 1–6: `loop/report-pages` → **#533**. Pure renderer
-  (`cloud/src/api/reportPage.ts`, 10 specs), router route + HTML error pages
+  (`reportPage.ts` under the API, added by that PR — 10 specs), router route + HTML error pages
   (8 route specs incl. a negative control), `report.html` share link,
   `REPORT_PAGE_ORIGIN` + the flagged `shipaso.com/r/*` route pair. Found and
   fixed on the way: the JSON route resolved the id *before* the cache, so
