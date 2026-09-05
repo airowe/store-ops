@@ -133,6 +133,7 @@ import { readLocaleKeywords } from "../engine/localeKeywords.js";
 import { analyzeRejection } from "../engine/rejectionAssistant.js";
 import { localizeScreenshots, type LayeredSource, type TextSlot } from "../engine/localizeScreenshots.js";
 import { planScreenshots, type PlannerInputs, type Grade } from "../engine/screenshotPlanner.js";
+import { goldieConfig, renderGoldieConfigTs } from "../engine/goldieConfig.js";
 import { FRAME_CATALOG, FRAME_CATALOG_VERSION, TEMPLATE_IDS, isTemplateId } from "../engine/shotCatalog.js";
 import { buildCppSets } from "../engine/cppSets.js";
 import { localizerForEnv } from "./aiLocalizer.js";
@@ -3444,6 +3445,79 @@ async function planScreenshotsRoute(req: Request, env: Env): Promise<unknown> {
   return await planScreenshots(inputs, reasonerForEnv(env));
 }
 
+/** App Store storefront country → the store's primary locale code, for the ones we can state. */
+const STOREFRONT_LOCALE: Record<string, string> = {
+  US: "en-US", GB: "en-GB", AU: "en-AU", CA: "en-CA", DE: "de-DE", FR: "fr-FR", ES: "es-ES", MX: "es-MX",
+  IT: "it", BR: "pt-BR", PT: "pt-PT", NL: "nl-NL", JP: "ja", KR: "ko", CN: "zh-Hans", TW: "zh-Hant",
+  RU: "ru", TR: "tr", PL: "pl", SE: "sv", DK: "da", FI: "fi", NO: "no",
+};
+
+/**
+ * POST /runs/:id/goldie-config (#406 / #521) — the diagnosis half as a file.
+ *
+ * goldie renders App Store screenshot strips on the developer's own Mac from a
+ * config whose headlines it cannot originate. This emits that config from the
+ * run: the ShipShots planner orders the caller's captured screens and writes a
+ * headline per shot (LLM when bound, deterministic otherwise — said so in
+ * `degraded`), the store block comes from the proposed copy and the approved
+ * localizations, and the paths only the developer knows are left marked.
+ * Owner-only. Renders nothing, uploads nothing, stores nothing.
+ */
+async function goldieConfigRoute(req: Request, env: Env, userId: string, runId: string): Promise<unknown> {
+  const run = await getRun(env.DB, runId);
+  if (!run) throw new HttpError(404, "run not found");
+  const app = await requireOwnedApp(env, run.app_id, userId);
+  const body = (await readJson(req)) as { rawScreens?: unknown; brandPalette?: unknown; templatePreference?: unknown };
+  const asStrings = (v: unknown): string[] =>
+    Array.isArray(v) ? v.filter((s): s is string => typeof s === "string" && s.trim() !== "") : [];
+  const rawScreens = asStrings(body.rawScreens);
+  if (rawScreens.length === 0) {
+    throw new HttpError(400, "rawScreens must list the captured screen ids a scene can be sourced from");
+  }
+  const pref = body.templatePreference;
+  if (pref !== undefined && pref !== "auto" && !isTemplateId(pref)) {
+    throw new HttpError(400, `unknown templatePreference — must be "auto" or one of: ${TEMPLATE_IDS.join(", ")}`);
+  }
+
+  const trace = JSON.parse(run.reasoning_json) as Partial<ReasoningTrace>;
+  const proposed = trace.proposedCopy;
+  const current = trace.currentCopy;
+  const shot = trace.audit?.screenshots ?? null;
+  const subtitle = proposed?.subtitle || current?.subtitle;
+  const inputs: PlannerInputs = {
+    appName: app.name,
+    ...(subtitle ? { subtitle } : {}),
+    keywords: (proposed?.keywords ?? "").split(",").map((k) => k.trim()).filter(Boolean),
+    rawScreens,
+    audit: {
+      grade: (shot?.grade ?? "?") as Grade,
+      recommendedCount: 6,
+      findings: [...(shot?.findings ?? []), ...(trace.findings ?? []).filter((f) => f.surface === "screenshots").map((f) => f.title)],
+    },
+    brandPalette: asStrings(body.brandPalette),
+    ...(isTemplateId(pref) ? { templatePreference: pref } : {}),
+  };
+  const plan = await planScreenshots(inputs, reasonerForEnv(env));
+
+  const localizedSubtitles: Record<string, string> = {};
+  for (const [locale, entry] of Object.entries(trace.localizedCopy ?? {})) {
+    if (entry.subtitle) localizedSubtitles[locale] = entry.subtitle;
+  }
+  const config = goldieConfig({
+    runId,
+    generatedAt: new Date().toISOString(),
+    appName: app.name,
+    bundleId: app.bundle_id,
+    subtitle,
+    description: current?.description,
+    locales: [STOREFRONT_LOCALE[(app.country || "US").toUpperCase()] ?? "en-US"],
+    localizedSubtitles,
+    plan,
+    palette: asStrings(body.brandPalette),
+  });
+  return { config, file: renderGoldieConfigTs(config) };
+}
+
 /**
  * GET /screenshot-templates — the marketing-frame catalog, verbatim from the
  * shared SoT (shotCatalog.ts ⇄ lib/shot_catalog.json), plus "auto" as a
@@ -5989,6 +6063,9 @@ export async function handleApi(req: Request, env: Env, ctx?: ExecutionContext):
       }
       if (seg.length === 3 && seg[2] === "push-commands" && method === "GET") {
         return json(await pushCommandsRoute(env, user.id, runId), 200, origin);
+      }
+      if (seg.length === 3 && seg[2] === "goldie-config" && method === "POST") {
+        return json(await goldieConfigRoute(req, env, user.id, runId), 200, origin);
       }
       if (seg.length === 3 && seg[2] === "fastlane.zip" && method === "GET") {
         return await fastlaneZipRoute(env, user.id, runId, origin);
