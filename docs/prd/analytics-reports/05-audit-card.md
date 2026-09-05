@@ -134,7 +134,31 @@ without the finding, we have built a worse AppKittie.**
   containing the user's revenue. It is generated locally; publishing anywhere is
   an explicit, separate action the user takes.
 
-## Open questions (decide before building)
+## Status — v1 BUILT (2026-09-05)
+
+Owner decisions (decision sheet, 2026-09-05): **page first**; renderer home
+**`lib/`** for the image, with the model and page section in the engine by
+necessity (the Worker serves the page); **neither downloads nor proceeds in
+v1**; **non-Admin keys render** with both hero tiles `unavailable`.
+
+What shipped:
+- `cloud/src/engine/auditCard.ts` — the pure model with the four-state
+  `CardValue`, `auditCard(input)`, and `asoHeadline(ranks)` (the finding:
+  found-of-tested plus best measured rank; a failed check is not a miss).
+- `GET /report/:appId` returns `card`; `GET /r/:appId` renders it as the first
+  section, sized to screenshot, with the measurement date and country stamped.
+- `lib/audit_card_render.py` — the 1600×900 image from the same JSON
+  (`curl …/report/<id> | python3 lib/audit_card_render.py - out.png`).
+- `cloud/src/engine/auditCardParity.spec.ts` reads both sources and pins the
+  four state names on each side; `show_value` in Python reads `value` from the
+  measured branch only.
+
+Not in v1, on purpose: downloads and proceeds (both tiles say why), sentiment
+(the public report does not read reviews), the screenshot strip in the image
+(no network in the renderer). The page-side strip renders when the listing has
+one.
+
+## Open questions (resolved above; kept for the record)
 
 1. **Render target.** Static SVG/PNG (screenshot-native, works everywhere) vs. an
    HTML page (linkable, themeable, live). The X-post use case argues image;

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { describeReport, renderReportErrorPage, renderReportPage, reportPagePath } from "./reportPage.js";
 import type { AppPreview } from "../engine/preview.js";
+import type { AuditCard } from "../engine/auditCard.js";
 
 /**
  * The server-rendered report page (loop 2, criteria 1–3). Pure renderer.
@@ -132,6 +133,90 @@ describe("untrusted text is escaped (criterion 3)", () => {
     expect(html).toContain("&lt;script&gt;alert(&quot;x&quot;)&lt;/script&gt;");
     // the description meta attribute cannot be broken out of
     expect(html).not.toMatch(/content="[^"]*"><img/);
+  });
+});
+
+describe("the audit card section (#437)", () => {
+  const card: AuditCard = {
+    identity: {
+      name: "Acme — Habit Tracker",
+      developer: { state: "measured", value: "Acme Labs", asOf: "2026-09-05T12:00:00.000Z", source: "App Store" },
+      iconUrl: "https://example.com/icon.png",
+      released: { state: "measured", value: "2024-03-01T00:00:00Z", asOf: "2026-09-05T12:00:00.000Z", source: "App Store" },
+      lastUpdated: { state: "unavailable", reason: "Last-update date not readable from the public listing." },
+    },
+    chips: {
+      category: { state: "measured", value: "Productivity", asOf: "2026-09-05T12:00:00.000Z", source: "App Store" },
+      price: { state: "measured", value: "Free", asOf: "2026-09-05T12:00:00.000Z", source: "App Store" },
+    },
+    hero: {
+      downloads: { state: "unavailable", reason: "Apple reports downloads only to the app's own developer." },
+      proceeds: { state: "pending", reason: "Requested — Apple takes 1–2 days to generate it." },
+    },
+    tiles: {
+      rating: { state: "measured", value: { avg: 4.6, count: 1283 }, asOf: "2026-09-05T12:00:00.000Z", source: "App Store" },
+      size: { state: "absent" },
+    },
+    aso: {
+      headline: "Found for 2 of 3 keywords tested. Best rank #7 for “habit tracker”.",
+      score: { state: "measured", value: 67, asOf: "2026-09-05T12:00:00.000Z", source: "ShipASO listing audit" },
+      grade: "B",
+      rankSummary: {
+        state: "measured",
+        value: { tested: 3, found: 2, best: { keyword: "habit tracker", rank: 7 } },
+        asOf: "2026-09-05T12:00:00.000Z",
+        source: "ShipASO rank check · US · top 200",
+      },
+      topFindings: [
+        { id: "subtitle_generic", surface: "subtitle", severity: "warn", impact: "ranking", title: "Subtitle carries no target keyword", detail: "d", fix: "Lead with “habit tracker”.", evidence: "e" },
+      ],
+    },
+    screenshots: ["https://example.com/1.png", "https://example.com/2.png"],
+    measuredAt: "2026-09-05T12:00:00.000Z",
+    country: "US",
+  };
+  const withCard = () => renderReportPage({ appId: "123456789", bundleId: "com.acme.app", country: "us", preview: FULL, card }, OPTS);
+
+  it("renders the card with the finding as its headline and the top fix", () => {
+    const html = withCard();
+    expect(html).toContain('id="card"');
+    expect(html).toContain("Found for 2 of 3 keywords tested. Best rank #7 for “habit tracker”.");
+    expect(html).toContain("Lead with “habit tracker”.");
+    expect(html).toContain("Acme Labs");
+    expect(html).toContain("4.6");
+    expect(html).toContain("1,283");
+  });
+
+  it("renders an unavailable hero tile as — with its reason, never a number", () => {
+    const html = withCard();
+    expect(html).toContain("Apple reports downloads only to the app&#39;s own developer.");
+    expect(html).not.toMatch(/Downloads[^<]*<[^>]*>\s*\d/);
+  });
+
+  it("renders a pending tile as requested, distinct from zero", () => {
+    const html = withCard();
+    expect(html).toContain("Requested — Apple takes 1–2 days to generate it.");
+    expect(html).not.toContain(">0<");
+  });
+
+  it("renders an absent tile as — with no reason text", () => {
+    expect(withCard()).toMatch(/Size<\/div><div class="cv none">—<\/div>/);
+  });
+
+  it("stamps the card with the measurement date and country", () => {
+    const html = withCard();
+    expect(html).toContain("Measured 2026-09-05");
+    expect(html).toContain("· US ·");
+  });
+
+  it("renders no card section when the data has none", () => {
+    expect(page(FULL)).not.toContain('id="card"');
+  });
+
+  it("escapes hostile card text", () => {
+    const hostile: AuditCard = { ...card, aso: { ...card.aso, headline: `<script>alert(1)</script>` } };
+    const html = renderReportPage({ appId: "1", bundleId: "b", country: "us", preview: FULL, card: hostile }, OPTS);
+    expect(html).not.toContain("<script>alert(1)");
   });
 });
 
