@@ -20,9 +20,10 @@ All paid tiers are recurring subscriptions. There is no one-time plan.
 - **No keyword quotas.** Track what you need to track. The tiers meter
   connected apps only.
 - **Deliberately below the incumbents.** Scale is 50 apps for $64.99 a month.
-  The leading App Store intelligence platform's entry tier is $79 a month for
-  5 apps and one seat (their public pricing, September 2026). That gap is on
-  purpose: the loop is the product, not the data feed.
+  The leading App Store intelligence platform's entry tier costs more per
+  month for 5 apps and one seat (their public pricing, September 2026): ten
+  times the apps here, for less. That gap is on purpose: the loop is the
+  product, not the data feed.
 
 ## What every plan includes
 
