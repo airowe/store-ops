@@ -75,3 +75,30 @@ describe("dashboardModel", () => {
     });
   });
 });
+
+import { recordedProposalsLabel } from "./dashboardModel.js";
+
+describe("recordedProposalsLabel (#493)", () => {
+  const since = "2026-08-29T00:00:00.000Z";
+  it("names the count and why nothing was pushed", () => {
+    expect(recordedProposalsLabel(app({ recorded_proposals: { runs: 1, proposals: 3, since } }))).toBe(
+      "3 proposals recorded · nothing moved",
+    );
+    expect(recordedProposalsLabel(app({ recorded_proposals: { runs: 1, proposals: 1, since } }))).toBe(
+      "1 proposal recorded · nothing moved",
+    );
+  });
+  it("is silent for zero, for an absent count, and for a row already at the gate", () => {
+    expect(recordedProposalsLabel(app({ recorded_proposals: { runs: 2, proposals: 0, since } }))).toBeNull();
+    expect(recordedProposalsLabel(app({}))).toBeNull();
+    expect(recordedProposalsLabel(app({ recorded_proposals: null }))).toBeNull();
+    expect(
+      recordedProposalsLabel(
+        app({
+          latest_run: { status: "awaiting_approval", created_at: "2026-09-01T00:00:00Z" },
+          recorded_proposals: { runs: 1, proposals: 2, since },
+        }),
+      ),
+    ).toBeNull();
+  });
+});

@@ -1,3 +1,4 @@
+import { recordedProposalsFor } from "../recordedProposals.js";
 /**
  * The weekly autonomy loop — the product's core. Fired by the Cron Trigger
  * `0 9 * * 1` (Mon 09:00 UTC, set in wrangler.toml) via `scheduled()` in
@@ -304,6 +305,9 @@ export async function sendWeeklyDigests(env: Env, report: CronReport): Promise<n
       // the report's `crossed` over-reports — a crossed threshold whose run was
       // opened in a PRIOR week is a 'detected' snapshot, not a pending gate.)
       hasPendingApproval: await hasOpenRun(env.DB, app.id),
+      // #493: what the detected runs wrote this week. undefined when unreadable
+      // (the digest then simply omits the line — never a guessed count).
+      recordedProposals: await recordedProposalsFor(env.DB, app.id),
       rankHistory: await getRankHistory(env.DB, app.id),
       // The email's visual card (icon, chips, screenshots) from the app's public
       // listing — free iTunes Lookup, no credentials, so every tier gets it.

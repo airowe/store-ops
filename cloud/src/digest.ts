@@ -1,3 +1,4 @@
+import type { RecordedProposals } from "./recordedProposals.js";
 /**
  * The weekly "what moved" digest — a PURE builder separated from sending.
  *
@@ -93,10 +94,29 @@ export type DigestCard = {
  * clients start clipping (Gmail truncates around 102KB). */
 const MAX_STRIP = 5;
 
+/**
+ * The recorded-proposals line (#493), or null when there is nothing to say.
+ * Zero is a measurement but not a headline: "0 proposals recorded" would read
+ * as the agent doing nothing, when it recorded the week's snapshot as designed.
+ */
+function recordedLine(opts: RenderOpts): string | null {
+  const r = opts.recordedProposals;
+  if (!r || r.proposals <= 0) return null;
+  const noun = r.proposals === 1 ? "proposal" : "proposals";
+  const runs = r.runs === 1 ? "this week's run" : `${r.runs} runs this week`;
+  return `${r.proposals} ${noun} recorded from ${runs} — not pushed to you because no rank moved. They are in your dashboard -> ${opts.dashboardUrl}`;
+}
+
 export type RenderOpts = {
   appName: string;
   dashboardUrl: string;
   hasPendingApproval: boolean;
+  /**
+   * Proposals the agent wrote in `detected` runs this week (#493). Those runs
+   * open no gate and send no notification — by design, no nag when nothing
+   * moved — but their output was invisible. Absent or zero → no line.
+   */
+  recordedProposals?: RecordedProposals | undefined;
   /** Optional visual layer; omitted entirely when absent (degrades to text). */
   card?: DigestCard | undefined;
   /**
@@ -466,6 +486,11 @@ export function renderDigestText(digest: Digest, opts: RenderOpts): string {
     } else {
       lines.push(`See the full picture in your dashboard -> ${opts.dashboardUrl}`);
     }
+    const recorded = recordedLine(opts);
+    if (recorded) {
+      lines.push("");
+      lines.push(recorded);
+    }
     if (opts.unsubscribeUrl) {
       lines.push("");
       lines.push(`Stop this weekly digest (for every app on this account): ${opts.unsubscribeUrl}`);
@@ -492,6 +517,11 @@ export function renderDigestText(digest: Digest, opts: RenderOpts): string {
     lines.push(`A new optimization is waiting for your approval -> ${opts.dashboardUrl}`);
   } else {
     lines.push(`See the full trend in your dashboard -> ${opts.dashboardUrl}`);
+  }
+  const recorded = recordedLine(opts);
+  if (recorded) {
+    lines.push("");
+    lines.push(recorded);
   }
 
   if (opts.unsubscribeUrl) {
@@ -598,6 +628,11 @@ export function renderDigestHtml(digest: Digest, opts: RenderOpts): string {
   const ctaNote = opts.hasPendingApproval
     ? `<div style="font:13px/1.5 -apple-system,Segoe UI,Roboto,sans-serif;color:#97a1b6;margin:0 0 14px">A new optimization is ready and waiting for your approval.</div>`
     : "";
+  // #493: the detected runs' output, said out loud. Same wording as the text.
+  const recordedText = recordedLine(opts);
+  const recordedNote = recordedText
+    ? `<div style="font:13px/1.5 -apple-system,Segoe UI,Roboto,sans-serif;color:#97a1b6;margin:0 0 14px">${escapeHtml(recordedText.replace(/ -> .*$/, ""))} <a href="${opts.dashboardUrl}" style="color:#34d399">They are in your dashboard →</a></div>`
+    : "";
 
   return [
     `<div style="background:#07090e;padding:28px 16px;font-family:-apple-system,Segoe UI,Roboto,sans-serif">`,
@@ -615,6 +650,7 @@ export function renderDigestHtml(digest: Digest, opts: RenderOpts): string {
     // CTA
     `<div style="padding:8px 22px 24px">`,
     ctaNote,
+    recordedNote,
     `<a href="${url}" style="display:inline-block;background:${SIGNAL};color:#04140d;text-decoration:none;font:600 14px/1 -apple-system,Segoe UI,Roboto,sans-serif;padding:12px 20px;border-radius:10px">${ctaText}</a>`,
     `</div>`,
     `</div>`,
@@ -637,6 +673,8 @@ export type DigestAppInput = {
   email: string;
   tier: Tier;
   hasPendingApproval: boolean;
+  /** Proposals recorded by this week's `detected` runs (#493); absent → no line. */
+  recordedProposals?: RecordedProposals | undefined;
   /** flat RankSnapshotRow[] for this app, as getRankHistory returns it. */
   rankHistory: RankSnapshotRow[];
   /** optional visual card from the public listing; absent → text-only digest. */
@@ -669,6 +707,7 @@ export function planDigests(
       appName: app.appName,
       dashboardUrl: opts.dashboardUrl,
       hasPendingApproval: app.hasPendingApproval,
+      recordedProposals: app.recordedProposals,
       unsubscribeUrl: app.unsubscribeUrl,
       card: app.card,
     };

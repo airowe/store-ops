@@ -1,3 +1,4 @@
+import { recordedProposalsFor } from "../recordedProposals.js";
 /**
  * store-ops REST API — a plain Cloudflare Workers fetch handler (no framework,
  * zero extra deps). Routed from `src/index.ts`. Talks to D1 via `../d1.js` and
@@ -2066,6 +2067,9 @@ async function listApps(env: Env, userId: string): Promise<unknown> {
         latest_run,
         rank_summary,
         findings_summary,
+        // #493: the output of this week's detected runs, so the card can say
+        // "N proposals recorded · nothing moved". null = could not be read.
+        recorded_proposals: (await recordedProposalsFor(env.DB, a.id, now)) ?? null,
         // The loop's own state — the evidence that the agent has been working
         // while the user was away. `now` is stamped once outside the map so
         // every app's next-slot is computed from one instant.

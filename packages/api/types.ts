@@ -71,6 +71,21 @@ export type AppListItem = {
    * during the deploy-order window rather than crash on it.
    */
   loop?: LoopState | null;
+  /**
+   * The output of `detected` runs in the last week (#493): copy the agent wrote
+   * when no threshold crossed, which used to be persisted and surfaced nowhere.
+   * Optional for the deploy-order window; null when it could not be read.
+   * Zero is a measurement.
+   */
+  recorded_proposals?: RecordedProposals | null;
+};
+
+/** Proposals recorded by `detected` runs in a window — discoverable, not a nag. */
+export type RecordedProposals = {
+  runs: number;
+  proposals: number;
+  /** ISO start of the window. */
+  since: string;
 };
 
 /** Honest rank point: null rank = unmeasured, never 0. */

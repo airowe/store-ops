@@ -207,4 +207,19 @@ describe("<DashboardView />", () => {
     await waitFor(() => expect(post).toHaveBeenCalledWith("/apps", { bundle_id: "com.x.y", name: "XY" }));
     await waitFor(() => expect(onOpen).toHaveBeenCalledWith("new1", "XY"));
   });
+
+  it("shows recorded proposals from detected runs on the app row (#493)", async () => {
+    const recorded = { runs: 1, proposals: 3, since: "2026-08-29T00:00:00.000Z" };
+    const { c } = client([app, { ...app, id: "a2", name: "Beta", bundle_id: "com.beta.app", recorded_proposals: recorded }]);
+    renderView(c);
+    await waitFor(() => screen.getByTestId("recorded-proposals"));
+    expect(screen.getByTestId("recorded-proposals").textContent).toBe("3 proposals recorded · nothing moved");
+  });
+
+  it("renders no recorded-proposals line when the count is absent or zero (#493)", async () => {
+    const { c } = client([app, { ...app, id: "a2", name: "Beta", bundle_id: "com.beta.app", recorded_proposals: { runs: 1, proposals: 0, since: "2026-08-29T00:00:00.000Z" } }]);
+    renderView(c);
+    await waitFor(() => screen.getByText("Beta"));
+    expect(screen.queryByTestId("recorded-proposals")).toBeNull();
+  });
 });
