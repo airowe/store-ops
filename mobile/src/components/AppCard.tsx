@@ -8,6 +8,7 @@ import React, { useMemo } from "react";
 import { Pressable, StyleSheet, View } from "react-native";
 import { radius, spacing, usePalette, type Palette } from "../theme/index.js";
 import { formatRank, humanizeStatus, timeAgo } from "../lib/format.js";
+import { recordedProposalsLabel } from "../lib/recordedProposals.js";
 import type { AppListItem } from "../types/api.js";
 import { AppText, Card } from "./primitives.js";
 
@@ -24,6 +25,7 @@ export function AppCard({
   const styles = useMemo(() => makeStyles(palette), [palette]);
   const rank = app.rank_summary;
   const findings = app.findings_summary;
+  const recorded = recordedProposalsLabel(app);
   return (
     <Pressable accessibilityRole="button" testID={`app-card-${app.id}`} onPress={() => onPress(app.id)}>
       <Card>
@@ -61,6 +63,11 @@ export function AppCard({
           <AppText kind="dim" style={{ color: findings.critical > 0 ? palette.bad : palette.dim }}>
             {findings.label}
           </AppText>
+        ) : null}
+
+        {/* #493: the quiet week's output, said once. Absent when zero or unknown. */}
+        {recorded ? (
+          <AppText kind="micro" testID={`recorded-proposals-${app.id}`}>{recorded}</AppText>
         ) : null}
       </Card>
     </Pressable>
