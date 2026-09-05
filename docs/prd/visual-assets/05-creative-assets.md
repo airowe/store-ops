@@ -112,12 +112,21 @@ export function creativeAssetBrief(input: {
 - `specsKnown: false` until dimensions are published. The brief describes
   *content*, never a pixel size we'd be inventing.
 
-### A3. Findings
-New advisory findings on the conversion lane, labeled as such (per
-`00-overview.md`): no creative assets planned; search-results asset absent
-while screenshot grade is low. **Advisory only** — we cannot yet *measure*
-whether a user has creative assets, so these are prompts, not gradings, and
-must not feed a score until Phase C makes them measurable.
+### A3. Findings — ✅ BUILT (one of the two)
+`creative_asset_plan` (`cloud/src/engine/auditFindings.ts`, catalogued in
+`docs/prd/asc-findings/05-surface-findings-spec.md`): rides
+`screenshots_grade_low` — the weaker the deck, the more the asset that
+replaces it in search matters. Its fix is the brief's search-results focus
+(A2), so the top MEASURED keyword reaches the user through a surface that
+already exists; unscored opportunities never lead. `info` severity: counted in
+neither the critical/warn tally nor the label, and `context` is unset so it
+still reads as a prompt. `opportunities` now flow into `auditFindings` from all
+three call sites (api runApp, api ASC run, MCP `app_findings`).
+
+**Deliberately not built:** "no creative assets planned" and "search-results
+asset absent." Both assert an absence we cannot read — Asset Library has no API
+yet — and a finding that fires on an unread field is the measured-or-nothing
+violation A1 removed. They move to Phase C with the read.
 
 ## Phase C — gated on Apple publishing the API
 

@@ -280,6 +280,7 @@ const RAW_TOOLS: McpToolDef[] = [
         // too. Omitted (not null) when the run could not read it, which keeps
         // "we didn't look" distinct from "we looked and you're not charting".
         ...(result.chartRank !== undefined ? { chartRank: result.chartRank } : {}),
+        ...(result.opportunities !== undefined ? { opportunities: result.opportunities } : {}),
       });
       // #455 — the icon comparison. OPT-IN and cost-bounded: the analyzer is
       // undefined unless ICON_VISION_ENABLED is set AND the AI binding exists,
