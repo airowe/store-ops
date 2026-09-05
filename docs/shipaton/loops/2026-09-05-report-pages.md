@@ -70,3 +70,20 @@ upstream load.
 ## Log
 
 - 2026-09-05 — scoped after loop 1's four PRs (#528–#531) went green.
+- 2026-09-05 — Criteria 1–6: `loop/report-pages` → **#533**. Pure renderer
+  (`cloud/src/api/reportPage.ts`, 10 specs), router route + HTML error pages
+  (8 route specs incl. a negative control), `report.html` share link,
+  `REPORT_PAGE_ORIGIN` + the flagged `shipaso.com/r/*` route pair. Found and
+  fixed on the way: the JSON route resolved the id *before* the cache, so
+  every hit paid one lookup; now zero. Cloud suite 2914/2914, `tsc` clean.
+
+## Status at hand-off
+
+| Criterion | PR | State |
+|---|---|---|
+| 1–6 | #533 | open, green locally |
+| 7 gates | #532, #533 | green at open; CI is the final word |
+
+**Not done, by the rules:** nothing merged, deployed, posted. The zone route
+in `wrangler.toml` could not be exercised locally; it is one isolated hunk,
+paired with its var, and the PR body says how to drop both.
