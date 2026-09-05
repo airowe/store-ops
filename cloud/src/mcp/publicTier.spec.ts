@@ -172,3 +172,15 @@ describe("anonymous preview_app is cost-bounded like GET /report", () => {
     expect(limiter.limit).not.toHaveBeenCalled();
   });
 });
+
+describe("anonymous preview_app never caches an outage (#537)", () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  it("an App Store failure is a tool error and nothing is written to the cache", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => new Response("rate limited", { status: 429, headers: { "Retry-After": "0" } })));
+    const cache = { match: vi.fn(async () => undefined), put: vi.fn(async () => {}) };
+    const { json } = await call({ env, user: null, guard: { cache } }, "preview_app", { bundleId: "com.acme.app" });
+    expect(json.result.isError).toBe(true);
+    expect(cache.put).not.toHaveBeenCalled();
+  });
+});

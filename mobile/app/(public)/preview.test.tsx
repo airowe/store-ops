@@ -225,3 +225,34 @@ describe("Preview screen composition + honesty", () => {
     expect(screen.queryByText("?")).toBeNull();
   });
 });
+
+describe("Preview screen says what it is doing while it waits (#537)", () => {
+  it("shows a progress line while a candidate pick is in flight, and clears it on result", async () => {
+    let resolvePick: (v: PreviewResult) => void = () => {};
+    const pending = new Promise<PreviewResult>((r) => { resolvePick = r; });
+    const calls: Array<{ path: string; body: unknown }> = [];
+    const client = {
+      post: async <T,>(path: string, body?: unknown) => {
+        calls.push({ path, body });
+        if (calls.length === 1) return { needsChoice: true, candidates: [{ name: "Acme", bundle_id: "com.acme.app" }] } as unknown as T;
+        return (await pending) as unknown as T;
+      },
+      get: async () => ({}),
+      request: async () => ({}),
+    } as unknown as ApiClient;
+    renderPreview(client);
+
+    fireEvent.changeText(screen.getByTestId("preview-query"), "Acme");
+    fireEvent.press(screen.getByTestId("preview-search"));
+    await waitFor(() => expect(screen.getByTestId("pcand-com.acme.app")).toBeTruthy());
+    expect(screen.queryByTestId("preview-progress")).toBeNull();
+
+    fireEvent.press(screen.getByTestId("pcand-com.acme.app"));
+    await waitFor(() => expect(screen.getByTestId("preview-progress")).toBeTruthy());
+
+    resolvePick({ preview: { appName: "Acme", auditGrade: "B", leadKeyword: "acme", leadRank: 2,
+      keywordsChecked: 5, inTop10: 1, sample: [{ keyword: "acme", rank: 2 }] } } as PreviewResult);
+    await waitFor(() => expect(screen.getByTestId("preview-summary")).toBeTruthy());
+    expect(screen.queryByTestId("preview-progress")).toBeNull();
+  });
+});
