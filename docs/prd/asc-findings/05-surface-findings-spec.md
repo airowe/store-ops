@@ -12,6 +12,7 @@ Legend — severity: `crit`/`warn`/`good`/`info`; impact: `rank`/`conv`/`trust`/
 |----|---------|-----|--------|-------------|-------|
 | `screenshots_grade_low` | grade D/F (real, dataReliable) | crit | conv | "Screenshots are hurting conversion (grade {G})" / "Add 4+ tall-phone screenshots; first 2–3 are what search shows today." | launch |
 | `screenshots_thin` | 1–3 iPhone shots | warn | conv | "Only {n} screenshots" / "Use more slots; the first 2–3 are what search shows today." | launch |
+| `creative_asset_plan` | rides `screenshots_grade_low` (grade D/F, dataReliable); #436 A3 | info | conv | "Plan the search-results creative asset" / the brief's search-results focus, naming the top MEASURED opportunity keyword or none. Advisory: never a grading, never a dimension while Apple publishes none. | ff |
 | `screenshots_no_ipad` | universal app, 0 iPad | info | conv | "No iPad screenshots" / "Add them if you ship iPad." | ff |
 | `screenshots_unknown` | grade "?" (no key / public-only) | info | conv | "Couldn't read screenshots from public data" / "Connect ASC for a real grade." | launch |
 

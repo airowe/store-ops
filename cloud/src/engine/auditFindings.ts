@@ -50,6 +50,8 @@ import { projectGrade, leversAddressedByPlan, gradeProjectionFinding } from "./g
 const RECOMMENDED_SHOT_COUNT = 6;
 import { clusterKeywordIntents } from "./cppIntents.js";
 import { cppIdenticalFindings, screenshotSignature } from "./cppScreenshotDiff.js";
+import { creativeAssetBrief } from "./creativeAssetBrief.js";
+import type { Opportunity } from "./rankOpportunity.js";
 export {
   type Finding,
   type FindingImpact,
@@ -109,6 +111,13 @@ export type AuditFindingsInput = {
    * the genre unknown — the `chart` surface then emits NOTHING (unknown ≠ zero).
    */
   chartRank?: ChartRank | null | undefined;
+  /**
+   * Winnability-ranked keyword opportunities (PRD 06). Feeds the advisory
+   * creative-asset plan (#436): the search-results asset leads with the top
+   * MEASURED keyword. Undefined or unscored → the plan still fires on a low
+   * screenshot grade, but names no keyword rather than inventing one.
+   */
+  opportunities?: Opportunity[] | undefined;
 };
 
 /** ASC "in review / pending" states — metadata is locked while in these. */
@@ -214,6 +223,27 @@ function screenshotFindings(input: AuditFindingsInput): Finding[] {
           "Weak screenshots cost installs — they're the first thing a shopper judges.",
         fix: "Add 4+ tall-phone screenshots; the first 2–3 are what search shows today.",
         evidence: `grade ${grade}`,
+      }),
+    );
+    // #436 A3 — advisory, never a grading. Apple's search-results creative
+    // asset (announced Aug 5 2026, "coming this fall") displaces screenshots
+    // 1–3 in search. We cannot yet READ whether an app has one, so this is a
+    // prompt that rides the low-grade finding: the weaker the deck, the more
+    // the asset that replaces it in search matters. Info severity scores 0.
+    const plan = creativeAssetBrief({ appName: input.appName, opportunities: input.opportunities ?? [] })
+      .assets.find((a) => a.surface === "searchResult");
+    out.push(
+      mk({
+        id: "creative_asset_plan",
+        surface: "screenshots",
+        severity: "info",
+        impact: "conversion",
+        title: "Plan the search-results creative asset",
+        detail:
+          "Apple's creative assets, coming this fall, replace what search shows today with one dedicated image. " +
+          "An asset planned from your measured keywords does the job these screenshots are not doing.",
+        fix: plan?.focus ?? "Lead with what your app is, in the words someone would search for.",
+        evidence: `grade ${grade}; specs unpublished`,
       }),
     );
   }
