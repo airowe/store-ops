@@ -27,9 +27,11 @@ pattern = "api.shipaso.com"
 custom_domain = true
 
 # ── D1 (SQLite) — bound as env.DB in the Worker ──────────────────────────────
-# ── Rate limiting — damps repeat hits on the public /report/:appId funnel ────
-# Each cache MISS on that route runs the agent, which reasons with the Anthropic
-# client, so an unauthenticated caller can spend inference budget on our key.
+# ── Rate limiting — damps repeat hits on the public funnels ─────────────────
+# Used by GET /report/:appId and by the anonymous MCP `preview_app` (POST /mcp
+# with no key — the front door, loop 2026-09-05). Each cache MISS on those paths
+# runs the agent, which reasons with the Anthropic client, so an unauthenticated
+# caller can spend inference budget on our key.
 #
 # Read the caveats before trusting this. Cloudflare documents the binding as
 # "permissive, eventually consistent, and intentionally designed to not be used

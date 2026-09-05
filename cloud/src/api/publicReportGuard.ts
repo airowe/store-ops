@@ -36,6 +36,15 @@ export function reportCacheKey(appId: string, country: string): string {
   return `https://cache.shipaso.internal/report/${encodeURIComponent(appId)}/${encodeURIComponent(country)}`;
 }
 
+/**
+ * The anonymous MCP `preview_app` (loop 2026-09-05) reuses this guard, but its
+ * identity is a bundle id + country rather than a numeric App Store id. Its
+ * own path segment keeps the two namespaces apart even for identical text.
+ */
+export function previewCacheKey(bundleId: string, country: string): string {
+  return `https://cache.shipaso.internal/preview/${encodeURIComponent(bundleId)}/${encodeURIComponent(country)}`;
+}
+
 /** The slice of the Cache API this module needs, so tests can supply a fake. */
 export type ReportCache = {
   match(request: Request): Promise<Response | undefined>;
@@ -66,10 +75,18 @@ export async function cachedReport<T>(
   cache: ReportCache | undefined,
   compute: () => Promise<T>,
 ): Promise<T> {
+  return cachedByKey(reportCacheKey(appId, country), cache, compute);
+}
+
+/** The same cache contract for any URL-shaped key (report, preview, …). */
+export async function cachedByKey<T>(
+  key: string,
+  cache: ReportCache | undefined,
+  compute: () => Promise<T>,
+): Promise<T> {
   // No cache available (non-Worker runtime) is not an error: compute and serve.
   if (cache === undefined) return compute();
 
-  const key = reportCacheKey(appId, country);
   const request = new Request(key);
 
   try {
