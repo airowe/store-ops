@@ -5,7 +5,10 @@ import { defineConfig } from "vitest/config";
 // switch those suites to @cloudflare/vitest-pool-workers (already a devDep).
 export default defineConfig({
   test: {
-    include: ["src/**/*.spec.ts"],
+    // scripts/ holds plain-node ESM (the post-deploy smoke test and its
+    // helpers); its specs are .mjs so the module under test is the one node
+    // actually runs, not a transpiled twin.
+    include: ["src/**/*.spec.ts", "scripts/**/*.spec.mjs"],
     environment: "node",
   },
 });

@@ -15,6 +15,8 @@
  * run it post-deploy or on a schedule.
  */
 
+import { isPropagation404, withRetry } from "./lib/retry.mjs";
+
 const API = (process.env.API_BASE ?? "https://api.shipaso.com").replace(/\/$/, "");
 const DASHBOARD = (process.env.DASHBOARD_URL ?? "https://app.shipaso.com").replace(/\/$/, "");
 
@@ -129,20 +131,36 @@ await check("GET dashboard assets (crossorigin) → correct MIME, not cached HTM
   // has not received yet, and the check 404s on a healthy deployment (#417,
   // which reddened #399). Aligning the reads keeps this a MIME/cached-HTML
   // guard instead of a propagation-timing guard.
-  const res = await fetch(DASHBOARD + "/index.html", {
-    headers: { "cache-control": "no-cache", Origin: DASHBOARD },
-  });
-  const html = await res.text();
-  const refs = [...html.matchAll(/(?:src|href)="(\/assets\/[^"]+\.(?:js|css))"/g)].map((m) => m[1]);
-  assert(refs.length > 0, "index.html referenced no /assets/ bundles");
+  //
+  // Even aligned, a freshly named bundle can 404 for a short window right
+  // after the deploy and be 200 a minute later (#491). A 404 — and ONLY a
+  // 404 — is retried with a bounded wait, re-reading index.html each time
+  // because both keys move during propagation. A wrong MIME type is the
+  // cached-HTML outage itself; it does not heal by waiting and fails at once.
+  await withRetry(
+    async () => {
+      const res = await fetch(DASHBOARD + "/index.html", {
+        headers: { "cache-control": "no-cache", Origin: DASHBOARD },
+      });
+      const html = await res.text();
+      const refs = [...html.matchAll(/(?:src|href)="(\/assets\/[^"]+\.(?:js|css))"/g)].map((m) => m[1]);
+      assert(refs.length > 0, "index.html referenced no /assets/ bundles");
 
-  for (const path of refs) {
-    const asset = await fetch(DASHBOARD + path, { headers: { Origin: DASHBOARD } });
-    assert(asset.status === 200, `${path} (with Origin) → ${asset.status}`);
-    const type = asset.headers.get("content-type") ?? "";
-    const ok = path.endsWith(".css") ? /text\/css/.test(type) : /javascript|ecmascript/.test(type);
-    assert(ok, `${path} served as "${type}" to a crossorigin request — cached HTML?`);
-  }
+      for (const path of refs) {
+        const asset = await fetch(DASHBOARD + path, { headers: { Origin: DASHBOARD } });
+        assert(asset.status === 200, `${path} (with Origin) → ${asset.status}`);
+        const type = asset.headers.get("content-type") ?? "";
+        const ok = path.endsWith(".css") ? /text\/css/.test(type) : /javascript|ecmascript/.test(type);
+        assert(ok, `${path} served as "${type}" to a crossorigin request — cached HTML?`);
+      }
+    },
+    {
+      attempts: 6,
+      delayMs: 10_000,
+      shouldRetry: isPropagation404,
+      onRetry: (attempt, err) => results.push(`  … attempt ${attempt}: ${err.message} — waiting for edge propagation`),
+    },
+  );
 });
 
 // ── report ───────────────────────────────────────────────────────────────────
