@@ -80,3 +80,35 @@ claude mcp add shipaso --transport http https://api.shipaso.com/mcp
 
 - 2026-09-05 01:41Z — (before the loop) 0.1.1 submitted to App Review; PR #527
   opened with the shipaton work. Loop scoped.
+- 2026-09-05 — #528 (this scope) opened.
+- 2026-09-05 — Criteria 1–5: `loop/mcp-public-tier` → **#529**. Registry-level
+  `keyed()` gate; `optionalUser` in the router (no credential → anonymous;
+  presented-but-invalid → 401); anonymous `preview_app` reuses the `/report`
+  cache + damper. `publicTier.spec.ts` (12) + `mcpAuth.spec.ts` (5) +
+  guard spec (5); cloud suite 2918/2918; `tsc` clean.
+- 2026-09-05 — Criterion 6: `loop/mcp-front-door-docs` → **#530**. PRD status
+  corrected with a "what shipped vs the plan" table; README "Zero install"
+  section; landing `#mcp` section. Registry row + journey entry + drafted
+  (unposted) story beat went to #527's branch instead, because it already
+  reshapes those files.
+- 2026-09-05 — Criterion 7: `loop/mcp-registry-manifest` → **#531**.
+  `server.json` validated against the registry's JSON schema (0 errors;
+  negative control 2 errors); guard pins version + URL; publish runbook.
+  Not published.
+- 2026-09-05 — Criterion 8: gates green on every PR at open time.
+
+## Status at hand-off
+
+| Criterion | PR | State |
+|---|---|---|
+| 1–5 public tier, fail-closed keys, cost bound | #529 | open, green locally |
+| 6 the repo says what is true | #530 (+ #527 for registry/feed) | open |
+| 7 registry manifest, unpublished | #531 | open |
+| 8 gates | all | green at open; CI is the final word |
+
+**Not done, by the rules:** nothing merged, nothing deployed, nothing posted,
+nothing submitted to the registry. **Found and filed nowhere because it does
+not block a criterion:** none.
+
+**Reading order for review:** #528 → #529 → #530 → #531; #527 is the separate
+shipaton branch (0.1.1 resubmission) and carries the journey entry.
