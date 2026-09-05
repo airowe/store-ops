@@ -4,7 +4,11 @@ You are the capture agent in the `capture-shots` GitHub Actions job, on a macOS
 runner with Xcode, `xcrun simctl`, and `axe` (AXe UI driver) installed. The
 ShipASO iOS app is already built for the simulator at:
 
-    mobile/.build/DerivedData/Build/Products/Debug-iphonesimulator/ShipASO.app
+    mobile/.build/DerivedData/Build/Products/Release-iphonesimulator/ShipASO.app
+
+It is a **Release** build on purpose: it embeds `main.jsbundle`, so it runs with
+no Metro. (A Debug build needs Metro, which nothing here starts — it launches
+straight into the React Native red-box. Proven on the first run, 2026-09-05.)
 
 Bundle id: `com.shipaso.app`. Your job: capture REAL screenshots of the running
 app (and, if `RECORD_VIDEO=true`, one walkthrough video), then write a manifest.
@@ -20,8 +24,13 @@ is its `sourceScreen` id, so name files exactly as listed below.
   works signed-out. If a screen is unreachable (needs an authed session, network
   error, crash), do NOT fake it — record it under `missing` in the manifest with
   the reason, and move on.
-- Prefer real content: search a well-known real app (e.g. "Slack" or "Notion")
-  so the audit teaser shows measured output, not an empty state.
+- Prefer real content: search a real app so the audit teaser shows measured
+  output, not an empty state. **Pick one that resolves fast.** The public
+  preview runs the engine uncached, and big listings take minutes (measured
+  2026-09-05: Slack 299 s, Notion 150 s — see #537), which reads as "broken"
+  on screen. The verified query is **"Heathen"** → candidate *Heathen - Secular
+  Meditation* (`app.airowe.clarity`), which resolves in about 30 s. Typing its
+  App Store id `6759360137` skips the candidate step but looks odd in the shot.
 
 ## Simulator
 
@@ -41,12 +50,31 @@ is its `sourceScreen` id, so name files exactly as listed below.
 
 Use `axe describe-ui --udid <UDID>` to see what is on screen and
 `axe tap --id <testID>` / `axe type <text>` to act. The app is Expo Router;
-signed-out it lands on the public surface. Useful testIDs on the preview
-screen: `preview-query` (search field), `preview-search` (submit),
-`preview-result` (result card). Reference for the toolchain:
+signed-out it lands on the public surface. Reference for the toolchain:
 `skills/asc-shots-pipeline/SKILL.md`. Give the app a beat (1–2s) after
 navigation before capturing; retry a flaky tap once before declaring a screen
 missing.
+
+Learned on the first run (2026-09-05) — read before you poll for anything:
+
+- **`describe-ui` does not list most testIDs.** Only text fields show up as
+  `AXUniqueId` (`preview-query`, `preview-search`, `email-input`,
+  `token-input`). Buttons, candidate rows and the result container
+  (`audit-free`, `pcand-*`, `preview-result`) are NOT in the dump — yet
+  `axe tap --id <testID>` still finds them. So: **tap by id, wait on visible
+  text** (`AXLabel`), never wait for a Pressable's id to appear.
+- Text to wait for: login → `Audit any listing` (the button); preview →
+  `preview-query`; candidates → labels of the form `<name>, <bundle id>`
+  (e.g. `Heathen - Secular Meditation, app.airowe.clarity`) — tap one by
+  `--label`; result → a summary starting `Ranks #` or `Checked N keywords`;
+  proof → `The receipts`.
+- An app-name query returns a **candidate list**, not a result. Tap the
+  intended candidate, then wait for the summary text (allow 60–120 s).
+- The proof screen has no in-app link. Open it with
+  `xcrun simctl openurl <UDID> "shipaso://proof"`, accept the system
+  "Open in ShipASO?" dialog with `axe tap --label Open`, and allow up to
+  60 s — it lands later than it looks like it should.
+- Each `describe-ui` call takes 1–3 s; poll with a delay, not in a tight loop.
 
 ## Shots (output: `marketing/screenshots/capture/raw/<id>.png`)
 
@@ -56,8 +84,8 @@ Capture with `xcrun simctl io <UDID> screenshot <path>` (or `axe screenshot`).
 |---|---|
 | `login` | The signed-out entry screen: email field + the free-preview path visible. |
 | `search` | The public preview screen with a real query typed in the search field, before/at submit. |
-| `audit-result` | The preview result card for that query: app name + grade pill + teaser content, fully loaded (wait for `preview-result`). |
-| `proof` | The public proof screen, if reachable without parameters from the signed-out surface; otherwise record it missing (it may require a proof id). |
+| `audit-result` | The preview result card for that query: app name + teaser content, fully loaded (wait for the `Ranks #…` / `Checked …` summary text — the `preview-result` id is not visible to `describe-ui`). |
+| `proof` | The public proof screen ("The receipts"), reached via the `shipaso://proof` deep link as described above. It needs no parameters. |
 
 Screens behind login (dashboard, runs, war-room) are expected `missing` —
 magic-link auth cannot complete in CI. Say so in the manifest; do not attempt

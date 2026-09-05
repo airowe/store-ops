@@ -79,6 +79,12 @@ jobs:
             echo "Extracted $TARBALL"
           else echo "ReactNativeDependencies already seeded or no tarball — skipping."; fi
 
+      # RELEASE, not Debug. A Debug build loads its JavaScript from Metro, and
+      # nothing on this runner starts Metro — so a Debug build launches into the
+      # React Native red-box ("could not connect to development server") and the
+      # agent can only ever screenshot an error. Proven on the first local run of
+      # this plan (2026-09-05): Debug without Metro → red box; Release embeds
+      # main.jsbundle and launches on its own. Still unsigned, still simulator.
       - name: Build for simulator
         working-directory: mobile
         run: |
@@ -86,13 +92,14 @@ jobs:
           xcodebuild \
             -workspace ios/ShipASO.xcworkspace \
             -scheme ShipASO \
-            -configuration Debug \
+            -configuration Release \
             -destination 'generic/platform=iOS Simulator' \
             -derivedDataPath .build/DerivedData \
             build
           # Trust the artifact, not the exit code (same rule as the Fastfile).
-          APP=".build/DerivedData/Build/Products/Debug-iphonesimulator/ShipASO.app"
+          APP=".build/DerivedData/Build/Products/Release-iphonesimulator/ShipASO.app"
           test -d "$APP" || { echo "xcodebuild reported success but produced no .app at $APP"; exit 1; }
+          test -f "$APP/main.jsbundle" || { echo "$APP has no embedded main.jsbundle — it would need Metro to run"; exit 1; }
 
       - name: Install AXe + Claude Code
         run: |
