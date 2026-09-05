@@ -274,6 +274,7 @@ import { buildAppInput, descriptionFromTrace, type RunOverrides } from "./runCon
 import { type AscCred, type AscCredBody, AscCredentialError, resolveAscCredential } from "./ascCredentials.js";
 import { reasonerForEnv } from "./aiReasoner.js";
 import { cachedReport, allowReport, defaultReportCache, type ReportLimiter } from "./publicReportGuard.js";
+import { renderReportErrorPage, renderReportPage, type ReportPageData } from "./reportPage.js";
 import { captionAnalyzerForEnv } from "./aiCaptionVision.js";
 import { analyzeFirstShot, captionFindings } from "../engine/captionLens.js";
 import { screenshotClaimFindings } from "../engine/screenshotCompliance.js";
@@ -1429,6 +1430,44 @@ async function runPreview(req: Request, env: Env): Promise<unknown> {
   return { preview: buildPreview(result), bundleId, country };
 }
 
+/** An HTML response. Only a 200 page is edge-cacheable; error pages are not. */
+function htmlResponse(doc: string, status: number): Response {
+  return new Response(doc, {
+    status,
+    headers: {
+      "content-type": "text/html; charset=utf-8",
+      "cache-control": status === 200 ? "public, max-age=3600" : "no-store",
+    },
+  });
+}
+
+/**
+ * GET /r/:appId — the public report as a PAGE (loop 2, 2026-09-05). The same
+ * data as GET /report/:appId, rendered server-side with the app's own title,
+ * description, canonical, and Open Graph tags, so a link unfurls and a crawler
+ * can index it. It reuses reportByAppId, so the JSON and the page share ONE
+ * cache entry, and sits behind the same damper — no new upstream load. Errors
+ * are HTML pages carrying the JSON route's messages, never a bare 500.
+ *
+ * The canonical origin is REPORT_PAGE_ORIGIN when set (the `shipaso.com/r/*`
+ * route), else the request origin — so the page never names a URL that is
+ * not actually served.
+ */
+async function reportPageRoute(appId: string, url: URL, env: Env): Promise<Response> {
+  if (!(await allowReport(env.REPORT_LIMITER as ReportLimiter | undefined, appId))) {
+    return htmlResponse(renderReportErrorPage(429, "Too many requests for this app just now — try again shortly."), 429);
+  }
+  const canonicalOrigin = (env.REPORT_PAGE_ORIGIN ?? "").trim() || url.origin;
+  try {
+    const data = (await reportByAppId(appId, url, env)) as ReportPageData;
+    return htmlResponse(renderReportPage(data, { canonicalOrigin }), 200);
+  } catch (e) {
+    if (e instanceof HttpError) return htmlResponse(renderReportErrorPage(e.status, e.message), e.status);
+    console.error("unhandled error (report page):", e);
+    return htmlResponse(renderReportErrorPage(500, "Something went wrong on our side. Please try again."), 500);
+  }
+}
+
 /**
  * GET /report/:appId — the PUBLIC, shareable ASO report (#287). A GET-by-App-
  * Store-id sibling of POST /preview: resolve the numeric id to its bundle +
@@ -1441,20 +1480,26 @@ async function reportByAppId(appId: string, url: URL, env: Env): Promise<unknown
   if (!/^\d{3,}$/.test(appId)) throw new HttpError(400, "appId must be a numeric App Store id");
 
   try {
-    // Resolve the numeric track id → the live listing via the public lookup API
-    // (which returns the bundleId + name + genres for a raw id).
-    const data = asResponse(
-      await fetchJson(fetchForEnv(env), buildUrl(ITUNES_LOOKUP_URL, { id: appId, country })),
-    );
-    const r = (data.results ?? [])[0] as { bundleId?: string; trackName?: string; genres?: string[] } | undefined;
-    const bundleId = r?.bundleId;
-    if (!bundleId) throw new HttpError(404, `no App Store app for id ${appId}`);
-    const name = [r?.trackName ?? "", (r?.genres ?? []).join(" ")].filter(Boolean).join(" ").trim() || bundleId;
-
     // The agent reasons with the Anthropic client, so a miss here spends money
     // on our key for an unauthenticated caller. Cache it: a public listing's
     // audit is stable for hours, and the endpoint was recomputing every call.
+    //
+    // The cache key is (appId, country), both known before any network call,
+    // so the id → listing lookup lives INSIDE the compute: a hit costs zero
+    // upstream requests. (It used to sit outside, so every hit still paid one
+    // lookup — found by the /r/:appId page's shared-cache spec, loop 2.) A
+    // 404 throws out of compute and is never cached.
     return await cachedReport(appId, country, defaultReportCache(), async () => {
+      // Resolve the numeric track id → the live listing via the public lookup
+      // API (which returns the bundleId + name + genres for a raw id).
+      const data = asResponse(
+        await fetchJson(fetchForEnv(env), buildUrl(ITUNES_LOOKUP_URL, { id: appId, country })),
+      );
+      const r = (data.results ?? [])[0] as { bundleId?: string; trackName?: string; genres?: string[] } | undefined;
+      const bundleId = r?.bundleId;
+      if (!bundleId) throw new HttpError(404, `no App Store app for id ${appId}`);
+      const name = [r?.trackName ?? "", (r?.genres ?? []).join(" ")].filter(Boolean).join(" ").trim() || bundleId;
+
       const appRow = { id: "report", user_id: "report", bundle_id: bundleId, name, country } as AppRow;
       const reasoner = reasonerForEnv(env);
       const input = await buildAppInput(appRow, reasoner ? { reasoner } : {}, {});
@@ -5453,6 +5498,11 @@ export async function handleApi(req: Request, env: Env, ctx?: ExecutionContext):
         return json({ error: "Too many requests for this app just now — try again shortly." }, 429, origin, env);
       }
       return json(await reportByAppId(seg[1]!, new URL(req.url), env), 200, origin, env);
+    }
+    // Public report PAGE (loop 2): GET /r/:appId — the same report as HTML with
+    // the app's own head tags, from the same cache entry behind the same damper.
+    if (seg[0] === "r" && seg.length === 2 && method === "GET") {
+      return reportPageRoute(seg[1]!, new URL(req.url), env);
     }
     // Owner-only RLHF export (#39 Part 2). NOT session-gated — it has its own
     // secret-token gate (x-rlhf-export === env.RLHF_EXPORT_TOKEN) and degrades

@@ -26,6 +26,17 @@ compatibility_flags = ["nodejs_compat"]
 pattern = "api.shipaso.com"
 custom_domain = true
 
+# ── Public report pages on the brand domain (loop 2, 2026-09-05) ──────────────
+# GET /r/:appId renders a public report as an indexable HTML page. Routing
+# `shipaso.com/r/*` here puts those pages on the marketing domain instead of
+# api.shipaso.com; Workers routes take precedence over the Pages site on the
+# same hostname for matching paths only. This hunk and REPORT_PAGE_ORIGIN
+# below are a PAIR: drop both to keep the pages on api.shipaso.com — the
+# canonical then falls back to the request origin, so it never names a 404.
+[[routes]]
+pattern = "shipaso.com/r/*"
+zone_name = "shipaso.com"
+
 # ── D1 (SQLite) — bound as env.DB in the Worker ──────────────────────────────
 # ── Rate limiting — damps repeat hits on the public /report/:appId funnel ────
 # Each cache MISS on that route runs the agent, which reasons with the Anthropic
@@ -109,6 +120,10 @@ DASHBOARD_ORIGIN = "https://app.shipaso.com"
 # unsubscribe links on the weekly digest (comms-prefs Phase 2). Unset → digests
 # send without the unsubscribe footer/headers (degrade, never a broken link).
 API_ORIGIN = "https://api.shipaso.com"
+# REPORT_PAGE_ORIGIN — the origin the public report pages (GET /r/:appId)
+# declare as canonical. Paired with the `shipaso.com/r/*` route above; set
+# only while that route is live. Unset → the request origin.
+REPORT_PAGE_ORIGIN = "https://shipaso.com"
 # COOKIE_DOMAIN — shares the session cookie across the dashboard (app.shipaso.com)
 # and API (api.shipaso.com) subdomains, with SameSite=None so it rides cross-site
 # fetches. Leave unset for single-origin / local dev (→ host-only, SameSite=Lax).

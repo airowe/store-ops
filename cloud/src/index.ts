@@ -38,6 +38,11 @@ export type Env = {
   // Public base URL of the dashboard (for magic-link callback + CORS origin echo).
   // Optional: falls back to the request Origin when unset.
   DASHBOARD_ORIGIN?: string;
+  // Origin the public report PAGES (GET /r/:appId) declare as canonical, e.g.
+  // "https://shipaso.com" when the `shipaso.com/r/*` Worker route is enabled.
+  // Optional: unset → the request origin, so the page never points a crawler
+  // at a URL that is not actually served.
+  REPORT_PAGE_ORIGIN?: string;
   // Public base URL of THIS API worker (e.g. "https://api.shipaso.com") — needed
   // by the cron to build absolute unsubscribe links (comms-prefs Phase 2): the
   // cron has no request to derive an origin from, and DASHBOARD_ORIGIN is the

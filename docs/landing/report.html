@@ -258,6 +258,12 @@
           }).join("") + "</div></div></div>";
       }
 
+      // the shareable page — server-rendered with this app's own title, description,
+      // and card, so a link unfurls and a crawler indexes it (GET /r/:appId).
+      var pageUrl = API + "/r/" + encodeURIComponent(data.appId) +
+        (String(data.country || "us").toLowerCase() === "us" ? "" : "?country=" + encodeURIComponent(String(data.country).toLowerCase()));
+      html += '<div class="msg">Share this report: <a href="' + esc(pageUrl) + '">' + esc(pageUrl) + "</a></div>";
+
       // the close — we don't gate the capability, only the convenience
       html += '<div class="close"><h3>Now fix it — free.</h3>' +
         "<p>This is the audit. The <b>fix</b> is the char-limit-correct copy plus the exact push command — " +
