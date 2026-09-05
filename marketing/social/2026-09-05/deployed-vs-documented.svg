@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="900" viewBox="0 0 1600 900">
+  <rect width="1600" height="900" fill="#07090e"/>
+  <rect width="1600" height="8" fill="#e0a84a"/>
+
+  <text x="120" y="140" font-family="Helvetica, Arial, sans-serif" font-size="30" fill="#828ca3">shipaso.com/journey · #BuildInPublic · audit your own roadmap</text>
+
+  <text x="120" y="240" font-family="Helvetica, Arial, sans-serif" font-size="34" fill="#828ca3">The roadmap said</text>
+  <text x="120" y="330" font-family="Helvetica, Arial, sans-serif" font-size="80" font-weight="bold" fill="#e0a84a">"MCP server: deferred."</text>
+
+  <text x="120" y="450" font-family="Helvetica, Arial, sans-serif" font-size="34" fill="#828ca3">Production said</text>
+  <text x="120" y="540" font-family="Helvetica, Arial, sans-serif" font-size="80" font-weight="bold" fill="#34d399">Live since July. Behind login.</text>
+
+  <rect x="120" y="610" width="1360" height="1" fill="#1a2130"/>
+
+  <text x="120" y="676" font-family="Helvetica, Arial, sans-serif" font-size="34" fill="#f4f6fa">Two months of docs describing a shipped feature as unbuilt,</text>
+  <text x="120" y="722" font-family="Helvetica, Arial, sans-serif" font-size="34" fill="#f4f6fa">and a front door nobody could open without an account.</text>
+
+  <text x="120" y="808" font-family="Helvetica, Arial, sans-serif" font-size="38" font-weight="bold" fill="#34d399">Now: keyless preview, 12 tools listed, docs corrected.</text>
+  <text x="120" y="860" font-family="Helvetica, Arial, sans-serif" font-size="30" fill="#828ca3">Check what is deployed before you trust what is documented.</text>
+</svg>

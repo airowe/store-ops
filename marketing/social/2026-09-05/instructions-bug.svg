@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="900" viewBox="0 0 1600 900">
+  <rect width="1600" height="900" fill="#07090e"/>
+  <rect width="1600" height="8" fill="#f87171"/>
+
+  <text x="120" y="140" font-family="Helvetica, Arial, sans-serif" font-size="30" fill="#828ca3">shipaso.com/journey · #BuildInPublic · rejection no. 2</text>
+
+  <text x="120" y="270" font-family="Helvetica, Arial, sans-serif" font-size="78" font-weight="bold" fill="#f4f6fa">We hunted a broken button.</text>
+  <text x="120" y="366" font-family="Helvetica, Arial, sans-serif" font-size="78" font-weight="bold" fill="#f4f6fa">The button was fine.</text>
+  <text x="120" y="490" font-family="Helvetica, Arial, sans-serif" font-size="78" font-weight="bold" fill="#f87171">The bug was in the instructions</text>
+  <text x="120" y="586" font-family="Helvetica, Arial, sans-serif" font-size="78" font-weight="bold" fill="#f87171">we wrote for the reviewer.</text>
+
+  <rect x="120" y="636" width="1360" height="1" fill="#1a2130"/>
+
+  <text x="120" y="690" font-family="Helvetica, Arial, sans-serif" font-size="28" fill="#828ca3">Apple said</text>
+  <text x="120" y="734" font-family="Helvetica, Arial, sans-serif" font-size="36" font-weight="bold" fill="#f4f6fa">Guideline 2.1(a): "Connect button not responsive after sign in"</text>
+
+  <text x="120" y="786" font-family="Helvetica, Arial, sans-serif" font-size="28" fill="#828ca3">Our notes said</text>
+  <text x="120" y="830" font-family="Helvetica, Arial, sans-serif" font-size="36" font-weight="bold" fill="#f4f6fa">"open the magic-link email" <tspan fill="#f87171" font-weight="normal">— sent to a mailbox only I can read.</tspan></text>
+
+  <text x="120" y="878" font-family="Helvetica, Arial, sans-serif" font-size="28" fill="#34d399">The reviewer was right. Two review rounds lost to a paragraph of English.</text>
+</svg>

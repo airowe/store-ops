@@ -33,7 +33,7 @@ const config: ExpoConfig = {
   name: "ShipASO",
   slug: "shipaso",
   scheme: "shipaso",
-  version: "0.1.1",
+  version: "0.1.2",
   // runtimeVersion ties OTA updates to a native build; "appVersion" policy bumps
   // it with `version` so an incompatible JS bundle is never served to an old app.
   runtimeVersion: { policy: "appVersion" },
