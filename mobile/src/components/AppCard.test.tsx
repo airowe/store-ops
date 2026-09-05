@@ -58,6 +58,37 @@ describe("AppCard (honesty)", () => {
     expect(screen.queryByText(/fixes available/)).toBeNull();
   });
 
+  it("says what the quiet week recorded (#493), once, on a detected row", () => {
+    render(
+      <AppCard
+        app={appItem({
+          latest_run: { id: "run1", status: "detected", created_at: "2026-06-29T11:00:00Z" },
+          recorded_proposals: { runs: 1, proposals: 3, since: "2026-06-22T00:00:00.000Z" },
+        })}
+        now={NOW}
+        onPress={() => {}}
+      />,
+    );
+    expect(screen.getByTestId("recorded-proposals-app1")).toHaveTextContent("3 proposals recorded · nothing moved");
+  });
+
+  it("stays silent on zero, on an absent field, and on a row that awaits approval", () => {
+    const { rerender } = render(
+      <AppCard app={appItem({ recorded_proposals: { runs: 1, proposals: 3, since: "2026-06-22T00:00:00.000Z" } })} now={NOW} onPress={() => {}} />,
+    );
+    expect(screen.queryByTestId("recorded-proposals-app1")).toBeNull(); // awaiting_approval fixture
+    rerender(
+      <AppCard
+        app={appItem({ latest_run: { id: "run1", status: "detected", created_at: "2026-06-29T11:00:00Z" }, recorded_proposals: { runs: 1, proposals: 0, since: "x" } })}
+        now={NOW}
+        onPress={() => {}}
+      />,
+    );
+    expect(screen.queryByTestId("recorded-proposals-app1")).toBeNull();
+    rerender(<AppCard app={appItem({ latest_run: { id: "run1", status: "detected", created_at: "2026-06-29T11:00:00Z" } })} now={NOW} onPress={() => {}} />);
+    expect(screen.queryByTestId("recorded-proposals-app1")).toBeNull();
+  });
+
   it("press fires onPress with the app id", () => {
     const onPress = jest.fn();
     render(<AppCard app={appItem()} now={NOW} onPress={onPress} />);
