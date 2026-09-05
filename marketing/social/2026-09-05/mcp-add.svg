@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="900" viewBox="0 0 1600 900">
+  <rect width="1600" height="900" fill="#07090e"/>
+  <rect width="1600" height="8" fill="#34d399"/>
+
+  <text x="120" y="140" font-family="Helvetica, Arial, sans-serif" font-size="30" fill="#828ca3">shipaso.com/journey · #BuildInPublic · the front door</text>
+
+  <text x="120" y="250" font-family="Helvetica, Arial, sans-serif" font-size="70" font-weight="bold" fill="#f4f6fa">Give your agent a measured</text>
+  <text x="120" y="336" font-family="Helvetica, Arial, sans-serif" font-size="70" font-weight="bold" fill="#f4f6fa">preview of any App Store app.</text>
+
+  <rect x="120" y="390" width="1360" height="200" rx="14" fill="#0b0e14" stroke="#1a2130"/>
+  <circle cx="160" cy="426" r="9" fill="#f87171"/><circle cx="188" cy="426" r="9" fill="#e0a84a"/><circle cx="216" cy="426" r="9" fill="#34d399"/>
+  <text x="160" y="500" font-family="Menlo, 'JetBrains Mono', monospace" font-size="30" fill="#828ca3">$</text>
+  <text x="200" y="500" font-family="Menlo, 'JetBrains Mono', monospace" font-size="30" fill="#f4f6fa">claude mcp add shipaso --transport http \</text>
+  <text x="200" y="548" font-family="Menlo, 'JetBrains Mono', monospace" font-size="30" fill="#34d399">    https://api.shipaso.com/mcp</text>
+
+  <text x="120" y="670" font-family="Helvetica, Arial, sans-serif" font-size="44" font-weight="bold" fill="#f4f6fa">No key. No account.</text>
+  <text x="120" y="728" font-family="Helvetica, Arial, sans-serif" font-size="34" fill="#828ca3">12 tools listed anonymously. The keyed ones tell you where a free key comes from.</text>
+
+  <rect x="120" y="770" width="1360" height="1" fill="#1a2130"/>
+  <text x="120" y="836" font-family="Helvetica, Arial, sans-serif" font-size="34" font-weight="bold" fill="#34d399">Nothing on this surface can write to a store. A test forbids it.</text>
+  <text x="120" y="876" font-family="Helvetica, Arial, sans-serif" font-size="28" fill="#828ca3">An agent drafts. A human approves. Approving is not shipping.</text>
+</svg>
