@@ -65,7 +65,14 @@ export async function resolveOne(
   const bundleId = input.bundleId?.trim();
   if (bundleId) {
     const live = await lookup(fetchFn, bundleId, { by: "bundleId", country });
-    const name = [live.name, live.genres].filter(Boolean).join(" ").trim() || bundleId;
+    // `lookup` never throws; an App Store failure comes back as an empty
+    // listing with `error` set. Running the engine on that tokenizes the bundle
+    // id into fake keywords and — on the anonymous path — would cache the result
+    // for six hours (#537). An unreadable listing is an error, not an app.
+    if (live.error || !live.name) {
+      throw new Error("Couldn’t read the App Store listing just now — please try again in a moment.");
+    }
+    const name = [live.name, live.genres].filter(Boolean).join(" ").trim();
     return { kind: "resolved", app: { bundleId, name, country } };
   }
 

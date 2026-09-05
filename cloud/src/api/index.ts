@@ -273,7 +273,7 @@ import {
 import { buildAppInput, descriptionFromTrace, type RunOverrides } from "./runConfig.js";
 import { type AscCred, type AscCredBody, AscCredentialError, resolveAscCredential } from "./ascCredentials.js";
 import { reasonerForEnv } from "./aiReasoner.js";
-import { cachedReport, allowReport, defaultReportCache, type ReportLimiter } from "./publicReportGuard.js";
+import { cachedReport, cachedByKey, previewCacheKey, allowReport, defaultReportCache, type ReportLimiter } from "./publicReportGuard.js";
 import { renderReportErrorPage, renderReportPage, type ReportPageData } from "./reportPage.js";
 import { captionAnalyzerForEnv } from "./aiCaptionVision.js";
 import { analyzeFirstShot, captionFindings } from "../engine/captionLens.js";
@@ -1430,19 +1430,42 @@ async function runPreview(req: Request, env: Env): Promise<unknown> {
     if (!bundleId) throw new HttpError(404, `no connectable app for "${query}"`);
   }
 
-  // Always seed from the live listing's name + genres (same as connectApp), so a
-  // bare bundle_id preview doesn't tokenize the bundle id into junk keywords.
-  if (!name) {
-    const live = await lookup(fetchForEnv(env), bundleId, { by: "bundleId", country });
-    name = [live.name, live.genres].filter(Boolean).join(" ").trim() || bundleId;
+  // #537 — measured on production: Slack 299 s, Notion 150 s, and every repeat
+  // cost the same again because this route ran the engine uncached while the
+  // report page and the anonymous MCP preview shared a six-hour cache. The same
+  // key (bundle id + country) is used here, so a preview computed on any of the
+  // three surfaces serves the other two. The per-app damper is the same one
+  // /report uses: a damper, never a spend cap (see publicReportGuard.ts).
+  if (!(await allowReport(env.REPORT_LIMITER as ReportLimiter | undefined, bundleId))) {
+    throw new HttpError(429, "Too many requests for this app just now — try again shortly.");
   }
+  const resolvedBundleId = bundleId;
+  const seedName = name;
+  return cachedByKey(previewCacheKey(resolvedBundleId, country), defaultReportCache(), async () => {
+    // Always seed from the live listing's name + genres (same as connectApp), so a
+    // bare bundle_id preview doesn't tokenize the bundle id into junk keywords.
+    let appName = seedName;
+    if (!appName) {
+      const live = await lookup(fetchForEnv(env), resolvedBundleId, { by: "bundleId", country });
+      // `lookup` never throws: on an App Store failure it returns an empty
+      // listing with `error` set. Before caching, this fell through and the
+      // engine tokenized the BUNDLE ID into "keywords" ("com", "acme") and
+      // scored a title it never read — a fabricated preview, served as a 200.
+      // Uncached that was transient; cached it would be frozen for six hours.
+      // An unreadable listing is an outage: say so, and cache nothing.
+      if (live.error || !live.name) {
+        throw new HttpError(503, "Couldn’t read the App Store listing just now — please try again in a moment.");
+      }
+      appName = [live.name, live.genres].filter(Boolean).join(" ").trim();
+    }
 
-  // Build a throwaway app row (never persisted) just to drive the engine.
-  const appRow = { id: "preview", user_id: "preview", bundle_id: bundleId, name, country } as AppRow;
-  const reasoner = reasonerForEnv(env);
-  const input = await buildAppInput(appRow, reasoner ? { reasoner } : {}, {});
-  const result = await runAgent(fetchForEnv(env), input, { copywriter: reasoner });
-  return { preview: buildPreview(result), bundleId, country };
+    // Build a throwaway app row (never persisted) just to drive the engine.
+    const appRow = { id: "preview", user_id: "preview", bundle_id: resolvedBundleId, name: appName, country } as AppRow;
+    const reasoner = reasonerForEnv(env);
+    const input = await buildAppInput(appRow, reasoner ? { reasoner } : {}, {});
+    const result = await runAgent(fetchForEnv(env), input, { copywriter: reasoner });
+    return { preview: buildPreview(result), bundleId: resolvedBundleId, country };
+  });
 }
 
 /** An HTML response. Only a 200 page is edge-cacheable; error pages are not. */

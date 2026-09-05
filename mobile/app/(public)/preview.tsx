@@ -129,6 +129,15 @@ export default function Preview({ client: injected }: { client?: ApiClient } = {
         <AppText kind="micro" style={{ fontFamily: typeface.mono }}>e.g. Heathen, Notion, or a bundle id</AppText>
       </Card>
 
+      {/* #537: a big listing can take minutes on a cold run, and the screen used
+          to show nothing while it waited — the candidate list just sat there
+          after a tap. Say what is happening, for both the search and the pick. */}
+      {busy ? (
+        <AppText kind="dim" testID="preview-progress" style={{ marginTop: spacing.sm, fontFamily: typeface.mono, fontSize: fontSize.small }}>
+          Reading the live listing and checking ranks… a big listing can take a while the first time.
+        </AppText>
+      ) : null}
+
       {note ? (
         <AppText kind="dim" testID="preview-note" style={{ marginTop: spacing.sm }}>
           {note}
