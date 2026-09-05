@@ -2,6 +2,15 @@
   "version": 1,
   "entries": [
     {
+      "date": "2026-09-05",
+      "kind": "story",
+      "title": "The MCP server shipped in July. The roadmap still said “deferred.”",
+      "body": "Taking stock before the growth push: 31 plugin skills, 12 live MCP tools, one GitHub star — a distribution gap, not a product gap. And the roadmap’s own second channel, the hosted MCP server, turned out to have been answering in production since July while the PRD called it deferred — and the whole endpoint sat behind login, so a stranger couldn’t even list the tools. The overnight loop opened four PRs: a public tier so `claude mcp add shipaso` works with no key and no account (a measured preview of any app, plus the aggregate proof — the two things already public on the site; every other tool answers with where a free key comes from), the docs saying what is true, and a registry manifest prepared but not published. Unchanged: no MCP tool can write to a store. Approving is still a human’s click.",
+      "links": {
+        "pr": "https://github.com/airowe/store-ops/pull/529"
+      }
+    },
+    {
       "date": "2026-09-04",
       "kind": "story",
       "title": "Rejected again — and the bug was in the instructions, not the app",
