@@ -122,7 +122,8 @@ import { buildPreview } from "../engine/preview.js";
 import { discoverCompetitors, resolveNameToId } from "../engine/competitorWatch.js";
 import { resolveSimilarCompetitors } from "../engine/competitorDiscover.js";
 import { fetchStorefrontListing } from "../engine/storefrontListing.js";
-import { asResponse, buildUrl, fetchJson, ItunesError } from "../engine/itunes.js";
+import { asResponse, buildUrl, fetchJson, ItunesError, type ItunesResult } from "../engine/itunes.js";
+import { auditCard } from "../engine/auditCard.js";
 import { ITUNES_LOOKUP_URL } from "../engine/constants.js";
 import { detectPortfolio } from "../engine/portfolio.js";
 import { categoryRankFrom, fetchChartRank } from "../engine/chartRank.js";
@@ -1537,16 +1538,37 @@ async function reportByAppId(appId: string, url: URL, env: Env): Promise<unknown
       const data = asResponse(
         await fetchJson(fetchForEnv(env), buildUrl(ITUNES_LOOKUP_URL, { id: appId, country })),
       );
-      const r = (data.results ?? [])[0] as { bundleId?: string; trackName?: string; genres?: string[] } | undefined;
+      const r = (data.results ?? [])[0] as ItunesResult | undefined;
       const bundleId = r?.bundleId;
-      if (!bundleId) throw new HttpError(404, `no App Store app for id ${appId}`);
-      const name = [r?.trackName ?? "", (r?.genres ?? []).join(" ")].filter(Boolean).join(" ").trim() || bundleId;
+      if (!bundleId || !r) throw new HttpError(404, `no App Store app for id ${appId}`);
+      const name = [r.trackName ?? "", (r.genres ?? []).join(" ")].filter(Boolean).join(" ").trim() || bundleId;
 
       const appRow = { id: "report", user_id: "report", bundle_id: bundleId, name, country } as AppRow;
       const reasoner = reasonerForEnv(env);
       const input = await buildAppInput(appRow, reasoner ? { reasoner } : {}, {});
       const result = await runAgent(fetchForEnv(env), input, { copywriter: reasoner });
-      return { preview: buildPreview(result), appId, bundleId, country };
+      const preview = buildPreview(result);
+      // The audit card (#437): the same public read, shaped to share. Findings
+      // are the thin public set, exactly as the keyless MCP path computes them.
+      const findings = auditFindings({
+        audit: result.audit,
+        ranks: result.ranks,
+        appName: r.trackName ?? name,
+        hasAscKey: false,
+        ...(result.audit.storefront !== undefined ? { storefront: result.audit.storefront } : {}),
+        ...(result.currentCopy !== undefined ? { currentCopy: result.currentCopy } : {}),
+        ...(result.opportunities !== undefined ? { opportunities: result.opportunities } : {}),
+      });
+      const card = auditCard({
+        listing: r,
+        score: preview.score,
+        grade: preview.auditGrade,
+        ranks: result.ranks,
+        findings,
+        country,
+        now: new Date().toISOString(),
+      });
+      return { preview, card, appId, bundleId, country };
     });
   } catch (e) {
     if (e instanceof HttpError) throw e;

@@ -55,6 +55,35 @@ describe("GET /report/:appId", () => {
     expect(typeof body.preview.score === "number" || body.preview.score === null).toBe(true);
   });
 
+  it("carries the audit card (#437): public identity measured, hero tiles unavailable, headline present", async () => {
+    globalThis.fetch = itunesFake({
+      bundleId: "com.acme.app",
+      trackName: "Acme — Do The Thing",
+      sellerName: "Acme Labs",
+      genres: ["Productivity"],
+      formattedPrice: "Free",
+      averageUserRating: 4.6,
+      userRatingCount: 2400,
+      version: "2.0",
+    });
+    const res = await handleApi(get("/report/123456789?country=us"), ENV);
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as {
+      card: {
+        identity: { name: string; developer: { state: string; value?: string } };
+        hero: { downloads: { state: string }; proceeds: { state: string } };
+        aso: { headline: string };
+        country: string;
+      };
+    };
+    expect(body.card.identity.name).toBe("Acme — Do The Thing");
+    expect(body.card.identity.developer).toMatchObject({ state: "measured", value: "Acme Labs" });
+    expect(body.card.hero.downloads.state).toBe("unavailable");
+    expect(body.card.hero.proceeds.state).toBe("unavailable");
+    expect(body.card.aso.headline.length).toBeGreaterThan(0);
+    expect(body.card.country).toBe("US");
+  });
+
   it("rejects a non-numeric app id with a 400", async () => {
     globalThis.fetch = itunesFake({});
     const res = await handleApi(get("/report/not-a-number"), ENV);
