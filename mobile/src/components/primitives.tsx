@@ -118,10 +118,11 @@ export function AppText({
 }
 
 /** A bordered panel card. */
-export function Card({ children, style }: { children: React.ReactNode; style?: StyleProp<ViewStyle> }) {
+export function Card({ children, style, testID }: { children: React.ReactNode; style?: StyleProp<ViewStyle>; testID?: string }) {
   const palette = usePalette();
   return (
     <View
+      testID={testID}
       style={[
         {
           backgroundColor: palette.panel,

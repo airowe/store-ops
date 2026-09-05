@@ -17,10 +17,22 @@ import { preview } from "../../src/api/endpoints.js";
 import type { ApiClient } from "../../src/api/client.js";
 import type { PreviewCandidate, PreviewResult } from "../../src/types/api.js";
 import { Screen, AppText, Button, Card } from "../../src/components/primitives.js";
+import { Eyebrow, Headline } from "../../src/components/brand.js";
 import { TextField } from "../../src/components/TextField.js";
 import { RankBar } from "../../src/components/RankBar.js";
 import { TopTenRing } from "../../src/components/TopTenRing.js";
-import { spacing, usePalette } from "../../src/theme/index.js";
+import { fontSize, spacing, typeface, usePalette } from "../../src/theme/index.js";
+
+/**
+ * What an audit returns — shown on the empty ground before the first query so
+ * the screen explains itself instead of presenting a field over nothing.
+ * Static copy: no numbers, no price language (it is captured into a screenshot).
+ */
+const WHAT_YOU_GET = [
+  ["audit", "A per-field grade of the live listing."],
+  ["ranks", "Your organic rank for each keyword — or an honest “—”."],
+  ["fix", "The copy and the push command, when you sign in to run it."],
+] as const;
 
 type Teaser = NonNullable<PreviewResult["preview"]>;
 
@@ -89,12 +101,15 @@ export default function Preview({ client: injected }: { client?: ApiClient } = {
       {/* No price language: this screen is captured into an App Store
           screenshot, and Apple counts "free" as a price reference (2.3.7).
           "No signup" is friction, not price — it stays. */}
-      <AppText kind="title">Audit any listing — no signup</AppText>
-      <AppText kind="dim">
-        Audit any live App Store listing on real data. Sign in only when you want to run the fix.
-      </AppText>
+      <View style={{ gap: spacing.sm, marginTop: spacing.lg }}>
+        <Eyebrow>Measured, not guessed · no signup</Eyebrow>
+        <Headline>Score any App Store listing.</Headline>
+        <AppText kind="dim">
+          A field-by-field audit and your measured organic ranks, for any app. Sign in only when you want to run the fix.
+        </AppText>
+      </View>
 
-      <View style={{ gap: spacing.sm, marginTop: spacing.sm }}>
+      <Card style={{ gap: spacing.sm }}>
         <TextField
           testID="preview-query"
           value={query}
@@ -111,12 +126,27 @@ export default function Preview({ client: injected }: { client?: ApiClient } = {
           loading={search.isPending}
           onPress={() => search.mutate(query.trim())}
         />
-      </View>
+        <AppText kind="micro" style={{ fontFamily: typeface.mono }}>e.g. Heathen, Notion, or a bundle id</AppText>
+      </Card>
 
       {note ? (
         <AppText kind="dim" testID="preview-note" style={{ marginTop: spacing.sm }}>
           {note}
         </AppText>
+      ) : null}
+
+      {/* The empty ground explains what comes back. Gone the moment anything
+          real is on screen — a candidate list, a result, a note, or a request. */}
+      {!result && !candidates && !note && !busy ? (
+        <View testID="preview-empty" style={{ gap: spacing.sm, marginTop: spacing.sm }}>
+          <Eyebrow>What comes back</Eyebrow>
+          {WHAT_YOU_GET.map(([k, v]) => (
+            <View key={k} style={{ flexDirection: "row", gap: spacing.md, alignItems: "baseline" }}>
+              <AppText kind="mono" style={{ color: palette.signal, width: 64, fontSize: fontSize.small }}>{k}</AppText>
+              <AppText kind="dim" style={{ flex: 1 }}>{v}</AppText>
+            </View>
+          ))}
+        </View>
       ) : null}
 
       {candidates?.map((c) => (
@@ -133,7 +163,10 @@ export default function Preview({ client: injected }: { client?: ApiClient } = {
         <Card>
           <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
             <AppText kind="lead">{result.appName || "Audit preview"}</AppText>
-            {result.auditGrade ? (
+            {/* "?" is the engine's "screenshots unreadable" sentinel (score null).
+                Measured-or-nothing: an unmeasured grade is ABSENT, never a
+                question mark in a pill that reads as a value (#536). */}
+            {result.auditGrade && result.auditGrade !== "?" ? (
               <View
                 testID="preview-grade-pill"
                 style={{
@@ -146,7 +179,7 @@ export default function Preview({ client: injected }: { client?: ApiClient } = {
                   backgroundColor: palette.signalGlow,
                 }}
               >
-                <AppText kind="mono" testID="preview-grade" style={{ color: palette.signal, fontWeight: "700" }}>
+                <AppText kind="mono" testID="preview-grade" style={{ color: palette.signal }}>
                   {result.auditGrade}
                 </AppText>
               </View>
