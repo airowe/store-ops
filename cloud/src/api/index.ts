@@ -2147,6 +2147,7 @@ async function runApp(
     ...(result.reviews !== undefined ? { reviews: result.reviews } : {}),
     ...(result.audit.storefront !== undefined ? { storefront: result.audit.storefront } : {}),
     ...(result.chartRank !== undefined ? { chartRank: result.chartRank } : {}),
+    ...(result.opportunities !== undefined ? { opportunities: result.opportunities } : {}),
   });
   // #182: measured first-screenshot caption lens (Workers AI vision, flag-gated).
   await attachCaptionFindings(env, result);
@@ -2433,6 +2434,7 @@ export async function keyedAscPass(
     ...(result.reviews !== undefined ? { reviews: result.reviews } : {}),
     ...(result.audit.storefront !== undefined ? { storefront: result.audit.storefront } : {}),
     ...(result.chartRank !== undefined ? { chartRank: result.chartRank } : {}),
+    ...(result.opportunities !== undefined ? { opportunities: result.opportunities } : {}),
   });
   // #182: measured first-screenshot caption lens (Workers AI vision, flag-gated).
   await attachCaptionFindings(env, result);

@@ -13,6 +13,7 @@ import {
 import type { AscSnapshot } from "./ascRead.js";
 import type { Audit, StorefrontIntel } from "./agent.js";
 import type { ShotScore, Grade } from "./screenshotScore.js";
+import type { Opportunity } from "./rankOpportunity.js";
 
 // ── Fixtures ─────────────────────────────────────────────────────────────────
 
@@ -129,6 +130,13 @@ const RULES: RuleCase[] = [
     impact: "conversion",
     surface: "screenshots",
     trigger: (b) => ({ ...b, audit: audit(shot({ grade: "F", score: 10 })) }),
+  },
+  {
+    id: "creative_asset_plan",
+    severity: "info",
+    impact: "conversion",
+    surface: "screenshots",
+    trigger: (b) => ({ ...b, audit: audit(shot({ grade: "D", score: 30 })) }),
   },
   {
     id: "screenshots_thin",
@@ -433,6 +441,59 @@ describe("age rating declared vs unconfirmed", () => {
 });
 
 // ── Don't over-assert: pricing + age-rating cap below critical ───────────────
+
+// ── #436 A3: the creative-asset plan is advisory — a prompt, never a grading ──
+
+describe("creative_asset_plan (#436)", () => {
+  const opp = (o: Partial<Opportunity>): Opportunity =>
+    ({
+      keyword: "secular meditation",
+      rank: 12,
+      opportunityScore: 80,
+      scored: true,
+      why: "close to top 10, weak competitors",
+      reachability: "reachable",
+      drivers: { distance: 60, competitorWeakness: 70, momentum: 55 },
+      ...o,
+    }) as Opportunity;
+  const lowGrade = (extra: Partial<AuditFindingsInput> = {}) =>
+    auditFindings({ ...input(), audit: audit(shot({ grade: "F", score: 10 })), ...extra });
+
+  it("names the top MEASURED keyword as what the search-results asset should lead with", () => {
+    const f = byId(
+      lowGrade({ opportunities: [opp({ keyword: "breathe", opportunityScore: 40 }), opp({ keyword: "secular meditation", opportunityScore: 90 })] }),
+      "creative_asset_plan",
+    );
+    expect(f?.fix).toContain("secular meditation");
+    expect(f?.fix).not.toContain("breathe");
+  });
+
+  it("never leads with an unscored keyword — the 42.5 default is not a finding", () => {
+    const f = byId(lowGrade({ opportunities: [opp({ keyword: "anxiety", scored: false, rank: null })] }), "creative_asset_plan");
+    expect(f).toBeDefined();
+    expect(f!.fix).not.toContain("anxiety");
+  });
+
+  it("carries no pixel dimension or duration while Apple has published none", () => {
+    const f = byId(lowGrade({ opportunities: [opp({})] }), "creative_asset_plan")!;
+    for (const s of [f.title, f.detail, f.fix]) {
+      expect(s).not.toMatch(/\d+\s*[x×]\s*\d+/);
+      expect(s).not.toMatch(/\b\d+\s*(px|pt|s|sec|seconds)\b/);
+    }
+  });
+
+  it("is never counted as actionable: info severity, no critical/warn tally, not a context row", () => {
+    const f = byId(lowGrade(), "creative_asset_plan")!;
+    const s = summarizeFindings([f]);
+    expect(f.severity).toBe("info");
+    expect([s.critical, s.warn, s.info]).toEqual([0, 0, 1]);
+    expect(f.context).toBeUndefined();
+  });
+
+  it("stays silent on a grade the screenshots already earn — it rides the low-grade finding, never alone", () => {
+    expect(ids({ ...input(), audit: audit(shot({ grade: "B", score: 80 })) })).not.toContain("creative_asset_plan");
+  });
+});
 
 describe("severity caps (the #41 trap)", () => {
   it("never emits a critical pricing finding", () => {
