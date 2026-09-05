@@ -4,7 +4,7 @@ Score an app's App Store screenshot set against ASO best practice — no paid AP
 
 The visual half of ASO nothing else in the loop touches. Screenshots drive
 conversion (the % of people who view the listing and install), and the first
-2-3 are what most users actually see. This pulls the live screenshot set via the
+2-3 are what search shows today. This pulls the live screenshot set via the
 free iTunes Lookup API and scores the things that are *deterministic* — count,
 aspect/device coverage, resolution — plus a light caption heuristic. It does NOT
 pretend to OCR your captions or judge design; it flags the structural ASO
