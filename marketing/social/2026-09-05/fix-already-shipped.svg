@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="900" viewBox="0 0 1600 900">
+  <rect width="1600" height="900" fill="#07090e"/>
+  <rect width="1600" height="8" fill="#34d399"/>
+
+  <text x="120" y="140" font-family="Helvetica, Arial, sans-serif" font-size="30" fill="#828ca3">shipaso.com/journey · #BuildInPublic · the part that stings</text>
+
+  <text x="120" y="262" font-family="Helvetica, Arial, sans-serif" font-size="74" font-weight="bold" fill="#f4f6fa">After the first rejection</text>
+  <text x="120" y="354" font-family="Helvetica, Arial, sans-serif" font-size="74" font-weight="bold" fill="#f4f6fa">we built the fix.</text>
+
+  <rect x="120" y="410" width="1360" height="150" rx="12" fill="#0b0e14" stroke="#1a2130"/>
+  <text x="160" y="466" font-family="Menlo, 'JetBrains Mono', monospace" font-size="28" fill="#828ca3">// login.tsx — App Review cannot read our mailbox,</text>
+  <text x="160" y="508" font-family="Menlo, 'JetBrains Mono', monospace" font-size="28" fill="#828ca3">// so a 90-day review token gets its own field.</text>
+  <text x="160" y="546" font-family="Menlo, 'JetBrains Mono', monospace" font-size="28" fill="#34d399">Have a sign-in token?   [ paste it here ]</text>
+
+  <text x="120" y="660" font-family="Helvetica, Arial, sans-serif" font-size="74" font-weight="bold" fill="#f87171">Nobody put the token in the notes.</text>
+
+  <rect x="120" y="700" width="1360" height="1" fill="#1a2130"/>
+
+  <text x="120" y="760" font-family="Helvetica, Arial, sans-serif" font-size="30" fill="#828ca3">Fix shipped in build 202608192254.  Rejected 2026-08-24.  Token minted and verified 2026-09-04.</text>
+  <text x="120" y="822" font-family="Helvetica, Arial, sans-serif" font-size="32" font-weight="bold" fill="#34d399">Read what you told the system to do</text>
+  <text x="120" y="864" font-family="Helvetica, Arial, sans-serif" font-size="32" font-weight="bold" fill="#34d399">before theorising about your own internals.</text>
+</svg>
