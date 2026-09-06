@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="900" viewBox="0 0 1600 900">
+  <rect width="1600" height="900" fill="#07090e"/>
+  <rect width="1600" height="8" fill="#34d399"/>
+  <text x="120" y="140" font-family="Helvetica, Arial, sans-serif" font-size="30" fill="#828ca3">shipaso.com/journey · #BuildInPublic · autopilot, off by default</text>
+  <text x="120" y="250" font-family="Helvetica, Arial, sans-serif" font-size="70" font-weight="bold" fill="#f4f6fa">You approve. The agent does</text>
+  <text x="120" y="336" font-family="Helvetica, Arial, sans-serif" font-size="70" font-weight="bold" fill="#f4f6fa">the rest, and writes it down.</text>
+  <rect x="120" y="390" width="660" height="290" rx="14" fill="#0b0e14" stroke="#1a2130"/>
+  <text x="160" y="440" font-family="Helvetica, Arial, sans-serif" font-size="26" font-weight="bold" fill="#34d399">IT DOES</text>
+  <text x="160" y="495" font-family="Helvetica, Arial, sans-serif" font-size="30" fill="#f4f6fa">find or create the draft version</text>
+  <text x="160" y="545" font-family="Helvetica, Arial, sans-serif" font-size="30" fill="#f4f6fa">push the approved copy</text>
+  <text x="160" y="595" font-family="Helvetica, Arial, sans-serif" font-size="30" fill="#f4f6fa">push each approved locale</text>
+  <text x="160" y="645" font-family="Helvetica, Arial, sans-serif" font-size="30" fill="#f4f6fa">record every step on the run</text>
+  <rect x="820" y="390" width="660" height="290" rx="14" fill="#0b0e14" stroke="#1a2130"/>
+  <text x="860" y="440" font-family="Helvetica, Arial, sans-serif" font-size="26" font-weight="bold" fill="#f87171">IT NEVER</text>
+  <text x="860" y="495" font-family="Helvetica, Arial, sans-serif" font-size="30" fill="#f4f6fa">submits for review</text>
+  <text x="860" y="545" font-family="Helvetica, Arial, sans-serif" font-size="30" fill="#f4f6fa">touches a live version</text>
+  <text x="860" y="595" font-family="Helvetica, Arial, sans-serif" font-size="30" fill="#f4f6fa">starts an experiment</text>
+  <text x="860" y="645" font-family="Helvetica, Arial, sans-serif" font-size="30" fill="#f4f6fa">acts on an approval older than the switch</text>
+  <rect x="120" y="740" width="1360" height="1" fill="#1a2130"/>
+  <text x="120" y="806" font-family="Helvetica, Arial, sans-serif" font-size="34" font-weight="bold" fill="#f4f6fa">Approving is still the last thing a person does.</text>
+  <text x="120" y="856" font-family="Helvetica, Arial, sans-serif" font-size="28" fill="#828ca3">Screenshots and experiments stay yours, and the run says so instead of skipping quietly.</text>
+</svg>
