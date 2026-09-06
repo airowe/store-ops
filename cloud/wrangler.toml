@@ -150,6 +150,12 @@ MAGIC_LINK_BASE = "https://shipaso.com"
 # those routes 403 and the credential-free Fastlane handoff is the only path.
 # The stored-credential flow additionally needs CRED_KEK_V1 (secret, below).
 ASC_WRITE_ENABLED = "true"
+# ASC_EXPERIMENT_WRITE_ENABLED — the one write that can change what real App
+# Store visitors see (#374): POST /runs/:id/asc/create-experiment. Creates a
+# product page experiment STOPPED; starting traffic stays a button in App Store
+# Connect. Own flag on top of ASC_WRITE_ENABLED. Turned on 2026-09-06 for the
+# first live verification against Snagg.
+ASC_EXPERIMENT_WRITE_ENABLED = "true"
 
 # ── Secrets (DO NOT put values here — set via `wrangler secret put NAME`) ─────
 # Auth:
