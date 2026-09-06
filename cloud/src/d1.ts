@@ -3170,3 +3170,44 @@ export async function markRunShipped(db: D1Database, runId: string): Promise<boo
   const res = await db.prepare("UPDATE runs SET status = 'shipped' WHERE id = ? AND status = 'approved'").bind(runId).run();
   return (res.meta?.changes ?? 0) === 1;
 }
+
+/**
+ * Turning autopilot ON must not silently execute every run the user approved
+ * BEFORE it existed (production had 32 such runs on 2026-09-06, some from
+ * August). Each gets one visible row that also makes it "attempted", so the
+ * cron leaves it alone; POST /runs/:id/execute lifts that for one run when a
+ * person asks. Returns how many runs were quarantined.
+ */
+export const PRE_AUTOPILOT_DETAIL = "approved before autopilot was turned on; POST /runs/:id/execute to run it now";
+
+export async function quarantinePreAutopilotRuns(db: D1Database, userId: string): Promise<number> {
+  const { results } = await db
+    .prepare(
+      "SELECT r.id FROM runs r JOIN apps a ON a.id = r.app_id " +
+        "WHERE a.user_id = ? AND r.status = 'approved' AND r.id NOT IN (SELECT run_id FROM run_executions)",
+    )
+    .bind(userId)
+    .all<{ id: string }>();
+  const ids = (results ?? []).map((r) => r.id);
+  if (ids.length === 0) return 0;
+  await db.batch(
+    ids.map((id) =>
+      db
+        .prepare("INSERT INTO run_executions (id, run_id, step, status, detail, created_at) VALUES (?, ?, 'gate', 'skipped', ?, ?)")
+        .bind(uuid(), id, PRE_AUTOPILOT_DETAIL, now()),
+    ),
+  );
+  return ids.length;
+}
+
+/**
+ * Lift a pre-autopilot quarantine for one run so executeApprovedRun will take
+ * it. Returns false when the run has real execution rows (it was attempted)
+ * — those are for a person to read, not to erase.
+ */
+export async function releasePreAutopilotRun(db: D1Database, runId: string): Promise<boolean> {
+  const rows = await listRunExecutions(db, runId);
+  if (rows.some((r) => !(r.step === "gate" && r.status === "skipped" && r.detail === PRE_AUTOPILOT_DETAIL))) return false;
+  if (rows.length) await db.prepare("DELETE FROM run_executions WHERE run_id = ?").bind(runId).run();
+  return true;
+}

@@ -9,8 +9,11 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 let optIn = false;
 let autopilot = false;
+let quarantined = 0;
+let released = true;
 const runAutopilot = vi.fn(async () => ({ attempted: 0, shipped: 0 }));
-vi.mock("../cron/autopilot.js", () => ({ runAutopilot }));
+const executeApprovedRun = vi.fn(async () => ({ runId: "run-2", ran: true, records: [{ step: "metadata", status: "done", detail: "pushed" }], shipped: true }));
+vi.mock("../cron/autopilot.js", () => ({ runAutopilot, executeApprovedRun }));
 vi.mock("../d1.js", async (orig) => {
   const actual = (await orig()) as Record<string, unknown>;
   return {
@@ -19,7 +22,14 @@ vi.mock("../d1.js", async (orig) => {
     setAscWriteOptIn: async (_db: unknown, a: { optIn: boolean }) => { optIn = a.optIn; },
     getAutopilotExecute: async () => autopilot,
     setAutopilotExecute: async (_db: unknown, a: { execute: boolean }) => { autopilot = a.execute; },
-    getRun: async (_db: unknown, id: string) => (id === "run-1" ? { id, app_id: "app-1", status: "shipped", created_at: "", reasoning_json: "{}" } : null),
+    getRun: async (_db: unknown, id: string) =>
+      id === "run-1"
+        ? { id, app_id: "app-1", status: "shipped", created_at: "", reasoning_json: "{}" }
+        : id === "run-2"
+          ? { id, app_id: "app-1", status: "approved", created_at: "", reasoning_json: "{}" }
+          : null,
+    quarantinePreAutopilotRuns: async () => quarantined,
+    releasePreAutopilotRun: async () => released,
     getApp: async () => ({ id: "app-1", user_id: "u1", bundle_id: "meme.snagg.app", name: "Snagg", country: "US" }),
     listRunExecutions: async () => [{ id: "e1", run_id: "run-1", step: "metadata", status: "done", detail: "pushed subtitle", created_at: "" }],
   };
@@ -49,7 +59,10 @@ const call = (method: string, path: string, body?: unknown) =>
 beforeEach(() => {
   optIn = false;
   autopilot = false;
+  quarantined = 0;
+  released = true;
   runAutopilot.mockClear();
+  executeApprovedRun.mockClear();
   (ctx as { waitUntil: ReturnType<typeof vi.fn> }).waitUntil.mockClear();
 });
 
@@ -60,13 +73,29 @@ describe("autopilot switches", () => {
     expect(autopilot).toBe(false);
   });
 
-  it("consent, then autopilot; turning it on kicks the executor for already-approved runs", async () => {
+  it("consent, then autopilot; turning it on quarantines runs approved before the switch and does NOT execute them", async () => {
     expect((await call("PATCH", "/account/asc-writes", { optIn: true })).status).toBe(200);
     expect(optIn).toBe(true);
+    quarantined = 32;
     const res = await call("PATCH", "/account/autopilot", { execute: true });
     expect(res.status).toBe(200);
-    expect(await res.json()).toEqual({ autopilot_execute: true });
-    expect((ctx as { waitUntil: ReturnType<typeof vi.fn> }).waitUntil).toHaveBeenCalledTimes(1);
+    expect(await res.json()).toEqual({ autopilot_execute: true, quarantined: 32 });
+    expect((ctx as { waitUntil: ReturnType<typeof vi.fn> }).waitUntil).not.toHaveBeenCalled();
+    expect(executeApprovedRun).not.toHaveBeenCalled();
+  });
+
+  it("POST /runs/:id/execute releases one approved run to autopilot and returns its ledger", async () => {
+    const res = await call("POST", "/runs/run-2/execute", {});
+    expect(res.status).toBe(200);
+    expect(await res.json()).toMatchObject({ runId: "run-2", ran: true, shipped: true, executions: [{ step: "metadata", status: "done" }] });
+    expect(executeApprovedRun).toHaveBeenCalledTimes(1);
+  });
+
+  it("POST /runs/:id/execute is 409 for a run already attempted, 403 for one not approved", async () => {
+    released = false;
+    expect((await call("POST", "/runs/run-2/execute", {})).status).toBe(409);
+    expect((await call("POST", "/runs/run-1/execute", {})).status).toBe(403);
+    expect(executeApprovedRun).not.toHaveBeenCalled();
   });
 
   it("turning autopilot off never kicks the executor", async () => {

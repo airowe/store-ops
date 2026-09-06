@@ -67,10 +67,24 @@ guarded on `status = 'approved'`, only after a `metadata: done` row
 ## Triggers
 
 - Hourly cron (`handleScheduled`), after the sweep and digests, best-effort.
-- `POST /runs/:id/approve`, `POST /runs/approve-all`, and turning the flag on,
-  each via `ctx.waitUntil(runAutopilot(env))`, so an approval acts within
-  seconds rather than at the next hour. Double triggers are harmless: a run
-  with execution rows is skipped.
+- `POST /runs/:id/approve` and `POST /runs/approve-all`, via
+  `ctx.waitUntil(runAutopilot(env))`, so an approval acts within seconds
+  rather than at the next hour. Double triggers are harmless: a run with
+  execution rows is skipped.
+
+## Runs approved before the switch existed
+
+Turning the switch on does **not** execute runs the person approved before it
+existed (production held 32 such runs on 2026-09-06, some from August). An
+old approval was given when "approve" meant "hand me the push commands", not
+"push". Each such run gets one visible `gate: skipped` row that says so, which
+also makes it "attempted" so the cron leaves it alone. `PATCH /account/autopilot`
+returns `quarantined: <n>`.
+
+A person releases one with `POST /runs/:id/execute`: the quarantine row is
+cleared and the run executes through the same gate, returning its ledger. A
+run that was genuinely attempted (any non-quarantine row) is a 409; its
+ledger is for reading, not erasing.
 
 ## Deploy order
 

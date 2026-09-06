@@ -183,6 +183,8 @@ import {
   getAutopilotExecute,
   setAutopilotExecute,
   listRunExecutions,
+  quarantinePreAutopilotRuns,
+  releasePreAutopilotRun,
   getUserByStripeCustomer,
   latestRunTraceForApp,
   listAllApps,
@@ -298,7 +300,7 @@ import { ensureScreenshotSet } from "../engine/ascScreenshotSet.js";
 import { uploadScreenshotBatch, type BatchShot } from "../engine/ascScreenshotBatch.js";
 import { STOREFRONT_LOCALE } from "./storefrontLocale.js";
 import { isFlagOn } from "../flags.js";
-import { runAutopilot } from "../cron/autopilot.js";
+import { executeApprovedRun, runAutopilot } from "../cron/autopilot.js";
 import { readAscExperiments } from "../engine/ascExperiments.js";
 import { registerWebhook, WEBHOOK_EVENT_TYPES } from "../engine/ascWebhookRegister.js";
 import { saveWebhookSecret } from "../d1.js";
@@ -5188,14 +5190,34 @@ async function accountAscWritesRoute(req: Request, env: Env, userId: string): Pr
  * ASC-write consent to already be on: autopilot never grants a permission the
  * person did not give by hand first.
  */
-async function accountAutopilotRoute(req: Request, env: Env, userId: string): Promise<{ autopilot_execute: boolean }> {
+async function accountAutopilotRoute(req: Request, env: Env, userId: string): Promise<{ autopilot_execute: boolean; quarantined: number }> {
   const body = (await req.json().catch(() => ({}))) as { execute?: unknown };
   if (typeof body.execute !== "boolean") throw new HttpError(400, "execute must be true or false");
   if (body.execute && !(await getAscWriteOptIn(env.DB, userId))) {
     throw new HttpError(403, "opt in to App Store Connect writes first (PATCH /account/asc-writes)");
   }
+  // Runs approved BEFORE the switch existed are not executed on the strength
+  // of that old approval: each gets one visible "skipped" row instead, and a
+  // person can release any of them with POST /runs/:id/execute.
+  const quarantined = body.execute ? await quarantinePreAutopilotRuns(env.DB, userId) : 0;
   await setAutopilotExecute(env.DB, { userId, execute: body.execute });
-  return { autopilot_execute: body.execute };
+  return { autopilot_execute: body.execute, quarantined };
+}
+
+/**
+ * POST /runs/:id/execute — a person asks autopilot to take one approved run
+ * now: typically one quarantined because it was approved before the switch
+ * existed. Same gate as the cron path; a run that was already attempted is a
+ * 409, because its ledger is for reading, not erasing.
+ */
+async function runExecuteRoute(env: Env, userId: string, runId: string): Promise<unknown> {
+  const run = await getRun(env.DB, runId);
+  if (!run) throw new HttpError(404, "run not found");
+  await requireOwnedApp(env, run.app_id, userId);
+  if (run.status !== "approved") throw new HttpError(403, `run is ${run.status}, not approved`);
+  if (!(await releasePreAutopilotRun(env.DB, runId))) throw new HttpError(409, "this run was already attempted; see GET /runs/:id/executions");
+  const result = await executeApprovedRun(env, run);
+  return { runId, ran: result.ran, reason: result.reason, shipped: result.shipped, executions: result.records };
 }
 
 async function ascCredForRequest(
@@ -5958,10 +5980,7 @@ export async function handleApi(req: Request, env: Env, ctx?: ExecutionContext):
     }
     // PATCH /account/autopilot {execute} — let the agent perform approved runs' writes (migration 0017)
     if (seg[0] === "account" && seg[1] === "autopilot" && seg.length === 2 && method === "PATCH") {
-      const out = await accountAutopilotRoute(req, env, user.id);
-      // Turning it on should not wait for the next hourly cron to act on runs already approved.
-      if (out.autopilot_execute) ctx?.waitUntil(runAutopilot(env).catch((e) => console.error(`[store-ops autopilot] ${String(e)}`)));
-      return json(out, 200, origin, env);
+      return json(await accountAutopilotRoute(req, env, user.id), 200, origin, env);
     }
     // POST /account/asa-credential — connect + verify an Apple Search Ads key (#78-2)
     if (seg[0] === "account" && seg[1] === "asa-credential" && seg.length === 2 && method === "POST") {
@@ -6223,6 +6242,10 @@ export async function handleApi(req: Request, env: Env, ctx?: ExecutionContext):
       }
       if (seg.length === 3 && seg[2] === "push-commands" && method === "GET") {
         return json(await pushCommandsRoute(env, user.id, runId), 200, origin);
+      }
+      // POST /runs/:id/execute — a person releases one approved run to autopilot now (migration 0017)
+      if (seg.length === 3 && seg[2] === "execute" && method === "POST") {
+        return json(await runExecuteRoute(env, user.id, runId), 200, origin);
       }
       // GET /runs/:id/executions — what autopilot did with this run, step by step (migration 0017)
       if (seg.length === 3 && seg[2] === "executions" && method === "GET") {
