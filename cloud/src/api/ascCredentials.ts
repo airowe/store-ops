@@ -68,3 +68,16 @@ export async function resolveAscCredential(opts: {
   }
   return { p8: body.p8, keyId: body.keyId, issuerId: body.issuerId };
 }
+
+/**
+ * The stored key for an app, then the account-wide one (#374). An App Store
+ * Connect API key is team-scoped, so one saved key can serve every app the
+ * team owns; the per-app row still wins when both exist, because a user who
+ * saved a key on one app specifically meant that key for that app.
+ */
+export async function loadStoredAscForApp(
+  loadApp: () => Promise<StoredAscCredential | null>,
+  loadAccount: () => Promise<StoredAscCredential | null>,
+): Promise<StoredAscCredential | null> {
+  return (await loadApp()) ?? (await loadAccount());
+}
