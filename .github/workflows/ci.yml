@@ -112,7 +112,7 @@ jobs:
   skill-commands:
     runs-on: ubuntu-latest
     env:
-      ASC_VERSION: 3.6.1
+      ASC_VERSION: 5.0.0
     steps:
       - uses: actions/checkout@v4
 
