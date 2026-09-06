@@ -1,0 +1,128 @@
+# ops-heartbeat (#556) — the ops loop, first cut. READ-ONLY.
+#
+# Once a day (and on demand) measure what a person was checking by hand —
+# production smoke, the anonymous MCP tool count, deploy on main, open PRs
+# with red checks, App Store version + TestFlight build state, journey-feed
+# freshness — and FILE the result. It never merges, deploys, attaches a
+# build, submits, or posts.
+#
+# Two outputs:
+#   1. A sticky "Ops heartbeat" issue (label ops-heartbeat) whose body is
+#      replaced every run. Its previous body carries the last run's state, so
+#      a flip is computed without any other storage.
+#   2. One new issue per check that flipped to failed since the last run,
+#      deduped by open title. Never closed automatically.
+#
+# The ASC checks report *unavailable* until ASC_KEY_ID / ASC_ISSUER_ID /
+# ASC_PRIVATE_KEY exist as Actions secrets. Adding them is the owner's call;
+# the script needs nothing else to change.
+
+name: ops-heartbeat
+
+on:
+  schedule:
+    - cron: "0 13 * * *" # 13:00 UTC daily
+  workflow_dispatch:
+
+concurrency:
+  group: ops-heartbeat
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  issues: write
+  actions: read
+  pull-requests: read
+
+jobs:
+  heartbeat:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      ASC_VERSION: 3.6.1
+      GH_TOKEN: ${{ github.token }}
+      OPS_RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+      # Empty until the owner adds them; the auth step is skipped and the ASC
+      # checks report "unavailable". A secret cannot be tested in `if` directly.
+      ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+      ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+      ASC_PRIVATE_KEY: ${{ secrets.ASC_PRIVATE_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install asc ${{ env.ASC_VERSION }}
+        run: |
+          set -euo pipefail
+          url="https://github.com/rorkai/App-Store-Connect-CLI/releases/download/${ASC_VERSION}/asc_${ASC_VERSION}_linux_amd64"
+          curl -fsSL --retry 3 -o /usr/local/bin/asc "$url"
+          chmod +x /usr/local/bin/asc
+          asc --version
+
+      # Only when the three secrets exist. Without them `asc doctor` finds no
+      # profile and the two ASC checks read "unavailable", which is the truth.
+      - name: Authenticate asc (if secrets are set)
+        if: ${{ env.ASC_KEY_ID != '' && env.ASC_ISSUER_ID != '' && env.ASC_PRIVATE_KEY != '' }}
+        run: |
+          set -euo pipefail
+          umask 077
+          printf '%s' "$ASC_PRIVATE_KEY" > "$RUNNER_TEMP/asc.p8"
+          asc auth login --name ci --key-id "$ASC_KEY_ID" --issuer-id "$ASC_ISSUER_ID" \
+            --private-key "$RUNNER_TEMP/asc.p8" --bypass-keychain --skip-validation
+          rm -f "$RUNNER_TEMP/asc.p8"
+
+      - name: Read the previous heartbeat (for flips)
+        run: |
+          set -euo pipefail
+          gh label create ops-heartbeat --description "sticky ops heartbeat report" --color 0e8a16 --force >/dev/null
+          n=$(gh issue list --label ops-heartbeat --state open --json number --jq '.[0].number // empty')
+          if [ -n "$n" ]; then
+            gh issue view "$n" --json body --jq .body > prev-body.md
+            echo "STICKY=$n" >> "$GITHUB_ENV"
+          else
+            : > prev-body.md
+          fi
+
+      - name: Measure
+        id: measure
+        working-directory: cloud
+        continue-on-error: true
+        run: node scripts/ops-heartbeat.mjs --out ../ops-out --prev ../prev-body.md
+
+      - name: Publish to the sticky issue
+        run: |
+          set -euo pipefail
+          cat ops-out/report.md >> "$GITHUB_STEP_SUMMARY"
+          if [ -n "${STICKY:-}" ]; then
+            gh issue edit "$STICKY" --body-file ops-out/report.md >/dev/null
+          else
+            gh issue create --title "Ops heartbeat" --label ops-heartbeat --body-file ops-out/report.md >/dev/null
+          fi
+
+      - name: File one issue per check that flipped to failed
+        run: |
+          set -euo pipefail
+          jq -c '.[]' ops-out/flips.json | while read -r row; do
+            name=$(jq -r .name <<<"$row"); value=$(jq -r .value <<<"$row"); detail=$(jq -r .detail <<<"$row")
+            title="ops: $name is failing"
+            if gh issue list --state open --search "\"$title\" in:title" --json title --jq '.[].title' | grep -Fxq "$title"; then
+              continue
+            fi
+            {
+              echo "Flipped to **failed** on the ops heartbeat ($OPS_RUN_URL)."
+              echo
+              echo "| Value | Detail |"
+              echo "|---|---|"
+              echo "| $value | $detail |"
+              echo
+              echo "The heartbeat only measures; deciding what to do is a person's job. The sticky report is the issue labelled \`ops-heartbeat\`."
+            } > flip-body.md
+            gh issue create --title "$title" --label bug --body-file flip-body.md >/dev/null
+          done
+
+      - name: Fail the run if any check failed
+        if: ${{ steps.measure.outcome == 'failure' }}
+        run: exit 1
