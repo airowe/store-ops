@@ -2,6 +2,16 @@
   "version": 1,
   "entries": [
     {
+      "date": "2026-09-06",
+      "kind": "story",
+      "title": "The first real write to App Store Connect, and the bug only a live call could find",
+      "body": "The screenshot upload had been “implemented, never exercised” since July. Yesterday it made its first call: one test screenshot onto an unreleased version of Snagg, an app I own — 200 in 2.5 s, checksum matched, asset COMPLETE. The set-create branch nobody had reached ran next, also 200. Then the experiment create from the same month came back 404: the v2 endpoint had been built on a v1 path, and the read side used that path and worked, so every test believed the write side too. Fixed in an hour; the second attempt created a stopped experiment. With the writes proven, the agent can now execute an approved run itself — draft version, copy, each approved locale, every step recorded — off by default, and never on an approval older than the switch. Test assets deleted afterwards. Approving is still the last thing a person does; nothing submits.",
+      "links": {
+        "pr": "https://github.com/airowe/store-ops/pull/564",
+        "issue": "https://github.com/airowe/store-ops/issues/374"
+      }
+    },
+    {
       "date": "2026-09-05",
       "kind": "story",
       "title": "The MCP server shipped in July. The roadmap still said “deferred.”",
