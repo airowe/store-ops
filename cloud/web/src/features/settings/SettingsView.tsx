@@ -18,11 +18,13 @@ import type { ApiClient, RankCadence } from "@shipaso/api";
 import { deleteCredential, getCredentials, logout, me, pauseAgent, resumeAgent, setNotifications, setRankCadence } from "@shipaso/api";
 import { GithubCard } from "./GithubCard.js";
 import { AsaCard } from "./AsaCard.js";
+import { AscKeyCard } from "./AscKeyCard.js";
+import { AutopilotRows } from "./AutopilotRows.js";
 import { ApiKeysCard } from "./ApiKeysCard.js";
 import { ChannelsCard } from "./ChannelsCard.js";
 import { applyTheme, storedMode, storeMode, type ThemeMode } from "../../shell/theme.js";
 
-type Prefs = { push: boolean; digest: boolean; cadence: RankCadence; paused: boolean };
+type Prefs = { push: boolean; digest: boolean; cadence: RankCadence; paused: boolean; ascWrites: boolean; autopilot: boolean };
 
 const SECTIONS = [
   { id: "comms", label: "Communications" },
@@ -107,6 +109,8 @@ export function SettingsView({ client, onSignedOut }: { client: ApiClient; onSig
         digest: (meQ.data.email_digest ?? "weekly") === "weekly",
         cadence: meQ.data.rank_cadence ?? "weekly",
         paused: meQ.data.paused ?? false,
+        ascWrites: meQ.data.asc_write_opt_in ?? false,
+        autopilot: meQ.data.autopilot_execute ?? false,
       });
     }
   }, [meQ.data, prefs]);
@@ -290,7 +294,17 @@ export function SettingsView({ client, onSignedOut }: { client: ApiClient; onSig
               {pauseMut.isPending ? "…" : prefs.paused ? "Paused" : "Active"}
             </button>
           </div>
-          <p className="autonomy-foot">It never pushes. Every run ends at your approval.</p>
+          <AutopilotRows
+            client={client}
+            ascWrites={prefs.ascWrites}
+            autopilot={prefs.autopilot}
+            onChange={(next) => setPrefs((p) => (p ? { ...p, ...(next.ascWrites !== undefined ? { ascWrites: next.ascWrites } : {}), ...(next.autopilot !== undefined ? { autopilot: next.autopilot } : {}) } : p))}
+          />
+          <p className="autonomy-foot">
+            {prefs.autopilot
+              ? "Every run still ends at your approval. After it, the agent pushes to a draft version; nothing is submitted."
+              : "It never pushes. Every run ends at your approval."}
+          </p>
         </Panel>
 
         <Panel
@@ -299,6 +313,7 @@ export function SettingsView({ client, onSignedOut }: { client: ApiClient; onSig
           sub="All optional. Each one adds a path or a data source — none of them lets ShipASO push on its own."
         >
           <GithubCard client={client} />
+          <AscKeyCard client={client} hasAccountKey={creds.some((c) => c.kind === "asc" && c.appId === null)} />
           <AsaCard client={client} hasAsaKey={creds.some((c) => c.kind === "asa")} />
         </Panel>
 

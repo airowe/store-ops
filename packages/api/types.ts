@@ -745,6 +745,30 @@ export type Me = {
   rank_cadence?: RankCadence;
   /** the per-user master switch for the weekly autonomous sweep (#51). */
   paused?: boolean;
+  /** consent to ShipASO writing to App Store Connect at all (#374/#405). */
+  asc_write_opt_in?: boolean;
+  /** let the agent perform an approved run's writes itself (migration 0017). Requires the consent above. */
+  autopilot_execute?: boolean;
+};
+
+/** One row of what autopilot did with a run (migration 0017). */
+export type RunExecution = {
+  id: string;
+  run_id: string;
+  /** 'gate' | 'version' | 'metadata' | 'locale:<code>' | 'screenshots' | 'experiment' */
+  step: string;
+  status: "done" | "skipped" | "failed";
+  detail: string;
+  created_at: string;
+};
+export type RunExecutions = { runId: string; status: string; executions: RunExecution[] };
+/** POST /runs/:id/execute — the ledger of the attempt just made. */
+export type ExecuteRunResult = {
+  runId: string;
+  ran: boolean;
+  reason?: string;
+  shipped: boolean;
+  executions: Pick<RunExecution, "step" | "status" | "detail">[];
 };
 
 /** POST /account/asa-credential (#78-2) — verified + stored ASA key metadata. */

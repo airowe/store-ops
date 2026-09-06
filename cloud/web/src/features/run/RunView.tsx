@@ -31,6 +31,7 @@ import { RunVerdictHeader } from "./RunVerdictHeader.js";
 import { RunTriggerNote } from "./RunTriggerNote.js";
 import { RunSection } from "./RunSection.js";
 import { DecisionSummary } from "./DecisionSummary.js";
+import { ExecutionsCard } from "./ExecutionsCard.js";
 import { RunStatusBar } from "./RunStatusBar.js";
 import { RunDetailPane } from "./RunDetailPane.js";
 import { SectionRail, type RailItem, type RailGroup } from "./SectionRail.js";
@@ -300,8 +301,8 @@ export function RunView({
         />
         <h1 className="run-title">Proposed changes</h1>
         <p className="run-lede">
-          Review the diff below. Approving reveals the push commands — ShipASO never ships to a live
-          store; you run them yourself.
+          Review the diff below. Approving reveals the push commands; with autopilot on, the agent runs
+          them into a draft version for you. Nothing goes to a live store or to review.
         </p>
         <DecisionSummary current={r.currentCopy} proposed={r.proposedCopy} findings={r.findings ?? []} />
         <div className="run-shell">
@@ -444,6 +445,10 @@ export function RunView({
         <p className={"run-status" + (approved ? " good" : "")} data-testid="run-status">
           {runStatusLabel(run.status)}
         </p>
+
+        {/* migration 0017: "shipped" is never a bare badge — the ledger under it
+            says what reached Apple, what was skipped and why, what failed. */}
+        {approved ? <ExecutionsCard client={client} runId={id} status={run.status} /> : null}
 
         {tierLimited ? (
           <p className="muted" data-testid="tier-limit">

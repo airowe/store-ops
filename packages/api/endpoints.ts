@@ -58,8 +58,7 @@ import type {
   StagedEdit,
   ChannelKind,
   ChannelsResult,
-  ChannelLink,
-} from "./types.js";
+  ChannelLink, RunExecutions, ExecuteRunResult } from "./types.js";
 
 const enc = encodeURIComponent;
 
@@ -295,6 +294,23 @@ export const connectAsa = (
   c: ApiClient,
   body: { privateKey: string; clientId: string; teamId: string; keyId: string; orgId: string },
 ) => c.post<AsaConnectResult>("/account/asa-credential", body);
+/** Consent to App Store Connect writes (#374/#405). Every write still needs tier, approval, the flag. */
+export const setAscWrites = (c: ApiClient, optIn: boolean) =>
+  c.request<{ asc_write_opt_in: boolean }>("/account/asc-writes", { method: "PATCH", body: { optIn } });
+/**
+ * Let the agent perform approved runs' writes itself (migration 0017). Refused
+ * (403) until consent is on. `quarantined` counts runs approved before the
+ * switch existed, which are NOT executed on that old approval.
+ */
+export const setAutopilot = (c: ApiClient, execute: boolean) =>
+  c.request<{ autopilot_execute: boolean; quarantined: number }>("/account/autopilot", { method: "PATCH", body: { execute } });
+/** Save one team-scoped ASC key for every app; verified against Apple before it is stored (#560). */
+export const saveAscAccountKey = (c: ApiClient, body: { p8: string; keyId: string; issuerId: string }) =>
+  c.post<{ ok: true; credential: StoredCredential }>("/account/credentials/asc", body);
+/** What autopilot did with a run, step by step. */
+export const getRunExecutions = (c: ApiClient, runId: string) => c.get<RunExecutions>(`/runs/${enc(runId)}/executions`);
+/** A person releases one approved run to autopilot now (409 if it was already attempted). */
+export const executeRun = (c: ApiClient, runId: string) => c.post<ExecuteRunResult>(`/runs/${enc(runId)}/execute`);
 export const deleteCredential = (c: ApiClient, kind: "asc" | "play" | "asa", appId?: string) =>
   c.request<{ deleted: boolean; note: string }>(
     `/account/credentials/${kind}${appId ? `?app=${enc(appId)}` : ""}`,

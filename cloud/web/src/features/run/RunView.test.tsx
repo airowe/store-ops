@@ -54,6 +54,7 @@ function makeClient({
   const state = runDetail(status, [], extra);
   const get = vi.fn(async (path: string) => {
     if (path === "/runs/run1") return state;
+    if (path === "/runs/run1/executions") return { runId: "run1", status, executions: [] };
     if (path === "/account/credentials") return { enabled: true, credentials };
     if (path === "/github/status") return github;
     throw new Error("unexpected GET " + path);
