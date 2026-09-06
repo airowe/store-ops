@@ -274,7 +274,7 @@ import {
   verifyStripeSignature,
 } from "../billing.js";
 import { buildAppInput, descriptionFromTrace, type RunOverrides } from "./runConfig.js";
-import { type AscCred, type AscCredBody, AscCredentialError, resolveAscCredential } from "./ascCredentials.js";
+import { type AscCred, type AscCredBody, AscCredentialError, loadStoredAscForApp, resolveAscCredential } from "./ascCredentials.js";
 import { reasonerForEnv } from "./aiReasoner.js";
 import { cachedReport, cachedByKey, previewCacheKey, allowReport, defaultReportCache, type ReportLimiter } from "./publicReportGuard.js";
 import { renderReportErrorPage, renderReportPage, type ReportPageData } from "./reportPage.js";
@@ -286,7 +286,7 @@ import { fetchForEnv, fetchLikeForEnv } from "../fetchAdapter.js";
 import { buildFastlaneBundle } from "../engine/fastlane.js";
 import { zipStore } from "../engine/zip.js";
 import { mintAscJwt } from "../engine/ascJwt.js";
-import { findAscAppId, applyAscMetadata, createAscLocalization, createAscVersion, getEditableVersionId, isValidVersionString, readAscLocalization, AscWriteError } from "../engine/ascWrite.js";
+import { ASC_BASE, findAscAppId, applyAscMetadata, createAscLocalization, createAscVersion, getEditableVersionId, isValidVersionString, readAscLocalization, AscWriteError } from "../engine/ascWrite.js";
 import { ascWriteGate } from "../engine/ascWriteGate.js";
 import { uploadScreenshot } from "../engine/ascUploadClient.js";
 import { createPpoExperiment } from "../engine/ascExperimentCreate.js";
@@ -5137,6 +5137,37 @@ function isFlagOn(v: string | undefined): boolean {
  * credential (#67, envelope-encrypted) is the fallback, decrypted for this one
  * use. Maps the resolver's typed error onto this file's HttpError.
  */
+/**
+ * POST /account/credentials/asc (#374) — save ONE App Store Connect key for the
+ * whole account. An ASC API key is team-scoped, so a user with a dozen apps
+ * should not paste it a dozen times; every keyed route falls back to this row
+ * when the app has no key of its own (`loadStoredAscForApp`).
+ *
+ * Verified before it is stored: the trio must mint a JWT AND Apple must accept
+ * that JWT on a read. A key that does not work is never saved. The response is
+ * metadata only; the p8 is envelope-encrypted at rest and never returned.
+ */
+async function accountAscCredentialRoute(req: Request, env: Env, userId: string): Promise<unknown> {
+  if (!credentialsEnabled(env)) throw new HttpError(400, "stored credentials are not enabled on this deployment");
+  const body = (await req.json().catch(() => ({}))) as { p8?: string; keyId?: string; issuerId?: string };
+  const p8 = (body.p8 ?? "").trim();
+  const keyId = (body.keyId ?? "").trim();
+  const issuerId = (body.issuerId ?? "").trim();
+  if (!p8 || !keyId || !issuerId) throw new HttpError(400, "p8, keyId, and issuerId are required");
+
+  let token: string;
+  try {
+    token = await mintAscJwt({ p8, keyId, issuerId });
+  } catch (e) {
+    throw new HttpError(400, e instanceof Error ? e.message : "invalid credentials");
+  }
+  const probe = await fetch(`${ASC_BASE}/apps?limit=1`, { headers: { authorization: `Bearer ${token}` } });
+  if (!probe.ok) throw new HttpError(400, `App Store Connect rejected this key on a read (HTTP ${probe.status}); nothing was saved`);
+
+  const meta = await saveCredential(env, { userId, appId: null, kind: "asc", keyId, issuerId, plaintext: p8 });
+  return { ok: true, credential: meta };
+}
+
 async function ascCredForRequest(
   env: Env,
   userId: string,
@@ -5147,7 +5178,13 @@ async function ascCredForRequest(
     return await resolveAscCredential({
       body,
       enabled: credentialsEnabled(env),
-      loadStored: () => useCredential(env, userId, appId, "asc"),
+      // the app's own saved key, else the account-wide one (#374): an ASC API
+      // key is team-scoped, so one saved key can serve every app.
+      loadStored: () =>
+        loadStoredAscForApp(
+          () => useCredential(env, userId, appId, "asc"),
+          () => useCredential(env, userId, null, "asc"),
+        ),
     });
   } catch (e) {
     if (e instanceof AscCredentialError) throw new HttpError(e.status, e.message);
@@ -5879,6 +5916,10 @@ export async function handleApi(req: Request, env: Env, ctx?: ExecutionContext):
       }
       if (seg.length === 3 && seg[2] && method === "DELETE") {
         return json(await credentialsDeleteRoute(env, user.id, seg[2], url), 200, origin, env);
+      }
+      // POST /account/credentials/asc — save one team-scoped ASC key for every app (#374)
+      if (seg.length === 3 && seg[2] === "asc" && method === "POST") {
+        return json(await accountAscCredentialRoute(req, env, user.id), 200, origin, env);
       }
     }
     // POST /account/asa-credential — connect + verify an Apple Search Ads key (#78-2)
