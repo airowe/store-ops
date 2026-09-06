@@ -291,6 +291,7 @@ import { ascWriteGate } from "../engine/ascWriteGate.js";
 import { uploadScreenshot } from "../engine/ascUploadClient.js";
 import { createPpoExperiment } from "../engine/ascExperimentCreate.js";
 import { ensureScreenshotSet } from "../engine/ascScreenshotSet.js";
+import { uploadScreenshotBatch, type BatchShot } from "../engine/ascScreenshotBatch.js";
 import { readAscExperiments } from "../engine/ascExperiments.js";
 import { registerWebhook, WEBHOOK_EVENT_TYPES } from "../engine/ascWebhookRegister.js";
 import { saveWebhookSecret } from "../d1.js";
@@ -4844,6 +4845,77 @@ async function ascUploadScreenshotRoute(
 }
 
 /**
+ * POST /runs/:id/asc/upload-screenshots (#374) — the strip, resolved from what
+ * an agent actually has: a locale, a device bucket, and files. The single-shot
+ * route above needs three App Store Connect UUIDs the caller must look up by
+ * hand; this one resolves them (bundle id → editable version → localization →
+ * set, found or created) and uploads in order.
+ *
+ * Same gate, same credential resolution, same "never a READY_FOR_SALE version"
+ * rule. The result is a ledger, not a boolean: every shot is uploaded, skipped
+ * (already present, same bytes), failed, or never attempted. Nothing submits.
+ */
+async function ascUploadScreenshotsRoute(
+  req: Request,
+  env: Env,
+  userId: string,
+  runId: string,
+): Promise<unknown> {
+  const run = await getRun(env.DB, runId);
+  if (!run) throw new HttpError(404, "run not found");
+  const app = await requireOwnedApp(env, run.app_id, userId);
+
+  const gate = ascWriteGate({
+    flagOn: isFlagOn(env.ASC_WRITE_ENABLED),
+    tier: await getTier(env.DB, userId),
+    optedIn: await getAscWriteOptIn(env.DB, userId),
+    runStatus: run.status,
+  });
+  if (!gate.allowed) throw new HttpError(gate.status, gate.reason);
+
+  const body = (await req.json().catch(() => ({}))) as AscCredBody & {
+    /** defaults to the app's storefront locale */
+    locale?: string;
+    screenshotDisplayType?: string;
+    shots?: { fileName?: string; fileBase64?: string }[];
+  };
+
+  const displayType = (body.screenshotDisplayType ?? "").trim();
+  if (!displayType) throw new HttpError(400, "screenshotDisplayType is required (e.g. APP_IPHONE_67)");
+  if (!Array.isArray(body.shots) || body.shots.length === 0) throw new HttpError(400, "shots[] is required");
+  const locale = (body.locale ?? "").trim() || STOREFRONT_LOCALE[(app.country || "US").toUpperCase()] || "en-US";
+
+  const shots: BatchShot[] = [];
+  for (const s of body.shots) {
+    const fileName = (s?.fileName ?? "").trim();
+    if (!fileName) throw new HttpError(400, "every shot needs a fileName");
+    try {
+      const bin = atob(s?.fileBase64 ?? "");
+      const file = new Uint8Array(bin.length);
+      for (let i = 0; i < bin.length; i++) file[i] = bin.charCodeAt(i);
+      shots.push({ fileName, file });
+    } catch {
+      throw new HttpError(400, `"${fileName}": fileBase64 must be base64-encoded image bytes`);
+    }
+  }
+
+  const cred = await ascCredForRequest(env, userId, app.id, body);
+  let token: string;
+  try {
+    token = await mintAscJwt({ p8: cred.p8, keyId: cred.keyId, issuerId: cred.issuerId });
+  } catch (e) {
+    throw new HttpError(400, e instanceof Error ? e.message : "invalid credentials");
+  }
+
+  try {
+    return await uploadScreenshotBatch(fetch, { token, bundleId: app.bundle_id, locale, displayType, shots });
+  } catch (e) {
+    if (e instanceof AscWriteError) return { ok: false, reason: e.message };
+    throw new HttpError(400, e instanceof Error ? e.message : "screenshot upload failed");
+  }
+}
+
+/**
  * POST /runs/:id/asc/create-experiment (#374) — create a Product Page
  * Optimization experiment, STOPPED.
  *
@@ -6078,6 +6150,9 @@ export async function handleApi(req: Request, env: Env, ctx?: ExecutionContext):
       }
       if (seg.length === 4 && seg[2] === "asc" && seg[3] === "upload-screenshot" && method === "POST") {
         return json(await ascUploadScreenshotRoute(req, env, user.id, runId), 200, origin);
+      }
+      if (seg.length === 4 && seg[2] === "asc" && seg[3] === "upload-screenshots" && method === "POST") {
+        return json(await ascUploadScreenshotsRoute(req, env, user.id, runId), 200, origin);
       }
       if (seg.length === 4 && seg[2] === "asc" && seg[3] === "create-experiment" && method === "POST") {
         return json(await ascCreateExperimentRoute(req, env, user.id, runId), 200, origin);
