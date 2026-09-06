@@ -41,12 +41,12 @@ describe("runs.status writers", () => {
    *   recordApproval — 'approved' | 'rejected', bound by the decision
    *   insertRun      — 'superseded', for the run this one replaces
    */
-  it("d1.ts writes runs.status in exactly two places", () => {
-    expect(statusWrites()).toHaveLength(2);
+  it("d1.ts writes runs.status in exactly three places", () => {
+    expect(statusWrites()).toHaveLength(3);
   });
 
-  it("the only literal status written is 'superseded'", () => {
-    expect(statusWrites().flatMap((w) => (w.literal ? [w.literal] : []))).toEqual(["superseded"]);
+  it("the only literal statuses written are 'superseded' and 'shipped'", () => {
+    expect(statusWrites().flatMap((w) => (w.literal ? [w.literal] : [])).sort()).toEqual(["shipped", "superseded"]);
   });
 
   /**
@@ -59,13 +59,17 @@ describe("runs.status writers", () => {
   });
 
   /**
-   * 'shipped' is legacy-only: 5 production rows carry it, all written before
-   * #43 (2026-06-13..06-17). It must stay READABLE — the wire union and the
-   * schema CHECK both keep it — but nothing may write it again, because
-   * approval is the terminus and ShipASO never pushes to a store.
+   * 'shipped' was legacy-only from #43 (2026-06-19) until autopilot (migration
+   * 0017). It is now written in exactly ONE place — markRunShipped — and only
+   * from 'approved', after the metadata write returned success from Apple. A
+   * person approving never sets it, and approval is still the terminus of the
+   * human's involvement: the agent executes what was approved, nothing more.
    */
-  it("nothing in d1.ts writes 'shipped'", () => {
-    expect(d1).not.toMatch(/UPDATE runs SET status\s*=\s*'shipped'/);
+  it("'shipped' is written only by markRunShipped, guarded on 'approved'", () => {
+    const writes = [...d1.matchAll(/UPDATE runs SET status\s*=\s*'shipped'[^"]*/g)].map((m) => m[0]);
+    expect(writes).toHaveLength(1);
+    expect(writes[0]).toMatch(/AND status = 'approved'/);
     expect(d1).not.toMatch(/\?\s*"shipped"\s*:/);
+    expect(d1).toMatch(/export async function markRunShipped\b/);
   });
 });

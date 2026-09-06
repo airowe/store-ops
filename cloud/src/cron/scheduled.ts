@@ -46,6 +46,7 @@ import { mintUnsubToken, resolveSessionSecret } from "../auth.js";
 import type { Env } from "../index.js";
 import { isSweepDue } from "../schedule.js";
 import { runKeyedSweepForApp, type KeyedSweepDetail } from "./keyedSweep.js";
+import { runAutopilot } from "./autopilot.js";
 
 /** Unsubscribe-token lifetime: ~60 days - a fresh token ships with every weekly digest. */
 const UNSUB_TTL_SECONDS = 60 * 24 * 60 * 60;
@@ -346,8 +347,14 @@ export async function handleScheduled(env: Env): Promise<void> {
   await sweepExpiredChannelLinkCodes(env.DB).catch((e) => {
     console.error(`[store-ops cron] link-code sweep failed (non-fatal): ${String(e)}`);
   });
+  // Autopilot (migration 0017): approved runs whose owner asked the agent to
+  // do the writes. Best-effort and last, after the sweep that matters more.
+  const autopilot = await runAutopilot(env).catch((e) => {
+    console.error(`[store-ops cron] autopilot pass failed (non-fatal): ${String(e)}`);
+    return { attempted: 0, shipped: 0 };
+  });
   console.log(
     `[store-ops cron] swept ${report.appsProcessed} apps, opened ${report.runsOpened} run(s), ` +
-      `sent ${digests} digest(s)`,
+      `sent ${digests} digest(s), autopilot attempted ${autopilot.attempted} run(s), shipped ${autopilot.shipped}`,
   );
 }

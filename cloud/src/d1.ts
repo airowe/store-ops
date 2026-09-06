@@ -3084,3 +3084,89 @@ export async function sweepExpiredApprovalChallenges(
     .bind(cutoff.toISOString())
     .run();
 }
+
+// ── autopilot execution (migration 0017) ─────────────────────────────────────
+
+/**
+ * Does the user want the agent to perform an approved run's writes itself?
+ * CONSENT ONLY, default off. Executing additionally requires everything a
+ * manual write requires (tier, asc_write_opt_in, approval, flag, a stored key).
+ */
+export async function getAutopilotExecute(db: D1Database, userId: string): Promise<boolean> {
+  try {
+    const row = await db.prepare("SELECT autopilot_execute FROM users WHERE id = ?").bind(userId).first<{ autopilot_execute: number }>();
+    return (row?.autopilot_execute ?? 0) === 1;
+  } catch (e) {
+    // Migration 0017 not applied yet: off is the only honest answer, and
+    // /auth/me must not break over a column it does not need to have.
+    if (e instanceof Error && /no such column/i.test(e.message)) return false;
+    throw e;
+  }
+}
+
+export async function setAutopilotExecute(db: D1Database, args: { userId: string; execute: boolean }): Promise<void> {
+  await db.prepare("UPDATE users SET autopilot_execute = ? WHERE id = ?").bind(args.execute ? 1 : 0, args.userId).run();
+}
+
+export type RunExecutionRow = {
+  id: string;
+  run_id: string;
+  step: string;
+  status: "done" | "skipped" | "failed";
+  detail: string;
+  created_at: string;
+};
+
+export async function recordRunExecution(
+  db: D1Database,
+  args: { runId: string; step: string; status: RunExecutionRow["status"]; detail: string },
+): Promise<void> {
+  await db
+    .prepare("INSERT INTO run_executions (id, run_id, step, status, detail, created_at) VALUES (?, ?, ?, ?, ?, ?)")
+    .bind(uuid(), args.runId, args.step, args.status, args.detail, now())
+    .run();
+}
+
+export async function listRunExecutions(db: D1Database, runId: string): Promise<RunExecutionRow[]> {
+  try {
+    const { results } = await db
+      .prepare("SELECT id, run_id, step, status, detail, created_at FROM run_executions WHERE run_id = ? ORDER BY created_at ASC")
+      .bind(runId)
+      .all<RunExecutionRow>();
+    return results ?? [];
+  } catch (e) {
+    if (isMissingTable(e)) return [];
+    throw e;
+  }
+}
+
+/**
+ * Approved runs autopilot has not yet attempted: no execution row at all. A
+ * run that was attempted and failed keeps its rows and is NOT retried blindly;
+ * the failure is on the run page for a person to read.
+ */
+export async function listApprovedRunsForAutopilot(db: D1Database): Promise<RunRow[]> {
+  try {
+    const { results } = await db
+      .prepare(
+        "SELECT id, app_id, status, created_at, reasoning_json FROM runs " +
+          "WHERE status = 'approved' AND id NOT IN (SELECT run_id FROM run_executions) ORDER BY created_at ASC",
+      )
+      .all<RunRow>();
+    return results ?? [];
+  } catch (e) {
+    if (isMissingTable(e)) return [];
+    throw e;
+  }
+}
+
+/**
+ * The third and only other status writer (see runStatusWriters.spec.ts):
+ * 'shipped' is written by autopilot alone, after the metadata write returned
+ * success from Apple, and only from 'approved'. A person approving never sets
+ * it, and nothing sets it on hope.
+ */
+export async function markRunShipped(db: D1Database, runId: string): Promise<boolean> {
+  const res = await db.prepare("UPDATE runs SET status = 'shipped' WHERE id = ? AND status = 'approved'").bind(runId).run();
+  return (res.meta?.changes ?? 0) === 1;
+}
