@@ -20,7 +20,7 @@ can read competitors' review bodies via any API — that data is private).
 
 ```bash
 # pull reviews and mine them in one pipe:
-asc reviews --app 6759360137 --paginate --json | \
+asc reviews --app 6759360137 --paginate --output json | \
     python3 lib/aso_review_mine.py --app heathen --stdin
 
 # or from a saved file:

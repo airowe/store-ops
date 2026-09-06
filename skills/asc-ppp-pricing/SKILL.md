@@ -21,7 +21,7 @@ Use this skill to set different prices for different countries based on purchasi
 ### 1. List subscriptions for your app
 ```bash
 asc subscriptions groups list --app "APP_ID"
-asc subscriptions list --group "GROUP_ID"
+asc subscriptions list --group-id "GROUP_ID"
 ```
 
 ### 2. Get price points for base territory (e.g., USA at $9.99)
@@ -68,7 +68,7 @@ asc iap list --app "APP_ID"
 
 ### 2. Get price points for base territory
 ```bash
-asc iap pricing price-points list --id "IAP_ID" --territory "USA"
+asc iap pricing price-points list --iap-id "IAP_ID" --territory "USA"
 ```
 
 ### 3. Get equalizations

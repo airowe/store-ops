@@ -162,7 +162,7 @@ asc versions update --version-id "VERSION_ID" --release-type AFTER_APPROVAL
 ## TestFlight Release Notes
 
 ```bash
-asc build-localizations create --build "BUILD_ID" --locale "en-US" \
+asc build-localizations create --build-id "BUILD_ID" --locale "en-US" \
   --whats-new "TestFlight notes here"
 asc build-localizations update --id "LOCALIZATION_ID" --whats-new "Updated notes"
 ```

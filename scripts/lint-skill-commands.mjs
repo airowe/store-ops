@@ -10,7 +10,12 @@
  *
  * The reliable source of truth is the SUBCOMMANDS block of each `--help` page.
  * We recurse that into a command tree, then check each skill's commands against
- * it. Existence only — this does NOT validate flags or run anything.
+ * it. Flags too: every `--flag` on the same line as a documented command must
+ * appear in that command's FLAGS block (or the CLI's global flags). asc 5.0.0
+ * removed every deprecated flag alias (`--build` → `--build-id`, `--group` →
+ * `--group-id`, `--json` → `--output json`, …) and this linter, checking names
+ * only, reported "0 missing" against five invocations that had just become
+ * `unknown flag`, exit 2. Nothing is executed.
  *
  * Only commands inside code contexts (``` blocks or `inline`) are checked —
  * prose and headings ("# asc id resolver") are ignored. A deprecated-but-working
@@ -48,6 +53,21 @@ function help(tool, path) {
     return execFileSync("sh", ["-c", `${cmd} 2>&1`], { encoding: "utf8" });
   } catch (e) {
     return (e.stdout || "") + (e.stderr || "") || "";
+  }
+}
+
+/**
+ * Exit status of `<tool> <path> --help`. Both CLIs exit 2 for an unknown or
+ * removed command — and asc 5 prints the PARENT's help page underneath that
+ * error, so `asc versions get --help` shows a DESCRIPTION block for a command
+ * that does not exist. Text alone said "real"; the exit code says otherwise.
+ */
+function helpStatus(tool, path) {
+  const cmd = [tool, ...path.map((p) => `'${p}'`), "--help"].join(" ");
+  try {
+    return Number(execFileSync("sh", ["-c", `${cmd} >/dev/null 2>&1; echo $?`], { encoding: "utf8" }).trim());
+  } catch {
+    return 1;
   }
 }
 
@@ -90,6 +110,22 @@ function subcommands(text, tool, path) {
   return out;
 }
 
+/**
+ * The flags a `<tool> <path>` page accepts: every "  --name" line of its help.
+ * The tool's own top-level page supplies the global flags (--output, --profile,
+ * --help, …) that every subcommand also takes.
+ */
+const flagCache = new Map();
+function flagsOf(tool, path) {
+  const key = tool + " " + path.join(" ");
+  let set = flagCache.get(key);
+  if (set) return set;
+  set = new Set(["help", "h"]);
+  for (const m of help(tool, path).matchAll(/^\s+--([a-z][a-z0-9-]*)/gm)) set.add(m[1]);
+  flagCache.set(key, set);
+  return set;
+}
+
 /** Is this (tool, path) command deprecated? (its help says so) */
 function isDeprecated(text) {
   return /\bDEPRECATED\b/i.test((text || "").split("\n").slice(0, 4).join("\n"));
@@ -115,7 +151,11 @@ function resolve(tool, tokens) {
       // Not in the parsed tree — but deprecated commands are often HIDDEN from the
       // parent's listing while still working. Probe directly before failing.
       const probe = help(tool, [...path, tok]);
-      const real = /^\s*DESCRIPTION\b/m.test(probe) && !/^Unknown command/m.test(probe);
+      const real =
+        /^\s*DESCRIPTION\b/m.test(probe) &&
+        !/^Unknown command/m.test(probe) &&
+        !/was removed|unknown command/i.test(probe.split("\n").slice(0, 3).join("\n")) &&
+        helpStatus(tool, [...path, tok]) === 0;
       if (!real) return { ok: false, failedAt: [...path, tok].join(" ") };
       if (isDeprecated(probe)) deprecated = true;
       path.push(tok);
@@ -142,11 +182,14 @@ function extractCommands(md) {
   for (const m of md.matchAll(/`([^`\n]+)`/g)) codeSpans.push(m[1]);
 
   const cmds = [];
-  const re = /\b(asc|gplay)((?:\s+[a-z][a-z0-9-]+)+)/g;
+  const re = /\b(asc|gplay)((?:\s+[a-z][a-z0-9-]+)+)([^\n]*)/g;
   for (const span of codeSpans) {
     for (const m of span.matchAll(re)) {
       const toks = m[2].trim().split(/\s+/);
-      cmds.push({ tool: m[1], tokens: toks, raw: `${m[1]} ${toks.join(" ")}` });
+      // the flags on the SAME line as the command; a continuation line (`\`)
+      // is out of scope, so a flag there is neither checked nor a false alarm
+      const flags = [...m[3].matchAll(/(?:^|\s)--([a-z][a-z0-9-]*)/g)].map((f) => f[1]);
+      cmds.push({ tool: m[1], tokens: toks, flags, raw: `${m[1]} ${toks.join(" ")}` });
     }
   }
   return cmds;
@@ -179,6 +222,7 @@ if (!present.gplay) console.warn("⚠  gplay not installed — skipping gplay co
 
 let missing = 0;
 let deprecated = 0;
+let badFlags = 0;
 const skipped = new Set();
 
 for (const d of dirs) {
@@ -187,8 +231,9 @@ for (const d of dirs) {
   const problems = [];
   const seen = new Set();
   for (const c of cmds) {
-    if (seen.has(c.raw)) continue;
-    seen.add(c.raw);
+    const sig = c.raw + " " + c.flags.join(" ");
+    if (seen.has(sig)) continue;
+    seen.add(sig);
     if (!present[c.tool]) {
       skipped.add(c.tool);
       continue;
@@ -203,8 +248,22 @@ for (const d of dirs) {
         break;
       }
     }
-    if (!best) problems.push({ raw: c.raw, kind: "missing" });
-    else if (best.deprecated) problems.push({ raw: c.raw, kind: "deprecated", resolved: best.resolved });
+    if (!best) {
+      problems.push({ raw: c.raw, kind: "missing" });
+      continue;
+    }
+    if (best.deprecated) problems.push({ raw: c.raw, kind: "deprecated", resolved: best.resolved });
+    // Flags are checked only when EVERY token resolved as a subcommand. When the
+    // deepest valid prefix is shorter, the leftover tokens are values (or a
+    // subcommand the help page hides) and the flags belong to a page we did not
+    // identify — comparing them against the parent would be a false alarm.
+    const resolvedPath = best.resolved.split(" ");
+    if (c.flags.length && resolvedPath.length === c.tokens.length) {
+      const accepted = flagsOf(c.tool, resolvedPath);
+      const global = flagsOf(c.tool, []);
+      const unknown = c.flags.filter((f) => !accepted.has(f) && !global.has(f));
+      if (unknown.length) problems.push({ raw: c.raw, kind: "flag", resolved: best.resolved, unknown });
+    }
   }
   if (problems.length) {
     console.log(`\n${d}:`);
@@ -212,6 +271,9 @@ for (const d of dirs) {
       if (p.kind === "missing") {
         console.log(`  ✗ MISSING   ${p.raw}`);
         missing++;
+      } else if (p.kind === "flag") {
+        console.log(`  ✗ FLAG      ${p.raw} ${p.unknown.map((f) => "--" + f).join(" ")}  (${p.resolved} does not accept it)`);
+        badFlags++;
       } else {
         console.log(`  ⚠ deprecated ${p.raw}  (→ ${p.resolved} is deprecated)`);
         deprecated++;
@@ -221,7 +283,7 @@ for (const d of dirs) {
 }
 
 console.log(
-  `\n${missing} missing command(s), ${deprecated} deprecated across ${dirs.length} skill(s).`,
+  `\n${missing} missing command(s), ${badFlags} unknown flag(s), ${deprecated} deprecated across ${dirs.length} skill(s).`,
 );
 if (skipped.size) console.log(`(skipped ${[...skipped].join(", ")} — CLI not installed)`);
 
@@ -238,4 +300,4 @@ if (required.length) {
     process.exit(2);
   }
 }
-process.exit(missing > 0 ? 1 : 0);
+process.exit(missing > 0 || badFlags > 0 ? 1 : 0);

@@ -483,7 +483,7 @@ Group countries into pricing tiers:
 5. **Missing `newRegionsConfig`** — If a one-time product purchase option previously had `newRegionsConfig` set, it must be included. Omitting it causes: "Cannot remove currency for new regions once it has been added."
 6. **Wrong currency codes** — Don't assume currencies. Fetch from Google Play, as they change between regions versions.
 7. **Mixing API formats** — Legacy IAPs use `priceMicros`/`currency`. New subscriptions and one-time products use `units`/`nanos`/`currencyCode`. Don't mix them.
-8. **`--dry-run` is a global flag** — Place it **before** the subcommand: `gplay --dry-run subscriptions update ...`, NOT `gplay subscriptions update --dry-run ...`. The latter fails with "flag provided but not defined."
+8. **`--dry-run` is a global flag** — Place it **before** the subcommand: `gplay --dry-run subscriptions update ...`. Placed after the subcommand it is rejected as an unknown flag and nothing is previewed.
 9. **Batch-update JSON format** — For `onetimeproducts batch-update` and `subscriptions batch-update`, `regionsVersion` and `updateMask` go **inside each request object** in the JSON, not as CLI flags.
 10. **Product IDs are permanent** — Google Play permanently reserves product IDs after deletion. If you create a product via `gplay iap create` then delete it, the ID cannot be reused — not even with `gplay onetimeproducts create`. Always choose product IDs carefully. Do **not** create a product via the legacy API and then try to recreate it via the new API.
 11. **New OTP products start in DRAFT** — After `gplay onetimeproducts create`, the purchase option is in DRAFT state. You must activate it with `gplay purchase-options batch-update-states` before it's available to users.

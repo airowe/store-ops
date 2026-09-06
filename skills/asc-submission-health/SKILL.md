@@ -16,7 +16,7 @@ Use this skill to reduce review submission failures and monitor status.
 
 ### 1. Verify Build Status
 ```bash
-asc builds info --build "BUILD_ID"
+asc builds info --build-id "BUILD_ID"
 ```
 Check:
 - `processingState` is `VALID`
@@ -48,7 +48,7 @@ asc encryption declarations assign-builds \
 Required for all App Store submissions:
 ```bash
 # Check current status
-asc apps get --id "APP_ID" --output json | jq '.data.attributes.contentRightsDeclaration'
+asc apps view --id "APP_ID" --output json | jq '.data.attributes.contentRightsDeclaration'
 
 # Set if missing
 asc apps update --id "APP_ID" --content-rights "DOES_NOT_USE_THIRD_PARTY_CONTENT"
@@ -60,7 +60,7 @@ Valid values:
 ### 4. Version Metadata
 ```bash
 # Check version details
-asc versions get --version-id "VERSION_ID" --include-build
+asc versions view --version-id "VERSION_ID" --include-build
 
 # Verify copyright is set
 asc versions update --version-id "VERSION_ID" --copyright "2026 Your Company"
@@ -103,9 +103,9 @@ asc review items-add \
 asc review submissions-submit --id "SUBMISSION_ID" --confirm
 ```
 
-### Using Submit Command
+### Submitting for review
 ```bash
-asc submit create --app "APP_ID" --version "1.2.3" --build "BUILD_ID" --confirm
+asc review submit --app "APP_ID" --version "1.2.3" --build-id "BUILD_ID" --confirm
 ```
 Use `--platform` when multiple platforms exist.
 
@@ -151,6 +151,6 @@ asc apps info list --app "APP_ID"
 ```
 
 ## Notes
-- `asc submit create` uses the new reviewSubmissions API automatically.
+- `asc review submit` uses the reviewSubmissions API; `asc submit create` was removed in asc 5.0.
 - Use `--output table` when you want human-readable status.
 - macOS submissions follow the same process but use `--platform MAC_OS`.
