@@ -11,3 +11,6 @@ dist/
 test-results/
 playwright-report/
 playwright/.cache/
+
+# ops heartbeat local output (#556)
+.ops-heartbeat/
