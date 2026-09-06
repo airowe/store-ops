@@ -179,6 +179,12 @@ import {
   getRun,
   getTier,
   getAscWriteOptIn,
+  setAscWriteOptIn,
+  getAutopilotExecute,
+  setAutopilotExecute,
+  listRunExecutions,
+  quarantinePreAutopilotRuns,
+  releasePreAutopilotRun,
   getUserByStripeCustomer,
   latestRunTraceForApp,
   listAllApps,
@@ -292,6 +298,9 @@ import { uploadScreenshot } from "../engine/ascUploadClient.js";
 import { createPpoExperiment, EXPERIMENT_PLATFORMS, type ExperimentPlatform } from "../engine/ascExperimentCreate.js";
 import { ensureScreenshotSet } from "../engine/ascScreenshotSet.js";
 import { uploadScreenshotBatch, type BatchShot } from "../engine/ascScreenshotBatch.js";
+import { STOREFRONT_LOCALE } from "./storefrontLocale.js";
+import { isFlagOn } from "../flags.js";
+import { executeApprovedRun, runAutopilot } from "../cron/autopilot.js";
 import { readAscExperiments } from "../engine/ascExperiments.js";
 import { registerWebhook, WEBHOOK_EVENT_TYPES } from "../engine/ascWebhookRegister.js";
 import { saveWebhookSecret } from "../d1.js";
@@ -1110,6 +1119,8 @@ async function authMe(req: Request, env: Env, origin: string | null): Promise<Re
           rank_cadence: user.rank_cadence,
           email_digest: user.email_digest,
           push_run_ready: user.push_run_ready,
+          asc_write_opt_in: await getAscWriteOptIn(env.DB, user.id),
+          autopilot_execute: await getAutopilotExecute(env.DB, user.id),
         },
         200,
         origin,
@@ -1133,6 +1144,8 @@ async function authMe(req: Request, env: Env, origin: string | null): Promise<Re
           rank_cadence: user.rank_cadence,
           email_digest: user.email_digest,
           push_run_ready: user.push_run_ready,
+          asc_write_opt_in: await getAscWriteOptIn(env.DB, user.id),
+          autopilot_execute: await getAutopilotExecute(env.DB, user.id),
         },
         200,
         origin,
@@ -3447,11 +3460,6 @@ async function planScreenshotsRoute(req: Request, env: Env): Promise<unknown> {
 }
 
 /** App Store storefront country → the store's primary locale code, for the ones we can state. */
-const STOREFRONT_LOCALE: Record<string, string> = {
-  US: "en-US", GB: "en-GB", AU: "en-AU", CA: "en-CA", DE: "de-DE", FR: "fr-FR", ES: "es-ES", MX: "es-MX",
-  IT: "it", BR: "pt-BR", PT: "pt-PT", NL: "nl-NL", JP: "ja", KR: "ko", CN: "zh-Hans", TW: "zh-Hant",
-  RU: "ru", TR: "tr", PL: "pl", SE: "sv", DK: "da", FI: "fi", NO: "no",
-};
 
 /**
  * POST /runs/:id/goldie-config (#406 / #521) — the diagnosis half as a file.
@@ -5131,10 +5139,6 @@ async function ascCreateLocalizationRoute(
   }
 }
 
-/** Truthy flag parse for opt-in env switches. */
-function isFlagOn(v: string | undefined): boolean {
-  return v === "1" || v?.toLowerCase() === "true";
-}
 
 /**
  * Resolve ASC creds for a route (#179): in-request creds win; the STORED
@@ -5170,6 +5174,50 @@ async function accountAscCredentialRoute(req: Request, env: Env, userId: string)
 
   const meta = await saveCredential(env, { userId, appId: null, kind: "asc", keyId, issuerId, plaintext: p8 });
   return { ok: true, credential: meta };
+}
+
+/** PATCH /account/asc-writes {optIn: boolean} — consent only; every write still needs tier, approval, flag. */
+async function accountAscWritesRoute(req: Request, env: Env, userId: string): Promise<{ asc_write_opt_in: boolean }> {
+  const body = (await req.json().catch(() => ({}))) as { optIn?: unknown };
+  if (typeof body.optIn !== "boolean") throw new HttpError(400, "optIn must be true or false");
+  await setAscWriteOptIn(env.DB, { userId, optIn: body.optIn });
+  return { asc_write_opt_in: body.optIn };
+}
+
+/**
+ * PATCH /account/autopilot {execute: boolean} — let the agent perform an
+ * approved run's writes itself (migration 0017). Turning it on requires the
+ * ASC-write consent to already be on: autopilot never grants a permission the
+ * person did not give by hand first.
+ */
+async function accountAutopilotRoute(req: Request, env: Env, userId: string): Promise<{ autopilot_execute: boolean; quarantined: number }> {
+  const body = (await req.json().catch(() => ({}))) as { execute?: unknown };
+  if (typeof body.execute !== "boolean") throw new HttpError(400, "execute must be true or false");
+  if (body.execute && !(await getAscWriteOptIn(env.DB, userId))) {
+    throw new HttpError(403, "opt in to App Store Connect writes first (PATCH /account/asc-writes)");
+  }
+  // Runs approved BEFORE the switch existed are not executed on the strength
+  // of that old approval: each gets one visible "skipped" row instead, and a
+  // person can release any of them with POST /runs/:id/execute.
+  const quarantined = body.execute ? await quarantinePreAutopilotRuns(env.DB, userId) : 0;
+  await setAutopilotExecute(env.DB, { userId, execute: body.execute });
+  return { autopilot_execute: body.execute, quarantined };
+}
+
+/**
+ * POST /runs/:id/execute — a person asks autopilot to take one approved run
+ * now: typically one quarantined because it was approved before the switch
+ * existed. Same gate as the cron path; a run that was already attempted is a
+ * 409, because its ledger is for reading, not erasing.
+ */
+async function runExecuteRoute(env: Env, userId: string, runId: string): Promise<unknown> {
+  const run = await getRun(env.DB, runId);
+  if (!run) throw new HttpError(404, "run not found");
+  await requireOwnedApp(env, run.app_id, userId);
+  if (run.status !== "approved") throw new HttpError(403, `run is ${run.status}, not approved`);
+  if (!(await releasePreAutopilotRun(env.DB, runId))) throw new HttpError(409, "this run was already attempted; see GET /runs/:id/executions");
+  const result = await executeApprovedRun(env, run);
+  return { runId, ran: result.ran, reason: result.reason, shipped: result.shipped, executions: result.records };
 }
 
 async function ascCredForRequest(
@@ -5926,6 +5974,14 @@ export async function handleApi(req: Request, env: Env, ctx?: ExecutionContext):
         return json(await accountAscCredentialRoute(req, env, user.id), 200, origin, env);
       }
     }
+    // PATCH /account/asc-writes {optIn} — the user's own consent to ASC writes (#374/#405)
+    if (seg[0] === "account" && seg[1] === "asc-writes" && seg.length === 2 && method === "PATCH") {
+      return json(await accountAscWritesRoute(req, env, user.id), 200, origin, env);
+    }
+    // PATCH /account/autopilot {execute} — let the agent perform approved runs' writes (migration 0017)
+    if (seg[0] === "account" && seg[1] === "autopilot" && seg.length === 2 && method === "PATCH") {
+      return json(await accountAutopilotRoute(req, env, user.id), 200, origin, env);
+    }
     // POST /account/asa-credential — connect + verify an Apple Search Ads key (#78-2)
     if (seg[0] === "account" && seg[1] === "asa-credential" && seg.length === 2 && method === "POST") {
       return json(await asaConnectRoute(req, env, user.id), 200, origin, env);
@@ -5993,7 +6049,9 @@ export async function handleApi(req: Request, env: Env, ctx?: ExecutionContext):
       });
       if (!bulkGate.ok) return json(boundaryRefusalBody(bulkGate), bulkGate.status, origin, env);
 
-      return json(await approveAll(env, plan), 200, origin, env);
+      const approved = await approveAll(env, plan);
+      ctx?.waitUntil(runAutopilot(env).catch((e) => console.error(`[store-ops autopilot] ${String(e)}`)));
+      return json(approved, 200, origin, env);
     }
 
     // /github — connect a repo (+ installation id) / status for the metadata-PR path
@@ -6167,7 +6225,11 @@ export async function handleApi(req: Request, env: Env, ctx?: ExecutionContext):
           });
           if (!gate.ok) return json(boundaryRefusalBody(gate), gate.status, origin, env);
         }
-        return json(await decideRun(req, env, user.id, runId, seg[2]), 200, origin);
+        const decided = await decideRun(req, env, user.id, runId, seg[2]);
+        // Autopilot fast path: an approval is the human's last act; if the owner
+        // turned execution on, the writes start now rather than at the next hour.
+        if (seg[2] === "approve") ctx?.waitUntil(runAutopilot(env).catch((e) => console.error(`[store-ops autopilot] ${String(e)}`)));
+        return json(decided, 200, origin);
       }
       if (seg.length === 3 && seg[2] === "localize" && method === "POST") {
         return json(await localizeRoute(req, env, user.id, runId), 200, origin);
@@ -6180,6 +6242,17 @@ export async function handleApi(req: Request, env: Env, ctx?: ExecutionContext):
       }
       if (seg.length === 3 && seg[2] === "push-commands" && method === "GET") {
         return json(await pushCommandsRoute(env, user.id, runId), 200, origin);
+      }
+      // POST /runs/:id/execute — a person releases one approved run to autopilot now (migration 0017)
+      if (seg.length === 3 && seg[2] === "execute" && method === "POST") {
+        return json(await runExecuteRoute(env, user.id, runId), 200, origin);
+      }
+      // GET /runs/:id/executions — what autopilot did with this run, step by step (migration 0017)
+      if (seg.length === 3 && seg[2] === "executions" && method === "GET") {
+        const run = await getRun(env.DB, runId);
+        if (!run) throw new HttpError(404, "run not found");
+        await requireOwnedApp(env, run.app_id, user.id);
+        return json({ runId, status: run.status, executions: await listRunExecutions(env.DB, runId) }, 200, origin);
       }
       if (seg.length === 3 && seg[2] === "goldie-config" && method === "POST") {
         return json(await goldieConfigRoute(req, env, user.id, runId), 200, origin);
