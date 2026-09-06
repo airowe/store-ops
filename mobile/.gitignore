@@ -27,3 +27,6 @@ builds/
 
 # Local xcodebuild output (derived data from simulator builds)
 /.build/
+
+# screenmap run output (the config is committed; captures are not)
+.screenmap/out/

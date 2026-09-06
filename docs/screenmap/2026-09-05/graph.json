@@ -1,0 +1,399 @@
+{
+  "generatedAt": "2026-09-06T00:20:45.063Z",
+  "projectRoot": "/Users/adamrowe/Projects/store-ops/mobile",
+  "appName": "ShipASO",
+  "scheme": "shipaso",
+  "deepLinkTemplates": {
+    "devBuild": "shipaso://<urlPath minus leading slash>",
+    "expoGo": "exp://127.0.0.1:8081/--<urlPath>"
+  },
+  "mode": "expo-router",
+  "appDir": "app",
+  "layouts": [
+    {
+      "file": "app/(app)/_layout.tsx",
+      "dir": "(app)",
+      "navigator": "Stack"
+    },
+    {
+      "file": "app/(public)/_layout.tsx",
+      "dir": "(public)",
+      "navigator": "Stack"
+    },
+    {
+      "file": "app/_layout.tsx",
+      "dir": "",
+      "navigator": "Stack"
+    }
+  ],
+  "routes": [
+    {
+      "id": "(app)/apps/[id]",
+      "file": "app/(app)/apps/[id].tsx",
+      "urlPath": "/apps/[id]",
+      "title": "/apps/[id]",
+      "reach": "deep-link",
+      "slug": "app_apps_id",
+      "params": [
+        "id"
+      ],
+      "navigator": "Stack",
+      "layoutDir": "(app)",
+      "presentation": null,
+      "stateHints": []
+    },
+    {
+      "id": "(app)/capture-kit.test",
+      "file": "app/(app)/capture-kit.test.tsx",
+      "urlPath": "/capture-kit.test",
+      "title": "/capture-kit.test",
+      "reach": "deep-link",
+      "slug": "app_capture-kit.test",
+      "params": [],
+      "navigator": "Stack",
+      "layoutDir": "(app)",
+      "presentation": null,
+      "stateHints": []
+    },
+    {
+      "id": "(app)/capture-kit",
+      "file": "app/(app)/capture-kit.tsx",
+      "urlPath": "/capture-kit",
+      "title": "/capture-kit",
+      "reach": "deep-link",
+      "slug": "app_capture-kit",
+      "params": [],
+      "navigator": "Stack",
+      "layoutDir": "(app)",
+      "presentation": null,
+      "stateHints": []
+    },
+    {
+      "id": "(app)/index",
+      "file": "app/(app)/index.tsx",
+      "urlPath": "/",
+      "title": "/",
+      "reach": "deep-link",
+      "slug": "app",
+      "params": [],
+      "navigator": "Stack",
+      "layoutDir": "(app)",
+      "presentation": null,
+      "stateHints": []
+    },
+    {
+      "id": "(app)/onboarding",
+      "file": "app/(app)/onboarding.tsx",
+      "urlPath": "/onboarding",
+      "title": "/onboarding",
+      "reach": "deep-link",
+      "slug": "app_onboarding",
+      "params": [],
+      "navigator": "Stack",
+      "layoutDir": "(app)",
+      "presentation": null,
+      "stateHints": []
+    },
+    {
+      "id": "(app)/portfolio",
+      "file": "app/(app)/portfolio.tsx",
+      "urlPath": "/portfolio",
+      "title": "/portfolio",
+      "reach": "deep-link",
+      "slug": "app_portfolio",
+      "params": [],
+      "navigator": "Stack",
+      "layoutDir": "(app)",
+      "presentation": null,
+      "stateHints": []
+    },
+    {
+      "id": "(app)/runs/[id]",
+      "file": "app/(app)/runs/[id].tsx",
+      "urlPath": "/runs/[id]",
+      "title": "/runs/[id]",
+      "reach": "deep-link",
+      "slug": "app_runs_id",
+      "params": [
+        "id"
+      ],
+      "navigator": "Stack",
+      "layoutDir": "(app)",
+      "presentation": null,
+      "stateHints": []
+    },
+    {
+      "id": "(app)/settings.test",
+      "file": "app/(app)/settings.test.tsx",
+      "urlPath": "/settings.test",
+      "title": "/settings.test",
+      "reach": "deep-link",
+      "slug": "app_settings.test",
+      "params": [],
+      "navigator": "Stack",
+      "layoutDir": "(app)",
+      "presentation": null,
+      "stateHints": []
+    },
+    {
+      "id": "(app)/settings",
+      "file": "app/(app)/settings.tsx",
+      "urlPath": "/settings",
+      "title": "/settings",
+      "reach": "deep-link",
+      "slug": "app_settings",
+      "params": [],
+      "navigator": "Stack",
+      "layoutDir": "(app)",
+      "presentation": null,
+      "stateHints": []
+    },
+    {
+      "id": "(app)/war-room/[id]",
+      "file": "app/(app)/war-room/[id].tsx",
+      "urlPath": "/war-room/[id]",
+      "title": "/war-room/[id]",
+      "reach": "deep-link",
+      "slug": "app_war-room_id",
+      "params": [
+        "id"
+      ],
+      "navigator": "Stack",
+      "layoutDir": "(app)",
+      "presentation": null,
+      "stateHints": []
+    },
+    {
+      "id": "(public)/login.test",
+      "file": "app/(public)/login.test.tsx",
+      "urlPath": "/login.test",
+      "title": "/login.test",
+      "reach": "deep-link",
+      "slug": "public_login.test",
+      "params": [],
+      "navigator": "Stack",
+      "layoutDir": "(public)",
+      "presentation": null,
+      "stateHints": []
+    },
+    {
+      "id": "(public)/login",
+      "file": "app/(public)/login.tsx",
+      "urlPath": "/login",
+      "title": "/login",
+      "reach": "deep-link",
+      "slug": "public_login",
+      "params": [],
+      "navigator": "Stack",
+      "layoutDir": "(public)",
+      "presentation": null,
+      "stateHints": []
+    },
+    {
+      "id": "(public)/preview.test",
+      "file": "app/(public)/preview.test.tsx",
+      "urlPath": "/preview.test",
+      "title": "/preview.test",
+      "reach": "deep-link",
+      "slug": "public_preview.test",
+      "params": [],
+      "navigator": "Stack",
+      "layoutDir": "(public)",
+      "presentation": null,
+      "stateHints": []
+    },
+    {
+      "id": "(public)/preview",
+      "file": "app/(public)/preview.tsx",
+      "urlPath": "/preview",
+      "title": "/preview",
+      "reach": "deep-link",
+      "slug": "public_preview",
+      "params": [],
+      "navigator": "Stack",
+      "layoutDir": "(public)",
+      "presentation": null,
+      "stateHints": []
+    },
+    {
+      "id": "(public)/proof.test",
+      "file": "app/(public)/proof.test.tsx",
+      "urlPath": "/proof.test",
+      "title": "/proof.test",
+      "reach": "deep-link",
+      "slug": "public_proof.test",
+      "params": [],
+      "navigator": "Stack",
+      "layoutDir": "(public)",
+      "presentation": null,
+      "stateHints": []
+    },
+    {
+      "id": "(public)/proof",
+      "file": "app/(public)/proof.tsx",
+      "urlPath": "/proof",
+      "title": "/proof",
+      "reach": "deep-link",
+      "slug": "public_proof",
+      "params": [],
+      "navigator": "Stack",
+      "layoutDir": "(public)",
+      "presentation": null,
+      "stateHints": []
+    },
+    {
+      "id": "auth/m.test",
+      "file": "app/auth/m.test.tsx",
+      "urlPath": "/auth/m.test",
+      "title": "/auth/m.test",
+      "reach": "deep-link",
+      "slug": "auth_m.test",
+      "params": [],
+      "navigator": "Stack",
+      "layoutDir": "",
+      "presentation": null,
+      "stateHints": []
+    },
+    {
+      "id": "auth/m",
+      "file": "app/auth/m.tsx",
+      "urlPath": "/auth/m",
+      "title": "/auth/m",
+      "reach": "deep-link",
+      "slug": "auth_m",
+      "params": [],
+      "navigator": "Stack",
+      "layoutDir": "",
+      "presentation": null,
+      "stateHints": []
+    },
+    {
+      "id": "index",
+      "file": "app/index.tsx",
+      "urlPath": "/",
+      "title": "/",
+      "reach": "deep-link",
+      "slug": "index",
+      "params": [],
+      "navigator": "Stack",
+      "layoutDir": "",
+      "presentation": null,
+      "stateHints": []
+    }
+  ],
+  "edges": [
+    {
+      "from": "(app)/apps/[id]",
+      "to": "(app)/runs/[id]",
+      "raw": "/(app)/runs/${run.id}",
+      "target": "/(app)/runs/${run.id}"
+    },
+    {
+      "from": "(app)/apps/[id]",
+      "to": "(app)/war-room/[id]",
+      "raw": "/(app)/war-room/${a.id}",
+      "target": "/(app)/war-room/${a.id}"
+    },
+    {
+      "from": "(app)/apps/[id]",
+      "to": "(app)/capture-kit",
+      "raw": "/(app)/capture-kit?appName=${encodeURIComponent(a.name)}",
+      "target": "/(app)/capture-kit"
+    },
+    {
+      "from": "(app)/apps/[id]",
+      "to": "(app)/runs/[id]",
+      "raw": "/(app)/runs/${r.id}",
+      "target": "/(app)/runs/${r.id}"
+    },
+    {
+      "from": "(app)/index",
+      "to": "(app)/apps/[id]",
+      "raw": "/(app)/apps/${res.id}",
+      "target": "/(app)/apps/${res.id}"
+    },
+    {
+      "from": "(app)/index",
+      "to": "(app)/portfolio",
+      "raw": "/(app)/portfolio",
+      "target": "/(app)/portfolio"
+    },
+    {
+      "from": "(app)/index",
+      "to": "(app)/settings",
+      "raw": "/(app)/settings",
+      "target": "/(app)/settings"
+    },
+    {
+      "from": "(app)/index",
+      "to": "(app)/apps/[id]",
+      "raw": "/(app)/apps/${first.id}",
+      "target": "/(app)/apps/${first.id}"
+    },
+    {
+      "from": "(app)/index",
+      "to": "(app)/apps/[id]",
+      "raw": "/(app)/apps/${id}",
+      "target": "/(app)/apps/${id}"
+    },
+    {
+      "from": "(app)/onboarding",
+      "to": "(app)/index",
+      "raw": "/(app)",
+      "target": "/(app)"
+    },
+    {
+      "from": "(app)/portfolio",
+      "to": "(app)/apps/[id]",
+      "raw": "/(app)/apps/${id}",
+      "target": "/(app)/apps/${id}"
+    },
+    {
+      "from": "(public)/login",
+      "to": "(app)/index",
+      "raw": "/(app)",
+      "target": "/(app)"
+    },
+    {
+      "from": "(public)/login",
+      "to": "(public)/preview",
+      "raw": "/(public)/preview",
+      "target": "/(public)/preview"
+    },
+    {
+      "from": "(public)/preview",
+      "to": "(public)/login",
+      "raw": "/(public)/login",
+      "target": "/(public)/login"
+    },
+    {
+      "from": "auth/m",
+      "to": "(app)/index",
+      "raw": "/(app)",
+      "target": "/(app)"
+    },
+    {
+      "from": "auth/m",
+      "to": "(public)/login",
+      "raw": "/(public)/login",
+      "target": "/(public)/login"
+    },
+    {
+      "from": "index",
+      "to": "(app)/index",
+      "raw": "/(app)",
+      "target": "/(app)"
+    }
+  ],
+  "summary": {
+    "mode": "expo-router",
+    "routes": 19,
+    "layouts": 3,
+    "edges": 17,
+    "unresolvedEdges": 0,
+    "routesWithStateHints": 0,
+    "routesNeedingParams": 3,
+    "navigationOnlyRoutes": 0,
+    "orphanRoutes": 9
+  }
+}
