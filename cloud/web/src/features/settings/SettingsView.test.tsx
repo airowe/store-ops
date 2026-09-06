@@ -61,6 +61,16 @@ describe("<SettingsView />", () => {
     await waitFor(() => expect(screen.getByTestId("push-toggle")).toHaveTextContent("Off"));
   });
 
+  it("seeds the autopilot switches from /auth/me and shows the account ASC key card", async () => {
+    const { client } = makeClient();
+    renderView(client);
+    await waitFor(() => expect(screen.getByTestId("asc-writes-toggle")).toHaveTextContent("Off"));
+    expect(screen.getByTestId("autopilot-toggle")).toBeDisabled();
+    // the seeded credential is per-app (appId null here means account-wide → card shows Verified)
+    expect(screen.getByTestId("asc-key-status-pill")).toHaveTextContent("Verified");
+    expect(screen.getByText(/It never pushes\. Every run ends at your approval\./)).toBeInTheDocument();
+  });
+
   it("switching cadence to Daily calls setRankCadence('daily')", async () => {
     const { client, post } = makeClient();
     renderView(client);
