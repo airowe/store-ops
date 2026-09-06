@@ -1,0 +1,47 @@
+{
+  "kind": "baseline",
+  "app": "ShipASO",
+  "commit": "961ab5506e968ed74f414654cde76e58c08ddb2a",
+  "ref": "chore/screenmap-local-map",
+  "bundle": "/private/tmp/claude-501/-Users-adamrowe-Projects-store-ops/73609fbe-7cbd-4c24-b9a3-6195605ab83c/scratchpad/mobile.map",
+  "total": 19,
+  "reused": 0,
+  "device": "iPhone 17 Pro Max",
+  "argent": "0.17.0",
+  "captured": {
+    "replay": 0,
+    "deeplink": 19,
+    "agent": 0,
+    "failed": []
+  },
+  "unflowed": [
+    "(app)/apps/[id]",
+    "(app)/capture-kit.test",
+    "(app)/capture-kit",
+    "(app)/index",
+    "(app)/onboarding",
+    "(app)/portfolio",
+    "(app)/runs/[id]",
+    "(app)/settings.test",
+    "(app)/settings",
+    "(app)/war-room/[id]",
+    "(public)/login.test",
+    "(public)/login",
+    "(public)/preview.test",
+    "(public)/preview",
+    "(public)/proof.test",
+    "(public)/proof",
+    "auth/m.test",
+    "auth/m",
+    "index"
+  ],
+  "drifted": [],
+  "agent": {
+    "ran": false,
+    "reason": "disabled (--no-agent)",
+    "provider": "claude",
+    "keyEnv": "ANTHROPIC_API_KEY",
+    "hasKey": false
+  },
+  "recordedFlowsDir": null
+}

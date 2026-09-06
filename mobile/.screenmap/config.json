@@ -1,0 +1,7 @@
+{
+  "scheme": "shipaso",
+  "device": "iPhone 17 Pro Max",
+  "effort": "deterministic",
+  "agent": { "enabled": false },
+  "params": { "id": "6749875510" }
+}
