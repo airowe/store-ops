@@ -289,7 +289,7 @@ import { mintAscJwt } from "../engine/ascJwt.js";
 import { ASC_BASE, findAscAppId, applyAscMetadata, createAscLocalization, createAscVersion, getEditableVersionId, isValidVersionString, readAscLocalization, AscWriteError } from "../engine/ascWrite.js";
 import { ascWriteGate } from "../engine/ascWriteGate.js";
 import { uploadScreenshot } from "../engine/ascUploadClient.js";
-import { createPpoExperiment } from "../engine/ascExperimentCreate.js";
+import { createPpoExperiment, EXPERIMENT_PLATFORMS, type ExperimentPlatform } from "../engine/ascExperimentCreate.js";
 import { ensureScreenshotSet } from "../engine/ascScreenshotSet.js";
 import { uploadScreenshotBatch, type BatchShot } from "../engine/ascScreenshotBatch.js";
 import { readAscExperiments } from "../engine/ascExperiments.js";
@@ -4954,12 +4954,15 @@ async function ascCreateExperimentRoute(
   if (!gate.allowed) throw new HttpError(gate.status, gate.reason);
 
   const body = (await req.json().catch(() => ({}))) as AscCredBody & {
-    appStoreVersionId?: string;
+    /** IOS by default; a v2 experiment hangs off the app + platform, not a version. */
+    platform?: string;
     name?: string;
     trafficProportion?: number;
   };
-  const appStoreVersionId = (body.appStoreVersionId ?? "").trim();
-  if (!appStoreVersionId) throw new HttpError(400, "appStoreVersionId is required");
+  const platform = ((body.platform ?? "IOS").trim().toUpperCase() || "IOS") as ExperimentPlatform;
+  if (!(EXPERIMENT_PLATFORMS as readonly string[]).includes(platform)) {
+    throw new HttpError(400, `platform must be one of ${EXPERIMENT_PLATFORMS.join(", ")}`);
+  }
 
   const cred = await ascCredForRequest(env, userId, app.id, body);
   let token: string;
@@ -4977,7 +4980,8 @@ async function ascCreateExperimentRoute(
   try {
     return await createPpoExperiment(fetch, {
       token,
-      appStoreVersionId,
+      appId: ascAppId,
+      platform,
       name: (body.name ?? "").trim(),
       trafficProportion: body.trafficProportion ?? 50,
       runningExperiments: experiments,

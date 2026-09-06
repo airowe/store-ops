@@ -21,13 +21,27 @@
  * The read side lives in ascExperiments.ts; the caller passes what it read so
  * this stays a pure decision over an injected fetch.
  */
-import { ASC_BASE, ascError, type FetchLike } from "./ascWrite.js";
+import { ascError, type FetchLike } from "./ascWrite.js";
+
+/**
+ * v2 experiments live under /v2, not /v1: the first live call (2026-09-06)
+ * against `/v1/appStoreVersionExperimentsV2` came back 404 "The path provided
+ * does not match a defined resource type". Reads stay on the v1-namespaced
+ * related-resource path (`/v1/apps/{id}/appStoreVersionExperimentsV2`), which
+ * Apple serves; creation does not. A v2 experiment hangs off the APP and a
+ * platform, not a version — the version-scoped form is the v1 resource.
+ */
+export const ASC_V2_BASE = "https://api.appstoreconnect.apple.com/v2";
+
+export const EXPERIMENT_PLATFORMS = ["IOS", "MAC_OS", "TV_OS", "VISION_OS"] as const;
+export type ExperimentPlatform = (typeof EXPERIMENT_PLATFORMS)[number];
 
 export type CreatePpoExperimentInput = {
   /** Short-lived ASC bearer token. Never persisted or logged. */
   token: string;
-  /** The version the experiment hangs off. */
-  appStoreVersionId: string;
+  /** Apple's numeric app id (findAscAppId), the resource a v2 experiment hangs off. */
+  appId: string;
+  platform: ExperimentPlatform;
   name: string;
   /** Share of traffic sent to the treatment, 1–100. */
   trafficProportion: number;
@@ -80,15 +94,15 @@ export async function createPpoExperiment(
   // `started` and `state` are deliberately absent from the payload. Apple
   // defaults a new experiment to not-started, and sending either would move the
   // decision to begin showing users a different page out of the human's hands.
-  const res = await fetchFn(`${ASC_BASE}/appStoreVersionExperimentsV2`, {
+  const res = await fetchFn(`${ASC_V2_BASE}/appStoreVersionExperiments`, {
     method: "POST",
     headers: { authorization: `Bearer ${input.token}`, "content-type": "application/json" },
     body: JSON.stringify({
       data: {
-        type: "appStoreVersionExperimentsV2",
-        attributes: { name, trafficProportion: proportion },
+        type: "appStoreVersionExperiments",
+        attributes: { name, platform: input.platform, trafficProportion: proportion },
         relationships: {
-          appStoreVersion: { data: { type: "appStoreVersions", id: input.appStoreVersionId } },
+          app: { data: { type: "apps", id: input.appId } },
         },
       },
     }),

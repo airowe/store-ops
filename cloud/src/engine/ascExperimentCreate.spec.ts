@@ -31,14 +31,15 @@ const created = ok({
 
 const base = {
   token: "t",
-  appStoreVersionId: "ver-1",
+  appId: "6757125366",
+  platform: "IOS" as const,
   name: "Outcome-led shots",
   trafficProportion: 50,
   runningExperiments: [] as Array<{ state?: string | undefined; started?: boolean | undefined }>,
 };
 
 describe("createPpoExperiment", () => {
-  it("creates the experiment against the version and returns Apple's ids verbatim", async () => {
+  it("creates the experiment on the v2 resource, against the app and platform, and returns Apple's ids verbatim", async () => {
     const calls: Array<{ url: string; init: RequestInit | undefined }> = [];
     const fetchFn = vi.fn(async (url: string, init?: RequestInit) => {
       calls.push({ url, init });
@@ -49,11 +50,14 @@ describe("createPpoExperiment", () => {
     expect(res).toMatchObject({ ok: true, id: "exp-1", started: false });
 
     const body = JSON.parse(String(calls[0]!.init?.body));
-    expect(calls[0]!.url).toMatch(/appStoreVersionExperimentsV2$/);
+    // /v1/appStoreVersionExperimentsV2 is what Apple 404'd live on 2026-09-06
+    expect(calls[0]!.url).toBe("https://api.appstoreconnect.apple.com/v2/appStoreVersionExperiments");
     expect(calls[0]!.init?.method).toBe("POST");
+    expect(body.data.type).toBe("appStoreVersionExperiments");
     expect(body.data.attributes.name).toBe("Outcome-led shots");
+    expect(body.data.attributes.platform).toBe("IOS");
     expect(body.data.attributes.trafficProportion).toBe(50);
-    expect(body.data.relationships.appStoreVersion.data.id).toBe("ver-1");
+    expect(body.data.relationships).toEqual({ app: { data: { type: "apps", id: "6757125366" } } });
   });
 
   /**

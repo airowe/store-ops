@@ -17,7 +17,10 @@ const createPpoExperiment = vi.fn(async () => ({
   started: false,
   state: "PREPARE_FOR_SUBMISSION",
 }));
-vi.mock("../engine/ascExperimentCreate.js", () => ({ createPpoExperiment }));
+vi.mock("../engine/ascExperimentCreate.js", async (orig) => {
+  const actual = (await orig()) as Record<string, unknown>;
+  return { ...actual, createPpoExperiment };
+});
 vi.mock("../engine/ascExperiments.js", () => ({ readAscExperiments: async () => ({ experiments: [] }) }));
 vi.mock("../engine/ascWrite.js", async (orig) => {
   const actual = (await orig()) as Record<string, unknown>;
@@ -66,7 +69,7 @@ const baseEnv = {
   DB: fakeDb(),
 };
 
-const body = { appStoreVersionId: "ver-1", name: "Outcome-led shots", trafficProportion: 50 };
+const body = { name: "Outcome-led shots", trafficProportion: 50 };
 
 const post = (env: Record<string, unknown> = baseEnv, b: unknown = body) =>
   handleApi(
@@ -121,10 +124,13 @@ describe("POST /runs/:id/asc/create-experiment", () => {
     expect(createPpoExperiment).not.toHaveBeenCalled();
   });
 
-  it("400s a missing appStoreVersionId without calling Apple", async () => {
-    const res = await post(baseEnv, { ...body, appStoreVersionId: "" });
+  it("400s an unknown platform without calling Apple; IOS is the default", async () => {
+    const res = await post(baseEnv, { ...body, platform: "WATCH_OS" });
     expect(res.status).toBe(400);
     expect(createPpoExperiment).not.toHaveBeenCalled();
+    await post(baseEnv, body);
+    const input = (createPpoExperiment.mock.calls as unknown as Array<[unknown, { platform: string }]>)[0]![1];
+    expect(input.platform).toBe("IOS");
   });
 
   /**
