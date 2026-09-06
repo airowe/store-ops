@@ -34,6 +34,8 @@ export type UploadScreenshotResult = {
   fileName: string;
   bytes: number;
   checksum: string;
+  /** how many PUTs Apple asked for; the first live upload (2026-09-06) could not say. */
+  parts: number;
 };
 
 type ReservationResponse = {
@@ -122,5 +124,5 @@ export async function uploadScreenshot(
   });
   if (!commitRes.ok) throw await ascError(commitRes, "commit screenshot upload");
 
-  return { ok: true, id, fileName: input.fileName, bytes: input.file.length, checksum };
+  return { ok: true, id, fileName: input.fileName, bytes: input.file.length, checksum, parts: parts.length };
 }
