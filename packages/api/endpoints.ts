@@ -58,7 +58,7 @@ import type {
   StagedEdit,
   ChannelKind,
   ChannelsResult,
-  ChannelLink, RunExecutions, ExecuteRunResult } from "./types.js";
+  ChannelLink, RunExecutions, ExecuteRunResult, ClaimPassResult } from "./types.js";
 
 const enc = encodeURIComponent;
 
@@ -304,6 +304,12 @@ export const setAscWrites = (c: ApiClient, optIn: boolean) =>
  */
 export const setAutopilot = (c: ApiClient, execute: boolean) =>
   c.request<{ autopilot_execute: boolean; quarantined: number }>("/account/autopilot", { method: "PATCH", body: { execute } });
+/**
+ * Claim the Shipaton Pass with its code: Startup, free, until the date in the
+ * answer. The server refuses a wrong code (400), a closed window (410), and a
+ * plan the pass would demote (409); the message says which.
+ */
+export const claimPass = (c: ApiClient, code: string) => c.post<ClaimPassResult>("/billing/claim", { code });
 /** Save one team-scoped ASC key for every app; verified against Apple before it is stored (#560). */
 export const saveAscAccountKey = (c: ApiClient, body: { p8: string; keyId: string; issuerId: string }) =>
   c.post<{ ok: true; credential: StoredCredential }>("/account/credentials/asc", body);

@@ -1078,6 +1078,10 @@ pre {
 .pref-row-main { flex: 1; min-width: 0; }
 .pref-row-title { font-size: 14.5px; color: var(--ink); }
 .pref-row-detail { font-size: 12.5px; color: var(--faint); margin-top: 3px; line-height: 1.45; }
+.pref-row-detail.is-error { color: var(--bad); }
+/* Settings › Plan: the pass-code field and its button, one unit. */
+.claim-form { display: inline-flex; gap: 8px; align-items: center; }
+.claim-form input { width: 150px; text-transform: uppercase; font-variant-numeric: tabular-nums; }
 
 /* On/Off toggle — min-width stops the label swap reflowing the row. */
 .pref-toggle {

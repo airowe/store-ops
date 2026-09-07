@@ -156,7 +156,7 @@ describe("<SettingsView />", () => {
     const nav = screen.getByTestId("page-nav");
     // Keyboard-operable by construction: real <a href="#…">, no hand-rolled handlers.
     const hrefs = Array.from(nav.querySelectorAll("a")).map((a) => a.getAttribute("href"));
-    expect(hrefs).toEqual(["#comms", "#autonomy", "#connections", "#agent", "#keys", "#appearance", "#account"]);
+    expect(hrefs).toEqual(["#comms", "#autonomy", "#connections", "#agent", "#keys", "#appearance", "#plan", "#account"]);
     // Active sweep → signal dot; paused → warn dot.
     expect(screen.getByTestId("autonomy-nav-dot")).toHaveClass("is-active");
     fireEvent.click(screen.getByTestId("pause-toggle"));

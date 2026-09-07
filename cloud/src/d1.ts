@@ -491,6 +491,29 @@ export async function recomputeEffectiveTier(db: D1Database, userId: string): Pr
 }
 
 /**
+ * Demote every comped pass (Founders' Pass, Shipaton Pass — any `comped*`
+ * status) whose `current_period_end` is before `nowIso`. The Stripe-source tier
+ * goes back to free and the effective tier is recomputed, so an in-app tier
+ * that is still active keeps winning. The status becomes `expired:<old>` and
+ * the end date stays, so the row still says what the account had and until
+ * when. Paying subscribers are never touched here: their period end is
+ * Stripe's to move. Returns how many rows were demoted.
+ */
+export async function expireCompedPasses(db: D1Database, nowIso: string): Promise<number> {
+  const { results } = await db
+    .prepare(
+      "SELECT id, status FROM users WHERE status LIKE 'comped%' AND current_period_end IS NOT NULL AND current_period_end < ?",
+    )
+    .bind(nowIso)
+    .all<{ id: string; status: string }>();
+  for (const r of results) {
+    await setTier(db, { userId: r.id, stripeTier: "free", status: `expired:${r.status}` });
+    await recomputeEffectiveTier(db, r.id);
+  }
+  return results.length;
+}
+
+/**
  * Is this user opted OUT of RLHF capture? Capture is ON by default (returns
  * false when the row is missing), so the privacy-honoring read is conservative
  * only in that an opted-out user is never captured. Mirrors `getTier`.

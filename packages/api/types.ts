@@ -749,7 +749,18 @@ export type Me = {
   asc_write_opt_in?: boolean;
   /** let the agent perform an approved run's writes itself (migration 0017). Requires the consent above. */
   autopilot_execute?: boolean;
+  /** the effective plan: highest active of the Stripe (web) and in-app sources. */
+  tier?: PlanTier;
+  /** how the plan was obtained: Stripe's "active"/"past_due"/…, or a `comped:*` pass. */
+  plan_status?: string | null;
+  /** ISO end of the current period or pass; null when there is none. */
+  plan_until?: string | null;
 };
+
+export type PlanTier = "free" | "indie" | "startup" | "scale";
+
+/** POST /billing/claim — a Shipaton Pass claim that succeeded. */
+export type ClaimPassResult = { tier: PlanTier; until: string; pass: string };
 
 /** One row of what autopilot did with a run (migration 0017). */
 export type RunExecution = {

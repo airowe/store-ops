@@ -13,7 +13,8 @@ belongs to. Tag @RevenueCat while #Shipaton runs.
 | Day | Date | Post | Receipt |
 |---|---|---|---|
 | 1 | 09-07 | The first real write to App Store Connect (thread drafted) | `2026-09-07-first-live-write.md` |
-| 2 | 09-08 | Autopilot, off by default: what it does and what it never does | PR #564, PRD `autopilot-execute.md` |
+| 2 | 09-08 | The Shipaton offer: reply with your App Store link, and the Shipaton Pass (code SHIPATON26) | `2026-09-08-shipaton-audits.md` |
+| 2b | 09-09 | Autopilot, off by default: what it does and what it never does | PR #564, PRD `autopilot-execute.md` |
 | 3 | 09-09 | asc 5.0 dropped and broke nine of my documented commands; the linter said "0 missing" | PR #563, negative control: 18 unknown flags |
 | 4 | 09-10 | 32 runs I'd approved were never pushed. Why turning autopilot on did not touch them | quarantine count from D1, PR #564 second commit |
 | 5 | 09-11 | The ops heartbeat: a bot that measures and files, never acts | PR #558, sticky issue after first run |
@@ -36,12 +37,22 @@ belongs to. Tag @RevenueCat while #Shipaton runs.
 | 22 | 09-28 | Google Play: what exists (audit, data safety) and what doesn't (writes) | code map on #557 |
 | 23 | 09-29 | A rejection guideline decoded: 2.1(a) and what "unresponsive" meant | `aso-rejection-assistant` |
 | 24 | 09-30 | Month recap: PRs merged, issues closed, writes verified, all counted | `gh` counts on the day |
-| 25 | 10-01 | The screenshot planner: what it refuses to say (no "best", no unmeasured claims) | `screenshotPlanner.ts` lint |
+| 25 | 10-01 | Shipaton 2026: the ASO report. Every submitted app's live listing audited with public data, grade distribution, the common mistakes. Starts when the Devpost gallery opens | issue #570 (the report), `preview_app` runs on the day |
+| 25b | 10-02 | The screenshot planner: what it refuses to say (no "best", no unmeasured claims) | `screenshotPlanner.ts` lint |
 | 26 | 10-02 | What the dashboard shows now that autopilot has switches | PR #566 screenshots |
 | 27 | 10-03 | A customer question answered in public, if one arrived | inbox; else skip to a build note |
 | 28 | 10-04 | Every number on the site is measured or a dash. The guard that enforces it | `pricingParity`, `honesty` tests |
 | 29 | 10-05 | What broke this month, in one list | ops heartbeat flips, PR fix commits |
 | 30 | 10-06 | Thirty posts: what changed in stars, installs, keys created. Only if measured | GitHub API, D1 counts on the day |
+
+## Second track: Shipaton audit of the day (09-08 → 09-30)
+
+One extra post a day while entries are open: an entrant's listing, audited
+from the public page, posted as a reply to their link. Template and rules in
+`2026-09-08-shipaton-audits.md`. A day with no link in the replies gets no
+audit post; the offer is re-shared instead. Never a rank prediction, never a
+comparison between entrants, and the maker is tagged only when they sent the
+link themselves.
 
 ## Standing rules
 

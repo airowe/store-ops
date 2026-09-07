@@ -117,7 +117,7 @@ import {
   sortFindings,
   verifyPlayServiceAccount,
 } from "../engine/index.js";
-import type { ReasoningTrace, AppRow, FindingsSummary, RankSnapshotRow } from "../d1.js";
+import type { ReasoningTrace, AppRow, FindingsSummary, RankSnapshotRow, Tier } from "../d1.js";
 import { buildPreview } from "../engine/preview.js";
 import { discoverCompetitors, resolveNameToId } from "../engine/competitorWatch.js";
 import { resolveSimilarCompetitors } from "../engine/competitorDiscover.js";
@@ -280,6 +280,7 @@ import {
   verifyStripeSignature,
 } from "../billing.js";
 import { buildAppInput, descriptionFromTrace, type RunOverrides } from "./runConfig.js";
+import { evaluateShipatonClaim } from "../engine/shipatonPass.js";
 import { type AscCred, type AscCredBody, AscCredentialError, loadStoredAscForApp, resolveAscCredential } from "./ascCredentials.js";
 import { reasonerForEnv } from "./aiReasoner.js";
 import { cachedReport, cachedByKey, previewCacheKey, allowReport, defaultReportCache, type ReportLimiter } from "./publicReportGuard.js";
@@ -1114,6 +1115,8 @@ async function authMe(req: Request, env: Env, origin: string | null): Promise<Re
           id: user.id,
           email: user.email,
           tier: user.tier,
+          plan_status: user.status,
+          plan_until: user.current_period_end,
           paused: user.agent_paused,
           rlhf_opt_out: user.rlhf_opt_out === 1,
           rank_cadence: user.rank_cadence,
@@ -1139,6 +1142,8 @@ async function authMe(req: Request, env: Env, origin: string | null): Promise<Re
           id: user.id,
           email,
           tier: user.tier,
+          plan_status: user.status,
+          plan_until: user.current_period_end,
           paused: user.agent_paused,
           rlhf_opt_out: user.rlhf_opt_out === 1,
           rank_cadence: user.rank_cadence,
@@ -5424,6 +5429,33 @@ function priceEnv(env: Env): StripePriceEnv {
 type CheckoutBody = { tier?: string };
 
 /**
+ * POST /billing/claim {code} — the Shipaton Pass (engine/shipatonPass.ts).
+ * Startup, free, until the pass end, for a signed-in account that types the
+ * code. Both tier columns are written so a later webhook cannot demote it, the
+ * status names the pass so claims can be counted, and the end date is in the
+ * row for the cron's expiry sweep. No Stripe object is created or touched.
+ */
+async function billingClaim(req: Request, env: Env, user: { id: string }): Promise<unknown> {
+  const body = await readJson<{ code?: string }>(req);
+  const currentTier: Tier = await getTier(env.DB, user.id);
+  const verdict = evaluateShipatonClaim({
+    code: typeof body.code === "string" ? body.code : undefined,
+    expectedCode: env.SHIPATON_PASS_CODE,
+    currentTier,
+    now: new Date(),
+  });
+  if (!verdict.ok) throw new HttpError(verdict.status, verdict.reason);
+  await setTier(env.DB, {
+    userId: user.id,
+    tier: verdict.tier,
+    stripeTier: verdict.tier,
+    status: verdict.status,
+    currentPeriodEnd: verdict.until,
+  });
+  return { tier: verdict.tier, until: verdict.until, pass: "shipaton-2026" };
+}
+
+/**
  * POST /billing/checkout {tier} — create a Stripe Checkout Session for a paid
  * tier and hand back its hosted URL. The client redirects the browser there.
  */
@@ -5857,6 +5889,10 @@ export async function handleApi(req: Request, env: Env, ctx?: ExecutionContext):
     // /billing/checkout — authenticated (the buyer is the signed-in user)
     if (seg[0] === "billing" && seg[1] === "checkout" && seg.length === 2 && method === "POST") {
       return json(await billingCheckout(req, env, user), 200, origin, env);
+    }
+    // /billing/claim — the Shipaton Pass code, typed once by the signed-in user
+    if (seg[0] === "billing" && seg[1] === "claim" && seg.length === 2 && method === "POST") {
+      return json(await billingClaim(req, env, user), 200, origin, env);
     }
 
     // (/resolve is now a PUBLIC route — see the public block above.)

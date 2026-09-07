@@ -19,6 +19,7 @@ import { deleteCredential, getCredentials, logout, me, pauseAgent, resumeAgent, 
 import { GithubCard } from "./GithubCard.js";
 import { AsaCard } from "./AsaCard.js";
 import { AscKeyCard } from "./AscKeyCard.js";
+import { PlanCard } from "./PlanCard.js";
 import { AutopilotRows } from "./AutopilotRows.js";
 import { ApiKeysCard } from "./ApiKeysCard.js";
 import { ChannelsCard } from "./ChannelsCard.js";
@@ -33,6 +34,7 @@ const SECTIONS = [
   { id: "agent", label: "Agent access" },
   { id: "keys", label: "Stored keys" },
   { id: "appearance", label: "Appearance" },
+  { id: "plan", label: "Plan" },
   { id: "account", label: "Account" },
 ] as const;
 
@@ -369,6 +371,21 @@ export function SettingsView({ client, onSignedOut }: { client: ApiClient; onSig
         </Panel>
 
         <ThemePanel theme={theme} pickTheme={pickTheme} />
+
+        <Panel
+          id="plan"
+          title="Plan"
+          testId="plan-panel"
+          sub="What this account is on, and until when. Nothing here charges you."
+        >
+          <PlanCard
+            client={client}
+            tier={meQ.data?.tier ?? "free"}
+            planStatus={meQ.data?.plan_status}
+            planUntil={meQ.data?.plan_until}
+            onClaimed={() => void meQ.refetch()}
+          />
+        </Panel>
 
         <Panel id="account" title="Account">
           <div className="pref-row">
