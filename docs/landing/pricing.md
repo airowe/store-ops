@@ -13,6 +13,14 @@ ShipASO proposes, you approve, then it ships.
 
 All paid tiers are recurring subscriptions. There is no one-time plan.
 
+## The Shipaton Pass
+
+Building a [Shipaton 2026](https://shipaton.dev) entry? The Startup plan is
+free through December 31, 2026. Sign in at app.shipaso.com, open Settings ›
+Plan, and enter the code `SHIPATON26`. Claims close October 13, 2026, when
+judging ends. The pass never replaces a plan that already covers more, nothing
+is charged, and the account returns to Free on its own when the pass ends.
+
 ## Priced on apps, not seats or keywords
 
 - **No seat metering.** Every plan is for your whole team. Invite whoever

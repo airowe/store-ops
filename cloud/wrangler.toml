@@ -156,6 +156,11 @@ ASC_WRITE_ENABLED = "true"
 # Connect. Own flag on top of ASC_WRITE_ENABLED. Turned on 2026-09-06 for the
 # first live verification against Snagg.
 ASC_EXPERIMENT_WRITE_ENABLED = "true"
+# SHIPATON_PASS_CODE — the Shipaton Pass (src/engine/shipatonPass.ts): a
+# signed-in account that types this at POST /billing/claim gets Startup free
+# until 2026-12-31; claims close 2026-10-13. Public by design (it is posted to
+# entrants), so a [var] and not a secret. Unset ⇒ the route answers 503.
+SHIPATON_PASS_CODE = "SHIPATON26"
 
 # ── Secrets (DO NOT put values here — set via `wrangler secret put NAME`) ─────
 # Auth:

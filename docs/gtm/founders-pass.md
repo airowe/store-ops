@@ -166,8 +166,26 @@ Three plays, in order of when they work:
    pass. Timed for the judging window, when 800 makers are watching and
    most of them just learned they did not win.
 
-Play 1 starts tomorrow. Play 2 is a build decision. Play 3 is a calendar
-entry for October 1.
+All three are in motion (2026-09-07):
+
+- **Play 1** — the offer post and the audit-post template are drafted in
+  `docs/shipaton/posts/2026-09-08-shipaton-audits.md`; the calendar carries
+  a second daily track, "Shipaton audit of the day", through September 30.
+- **Play 2** — built. `POST /billing/claim {code}` (`cloud/src/engine/shipatonPass.ts`
+  decides; the route writes `tier` and `stripe_tier` = startup, `status` =
+  `comped:shipaton-2026`, `current_period_end` = 2026-12-31). The code is
+  `SHIPATON26`, a `[vars]` entry in `cloud/wrangler.toml` because it is
+  public by design. Claims close 2026-10-13; a paid Startup or Scale account
+  is refused (409) rather than demoted. Settings › Plan
+  (`cloud/web/src/features/settings/PlanCard.tsx`) shows the tier, how it
+  was obtained and until when, and carries the claim field; `#shipaton` on
+  the landing page and `pricing.md` say the same thing. The hourly cron
+  demotes any `comped*` row past its end date (`expireCompedPasses`), which
+  also closes the gap the Founders' Pass grant script left open. Claims are
+  counted with `SELECT count(*) FROM users WHERE status = 'comped:shipaton-2026'`.
+  The Ship Kit email to shipaton@revenuecat.com is drafted in Gmail; a person
+  sends it.
+- **Play 3** — filed as a GitHub issue and on the calendar for October 1.
 
 ## The sequence
 

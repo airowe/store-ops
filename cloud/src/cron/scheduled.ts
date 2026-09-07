@@ -33,6 +33,7 @@ import {
   hasOpenRun,
   isAgentPaused,
   listAllApps,
+  expireCompedPasses,
   setLastSweepAt,
   sweepExpiredChannelLinkCodes,
 } from "../d1.js";
@@ -347,6 +348,13 @@ export async function handleScheduled(env: Env): Promise<void> {
   await sweepExpiredChannelLinkCodes(env.DB).catch((e) => {
     console.error(`[store-ops cron] link-code sweep failed (non-fatal): ${String(e)}`);
   });
+  // Comped passes (Founders', Shipaton) end on the date in their row. Same
+  // best-effort footing: a missed hour delays a demotion, never a sweep.
+  const expired = await expireCompedPasses(env.DB, new Date().toISOString()).catch((e) => {
+    console.error(`[store-ops cron] comped-pass expiry failed (non-fatal): ${String(e)}`);
+    return 0;
+  });
+  if (expired > 0) console.log(`[store-ops cron] expired ${expired} comped pass(es)`);
   // Autopilot (migration 0017): approved runs whose owner asked the agent to
   // do the writes. Best-effort and last, after the sweep that matters more.
   const autopilot = await runAutopilot(env).catch((e) => {

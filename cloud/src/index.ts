@@ -111,6 +111,11 @@ export type Env = {
   // blast radius ⇒ different switch. Unset → the create endpoint 403s.
   // Note this gates CREATING (stopped) only; starting a test is never ours.
   ASC_EXPERIMENT_WRITE_ENABLED?: string;
+  // The Shipaton Pass code (engine/shipatonPass.ts): POST /billing/claim grants
+  // Startup free until the pass end to a signed-in account that types it. Not a
+  // secret — it is posted publicly to entrants — so it lives in [vars]. Unset ⇒
+  // the route answers 503 and no pass can be claimed on this deploy.
+  SHIPATON_PASS_CODE?: string;
   // Opt-in gate for creating the ASC Analytics Reports request (Phase 1). Unset →
   // the /apps/:id/analytics/enable write returns 403 (the read-only status probe
   // stays available). Creating an ONGOING report request is an outward write to
