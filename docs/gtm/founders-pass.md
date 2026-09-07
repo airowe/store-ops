@@ -127,6 +127,48 @@ and Sonar teams. They are the competition or its press. Pieter Levels,
 Marc Lou, and the other X build-in-public names are not iOS-first; a pass
 would be noise.
 
+## The Shipaton entrants — the pool, not the list
+
+Shipaton 2025 drew tens of thousands of participants and 812 submitted
+projects. 2026 runs to September 30, judging October 1–13, winners October
+21. Every entrant is launching a brand-new app on the store in the next
+three weeks, which is the one moment ASO is not optional. Checked today:
+
+- The Ship Kit already carries 28 sponsor perks unlocked by milestones, and
+  the ASO slots are taken by our competitors: Layers ("automate content and
+  App Store listing optimization", 2 months free), AppFollow (50% off, 6
+  months), AppTweak (50% off), Fload ("AI growth team for ASO"), AppScreens,
+  Asapty. Sponsors are reached at shipaton@revenuecat.com.
+- The rules do not forbid promotion; the only catch-all is "inappropriate,
+  unsportsmanlike". Discord (discord.gg/shipaton26) has #post-engagement-boost,
+  where sharing progress is the point. There is no public entrant directory
+  until the Devpost gallery opens at submission.
+
+Three plays, in order of when they work:
+
+1. **Now, as a peer (free, no rules risk).** We are an entrant. In
+   #post-engagement-boost and on the #Shipaton tag: "reply with your App
+   Store link and I'll post your measured audit." `preview_app` needs no
+   signup, every audit is a public post with real numbers, and the fix is
+   one sign-in away. This becomes a daily calendar slot, "Shipaton audit of
+   the day", from tomorrow to September 30.
+2. **A Shipaton Pass, self-serve.** Startup tier (10 apps, the loop,
+   autopilot) free through December 31 for any entrant, claimed with a code
+   at sign-in. That needs a claim route and a landing section, about a day
+   of work, plus one email to shipaton@revenuecat.com asking for a Ship Kit
+   slot. Our line against the six ASO perks already there: they give you
+   data or a discount; we change the listing after you approve it and show
+   you whether the rank moved.
+3. **October, the report.** When the Devpost gallery opens, audit every
+   submitted app's live listing with the engine (public data, no keys) and
+   publish "Shipaton 2026: the ASO report", grade distribution and the
+   common mistakes, each entrant tagged with their own measured line and the
+   pass. Timed for the judging window, when 800 makers are watching and
+   most of them just learned they did not win.
+
+Play 1 starts tomorrow. Play 2 is a build decision. Play 3 is a calendar
+entry for October 1.
+
 ## The sequence
 
 1. **This week.** Rudrank first, because the asc 5.0 story is real, dated,
