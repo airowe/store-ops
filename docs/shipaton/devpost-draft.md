@@ -87,7 +87,7 @@ stripe · fastlane · resvg · mcp
 
 ## Links (form fields)
 
-- App Store: [0.1.1 link]
+- App Store: https://apps.apple.com/us/app/shipaso-keyword-ranks/id6787632160 (0.1.1, released 2026-09-08)
 - Demo video: [YouTube link, ≤3 min — script below]
 - #BuildInPublic posts: [paste the ledger's link column]
 - Repo/journey: [decide: the repo is private; the journey lives in the posts]
