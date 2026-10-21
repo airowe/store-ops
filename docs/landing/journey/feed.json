@@ -2,6 +2,15 @@
   "version": 1,
   "entries": [
     {
+      "date": "2026-09-08",
+      "kind": "milestone",
+      "title": "Approved. ShipASO 0.1.1 is on the App Store",
+      "body": "0.1.1 was approved and released on September 8. Two rejections on the way: four guidelines at once in July, then a second in August caused by our own review notes. The listing is public now, and the first thing the app does after sign-in is audit your live listing with measured numbers or a dash. Nothing about this changes the rule the whole product runs on: it proposes, you approve, it writes a draft version, and it reads the rank back. It does not submit. Install counts and rank moves are not on this page yet because none are measured for this build.",
+      "links": {
+        "store": "https://apps.apple.com/us/app/shipaso-keyword-ranks/id6787632160"
+      }
+    },
+    {
       "date": "2026-09-06",
       "kind": "story",
       "title": "The first real write to App Store Connect, and the bug only a live call could find",
